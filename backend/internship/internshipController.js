@@ -541,11 +541,37 @@ exports.markAttendance = async (req, res) => {
                     // image: imageVal // Omitted to save storage as per request
                 });
 
+                // Determine Status for Check-out
+                let finalStatus = 'Present';
+                // Check Distance at Check-out
+                if (distance > internship.radius) {
+                    finalStatus = 'Absent';
+                    const distMsg = `Outside Radius at Checkout: ${Math.round(distance)}m`;
+
+                    if (isSuspicious) {
+                        suspiciousReason += " | " + distMsg;
+                    } else {
+                        isSuspicious = true;
+                        suspiciousReason = distMsg;
+                    }
+                }
+
+                // Combine new suspicious reason with existing one
+                let finalReasonToSave = attendance.suspicious_reason || '';
+                if (isSuspicious && suspiciousReason) {
+                    if (finalReasonToSave) finalReasonToSave += " | ";
+                    finalReasonToSave += suspiciousReason;
+                }
+
+                // If either existing or new is suspicious, mark as 1
+                const finalIsSuspicious = (attendance.is_suspicious || isSuspicious) ? 1 : 0;
+
                 await masterPool.query(
                     `UPDATE internship_attendance 
-                     SET check_out_time = NOW(), check_out_location = ?, status = 'Present' 
+                     SET check_out_time = NOW(), check_out_location = ?, status = ?, 
+                     is_suspicious = ?, suspicious_reason = ?
                      WHERE id = ?`,
-                    [checkOutLocation, attendance.id]
+                    [checkOutLocation, finalStatus, finalIsSuspicious, finalReasonToSave, attendance.id]
                 );
 
                 console.log(`Student ${studentId} checked out successfully.`);
@@ -591,11 +617,18 @@ exports.markAttendance = async (req, res) => {
                 return res.json({ success: true, message: 'You are too far from the location. Attendance marked as Rejected.', type: 'REJECTED', data: mappedNew });
             }
 
+            // Determine Status
+            // If outside radius, mark as Absent (as requested by user)
+            let initialStatus = 'Present';
+            if (distance > internship.radius) {
+                initialStatus = 'Absent';
+            }
+
             const [result] = await masterPool.query(
                 `INSERT INTO internship_attendance 
                 (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason, device_fingerprint) 
-                VALUES (?, ?, NOW(), ?, 'Present', ?, ?, ?, ?)`,
-                [studentId, internshipId, checkInLocation, today, isSuspicious, suspiciousReason, deviceFingerprint]
+                VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)`,
+                [studentId, internshipId, checkInLocation, initialStatus, today, isSuspicious, suspiciousReason, deviceFingerprint]
             );
 
             console.log(`Student ${studentId} checked in successfully. ID: ${result.insertId}`);

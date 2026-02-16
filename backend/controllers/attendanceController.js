@@ -429,6 +429,16 @@ exports.getAttendance = async (req, res) => {
     // Start with indexed columns in order: student_status, course, batch, current_year, current_semester
     query += ` AND s.student_status = 'Regular'`;
 
+    // EXCLUDE students with active INTERNSHIP assignments for this date
+    query += `
+      AND NOT EXISTS (
+        SELECT 1 FROM internship_assignments ia 
+        WHERE ia.student_id = s.id 
+        AND ? BETWEEN ia.start_date AND ia.end_date
+      )
+    `;
+    params.push(attendanceDate);
+
     // Apply indexed filters first (these use the composite index)
     if (course) {
       query += ' AND s.course = ?';
@@ -561,6 +571,16 @@ exports.getAttendance = async (req, res) => {
 
     // Optimize: Order WHERE conditions to use composite index effectively
     countQuery += ` AND s.student_status = 'Regular'`;
+
+    // EXCLUDE students with active INTERNSHIP assignments for this date (Count Query)
+    countQuery += `
+      AND NOT EXISTS (
+        SELECT 1 FROM internship_assignments ia 
+        WHERE ia.student_id = s.id 
+        AND ? BETWEEN ia.start_date AND ia.end_date
+      )
+    `;
+    countParams.push(attendanceDate);
 
     // Apply indexed filters first (these use the composite index)
     if (course) {
