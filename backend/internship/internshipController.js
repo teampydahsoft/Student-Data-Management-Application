@@ -481,19 +481,11 @@ exports.markAttendance = async (req, res) => {
         const distance = calculateDistance(latitude, longitude, parseFloat(internship.latitude), parseFloat(internship.longitude));
         console.log(`Distance for student ${studentId}: ${distance}m (Allowed: ${internship.radius}m)`);
 
-        // 3. Radius Check (Only if not already flagged by Accuracy)
+        // 3. Radius Check (Allow but Mark as Suspicious)
         if (!isSuspicious && distance > internship.radius) {
-            if (image) {
-                isSuspicious = true;
-                suspiciousReason = `Location Mismatch (${Math.round(distance)}m away). Photo Verified.`;
-                console.log(`Student ${studentId} location mismatch overridden by photo verification.`);
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: `You are ${Math.round(distance)}m away from the location. Allowed radius: ${internship.radius}m.`,
-                    requiresPhoto: true
-                });
-            }
+            isSuspicious = true;
+            suspiciousReason = `Outside Radius: ${Math.round(distance)}m (Allowed: ${internship.radius}m)`;
+            console.log(`Student ${studentId} is outside radius but attendance recorded as Suspicious.`);
         }
 
         // 4. Time Check
