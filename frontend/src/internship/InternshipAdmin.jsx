@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../config/api';
 import { toast } from 'react-hot-toast';
 import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -148,6 +148,35 @@ const InternshipAdmin = () => {
     // View Attendance Details Modal State
     const [viewAttendanceModal, setViewAttendanceModal] = useState(false);
     const [selectedAttendance, setSelectedAttendance] = useState(null);
+    const [viewAddresses, setViewAddresses] = useState({ checkIn: null, checkOut: null });
+
+    useEffect(() => {
+        if (selectedAttendance) {
+            setViewAddresses({ checkIn: null, checkOut: null }); // Reset
+
+            const fetchAddr = async (loc, type) => {
+                try {
+                    if (!loc || !loc.latitude || !loc.longitude) return;
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.latitude}&lon=${loc.longitude}`);
+                    const data = await res.json();
+                    if (data && data.display_name) {
+                        setViewAddresses(prev => ({ ...prev, [type]: data.display_name }));
+                    }
+                } catch (e) { console.error("Addr fetch error", e); }
+            };
+
+            if (selectedAttendance.checkInLocation) {
+                let loc = selectedAttendance.checkInLocation;
+                if (typeof loc === 'string') loc = JSON.parse(loc);
+                fetchAddr(loc, 'checkIn');
+            }
+            if (selectedAttendance.checkOutLocation) {
+                let loc = selectedAttendance.checkOutLocation;
+                if (typeof loc === 'string') loc = JSON.parse(loc);
+                fetchAddr(loc, 'checkOut');
+            }
+        }
+    }, [selectedAttendance]);
 
     // Fetch existing locations on mount
     useEffect(() => {
@@ -1433,6 +1462,12 @@ const InternshipAdmin = () => {
                                             <div className="text-right">
                                                 <div className="text-xs text-gray-500">Assignment</div>
                                                 <div className="font-medium text-gray-900">{selectedAttendance.internshipId?.companyName || 'Unknown'}</div>
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    {selectedAttendance.internshipId?.address && <div title={selectedAttendance.internshipId.address} className="truncate max-w-[200px]">{selectedAttendance.internshipId.address}</div>}
+                                                    {selectedAttendance.internshipId?.latitude && (
+                                                        <div>Target: {Number(selectedAttendance.internshipId.latitude).toFixed(4)}, {Number(selectedAttendance.internshipId.longitude).toFixed(4)}</div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                         {selectedAttendance.suspiciousReason && (
@@ -1463,9 +1498,12 @@ const InternshipAdmin = () => {
                                                                 }
                                                                 return loc ? (
                                                                     <>
-                                                                        <div>Accuracy: {Math.round(loc.accuracy)}m</div>
-                                                                        <div>Dist: {Math.round(loc.distanceFromSite)}m</div>
-                                                                        <div>IP: {loc.ipAddress}</div>
+                                                                        <>
+                                                                            <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
+                                                                            <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
+                                                                            <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
+                                                                            <div><strong>IP:</strong> {loc.ipAddress}</div>
+                                                                        </>
                                                                     </>
                                                                 ) : <div>No location data for Check-in</div>;
                                                             } catch (e) { return <div>Error parsing location</div>; }
@@ -1494,9 +1532,12 @@ const InternshipAdmin = () => {
                                                                 }
                                                                 return loc ? (
                                                                     <>
-                                                                        <div>Accuracy: {Math.round(loc.accuracy)}m</div>
-                                                                        <div>Dist: {Math.round(loc.distanceFromSite)}m</div>
-                                                                        <div>IP: {loc.ipAddress}</div>
+                                                                        <>
+                                                                            <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
+                                                                            <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
+                                                                            <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
+                                                                            <div><strong>IP:</strong> {loc.ipAddress}</div>
+                                                                        </>
                                                                     </>
                                                                 ) : <div>No location data for Check-out</div>;
                                                             } catch (e) { return <div>Error parsing location</div>; }
@@ -1520,19 +1561,34 @@ const InternshipAdmin = () => {
                                                     if (typeof loc === 'string') {
                                                         loc = JSON.parse(loc);
                                                     }
-                                                    return loc?.image ? (
-                                                        <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                            <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check In Photo</div>
-                                                            {console.log('Check In Image Data:', loc.image ? loc.image.substring(0, 50) + '...' : 'None')}
-                                                            <img src={loc.image} alt="Check In" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
-                                                            No Check-in Photo
-                                                        </div>
-                                                    );
+                                                    const hasImage = loc?.image;
+                                                    const isVerified = loc?.photoVerified;
+
+                                                    if (hasImage) {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                                                <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check In Photo</div>
+                                                                <img src={loc.image} alt="Check In" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
+                                                            </div>
+                                                        );
+                                                    } else if (isVerified) {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
+                                                                <Check className="w-8 h-8 mb-2" />
+                                                                <span className="font-bold">Photo Verified</span>
+                                                                <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+                                                                No Check-in Photo
+                                                            </div>
+                                                        );
+                                                    }
                                                 } catch (e) { return null; }
                                             })()}
+
 
                                             {/* Check Out Image */}
                                             {(() => {
@@ -1541,16 +1597,31 @@ const InternshipAdmin = () => {
                                                     if (typeof loc === 'string') {
                                                         loc = JSON.parse(loc);
                                                     }
-                                                    return loc?.image ? (
-                                                        <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                            <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check Out Photo</div>
-                                                            <img src={loc.image} alt="Check Out" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
-                                                            No Check-out Photo
-                                                        </div>
-                                                    );
+                                                    const hasImage = loc?.image;
+                                                    const isVerified = loc?.photoVerified;
+
+                                                    if (hasImage) {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                                                <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check Out Photo</div>
+                                                                <img src={loc.image} alt="Check Out" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
+                                                            </div>
+                                                        );
+                                                    } else if (isVerified) {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
+                                                                <Check className="w-8 h-8 mb-2" />
+                                                                <span className="font-bold">Photo Verified</span>
+                                                                <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+                                                                No Check-out Photo
+                                                            </div>
+                                                        );
+                                                    }
                                                 } catch (e) { return null; }
                                             })()}
                                         </div>
@@ -1615,10 +1686,14 @@ const AttendanceMapMarkers = ({ record }) => {
                     newMarkers.push({ position: [loc.latitude, loc.longitude], label: 'Check Out', color: 'red' });
                 }
             }
-            // Assigned Location (if available in record or we can fetch/pass it - but record has internshipId details?)
-            // The record.internshipId object has companyName and address but maybe not lat/long unfortunately in the report query.
-            // Wait, we didn't select lat/long in getAttendanceReport for il.latitude.
-            // Let's just show what we have.
+            // Assigned Location
+            if (record.internshipId && record.internshipId.latitude && record.internshipId.longitude) {
+                const lat = parseFloat(record.internshipId.latitude);
+                const lng = parseFloat(record.internshipId.longitude);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    newMarkers.push({ position: [lat, lng], label: 'Assigned Location', color: 'blue', isAssigned: true });
+                }
+            }
 
             if (newMarkers.length > 0) {
                 const bounds = L.latLngBounds(newMarkers.map(m => m.position));
@@ -1631,9 +1706,18 @@ const AttendanceMapMarkers = ({ record }) => {
     return (
         <>
             {markers.map((m, idx) => (
-                <Marker key={idx} position={m.position}>
-                    <Popup>{m.label}</Popup>
-                </Marker>
+                <React.Fragment key={idx}>
+                    <Marker position={m.position}>
+                        <Popup>{m.label}</Popup>
+                    </Marker>
+                    {m.isAssigned && (
+                        <Circle
+                            center={m.position}
+                            radius={200} // 200m radius
+                            pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.1 }}
+                        />
+                    )}
+                </React.Fragment>
             ))}
         </>
     );

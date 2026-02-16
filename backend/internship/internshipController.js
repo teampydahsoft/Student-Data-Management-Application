@@ -235,7 +235,7 @@ exports.getAttendanceDetails = async (req, res) => {
         }
 
         const [rows] = await masterPool.query(
-            `SELECT ia.*, s.student_name, s.admission_number, il.company_name, il.address
+            `SELECT ia.*, s.student_name, s.admission_number, il.company_name, il.address, il.latitude, il.longitude
              FROM internship_attendance ia
              JOIN students s ON ia.student_id = s.id
              LEFT JOIN internship_locations il ON ia.internship_id = il.id
@@ -256,7 +256,9 @@ exports.getAttendanceDetails = async (req, res) => {
             checkOutLocation: row.check_out_location, // Full JSON with image
             internshipId: {
                 companyName: row.company_name,
-                address: row.address
+                address: row.address,
+                latitude: row.latitude,
+                longitude: row.longitude
             }
         };
 
@@ -453,8 +455,8 @@ exports.markAttendance = async (req, res) => {
         let isSuspicious = false;
         let suspiciousReason = null;
 
-        // 1. Accuracy Check
-        if (accuracy > 100) {
+        // 1. Accuracy Check (Relaxed to 500m based on user feedback)
+        if (accuracy > 500) {
             if (image) {
                 isSuspicious = true;
                 suspiciousReason = `Low Accuracy (${Math.round(accuracy)}m). Photo Verified.`;
@@ -462,7 +464,7 @@ exports.markAttendance = async (req, res) => {
             } else {
                 return res.status(400).json({
                     success: false,
-                    message: `Location accuracy is too low (${Math.round(accuracy)}m). Please verify with photo.`,
+                    message: `GPS Signal is weak (${Math.round(accuracy)}m accuracy). Please verify with a photo.`,
                     requiresPhoto: true
                 });
             }
@@ -543,7 +545,8 @@ exports.markAttendance = async (req, res) => {
                     accuracy,
                     distanceFromSite: distance,
                     ipAddress,
-                    image: image // Store the actual base64 image
+                    photoVerified: !!image, // Mark as verified
+                    // image: imageVal // Omitted to save storage as per request
                 });
 
                 await masterPool.query(
@@ -574,7 +577,8 @@ exports.markAttendance = async (req, res) => {
                 accuracy,
                 distanceFromSite: distance,
                 ipAddress,
-                image: image // Store the actual base64 image
+                photoVerified: !!image, // Mark as verified
+                // image: imageVal // Omitted to save storage as per request
             });
 
             // REJECTION LOGIC: If too far (e.g. > 2000m buffer), mark as Rejected immediately
