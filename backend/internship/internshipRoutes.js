@@ -13,6 +13,7 @@ router.get('/report', authMiddleware, requireAdmin, internshipController.getAtte
 router.post('/assign', authMiddleware, requireAdmin, internshipController.assignInternship);
 router.get('/:id/students', authMiddleware, requireAdmin, internshipController.getAssignedStudents);
 router.put('/location/:id', authMiddleware, requireAdmin, internshipController.updateInternshipLocation);
+router.get('/attendance-details/:id', authMiddleware, requireAdmin, internshipController.getAttendanceDetails);
 
 // Modify Assignment
 router.get('/student-assignment', authMiddleware, requireAdmin, internshipController.getStudentAssignment);

@@ -469,9 +469,18 @@ const InternshipAdmin = () => {
         setShowEditLocationModal(true);
     };
 
-    const handleViewAttendance = (record) => {
-        setSelectedAttendance(record);
+    const handleViewAttendance = async (record) => {
+        setSelectedAttendance(record); // Show basic info first
         setViewAttendanceModal(true);
+        try {
+            const res = await api.get(`/internship/attendance-details/${record._id || record.id}`);
+            if (res.data.success) {
+                setSelectedAttendance(res.data.data); // Update with full details (images)
+            }
+        } catch (error) {
+            console.error("Failed to fetch details", error);
+            toast.error("Failed to load full details");
+        }
     };
 
     const handleUpdateLocation = async (e) => {

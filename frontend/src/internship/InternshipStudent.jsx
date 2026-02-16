@@ -15,6 +15,7 @@ const InternshipStudent = () => {
     const [showPhotoModal, setShowPhotoModal] = useState(false);
     const [capturedImage, setCapturedImage] = useState(null);
     const [pendingLocationData, setPendingLocationData] = useState(null);
+    const [showLocationModal, setShowLocationModal] = useState(false);
 
     // Initial Load
     useEffect(() => {
@@ -61,12 +62,57 @@ const InternshipStudent = () => {
         }
     };
 
-    const handleAttendance = () => {
+    // Device Fingerprinting
+    const generateDeviceFingerprint = async () => {
+        try {
+            const components = [
+                navigator.userAgent,
+                navigator.language,
+                new Date().getTimezoneOffset(),
+                window.screen.width + 'x' + window.screen.height,
+                window.screen.colorDepth,
+                navigator.hardwareConcurrency || 'unknown',
+                navigator.deviceMemory || 'unknown',
+                // Canvas Fingerprinting (Basic)
+                (() => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    ctx.textBaseline = "top";
+                    ctx.font = "14px 'Arial'";
+                    ctx.fillStyle = "#f60";
+                    ctx.fillRect(125, 1, 62, 20);
+                    ctx.fillStyle = "#069";
+                    ctx.fillText("Internship", 2, 15);
+                    ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+                    ctx.fillText("Attendance", 4, 17);
+                    return canvas.toDataURL();
+                })()
+            ];
+
+            // Simple hash function (DJB2)
+            const str = components.join('|||');
+            let hash = 5381;
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) + hash) + str.charCodeAt(i); /* hash * 33 + c */
+            }
+            return (hash >>> 0).toString(16); // Convert to unsigned hex
+        } catch (e) {
+            console.error("Fingerprint error", e);
+            return 'unknown-' + Date.now();
+        }
+    };
+
+
+    const handleRequestLocation = () => {
         if (!selectedLocation && status === 'NOT_STARTED') {
             toast.error('Please select an internship location first.');
             return;
         }
+        setShowLocationModal(true);
+    };
 
+    const handleConfirmLocation = () => {
+        setShowLocationModal(false);
         if (!navigator.geolocation) {
             toast.error('Geolocation is not supported by your browser.');
             return;
@@ -76,14 +122,13 @@ const InternshipStudent = () => {
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
-                // toast.success(`Location fetched (Accuracy: ${Math.round(accuracy)}m)`);
                 setFetchingLoc(false);
                 submitAttendance(latitude, longitude, accuracy);
             },
             (error) => {
                 setFetchingLoc(false);
                 if (error.code === 1) {
-                    toast.error('Location permission denied. Please allow access.');
+                    toast.error('Location permission denied. Please allow access in browser settings.');
                 } else {
                     toast.error('Unable to retrieve location. Ensure GPS is on.');
                 }
@@ -95,12 +140,14 @@ const InternshipStudent = () => {
     const submitAttendance = async (lat, long, accuracy, image = null) => {
         try {
             setLoading(true);
+            const deviceFingerprint = await generateDeviceFingerprint();
             const payload = {
                 internshipId: selectedLocation || todayRecord?.internshipId?._id,
                 latitude: lat,
                 longitude: long,
                 accuracy: accuracy,
-                image: image
+                image: image,
+                deviceFingerprint: deviceFingerprint
             };
 
             const res = await api.post('/internship/mark-attendance', payload);
@@ -258,7 +305,7 @@ const InternshipStudent = () => {
                     </div>
 
                     <button
-                        onClick={handleAttendance}
+                        onClick={handleRequestLocation}
                         disabled={loading || fetchingLoc}
                         className="w-full py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold rounded-xl shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2"
                     >
@@ -295,7 +342,7 @@ const InternshipStudent = () => {
                 </div>
 
                 <button
-                    onClick={handleAttendance}
+                    onClick={handleRequestLocation}
                     disabled={loading || fetchingLoc || !selectedLocation}
                     className={`w-full py-4 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2
                         ${!selectedLocation
@@ -323,6 +370,36 @@ const InternshipStudent = () => {
 
             <div className="p-4 max-w-lg mx-auto mt-4">
                 {renderStatusCard()}
+
+                {/* Location Permission Modal */}
+                {showLocationModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center">
+                            <div className="mx-auto w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
+                                <MapPin className="w-8 h-8 text-indigo-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Location Required</h3>
+                            <p className="text-gray-500 mb-6">
+                                We need to access your location to verify you are at the internship site.
+                                Please click "Allow" when prompted by your browser.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowLocationModal(false)}
+                                    className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleConfirmLocation}
+                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-indigo-200 shadow-lg"
+                                >
+                                    Allow Access
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Photo Verification Modal */}
                 {showPhotoModal && (

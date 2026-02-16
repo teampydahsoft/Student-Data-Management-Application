@@ -199,8 +199,20 @@ exports.getAttendanceReport = async (req, res) => {
             },
             checkInTime: row.check_in_time,
             checkOutTime: row.check_out_time,
-            checkInLocation: row.check_in_location,
-            checkOutLocation: row.check_out_location,
+            checkInLocation: row.check_in_location ? (() => {
+                try {
+                    const loc = JSON.parse(row.check_in_location);
+                    delete loc.image; // Remove image for list view
+                    return loc;
+                } catch (e) { return null; }
+            })() : null,
+            checkOutLocation: row.check_out_location ? (() => {
+                try {
+                    const loc = JSON.parse(row.check_out_location);
+                    delete loc.image; // Remove image for list view
+                    return loc;
+                } catch (e) { return null; }
+            })() : null,
             status: row.status || 'Not Marked',
             isSuspicious: row.is_suspicious,
             suspiciousReason: row.suspicious_reason,
@@ -211,6 +223,47 @@ exports.getAttendanceReport = async (req, res) => {
     } catch (error) {
         console.error('Error fetching attendance report:', error);
         res.status(500).json({ success: false, message: 'Server error while fetching report.' });
+    }
+};
+
+exports.getAttendanceDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // id can be 'temp-studentID' or actual attendance ID
+        if (id.startsWith('temp-')) {
+            return res.status(404).json({ success: false, message: 'No attendance record found for this student.' });
+        }
+
+        const [rows] = await masterPool.query(
+            `SELECT ia.*, s.student_name, s.admission_number, il.company_name, il.address
+             FROM internship_attendance ia
+             JOIN students s ON ia.student_id = s.id
+             LEFT JOIN internship_locations il ON ia.internship_id = il.id
+             WHERE ia.id = ?`,
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Attendance record not found.' });
+        }
+
+        const row = rows[0];
+        const data = {
+            ...row,
+            checkInTime: row.check_in_time,
+            checkOutTime: row.check_out_time,
+            checkInLocation: row.check_in_location, // Full JSON with image
+            checkOutLocation: row.check_out_location, // Full JSON with image
+            internshipId: {
+                companyName: row.company_name,
+                address: row.address
+            }
+        };
+
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error fetching attendance details:', error);
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
 };
 
@@ -388,7 +441,7 @@ exports.removeStudentAssignment = async (req, res) => {
 exports.markAttendance = async (req, res) => {
     console.log(`Student ${req.user.id} marking attendance:`, req.body);
     try {
-        const { internshipId, latitude, longitude, accuracy, image } = req.body;
+        const { internshipId, latitude, longitude, accuracy, image, deviceFingerprint } = req.body;
         const studentId = req.user.id;
         const ipAddress = req.ip || req.connection.remoteAddress;
 
@@ -458,6 +511,22 @@ exports.markAttendance = async (req, res) => {
         // 5. Check-In/Check-out Logic
         const today = new Date().toISOString().split('T')[0];
 
+        // DEVICE FINGERPRINT CHECK
+        if (deviceFingerprint) {
+            const [duplicates] = await masterPool.query(
+                `SELECT student_id FROM internship_attendance 
+                 WHERE device_fingerprint = ? AND attendance_date = ? AND student_id != ?`,
+                [deviceFingerprint, today, studentId]
+            );
+            if (duplicates.length > 0) {
+                isSuspicious = true;
+                suspiciousReason = suspiciousReason
+                    ? suspiciousReason + " | Proxy Suspected (Device Shared)"
+                    : `Proxy Suspected: Device used by another student (${duplicates[0].student_id})`;
+                console.warn(`Suspicious: Device fingerprint ${deviceFingerprint} used by multiple students today.`);
+            }
+        }
+
         const [existing] = await masterPool.query(
             'SELECT * FROM internship_attendance WHERE student_id = ? AND internship_id = ? AND attendance_date = ?',
             [studentId, internshipId, today]
@@ -512,9 +581,9 @@ exports.markAttendance = async (req, res) => {
             if (distance > internship.radius + 2000) {
                 const [result] = await masterPool.query(
                     `INSERT INTO internship_attendance 
-                    (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason) 
-                    VALUES (?, ?, NOW(), ?, 'Rejected', ?, 1, ?)`,
-                    [studentId, internshipId, checkInLocation, today, `Extreme Distance: ${Math.round(distance)}m`]
+                    (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason, device_fingerprint) 
+                    VALUES (?, ?, NOW(), ?, 'Rejected', ?, 1, ?, ?)`,
+                    [studentId, internshipId, checkInLocation, today, `Extreme Distance: ${Math.round(distance)}m`, deviceFingerprint]
                 );
                 console.log(`Student ${studentId} marked as REJECTED due to extreme distance.`);
                 const [newAttendance] = await masterPool.query('SELECT * FROM internship_attendance WHERE id = ?', [result.insertId]);
@@ -528,9 +597,9 @@ exports.markAttendance = async (req, res) => {
 
             const [result] = await masterPool.query(
                 `INSERT INTO internship_attendance 
-                (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason) 
-                VALUES (?, ?, NOW(), ?, 'Present', ?, ?, ?)`, // Changed 'CheckedIn' to 'Present' for consistency with statuses
-                [studentId, internshipId, checkInLocation, today, isSuspicious, suspiciousReason]
+                (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason, device_fingerprint) 
+                VALUES (?, ?, NOW(), ?, 'Present', ?, ?, ?, ?)`,
+                [studentId, internshipId, checkInLocation, today, isSuspicious, suspiciousReason, deviceFingerprint]
             );
 
             console.log(`Student ${studentId} checked in successfully. ID: ${result.insertId}`);
