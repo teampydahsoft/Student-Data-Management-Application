@@ -76,6 +76,7 @@ const InternshipAdmin = () => {
     const [reportData, setReportData] = useState([]);
     const [loadingReport, setLoadingReport] = useState(false);
     const [filters, setFilters] = useState({
+        location: '',
         batch: '',
         college: '',
         course: '',
@@ -84,13 +85,13 @@ const InternshipAdmin = () => {
         semester: ''
     });
     const [filterOptions, setFilterOptions] = useState({
+        locations: [],
         batches: [],
         courses: [],
         branches: [],
         years: [],
-        semesters: []
-        // college options usually fetched separately or statically, let's assume API returns them or we just use text if simple
-        // but typically standard filter API returns lists. 
+        semesters: [],
+        colleges: []
     });
 
     // Existing Locations State
@@ -203,12 +204,11 @@ const InternshipAdmin = () => {
         }
     };
 
-    // Fetch Filter Options (Cascading)
     useEffect(() => {
         if (activeTab === 'report' || activeTab === 'assign') {
             fetchFilterOptions();
         }
-    }, [activeTab, filters.college, filters.course, filters.batch]);
+    }, [activeTab, filters.location, filters.college, filters.course, filters.batch]);
 
     const fetchFilterOptions = async () => {
         try {
@@ -237,6 +237,7 @@ const InternshipAdmin = () => {
 
     const clearFilters = () => {
         setFilters({
+            location: '',
             batch: '',
             college: '',
             course: '',
@@ -620,6 +621,18 @@ const InternshipAdmin = () => {
             fetchLocations(); // Refresh list
         } catch (error) {
             toast.error('Failed to update location');
+        }
+    };
+
+    const handleDeleteLocation = async (location) => {
+        if (!window.confirm(`Are you sure you want to delete ${location.companyName}?`)) return;
+
+        try {
+            await api.delete(`/internship/location/${location._id}`);
+            toast.success('Location deleted successfully');
+            fetchLocations();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete location');
         }
     };
 
@@ -1104,6 +1117,12 @@ const InternshipAdmin = () => {
                                                 >
                                                     <Pen className="w-3.5 h-3.5" /> Edit
                                                 </button>
+                                                <button
+                                                    onClick={() => handleDeleteLocation(loc)}
+                                                    className="text-red-600 hover:text-red-900 flex items-center gap-1 text-xs font-medium bg-red-50 px-3 py-1.5 rounded-md border border-red-200"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                                                </button>
                                             </td>
                                         </tr>
                                     ))
@@ -1122,6 +1141,10 @@ const InternshipAdmin = () => {
                             <Filter className="w-4 h-4" /> Filter Attendance
                         </h3>
                         <div className="flex flex-wrap items-center gap-3">
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.location} onChange={e => handleFilterChange('location', e.target.value)}>
+                                <option value="">All Locations</option>
+                                {filterOptions.locations?.map(loc => <option key={loc.id} value={loc.id}>{loc.companyName}</option>)}
+                            </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.batch} onChange={e => handleFilterChange('batch', e.target.value)}>
                                 <option value="">All Batches</option>
                                 {filterOptions.batches?.map(b => <option key={b} value={b}>{b}</option>)}
@@ -1645,295 +1668,295 @@ const InternshipAdmin = () => {
             {conflictModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[200]">
                     <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 flex flex-col max-h-[80vh]">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
-                                <AlertTriangle className="w-6 h-6" />
-                                Overlapping Assignments Detected
-                            </h3>
-                            <button onClick={() => setConflictModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-4">
-                            The following students already have internships assigned during the selected period. These assignments prevent the new internship from being assigned.
-                        </p>
+                        <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
+                            <AlertTriangle className="w-6 h-6" />
+                            Assignment Conflicts
+                        </h3>
+                        <button onClick={() => setConflictModalOpen(false)} className="text-gray-500 hover:text-gray-700">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                        The following students already have internships overlapping with the selected dates:
+                    </p>
 
-                        <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md mb-4">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 text-gray-700 font-semibold sticky top-0">
-                                    <tr>
-                                        <th className="px-4 py-2 border-b">Student</th>
-                                        <th className="px-4 py-2 border-b">Existing Internship</th>
-                                        <th className="px-4 py-2 border-b">Dates</th>
+                    <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md mb-4">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-700 font-semibold sticky top-0">
+                                <tr>
+                                    <th className="px-4 py-2 border-b">Student</th>
+                                    <th className="px-4 py-2 border-b">Existing Internship</th>
+                                    <th className="px-4 py-2 border-b">Dates</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {conflictData.map((c, i) => (
+                                    <tr key={i} className="hover:bg-red-50">
+                                        <td className="px-4 py-3">
+                                            <div className="font-medium text-gray-900">{c.studentName}</div>
+                                            <div className="text-xs text-gray-500">{c.admissionNumber}</div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="text-gray-800 font-medium">{c.companyName}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                                            {new Date(c.startDate).toLocaleDateString()} - <br />{new Date(c.endDate).toLocaleDateString()}
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {conflictData.map((c, i) => (
-                                        <tr key={i} className="hover:bg-red-50">
-                                            <td className="px-4 py-3">
-                                                <div className="font-medium text-gray-900">{c.studentName}</div>
-                                                <div className="text-xs text-gray-500">{c.admissionNumber}</div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-gray-800 font-medium">{c.companyName}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                                                {new Date(c.startDate).toLocaleDateString()} - <br />{new Date(c.endDate).toLocaleDateString()}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
 
-                        <div className="flex justify-end pt-2 border-t border-gray-100">
-                            <button
-                                onClick={() => setConflictModalOpen(false)}
-                                className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium transition-colors"
-                            >
-                                Close & Adjust Dates
-                            </button>
-                        </div>
+                    <div className="flex justify-end pt-4 border-t border-gray-100">
+                        <button
+                            onClick={() => setConflictModalOpen(false)}
+                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg transition-colors"
+                        >
+                            Close and Review
+                        </button>
                     </div>
                 </div>
             )}
 
+
             {/* View Attendance Details Modal */}
-            {viewAttendanceModal && selectedAttendance && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[100]">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                    <UserCheck className="w-5 h-5 text-indigo-600" />
-                                    Attendance Details
-                                </h2>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    {selectedAttendance.studentDetails?.name} ({selectedAttendance.studentId}) • {new Date(selectedAttendance.date).toLocaleDateString()}
-                                </p>
-                            </div>
-                            <button onClick={() => setViewAttendanceModal(false)} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-full transition-colors">
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 overflow-y-auto flex-1">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-                                {/* Left Column: Details & Images */}
-                                <div className="space-y-6">
-                                    {/* Status Section */}
-                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Current Status</span>
-                                                <div className="mt-1 flex items-center gap-2">
-                                                    <span className={`px-3 py-1 rounded-full text-sm font-bold 
-                                                        ${selectedAttendance.status === 'Present' ? 'bg-green-100 text-green-700' :
-                                                            selectedAttendance.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                        {selectedAttendance.status}
-                                                    </span>
-                                                    {selectedAttendance.isSuspicious && (
-                                                        <span className="flex items-center gap-1 text-red-600 font-medium text-sm bg-red-50 px-2 py-1 rounded border border-red-100">
-                                                            <AlertTriangle className="w-4 h-4" /> Risk Detected
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xs text-gray-500">Assignment</div>
-                                                <div className="font-medium text-gray-900">{selectedAttendance.internshipId?.companyName || 'Unknown'}</div>
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                    {selectedAttendance.internshipId?.address && <div title={selectedAttendance.internshipId.address} className="truncate max-w-[200px]">{selectedAttendance.internshipId.address}</div>}
-
-                                                    {selectedAttendance.internshipId?.latitude && (
-                                                        <div>Target: {Number(selectedAttendance.internshipId.latitude).toFixed(4)}, {Number(selectedAttendance.internshipId.longitude).toFixed(4)}</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {selectedAttendance.suspiciousReason && (
-                                            <div className="mt-3 text-sm text-red-700 bg-red-50 p-2 rounded border border-red-100">
-                                                <strong>Risk Reason:</strong> {selectedAttendance.suspiciousReason}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Timings & Locations */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {/* Check In */}
-                                        <div className="border border-gray-200 rounded-lg p-4">
-                                            <h4 className="font-semibold text-green-700 mb-2 flex items-center gap-2">
-                                                <Clock className="w-4 h-4" /> Check In
-                                            </h4>
-                                            {selectedAttendance.checkInTime ? (
-                                                <>
-                                                    <div className="text-lg font-bold text-gray-900 mb-1">
-                                                        {new Date(selectedAttendance.checkInTime).toLocaleTimeString()}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 space-y-1">
-                                                        {(() => {
-                                                            try {
-                                                                let loc = selectedAttendance.checkInLocation;
-                                                                if (typeof loc === 'string') {
-                                                                    loc = JSON.parse(loc);
-                                                                }
-                                                                return loc ? (
-                                                                    <>
-                                                                        <>
-                                                                            <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
-                                                                            <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
-                                                                            <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
-                                                                            <div><strong>IP:</strong> {loc.ipAddress}</div>
-                                                                        </>
-                                                                    </>
-                                                                ) : <div>No location data for Check-in</div>;
-                                                            } catch (e) { return <div>Error parsing location</div>; }
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            ) : <div className="text-gray-400 italic">Not Checked In</div>}
-                                        </div>
-
-                                        {/* Check Out */}
-                                        <div className="border border-gray-200 rounded-lg p-4">
-                                            <h4 className="font-semibold text-blue-700 mb-2 flex items-center gap-2">
-                                                <Clock className="w-4 h-4" /> Check Out
-                                            </h4>
-                                            {selectedAttendance.checkOutTime ? (
-                                                <>
-                                                    <div className="text-lg font-bold text-gray-900 mb-1">
-                                                        {new Date(selectedAttendance.checkOutTime).toLocaleTimeString()}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 space-y-1">
-                                                        {(() => {
-                                                            try {
-                                                                let loc = selectedAttendance.checkOutLocation;
-                                                                if (typeof loc === 'string') {
-                                                                    loc = JSON.parse(loc);
-                                                                }
-                                                                return loc ? (
-                                                                    <>
-                                                                        <>
-                                                                            <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
-                                                                            <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
-                                                                            <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
-                                                                            <div><strong>IP:</strong> {loc.ipAddress}</div>
-                                                                        </>
-                                                                    </>
-                                                                ) : <div>No location data for Check-out</div>;
-                                                            } catch (e) { return <div>Error parsing location</div>; }
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            ) : <div className="text-gray-400 italic">Not Checked Out</div>}
-                                        </div>
-                                    </div>
-
-                                    {/* Captured Images */}
-                                    <div>
-                                        <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                            <Target className="w-4 h-4 text-indigo-600" /> Verification Images
-                                        </h4>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {/* Check In Image */}
-                                            {(() => {
-                                                try {
-                                                    let loc = selectedAttendance.checkInLocation;
-                                                    if (typeof loc === 'string') {
-                                                        loc = JSON.parse(loc);
-                                                    }
-                                                    const hasImage = loc?.image;
-                                                    const isVerified = loc?.photoVerified;
-
-                                                    if (hasImage) {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                                <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check In Photo</div>
-                                                                <img src={loc.image} alt="Check In" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
-                                                            </div>
-                                                        );
-                                                    } else if (isVerified) {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
-                                                                <Check className="w-8 h-8 mb-2" />
-                                                                <span className="font-bold">Photo Verified</span>
-                                                                <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
-                                                            </div>
-                                                        );
-                                                    } else {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
-                                                                No Check-in Photo
-                                                            </div>
-                                                        );
-                                                    }
-                                                } catch (e) { return null; }
-                                            })()}
-
-
-                                            {/* Check Out Image */}
-                                            {(() => {
-                                                try {
-                                                    let loc = selectedAttendance.checkOutLocation;
-                                                    if (typeof loc === 'string') {
-                                                        loc = JSON.parse(loc);
-                                                    }
-                                                    const hasImage = loc?.image;
-                                                    const isVerified = loc?.photoVerified;
-
-                                                    if (hasImage) {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                                <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check Out Photo</div>
-                                                                <img src={loc.image} alt="Check Out" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
-                                                            </div>
-                                                        );
-                                                    } else if (isVerified) {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
-                                                                <Check className="w-8 h-8 mb-2" />
-                                                                <span className="font-bold">Photo Verified</span>
-                                                                <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
-                                                            </div>
-                                                        );
-                                                    } else {
-                                                        return (
-                                                            <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
-                                                                No Check-out Photo
-                                                            </div>
-                                                        );
-                                                    }
-                                                } catch (e) { return null; }
-                                            })()}
-                                        </div>
-                                    </div>
+            {
+                viewAttendanceModal && selectedAttendance && (
+                    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[100]">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+                            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                        <UserCheck className="w-5 h-5 text-indigo-600" />
+                                        Attendance Details
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {selectedAttendance.studentDetails?.name} ({selectedAttendance.studentId}) • {new Date(selectedAttendance.date).toLocaleDateString()}
+                                    </p>
                                 </div>
+                                <button onClick={() => setViewAttendanceModal(false)} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-full transition-colors">
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
 
-                                {/* Right Column: Map */}
-                                <div className="h-full min-h-[400px] rounded-xl overflow-hidden border border-gray-200 relative z-0">
-                                    <MapContainer center={[17.6868, 83.2185]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                                        <LayersControl position="topright">
-                                            <LayersControl.BaseLayer checked name="Street (OpenStreetMap)">
-                                                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OSM' />
-                                            </LayersControl.BaseLayer>
-                                            <LayersControl.BaseLayer name="Satellite (Google Hybrid)">
-                                                <TileLayer url="http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}" maxZoom={20} subdomains={['mt0', 'mt1', 'mt2', 'mt3']} />
-                                            </LayersControl.BaseLayer>
-                                        </LayersControl>
+                            <div className="p-6 overflow-y-auto flex-1">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+                                    {/* Left Column: Details & Images */}
+                                    <div className="space-y-6">
+                                        {/* Status Section */}
+                                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Current Status</span>
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <span className={`px-3 py-1 rounded-full text-sm font-bold 
+                                                        ${selectedAttendance.status === 'Present' ? 'bg-green-100 text-green-700' :
+                                                                selectedAttendance.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                            {selectedAttendance.status}
+                                                        </span>
+                                                        {selectedAttendance.isSuspicious && (
+                                                            <span className="flex items-center gap-1 text-red-600 font-medium text-sm bg-red-50 px-2 py-1 rounded border border-red-100">
+                                                                <AlertTriangle className="w-4 h-4" /> Risk Detected
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-xs text-gray-500">Assignment</div>
+                                                    <div className="font-medium text-gray-900">{selectedAttendance.internshipId?.companyName || 'Unknown'}</div>
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {selectedAttendance.internshipId?.address && <div title={selectedAttendance.internshipId.address} className="truncate max-w-[200px]">{selectedAttendance.internshipId.address}</div>}
 
-                                        {/* Markers logic here would be complex due to dynamic parsing in render. 
+                                                        {selectedAttendance.internshipId?.latitude && (
+                                                            <div>Target: {Number(selectedAttendance.internshipId.latitude).toFixed(4)}, {Number(selectedAttendance.internshipId.longitude).toFixed(4)}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {selectedAttendance.suspiciousReason && (
+                                                <div className="mt-3 text-sm text-red-700 bg-red-50 p-2 rounded border border-red-100">
+                                                    <strong>Risk Reason:</strong> {selectedAttendance.suspiciousReason}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Timings & Locations */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Check In */}
+                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                <h4 className="font-semibold text-green-700 mb-2 flex items-center gap-2">
+                                                    <Clock className="w-4 h-4" /> Check In
+                                                </h4>
+                                                {selectedAttendance.checkInTime ? (
+                                                    <>
+                                                        <div className="text-lg font-bold text-gray-900 mb-1">
+                                                            {new Date(selectedAttendance.checkInTime).toLocaleTimeString()}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 space-y-1">
+                                                            {(() => {
+                                                                try {
+                                                                    let loc = selectedAttendance.checkInLocation;
+                                                                    if (typeof loc === 'string') {
+                                                                        loc = JSON.parse(loc);
+                                                                    }
+                                                                    return loc ? (
+                                                                        <>
+                                                                            <>
+                                                                                <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
+                                                                                <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
+                                                                                <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
+                                                                                <div><strong>IP:</strong> {loc.ipAddress}</div>
+                                                                            </>
+                                                                        </>
+                                                                    ) : <div>No location data for Check-in</div>;
+                                                                } catch (e) { return <div>Error parsing location</div>; }
+                                                            })()}
+                                                        </div>
+                                                    </>
+                                                ) : <div className="text-gray-400 italic">Not Checked In</div>}
+                                            </div>
+
+                                            {/* Check Out */}
+                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                <h4 className="font-semibold text-blue-700 mb-2 flex items-center gap-2">
+                                                    <Clock className="w-4 h-4" /> Check Out
+                                                </h4>
+                                                {selectedAttendance.checkOutTime ? (
+                                                    <>
+                                                        <div className="text-lg font-bold text-gray-900 mb-1">
+                                                            {new Date(selectedAttendance.checkOutTime).toLocaleTimeString()}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 space-y-1">
+                                                            {(() => {
+                                                                try {
+                                                                    let loc = selectedAttendance.checkOutLocation;
+                                                                    if (typeof loc === 'string') {
+                                                                        loc = JSON.parse(loc);
+                                                                    }
+                                                                    return loc ? (
+                                                                        <>
+                                                                            <>
+                                                                                <div><strong>Coords:</strong> {loc.latitude?.toFixed(5)}, {loc.longitude?.toFixed(5)}</div>
+                                                                                <div><strong>Accuracy:</strong> {Math.round(loc.accuracy)}m</div>
+                                                                                <div><strong>Dist:</strong> {Math.round(loc.distanceFromSite)}m</div>
+                                                                                <div><strong>IP:</strong> {loc.ipAddress}</div>
+                                                                            </>
+                                                                        </>
+                                                                    ) : <div>No location data for Check-out</div>;
+                                                                } catch (e) { return <div>Error parsing location</div>; }
+                                                            })()}
+                                                        </div>
+                                                    </>
+                                                ) : <div className="text-gray-400 italic">Not Checked Out</div>}
+                                            </div>
+                                        </div>
+
+                                        {/* Captured Images */}
+                                        <div>
+                                            <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                                <Target className="w-4 h-4 text-indigo-600" /> Verification Images
+                                            </h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Check In Image */}
+                                                {(() => {
+                                                    try {
+                                                        let loc = selectedAttendance.checkInLocation;
+                                                        if (typeof loc === 'string') {
+                                                            loc = JSON.parse(loc);
+                                                        }
+                                                        const hasImage = loc?.image;
+                                                        const isVerified = loc?.photoVerified;
+
+                                                        if (hasImage) {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                                                    <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check In Photo</div>
+                                                                    <img src={loc.image} alt="Check In" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
+                                                                </div>
+                                                            );
+                                                        } else if (isVerified) {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
+                                                                    <Check className="w-8 h-8 mb-2" />
+                                                                    <span className="font-bold">Photo Verified</span>
+                                                                    <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+                                                                    No Check-in Photo
+                                                                </div>
+                                                            );
+                                                        }
+                                                    } catch (e) { return null; }
+                                                })()}
+
+
+                                                {/* Check Out Image */}
+                                                {(() => {
+                                                    try {
+                                                        let loc = selectedAttendance.checkOutLocation;
+                                                        if (typeof loc === 'string') {
+                                                            loc = JSON.parse(loc);
+                                                        }
+                                                        const hasImage = loc?.image;
+                                                        const isVerified = loc?.photoVerified;
+
+                                                        if (hasImage) {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                                                    <div className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border-b border-gray-200">Check Out Photo</div>
+                                                                    <img src={loc.image} alt="Check Out" className="w-full h-48 object-cover hover:scale-105 transition-transform" />
+                                                                </div>
+                                                            );
+                                                        } else if (isVerified) {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center bg-green-50 text-green-700 text-sm p-4 text-center">
+                                                                    <Check className="w-8 h-8 mb-2" />
+                                                                    <span className="font-bold">Photo Verified</span>
+                                                                    <span className="text-xs text-green-600 mt-1">(Image not stored)</span>
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            return (
+                                                                <div className="border border-gray-200 rounded-lg h-32 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+                                                                    No Check-out Photo
+                                                                </div>
+                                                            );
+                                                        }
+                                                    } catch (e) { return null; }
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column: Map */}
+                                    <div className="h-full min-h-[400px] rounded-xl overflow-hidden border border-gray-200 relative z-0">
+                                        <MapContainer center={[17.6868, 83.2185]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                            <LayersControl position="topright">
+                                                <LayersControl.BaseLayer checked name="Street (OpenStreetMap)">
+                                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OSM' />
+                                                </LayersControl.BaseLayer>
+                                                <LayersControl.BaseLayer name="Satellite (Google Hybrid)">
+                                                    <TileLayer url="http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}" maxZoom={20} subdomains={['mt0', 'mt1', 'mt2', 'mt3']} />
+                                                </LayersControl.BaseLayer>
+                                            </LayersControl>
+
+                                            {/* Markers logic here would be complex due to dynamic parsing in render. 
                                             Ideally we parse once. For now, let's just try to render if possible. 
                                             Or better, we map markers from parsed data.
                                         */}
-                                        {/* We can use a helper component to render markers from the selectedAttendance object */}
-                                        <AttendanceMapMarkers record={selectedAttendance} />
-                                    </MapContainer>
+                                            {/* We can use a helper component to render markers from the selectedAttendance object */}
+                                            <AttendanceMapMarkers record={selectedAttendance} />
+                                        </MapContainer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )
+                )
             }
         </div >
     );

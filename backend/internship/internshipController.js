@@ -100,7 +100,7 @@ exports.updateInternshipLocation = async (req, res) => {
 exports.getAttendanceReport = async (req, res) => {
     console.log('Fetching internship attendance report with filters:', req.query);
     try {
-        const { batch, college, course, branch, year, semester } = req.query;
+        const { batch, college, course, branch, year, semester, location } = req.query;
 
         // Fetch students and LEFT JOIN attendance for TODAY (or recent/all)
         // Usually report shows presence/absence for today if context is "Current Attendance"
@@ -146,6 +146,10 @@ exports.getAttendanceReport = async (req, res) => {
         const params = [];
 
         // Apply filters dynamically
+        if (location) {
+            query += ' AND i_assign.internship_id = ?';
+            params.push(location);
+        }
         if (batch) {
             query += ' AND s.batch = ?';
             params.push(batch);
@@ -989,7 +993,7 @@ exports.getMyAssignment = async (req, res) => {
 
 exports.getInternshipFilters = async (req, res) => {
     try {
-        const { batch, college, course, branch, year, semester } = req.query;
+        const { batch, college, course, branch, year, semester, location } = req.query;
 
         let query = `
             SELECT DISTINCT
@@ -1008,8 +1012,9 @@ exports.getInternshipFilters = async (req, res) => {
         const params = [];
 
         // Apply filters dynamically for cascading
+        if (location) { query += ' AND ia.internship_id = ?'; params.push(location); }
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); } // Helper if colleges have IDs
+        if (college) { query += ' AND s.college = ?'; params.push(college); }
         if (course) { query += ' AND s.course = ?'; params.push(course); }
         if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
@@ -1027,9 +1032,24 @@ exports.getInternshipFilters = async (req, res) => {
         const semesters = [...new Set(rows.map(r => r.current_semester).filter(Boolean))].sort((a, b) => a - b);
         const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))].sort();
 
+        // Fetch locations list
+        const [locationRows] = await masterPool.query(`
+            SELECT DISTINCT il.id, il.company_name
+            FROM internship_locations il
+            JOIN internship_assignments ia ON il.id = ia.internship_id
+            WHERE ia.end_date >= CURDATE()
+            ORDER BY il.company_name
+        `);
+
+        const locations = locationRows.map(loc => ({
+            id: loc.id,
+            companyName: loc.company_name
+        }));
+
         res.json({
             success: true,
             data: {
+                locations,
                 batches,
                 courses,
                 branches,
@@ -1087,5 +1107,31 @@ exports.getEligibleStudents = async (req, res) => {
     } catch (error) {
         console.error('Error fetching eligible students:', error);
         res.status(500).json({ success: false, message: 'Server error fetching students' });
+    }
+};
+
+exports.deleteInternshipLocation = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check for existing assignments
+        const [assignments] = await masterPool.query(
+            'SELECT count(*) as count FROM internship_assignments WHERE internship_id = ?',
+            [id]
+        );
+
+        if (assignments[0].count > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot delete location. It has ${assignments[0].count} active or past assignments.`
+            });
+        }
+
+        await masterPool.query('DELETE FROM internship_locations WHERE id = ?', [id]);
+
+        res.json({ success: true, message: 'Location deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting location:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete location' });
     }
 };
