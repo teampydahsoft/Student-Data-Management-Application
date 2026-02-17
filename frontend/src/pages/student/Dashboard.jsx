@@ -13,6 +13,12 @@ const Dashboard = () => {
     const navigate = useNavigate();
     const [studentData, setStudentData] = useState(null);
 
+    // Helper to check if a component is enabled
+    const isEnabled = (key) => {
+        if (!layoutSettings) return true; // Default to true if settings haven't loaded
+        return layoutSettings[key] !== false;
+    };
+
     // Ticket App SSO URL
     const ticketAppUrl = useMemo(() => {
         if (!token) return 'http://localhost:5174/student';
@@ -28,6 +34,7 @@ const Dashboard = () => {
 
     const [events, setEvents] = useState([]);
     const [clubs, setClubs] = useState([]);
+    const [layoutSettings, setLayoutSettings] = useState(null);
     const [hourlySummary, setHourlySummary] = useState(null);
     const [academicContent, setAcademicContent] = useState({ tests: 0, notes: 0 });
     const [internalMarksCount, setInternalMarksCount] = useState(0);
@@ -92,7 +99,7 @@ const Dashboard = () => {
             try {
                 if (!user?.admission_number) return;
 
-                const [profileRes, announcementsRes, pollsRes, attendanceRes, servicesRes, eventsRes, clubsRes, hourlyRes, contentRes, marksRes, timetableRes, periodSlotsRes] = await Promise.allSettled([
+                const [profileRes, announcementsRes, pollsRes, attendanceRes, servicesRes, eventsRes, clubsRes, hourlyRes, contentRes, marksRes, timetableRes, periodSlotsRes, layoutRes] = await Promise.allSettled([
                     api.get(`/students/${user.admission_number}`),
                     api.get('/announcements/student'),
                     api.get('/polls/student'),
@@ -104,7 +111,8 @@ const Dashboard = () => {
                     api.get('/academic-content'),
                     api.get('/internal-marks/student/me'),
                     api.get('/timetable', { params: { branch_id: user.branch_id, year: user.current_year, semester: user.current_semester || 1 } }),
-                    api.get('/period-slots', { params: { college_id: user.college_id } })
+                    api.get('/period-slots', { params: { college_id: user.college_id } }),
+                    api.get('/settings/student-layout')
                 ]);
 
                 // Handle Profile
@@ -185,6 +193,11 @@ const Dashboard = () => {
                         return { ...slot, entry };
                     });
                     setTodayTimetable(merged);
+                }
+
+                // Handle Layout Settings
+                if (layoutRes && layoutRes.status === 'fulfilled' && layoutRes.value.data?.success) {
+                    setLayoutSettings(layoutRes.value.data.data);
                 }
 
             } catch (error) {
@@ -643,83 +656,87 @@ const Dashboard = () => {
             {/* Top Stats Row: Attendance & Registration */}
             <div className={`grid grid-cols-2 md:grid-cols-2 ${isRegistrationCompleted ? 'lg:grid-cols-3' : ''} gap-3 lg:gap-6`}>
                 {/* Today's Status */}
-                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
-                    <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 lg:mb-4">Today's Attendance</h3>
-                    <div className="flex items-center gap-2 lg:gap-4">
-                        {(() => {
-                            // Priority: Calculated entry from history > displayData.today_attendance_status
-                            let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
+                {isEnabled('attendance') && (
+                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
+                        <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 lg:mb-4">Today's Attendance</h3>
+                        <div className="flex items-center gap-2 lg:gap-4">
+                            {(() => {
+                                // Priority: Calculated entry from history > displayData.today_attendance_status
+                                let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
 
-                            // Safe fallback
-                            if (status === 'not marked yet') status = 'not marked';
+                                // Safe fallback
+                                if (status === 'not marked yet') status = 'not marked';
 
-                            let colorClass = 'bg-gray-100 text-gray-600';
-                            let Icon = Clock;
-                            let label = 'Not Marked';
+                                let colorClass = 'bg-gray-100 text-gray-600';
+                                let Icon = Clock;
+                                let label = 'Not Marked';
 
-                            if (status === 'present') {
-                                colorClass = 'bg-green-100 text-green-700';
-                                Icon = CheckCircle;
-                                label = 'Present';
-                            } else if (status === 'absent') {
-                                colorClass = 'bg-red-100 text-red-700';
-                                Icon = MapPin;
-                                label = 'Absent';
-                            } else if (status === 'holiday' || status === 'no class work') {
-                                colorClass = 'bg-amber-100 text-amber-700';
-                                Icon = BookOpen;
-                                label = status === 'holiday' ? 'Holiday' : 'No Class Work';
-                            }
+                                if (status === 'present') {
+                                    colorClass = 'bg-green-100 text-green-700';
+                                    Icon = CheckCircle;
+                                    label = 'Present';
+                                } else if (status === 'absent') {
+                                    colorClass = 'bg-red-100 text-red-700';
+                                    Icon = MapPin;
+                                    label = 'Absent';
+                                } else if (status === 'holiday' || status === 'no class work') {
+                                    colorClass = 'bg-amber-100 text-amber-700';
+                                    Icon = BookOpen;
+                                    label = status === 'holiday' ? 'Holiday' : 'No Class Work';
+                                }
 
-                            return (
-                                <>
-                                    <div className={`p-2 lg:p-3 rounded-full ${colorClass} shrink-0`}>
-                                        <Icon size={20} className="lg:w-6 lg:h-6" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-base lg:text-2xl font-bold text-gray-900 truncate leading-tight">{label}</p>
-                                        <p className="text-[10px] lg:text-xs text-gray-500 truncate">
-                                            {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                        </p>
-                                    </div>
-                                </>
-                            );
-                        })()}
+                                return (
+                                    <>
+                                        <div className={`p-2 lg:p-3 rounded-full ${colorClass} shrink-0`}>
+                                            <Icon size={20} className="lg:w-6 lg:h-6" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-base lg:text-2xl font-bold text-gray-900 truncate leading-tight">{label}</p>
+                                            <p className="text-[10px] lg:text-xs text-gray-500 truncate">
+                                                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                            </p>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Semester Summary */}
-                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
-                    <div className="flex justify-between items-start mb-2 lg:mb-4">
-                        <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Semester Overview</h3>
-                        <Link to="/student/attendance" className="hidden lg:block text-xs text-blue-600 hover:underline font-medium">View History</Link>
+                {isEnabled('attendance') && (
+                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
+                        <div className="flex justify-between items-start mb-2 lg:mb-4">
+                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Semester Overview</h3>
+                            <Link to="/student/attendance" className="hidden lg:block text-xs text-blue-600 hover:underline font-medium">View History</Link>
+                        </div>
+                        {attendanceStats ? (
+                            <div className="flex items-center justify-between gap-1 overflow-hidden">
+                                <div className="min-w-0">
+                                    <p className="text-2xl lg:text-4xl font-bold text-indigo-700">{attendanceStats.percentage}%</p>
+                                    <p className="text-[10px] lg:text-xs text-gray-500 mt-1 truncate">Overall Semester</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 text-right shrink-0">
+                                    <div>
+                                        <p className="text-xs lg:text-sm font-bold text-green-600 leading-none">{attendanceStats.present}</p>
+                                        <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Present</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs lg:text-sm font-bold text-red-500 leading-none">{attendanceStats.absent}</p>
+                                        <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Absent</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-16 text-gray-400 text-sm">
+                                Loading...
+                            </div>
+                        )}
                     </div>
-                    {attendanceStats ? (
-                        <div className="flex items-center justify-between gap-1 overflow-hidden">
-                            <div className="min-w-0">
-                                <p className="text-2xl lg:text-4xl font-bold text-indigo-700">{attendanceStats.percentage}%</p>
-                                <p className="text-[10px] lg:text-xs text-gray-500 mt-1 truncate">Overall Semester</p>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 text-right shrink-0">
-                                <div>
-                                    <p className="text-xs lg:text-sm font-bold text-green-600 leading-none">{attendanceStats.present}</p>
-                                    <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Present</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs lg:text-sm font-bold text-red-500 leading-none">{attendanceStats.absent}</p>
-                                    <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Absent</p>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-center h-16 text-gray-400 text-sm">
-                            Loading...
-                        </div>
-                    )}
-                </div>
+                )}
 
                 {/* Registration Status Card (Only if Completed) */}
-                {isRegistrationCompleted && (
+                {isRegistrationCompleted && isEnabled('semester-registration') && (
                     <div className="col-span-2 lg:col-span-1 bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden h-full">
                         <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
                             <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Registration Status</h3>
@@ -744,136 +761,144 @@ const Dashboard = () => {
             </div>
 
             {/* Fee & Registration Pending Grid (Only if NOT Completed) */}
-            {!isRegistrationCompleted && (
+            {!isRegistrationCompleted && (isEnabled('semester-registration') || isEnabled('fees')) && (
                 <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 lg:gap-6 mb-6">
                     {/* Action Required: Registration */}
-                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-orange-100 flex flex-col justify-center relative overflow-hidden">
-                        <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
-                            <h3 className="text-[10px] lg:text-xs font-semibold text-orange-600 uppercase tracking-wider">Action Required</h3>
-                            <div className="p-1 lg:p-1.5 bg-orange-100 text-orange-600 rounded-lg">
-                                <AlertCircle size={16} className="lg:w-[18px] lg:h-[18px]" />
+                    {isEnabled('semester-registration') && (
+                        <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-orange-100 flex flex-col justify-center relative overflow-hidden">
+                            <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
+                                <h3 className="text-[10px] lg:text-xs font-semibold text-orange-600 uppercase tracking-wider">Action Required</h3>
+                                <div className="p-1 lg:p-1.5 bg-orange-100 text-orange-600 rounded-lg">
+                                    <AlertCircle size={16} className="lg:w-[18px] lg:h-[18px]" />
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <p className="text-base lg:text-xl font-bold text-gray-900 mb-2 truncate">Registration Pending</p>
-                            <Link
-                                to="/student/semester-registration"
-                                className="inline-flex items-center px-3 py-1.5 bg-orange-600 text-white text-[10px] lg:text-xs font-bold rounded-lg shadow-md hover:bg-orange-700 transition-colors"
-                            >
-                                Complete Now
-                            </Link>
-                        </div>
-                        <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-orange-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
-                    </div>
-
-                    {/* Fee Status */}
-                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden">
-                        <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
-                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Fee Status</h3>
-                            <div className={`p-1 lg:p-1.5 rounded-lg ${getStatusColor(normalizeFeeStatus().toLowerCase().replace(' ', '_'))}`}>
-                                {/* Using Wallet Icon for Fees */}
-                                <Smartphone size={16} className="lg:w-[18px] lg:h-[18px] hidden" />
-                                <span className="font-bold text-xs lg:text-sm">$</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 z-10">
                             <div>
-                                <p className="text-lg lg:text-2xl font-bold text-gray-900 truncate">{feeStatusLabel}</p>
-                                <Link to="/student/fees" className="text-[10px] lg:text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 mt-1">
-                                    View Details <ArrowRight size={12} />
+                                <p className="text-base lg:text-xl font-bold text-gray-900 mb-2 truncate">Registration Pending</p>
+                                <Link
+                                    to="/student/semester-registration"
+                                    className="inline-flex items-center px-3 py-1.5 bg-orange-600 text-white text-[10px] lg:text-xs font-bold rounded-lg shadow-md hover:bg-orange-700 transition-colors"
+                                >
+                                    Complete Now
                                 </Link>
                             </div>
+                            <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-orange-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
                         </div>
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
-                    </div>
+                    )}
+
+                    {/* Fee Status */}
+                    {isEnabled('fees') && (
+                        <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden">
+                            <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
+                                <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Fee Status</h3>
+                                <div className={`p-1 lg:p-1.5 rounded-lg ${getStatusColor(normalizeFeeStatus().toLowerCase().replace(' ', '_'))}`}>
+                                    {/* Using Wallet Icon for Fees */}
+                                    <Smartphone size={16} className="lg:w-[18px] lg:h-[18px] hidden" />
+                                    <span className="font-bold text-xs lg:text-sm">$</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 z-10">
+                                <div>
+                                    <p className="text-lg lg:text-2xl font-bold text-gray-900 truncate">{feeStatusLabel}</p>
+                                    <Link to="/student/fees" className="text-[10px] lg:text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 mt-1">
+                                        View Details <ArrowRight size={12} />
+                                    </Link>
+                                </div>
+                            </div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* Academic Dashboard (v2.0) – attendance %, internal marks, tests, notes */}
-            <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <BookOpen size={16} /> Academic
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                    <div className="p-3 rounded-lg bg-slate-50">
-                        <p className="text-2xl font-bold text-indigo-600">{hourlySummary?.percentage ?? attendanceStats?.percentage ?? '–'}%</p>
-                        <p className="text-xs text-gray-500">Attendance</p>
+            {isEnabled('dashboard') && (
+                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <BookOpen size={16} /> Academic
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div className="p-3 rounded-lg bg-slate-50">
+                            <p className="text-2xl font-bold text-indigo-600">{hourlySummary?.percentage ?? attendanceStats?.percentage ?? '–'}%</p>
+                            <p className="text-xs text-gray-500">Attendance</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-slate-50">
+                            <p className="text-2xl font-bold text-slate-700">{internalMarksCount > 0 ? internalMarksCount : '–'}</p>
+                            <p className="text-xs text-gray-500">Internal Marks</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-slate-50">
+                            <p className="text-2xl font-bold text-slate-700">{academicContent.tests > 0 ? academicContent.tests : '–'}</p>
+                            <p className="text-xs text-gray-500">Upcoming Tests</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-slate-50">
+                            <p className="text-2xl font-bold text-slate-700">{academicContent.notes > 0 ? academicContent.notes : '–'}</p>
+                            <p className="text-xs text-gray-500">Shared Notes</p>
+                        </div>
                     </div>
-                    <div className="p-3 rounded-lg bg-slate-50">
-                        <p className="text-2xl font-bold text-slate-700">{internalMarksCount > 0 ? internalMarksCount : '–'}</p>
-                        <p className="text-xs text-gray-500">Internal Marks</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-slate-50">
-                        <p className="text-2xl font-bold text-slate-700">{academicContent.tests > 0 ? academicContent.tests : '–'}</p>
-                        <p className="text-xs text-gray-500">Upcoming Tests</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-slate-50">
-                        <p className="text-2xl font-bold text-slate-700">{academicContent.notes > 0 ? academicContent.notes : '–'}</p>
-                        <p className="text-xs text-gray-500">Shared Notes</p>
-                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Hourly attendance %, internal marks, tests and notes from faculty.</p>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Hourly attendance %, internal marks, tests and notes from faculty.</p>
-            </div>
+            )}
 
             {/* Today's Schedule (NEW) */}
-            <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Clock size={16} /> Today's Schedule
-                    </h3>
-                    <Link to="/student/timetable" className="text-xs text-indigo-600 hover:underline font-bold flex items-center gap-1">
-                        Full Timetable <ArrowRight size={12} />
-                    </Link>
-                </div>
+            {isEnabled('timetable') && (
+                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                            <Clock size={16} /> Today's Schedule
+                        </h3>
+                        <Link to="/student/timetable" className="text-xs text-indigo-600 hover:underline font-bold flex items-center gap-1">
+                            Full Timetable <ArrowRight size={12} />
+                        </Link>
+                    </div>
 
-                {todayTimetable && todayTimetable.length > 0 ? (
-                    <div className="overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar">
-                        <div className="flex gap-4 min-w-max">
-                            {todayTimetable.map((slot, idx) => (
-                                <div
-                                    key={slot.id}
-                                    className={`w-44 p-4 rounded-xl border flex flex-col justify-between transition-all hover:shadow-md ${slot.entry
-                                        ? slot.entry.type === 'subject' ? 'bg-indigo-50/50 border-indigo-100' :
-                                            slot.entry.type === 'lab' ? 'bg-purple-50/50 border-purple-100' :
-                                                'bg-amber-50/50 border-amber-100'
-                                        : 'bg-slate-50 border-slate-100 opacity-60'
-                                        }`}
-                                >
-                                    <div className="mb-3">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{slot.slot_name}</p>
-                                        <p className="text-[11px] font-bold text-slate-600 mb-2">{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</p>
-                                        <h4 className="text-sm font-bold text-slate-800 line-clamp-2 leading-tight">
-                                            {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Class'}
-                                        </h4>
-                                    </div>
-
-                                    {slot.entry && (
-                                        <div className="flex items-center justify-between mt-auto">
-                                            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${slot.entry.type === 'subject' ? 'bg-indigo-100 text-indigo-600' :
-                                                slot.entry.type === 'lab' ? 'bg-purple-100 text-purple-600' :
-                                                    'bg-amber-100 text-amber-600'
-                                                }`}>
-                                                {slot.entry.type}
-                                            </span>
-                                            {slot.entry.subject_code && (
-                                                <span className="text-[9px] font-bold text-slate-400">{slot.entry.subject_code}</span>
-                                            )}
+                    {todayTimetable && todayTimetable.length > 0 ? (
+                        <div className="overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar">
+                            <div className="flex gap-4 min-w-max">
+                                {todayTimetable.map((slot, idx) => (
+                                    <div
+                                        key={slot.id}
+                                        className={`w-44 p-4 rounded-xl border flex flex-col justify-between transition-all hover:shadow-md ${slot.entry
+                                            ? slot.entry.type === 'subject' ? 'bg-indigo-50/50 border-indigo-100' :
+                                                slot.entry.type === 'lab' ? 'bg-purple-50/50 border-purple-100' :
+                                                    'bg-amber-50/50 border-amber-100'
+                                            : 'bg-slate-50 border-slate-100 opacity-60'
+                                            }`}
+                                    >
+                                        <div className="mb-3">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{slot.slot_name}</p>
+                                            <p className="text-[11px] font-bold text-slate-600 mb-2">{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</p>
+                                            <h4 className="text-sm font-bold text-slate-800 line-clamp-2 leading-tight">
+                                                {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Class'}
+                                            </h4>
                                         </div>
-                                    )}
-                                </div>
-                            ))}
+
+                                        {slot.entry && (
+                                            <div className="flex items-center justify-between mt-auto">
+                                                <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${slot.entry.type === 'subject' ? 'bg-indigo-100 text-indigo-600' :
+                                                    slot.entry.type === 'lab' ? 'bg-purple-100 text-purple-600' :
+                                                        'bg-amber-100 text-amber-600'
+                                                    }`}>
+                                                    {slot.entry.type}
+                                                </span>
+                                                {slot.entry.subject_code && (
+                                                    <span className="text-[9px] font-bold text-slate-400">{slot.entry.subject_code}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm mb-3">
-                            <Calendar className="w-6 h-6 text-slate-300" />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm mb-3">
+                                <Calendar className="w-6 h-6 text-slate-300" />
+                            </div>
+                            <p className="text-sm font-bold text-slate-400">No classes scheduled for today</p>
+                            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-black mt-1">RELAX & RECHARGE</p>
                         </div>
-                        <p className="text-sm font-bold text-slate-400">No classes scheduled for today</p>
-                        <p className="text-[10px] text-slate-300 uppercase tracking-widest font-black mt-1">RELAX & RECHARGE</p>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             {/* REMOVED STANDALONE CLUB PAYMENT ALERT */}
 
@@ -882,7 +907,7 @@ const Dashboard = () => {
                 <div className="lg:col-span-8 flex flex-col gap-6">
                     {/* Club Section */}
                     {/* Club Section */}
-                    {(() => {
+                    {isEnabled('clubs') && (() => {
                         const myClubs = clubs.filter(c => c.userStatus === 'approved' || c.userStatus === 'pending');
 
                         if (myClubs.length > 0) {
@@ -1033,97 +1058,99 @@ const Dashboard = () => {
                     })()}
 
                     {/* Feed Section - COMPACTED */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col flex-1 relative z-10">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                <div className="p-1.5 bg-blue-100 rounded-lg">
-                                    <span role="img" aria-label="feed" className="text-lg">📰</span>
-                                </div>
-                                Recent Updates & Polls
-                            </h3>
-                        </div>
-
-                        <div className="space-y-3 flex-1">
-                            {loading ? (
-                                <div className="text-center py-8 text-gray-500">Loading updates...</div>
-                            ) : feedItems.length > 0 ? (
-                                feedItems.slice(0, 4).map((item, index) => { // Limited to 4 items
-                                    if (item.type === 'poll') {
-                                        const poll = item.data;
-                                        return (
-                                            <div key={`poll-${poll.id}`} className="p-4 rounded-lg bg-purple-50 border border-purple-100 hover:border-purple-200 transition-colors relative">
-                                                <div className="absolute top-3 right-3 text-purple-200">
-                                                    <Vote size={32} className="opacity-20" />
-                                                </div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="px-1.5 py-0.5 rounded-full bg-purple-200 text-purple-700 text-[10px] font-bold uppercase tracking-wide">Active Poll</span>
-                                                    <span className="text-[10px] text-gray-500">{new Date(poll.created_at).toLocaleDateString()}</span>
-                                                </div>
-                                                <h4 className="font-bold text-gray-900 text-sm mb-1">{poll.question}</h4>
-                                                <p className="text-xs text-gray-600 mb-2">{poll.total_votes} students have voted</p>
-
-                                                {/* Show Vote Status or Action */}
-                                                {poll.has_voted ? (
-                                                    <div className="flex items-center gap-1 text-xs text-purple-700 font-medium bg-purple-100 px-2 py-1 rounded inline-flex">
-                                                        <CheckCircle size={12} /> Voted
-                                                    </div>
-                                                ) : (
-                                                    <Link
-                                                        to="/student/announcements"
-                                                        className="bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-purple-700 inline-block"
-                                                    >
-                                                        Vote Now
-                                                    </Link>
-                                                )}
-                                            </div>
-                                        );
-                                    } else {
-                                        // Announcement
-                                        const ann = item.data;
-                                        return (
-                                            <div
-                                                key={`ann-${ann.id}`}
-                                                className="p-4 rounded-lg bg-gray-50 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group"
-                                                onClick={() => {
-                                                    setCurrentAnnouncement(ann);
-                                                    setShowAnnouncement(true);
-                                                }}
-                                            >
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <h4 className="font-bold text-gray-900 text-sm group-hover:text-blue-700 transition-colors line-clamp-1">{ann.title}</h4>
-                                                    <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">{new Date(ann.created_at).toLocaleDateString()}</span>
-                                                </div>
-                                                <p className="text-xs text-gray-600 line-clamp-2 mb-2">{ann.content}</p>
-                                                <span className="text-[10px] text-blue-600 font-medium flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                                    Read More <ArrowRight size={10} />
-                                                </span>
-                                            </div>
-                                        );
-                                    }
-                                })
-                            ) : (
-                                <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                    <div className="inline-flex p-3 bg-gray-100 rounded-full text-gray-400 mb-2">
-                                        <FileText size={20} />
+                    {isEnabled('announcements') && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col flex-1 relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <div className="p-1.5 bg-blue-100 rounded-lg">
+                                        <span role="img" aria-label="feed" className="text-lg">📰</span>
                                     </div>
-                                    <p className="text-gray-500 text-xs">No recent updates.</p>
-                                </div>
-                            )}
+                                    Recent Updates & Polls
+                                </h3>
+                            </div>
 
-                            <div className="text-center pt-2">
-                                <Link to="/student/announcements" className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors">
-                                    View All Announcements & Polls
-                                </Link>
+                            <div className="space-y-3 flex-1">
+                                {loading ? (
+                                    <div className="text-center py-8 text-gray-500">Loading updates...</div>
+                                ) : feedItems.length > 0 ? (
+                                    feedItems.slice(0, 4).map((item, index) => { // Limited to 4 items
+                                        if (item.type === 'poll') {
+                                            const poll = item.data;
+                                            return (
+                                                <div key={`poll-${poll.id}`} className="p-4 rounded-lg bg-purple-50 border border-purple-100 hover:border-purple-200 transition-colors relative">
+                                                    <div className="absolute top-3 right-3 text-purple-200">
+                                                        <Vote size={32} className="opacity-20" />
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="px-1.5 py-0.5 rounded-full bg-purple-200 text-purple-700 text-[10px] font-bold uppercase tracking-wide">Active Poll</span>
+                                                        <span className="text-[10px] text-gray-500">{new Date(poll.created_at).toLocaleDateString()}</span>
+                                                    </div>
+                                                    <h4 className="font-bold text-gray-900 text-sm mb-1">{poll.question}</h4>
+                                                    <p className="text-xs text-gray-600 mb-2">{poll.total_votes} students have voted</p>
+
+                                                    {/* Show Vote Status or Action */}
+                                                    {poll.has_voted ? (
+                                                        <div className="flex items-center gap-1 text-xs text-purple-700 font-medium bg-purple-100 px-2 py-1 rounded inline-flex">
+                                                            <CheckCircle size={12} /> Voted
+                                                        </div>
+                                                    ) : (
+                                                        <Link
+                                                            to="/student/announcements"
+                                                            className="bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-purple-700 inline-block"
+                                                        >
+                                                            Vote Now
+                                                        </Link>
+                                                    )}
+                                                </div>
+                                            );
+                                        } else {
+                                            // Announcement
+                                            const ann = item.data;
+                                            return (
+                                                <div
+                                                    key={`ann-${ann.id}`}
+                                                    className="p-4 rounded-lg bg-gray-50 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group"
+                                                    onClick={() => {
+                                                        setCurrentAnnouncement(ann);
+                                                        setShowAnnouncement(true);
+                                                    }}
+                                                >
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <h4 className="font-bold text-gray-900 text-sm group-hover:text-blue-700 transition-colors line-clamp-1">{ann.title}</h4>
+                                                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">{new Date(ann.created_at).toLocaleDateString()}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-600 line-clamp-2 mb-2">{ann.content}</p>
+                                                    <span className="text-[10px] text-blue-600 font-medium flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                                        Read More <ArrowRight size={10} />
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+                                    })
+                                ) : (
+                                    <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                        <div className="inline-flex p-3 bg-gray-100 rounded-full text-gray-400 mb-2">
+                                            <FileText size={20} />
+                                        </div>
+                                        <p className="text-gray-500 text-xs">No recent updates.</p>
+                                    </div>
+                                )}
+
+                                <div className="text-center pt-2">
+                                    <Link to="/student/announcements" className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors">
+                                        View All Announcements & Polls
+                                    </Link>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Right Column: Events & Services (4col) */}
                 <div className="lg:col-span-4 flex flex-col gap-6">
 
                     {/* Upcoming Events Section (Moved Here) */}
-                    {upcomingEvents.length > 0 && (
+                    {isEnabled('events') && upcomingEvents.length > 0 && (
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 lg:p-6 relative z-10">
                             <div className="flex items-center justify-between mb-3 lg:mb-4">
                                 <h3 className="text-sm lg:text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -1166,77 +1193,81 @@ const Dashboard = () => {
                     )}
 
                     {/* Ticket Support Widget */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10 mb-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                                    <Users size={20} />
+                    {isEnabled('my-tickets') && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10 mb-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                                        <Users size={20} />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900">Support</h3>
                                 </div>
-                                <h3 className="text-lg font-semibold text-gray-900">Support</h3>
+                                <a href={ticketAppUrl} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded">
+                                    <ArrowRight size={16} />
+                                </a>
                             </div>
-                            <a href={ticketAppUrl} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded">
-                                <ArrowRight size={16} />
+
+                            <div className="flex flex-col items-center justify-center py-4 text-center text-gray-500 mb-2">
+                                <p className="text-sm">Need help?</p>
+                                <p className="text-xs text-gray-400 mt-1">Raise a ticket for issues or support.</p>
+                            </div>
+
+                            <a
+                                href={ticketAppUrl}
+                                className="w-full py-2.5 bg-indigo-600 text-white text-center font-medium rounded-lg hover:bg-indigo-700 transition shadow-sm text-sm"
+                            >
+                                Go to Support
                             </a>
                         </div>
-
-                        <div className="flex flex-col items-center justify-center py-4 text-center text-gray-500 mb-2">
-                            <p className="text-sm">Need help?</p>
-                            <p className="text-xs text-gray-400 mt-1">Raise a ticket for issues or support.</p>
-                        </div>
-
-                        <a
-                            href={ticketAppUrl}
-                            className="w-full py-2.5 bg-indigo-600 text-white text-center font-medium rounded-lg hover:bg-indigo-700 transition shadow-sm text-sm"
-                        >
-                            Go to Support
-                        </a>
-                    </div>
+                    )}
 
                     {/* Services Widget */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                    <FileText size={20} />
+                    {isEnabled('services') && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                        <FileText size={20} />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900">Services</h3>
                                 </div>
-                                <h3 className="text-lg font-semibold text-gray-900">Services</h3>
+                                <Link to="/student/services" className="text-blue-600 hover:bg-blue-50 p-1 rounded">
+                                    <ArrowRight size={16} />
+                                </Link>
                             </div>
-                            <Link to="/student/services" className="text-blue-600 hover:bg-blue-50 p-1 rounded">
-                                <ArrowRight size={16} />
+
+                            {/* Active Requests List */}
+                            {serviceRequests.length > 0 ? (
+                                <div className="flex-1 space-y-3 mb-4 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {serviceRequests.map(req => (
+                                        <div key={req.id} className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 transition">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="font-medium text-xs text-gray-900 line-clamp-1">{req.service_name}</span>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getStatusColor(req.status)}`}>
+                                                    {req.status === 'ready_to_collect' ? 'Ready' : req.status.replace('_', ' ')}
+                                                </span>
+                                            </div>
+                                            <div className="text-[10px] text-gray-400">{new Date(req.request_date).toLocaleDateString()}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-6 text-center text-gray-400 border border-dashed border-gray-200 rounded-lg mb-4">
+                                    <p className="text-sm">No active requests</p>
+                                </div>
+                            )}
+
+                            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                                Apply for Study or Custodian Certificates online.
+                            </p>
+                            <Link
+                                to="/student/services"
+                                className="w-full py-2.5 bg-gray-900 text-white text-center font-medium rounded-lg hover:bg-gray-800 transition shadow-sm text-sm"
+                            >
+                                New Request
                             </Link>
                         </div>
-
-                        {/* Active Requests List */}
-                        {serviceRequests.length > 0 ? (
-                            <div className="flex-1 space-y-3 mb-4 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
-                                {serviceRequests.map(req => (
-                                    <div key={req.id} className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 transition">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="font-medium text-xs text-gray-900 line-clamp-1">{req.service_name}</span>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getStatusColor(req.status)}`}>
-                                                {req.status === 'ready_to_collect' ? 'Ready' : req.status.replace('_', ' ')}
-                                            </span>
-                                        </div>
-                                        <div className="text-[10px] text-gray-400">{new Date(req.request_date).toLocaleDateString()}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-6 text-center text-gray-400 border border-dashed border-gray-200 rounded-lg mb-4">
-                                <p className="text-sm">No active requests</p>
-                            </div>
-                        )}
-
-                        <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-                            Apply for Study or Custodian Certificates online.
-                        </p>
-                        <Link
-                            to="/student/services"
-                            className="w-full py-2.5 bg-gray-900 text-white text-center font-medium rounded-lg hover:bg-gray-800 transition shadow-sm text-sm"
-                        >
-                            New Request
-                        </Link>
-                    </div>
+                    )}
                 </div>
             </div>
         </div >
