@@ -78,6 +78,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Ignore canceled requests (e.g., when navigating away or component unmounts)
+    if (axios.isCancel(error)) {
+      console.log('Request canceled:', error.message);
+      return Promise.reject(error);
+    }
+
     console.error('API Error:', error.response?.status, error.response?.data || error.message);
     if (error.response?.status === 401) {
       // Don't redirect if this is a login attempt (login endpoints should handle their own errors)

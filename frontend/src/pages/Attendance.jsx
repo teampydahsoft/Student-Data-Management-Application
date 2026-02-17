@@ -33,6 +33,7 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
+import axios from 'axios';
 import api, { getStaticFileUrlDirect } from '../config/api';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { SkeletonTable, SkeletonAttendanceTable } from '../components/SkeletonLoader';
@@ -475,6 +476,10 @@ const Attendance = () => {
         attendanceStatus:
           payload.attendanceStatus && typeof payload.attendanceStatus === 'object'
             ? payload.attendanceStatus
+            : {},
+        attendanceCounts:
+          payload.attendanceCounts && typeof payload.attendanceCounts === 'object'
+            ? payload.attendanceCounts
             : {},
         fetchedAt: payload.fetchedAt || new Date().toISOString(),
         fromCache: Boolean(payload.fromCache)
@@ -1539,8 +1544,10 @@ const Attendance = () => {
       // Return statistics so we can check if all batches are marked after save
       return finalStatistics;
     } catch (error) {
-      if (error?.name === 'CanceledError' || error?.name === 'AbortError') {
-        // Request was aborted; let the next request handle UI updates
+      // Check if request was canceled (component unmounted or new request started)
+      if (axios.isCancel(error)) {
+        console.log('Attendance request canceled');
+        // Don't show error toast for canceled requests
         return;
       }
       console.error('Attendance fetch failed:', error);
@@ -2298,6 +2305,14 @@ const Attendance = () => {
 
       // Reload attendance to get updated statistics
       const updatedStats = await loadAttendance(currentPage);
+
+      // Refresh calendar data to update status badges (force bypass cache)
+      const monthKey = getMonthKeyFromDate(attendanceDate);
+      if (monthKey) {
+        fetchCalendarMonth(monthKey, { force: true, applyToModal: true, applyToHeader: true }).catch(err => {
+          console.error('Failed to refresh calendar after attendance save:', err);
+        });
+      }
 
       // Check if all batches are marked - if unmarked count is 0, show day-end report popup
       if (updatedStats && updatedStats.unmarked === 0 && updatedStats.total > 0 && !allBatchesMarkedModalOpen) {

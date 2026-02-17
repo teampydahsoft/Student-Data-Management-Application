@@ -42,6 +42,54 @@ const replaceTemplateVariables = (template, variables) => {
   return result;
 };
 
+// ========== EMAIL TRACKING HELPERS (Prevent Duplicate Day-End Reports) ==========
+
+/**
+ * Check if an email has already been sent today for a specific college/course/recipient
+ * @param {string} college - College name
+ * @param {string} course - Course name
+ * @param {string} recipientEmail - Recipient email address
+ * @returns {Promise<boolean>} - True if email already sent today
+ */
+async function hasEmailBeenSentToday(college, course, recipientEmail) {
+  try {
+    const [rows] = await masterPool.query(`
+      SELECT id FROM attendance_report_emails_sent
+      WHERE report_date = CURDATE()
+      AND college = ?
+      AND course = ?
+      AND recipient_email = ?
+    `, [college, course, recipientEmail]);
+    return rows.length > 0;
+  } catch (error) {
+    console.error('Error checking email sent status:', error);
+    return false; // On error, allow sending to avoid blocking
+  }
+}
+
+/**
+ * Track that an email has been sent today for a specific college/course/recipient
+ * @param {string} college - College name
+ * @param {string} course - Course name
+ * @param {string} recipientEmail - Recipient email address
+ * @param {string} recipientType - Type: 'principal', 'hod', or 'super_admin'
+ */
+async function trackEmailSent(college, course, recipientEmail, recipientType) {
+  try {
+    await masterPool.query(`
+      INSERT IGNORE INTO attendance_report_emails_sent 
+      (report_date, college, course, recipient_email, recipient_type)
+      VALUES (CURDATE(), ?, ?, ?, ?)
+    `, [college, course, recipientEmail, recipientType]);
+  } catch (error) {
+    console.error('Error tracking email sent:', error);
+    // Non-critical error, don't throw
+  }
+}
+
+// ========== END EMAIL TRACKING HELPERS ==========
+
+
 // Helper function to convert plain text to HTML (basic conversion)
 const textToHtml = (text) => {
   return text
@@ -2172,8 +2220,8 @@ exports.markAttendance = async (req, res) => {
                   name: 'Sriram',
                   email: SUPER_ADMIN_EMAIL,
                   role: 'super_admin'
-                },
-                senderName: senderName
+                }
+                // senderName removed - was undefined
               });
 
               dayEndReportResults.push({

@@ -150,7 +150,8 @@ const HolidayCalendarModal = ({
     sundays: [],
     publicHolidays: [],
     customHolidays: [],
-    attendanceStatus: {}
+    attendanceStatus: {},
+    attendanceCounts: {}
   };
 
   const calendarCells = useMemo(() => buildCalendarMatrix(monthKey), [monthKey]);
@@ -379,12 +380,21 @@ const HolidayCalendarModal = ({
                     type="button"
                     onClick={() => handleDayClick(cell)}
                     disabled={!cell.isCurrentMonth}
-                    className={`flex h-20 flex-col justify-between rounded-lg border py-2 text-sm transition-colors ${isSelected
-                        ? 'border-blue-500 bg-blue-100 text-blue-800 shadow-md ring-2 ring-blue-300'
-                        : `${cellBgColor} text-gray-700 ${baseClasses}`
+                    className={`flex h-28 flex-col justify-between rounded-lg border py-2 px-1 text-sm transition-colors ${isSelected
+                      ? 'border-blue-500 bg-blue-100 text-blue-800 shadow-md ring-2 ring-blue-300'
+                      : `${cellBgColor} text-gray-700 ${baseClasses}`
                       }`}
                   >
-                    <span className="font-semibold">{cell.day}</span>
+                    <span className="font-semibold text-base">{cell.day}</span>
+
+                    {/* Show present/absent counts for non-holiday dates */}
+                    {!isHoliday && data.attendanceCounts && data.attendanceCounts[cell.isoDate] && (
+                      <div className="flex flex-col gap-0.5 text-[10px] font-semibold leading-tight">
+                        <span className="text-green-700">P: {data.attendanceCounts[cell.isoDate].present}</span>
+                        <span className="text-red-700">A: {data.attendanceCounts[cell.isoDate].absent}</span>
+                      </div>
+                    )}
+
                     {isHoliday && (
                       <span className={`mx-2 rounded-md px-2 py-1 text-[10px] font-semibold ${badgeColor}`}>
                         {publicHoliday
@@ -394,7 +404,7 @@ const HolidayCalendarModal = ({
                             : 'Sunday'}
                       </span>
                     )}
-                    {!isHoliday && <span className="h-2" />}
+                    {!isHoliday && !data.attendanceCounts?.[cell.isoDate] && <span className="h-2" />}
                     {/* Only show attendance status if it's not a holiday */}
                     {!isHoliday && statusInfo && (
                       <span
@@ -494,8 +504,8 @@ const HolidayCalendarModal = ({
                           <span className="text-xs">{holiday.label}</span>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${holiday.type === 'public'
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-purple-100 text-purple-700'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-purple-100 text-purple-700'
                               }`}
                           >
                             {holiday.type === 'public' ? 'Public' : 'Institute'}

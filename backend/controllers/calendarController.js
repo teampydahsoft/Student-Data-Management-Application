@@ -99,7 +99,7 @@ exports.getNonWorkingDays = async (req, res) => {
       endDate: monthEnd
     });
 
-    const attendanceCounts = await getAttendanceStatusForRange(monthStart, monthEnd);
+    const attendanceCountsMap = await getAttendanceStatusForRange(monthStart, monthEnd);
     const todayKey = new Date().toISOString().split('T')[0];
 
     const publicHolidays = holidays.map((holiday) => ({
@@ -118,13 +118,15 @@ exports.getNonWorkingDays = async (req, res) => {
     const customHolidaySet = new Set(customHolidays.map((holiday) => holiday.date));
 
     const attendanceStatus = {};
+    const attendanceCounts = {};
     const cursor = new Date(Date.UTC(year, month - 1, 1));
     const endCursor = new Date(Date.UTC(year, month, 0));
     while (cursor <= endCursor) {
       const dateIso = `${cursor.getUTCFullYear()}-${padMonth(cursor.getUTCMonth() + 1)}-${padMonth(
         cursor.getUTCDate()
       )}`;
-      const hasRecords = (attendanceCounts.get(dateIso) || 0) > 0;
+      const countsData = attendanceCountsMap.get(dateIso);
+      const hasRecords = countsData && countsData.total > 0;
       const isHoliday =
         sundaySet.has(dateIso) || publicHolidaySet.has(dateIso) || customHolidaySet.has(dateIso);
 
@@ -140,8 +142,19 @@ exports.getNonWorkingDays = async (req, res) => {
       }
 
       attendanceStatus[dateIso] = status;
+      // Include counts for each date
+      if (countsData) {
+        attendanceCounts[dateIso] = {
+          present: countsData.present,
+          absent: countsData.absent,
+          total: countsData.total
+        };
+      }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
+
+    console.log(`[Calendar] Sending response with ${Object.keys(attendanceCounts).length} dates with counts`);
+    console.log(`[Calendar] Sample counts:`, Object.entries(attendanceCounts).slice(0, 3));
 
     res.json({
       success: true,
@@ -152,6 +165,7 @@ exports.getNonWorkingDays = async (req, res) => {
         sundays: sundayList,
         publicHolidays,
         attendanceStatus,
+        attendanceCounts,
         customHolidays,
         fetchedAt: new Date().toISOString(),
         source: 'nager-date',

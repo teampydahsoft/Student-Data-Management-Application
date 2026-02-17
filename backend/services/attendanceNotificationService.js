@@ -4,6 +4,46 @@ const { generateAttendanceReportPDF } = require('./pdfService');
 const { sendBrevoEmail } = require('../utils/emailService');
 const fs = require('fs');
 
+// ========== EMAIL TRACKING HELPERS (Prevent Duplicate Day-End Reports) ==========
+
+/**
+ * Check if an email has already been sent today for a specific college/course/recipient
+ */
+async function hasEmailBeenSentToday(college, course, recipientEmail) {
+  try {
+    const [rows] = await masterPool.query(`
+      SELECT id FROM attendance_report_emails_sent
+      WHERE report_date = CURDATE()
+      AND college = ?
+      AND course = ?
+      AND recipient_email = ?
+    `, [college, course, recipientEmail]);
+    return rows.length > 0;
+  } catch (error) {
+    console.error('Error checking email sent status:', error);
+    return false; // On error, allow sending to avoid blocking
+  }
+}
+
+/**
+ * Track that an email has been sent today for a specific college/course/recipient
+ */
+async function trackEmailSent(college, course, recipientEmail, recipientType) {
+  try {
+    await masterPool.query(`
+      INSERT IGNORE INTO attendance_report_emails_sent 
+      (report_date, college, course, recipient_email, recipient_type)
+      VALUES (CURDATE(), ?, ?, ?, ?)
+    `, [college, course, recipientEmail, recipientType]);
+  } catch (error) {
+    console.error('Error tracking email sent:', error);
+    // Non-critical error, don't throw
+  }
+}
+
+// ========== END EMAIL TRACKING HELPERS ==========
+
+
 /**
  * Parse scope data (JSON or single value)
  */
@@ -530,6 +570,15 @@ const sendAttendanceReportNotifications = async ({
         continue;
       }
 
+      // ========== EMAIL DEDUPLICATION CHECK ==========
+      // Check if email already sent today for this college/course/recipient
+      const alreadySent = await hasEmailBeenSentToday(collegeName, courseName, recipient.email);
+      if (alreadySent) {
+        console.log(`📧 Email already sent today to ${recipient.email} for ${collegeName} - ${courseName}. Skipping.`);
+        continue; // Skip this recipient
+      }
+      // ========== END DEDUPLICATION CHECK ==========
+
       try {
         console.log(`📧 Sending attendance report email to ${recipient.role === USER_ROLES.BRANCH_HOD ? 'HOD' : 'Principal'}: ${recipient.name} (${recipient.email})`);
 
@@ -545,6 +594,12 @@ const sendAttendanceReportNotifications = async ({
         if (emailResult.success) {
           results.emailsSent++;
           console.log(`✅ Attendance report email sent to ${recipient.name} (${recipient.email})`);
+
+          // ========== TRACK EMAIL SENT ==========
+          // Record that email was sent today
+          const recipientType = recipient.role === USER_ROLES.BRANCH_HOD ? 'hod' : 'principal';
+          await trackEmailSent(collegeName, courseName, recipient.email, recipientType);
+          // ========== END TRACKING ==========
         } else {
           results.emailsFailed++;
           results.errors.push(`Failed to send email to ${recipient.email}: ${emailResult.message}`);
