@@ -544,7 +544,7 @@ const Attendance = () => {
     if (filters.course) {
       return filterOptions.branches || [];
     }
-    
+
     // When no course is selected, use filterOptions.branches directly
     // This shows all branches (filtered by batch if batch is selected, or all if no batch)
     return filterOptions.branches || [];
@@ -1971,18 +1971,7 @@ const Attendance = () => {
     });
   };
 
-  const handleClearFilters = () => {
-    setFilters({
-      batch: '',
-      course: '',
-      branch: '',
-      currentYear: '',
-      currentSemester: '',
-      studentName: '',
-      parentMobile: ''
-    });
-    setCurrentPage(1);
-  };
+
 
   const handlePageChange = (newPage) => {
     if (loading) {
@@ -2729,14 +2718,7 @@ const Attendance = () => {
               ))}
             </select>
 
-            <button
-              type="button"
-              onClick={handleClearFilters}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-md hover:bg-gray-200 active:bg-gray-300 transition-colors touch-manipulation min-h-[36px]"
-            >
-              <RefreshCw size={12} />
-              Clear
-            </button>
+
 
 
 

@@ -10,6 +10,13 @@ router.get('/my-assignment', authMiddleware, internshipController.getMyAssignmen
 // Admin Routes
 router.post('/create', authMiddleware, requireAdmin, internshipController.createInternship);
 router.get('/report', authMiddleware, requireAdmin, internshipController.getAttendanceReport);
+router.get('/day-end-report', authMiddleware, requireAdmin, internshipController.getDayEndReport);
+router.get('/day-end-download', authMiddleware, requireAdmin, internshipController.downloadDayEndReport);
+// Route to get filter options based on active internships
+router.get('/filters', authMiddleware, requireAdmin, internshipController.getInternshipFilters);
+
+// Route to get all regular students eligible for assignment (based on filters)
+router.get('/eligible-students', authMiddleware, requireAdmin, internshipController.getEligibleStudents);
 router.post('/assign', authMiddleware, requireAdmin, internshipController.assignInternship);
 router.get('/:id/students', authMiddleware, requireAdmin, internshipController.getAssignedStudents);
 router.put('/location/:id', authMiddleware, requireAdmin, internshipController.updateInternshipLocation);

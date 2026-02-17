@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../config/api';
 import { toast } from 'react-hot-toast';
-import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye } from 'lucide-react';
+import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -145,10 +145,19 @@ const InternshipAdmin = () => {
 
 
 
-    // View Attendance Details Modal State
+
+    // Day End Report State
+    const [dayEndReportOpen, setDayEndReportOpen] = useState(false);
+    const [dayEndReportLoading, setDayEndReportLoading] = useState(false);
+    const [dayEndReportData, setDayEndReportData] = useState(null);
+
     const [viewAttendanceModal, setViewAttendanceModal] = useState(false);
     const [selectedAttendance, setSelectedAttendance] = useState(null);
     const [viewAddresses, setViewAddresses] = useState({ checkIn: null, checkOut: null });
+
+    // Conflict Modal State
+    const [conflictModalOpen, setConflictModalOpen] = useState(false);
+    const [conflictData, setConflictData] = useState([]);
 
     useEffect(() => {
         if (selectedAttendance) {
@@ -203,9 +212,14 @@ const InternshipAdmin = () => {
 
     const fetchFilterOptions = async () => {
         try {
-            // Reusing existing attendance filters endpoint
-            // Passing current filters to get relevant dependent options
-            const res = await api.get('/attendance/filters', { params: { ...filters } });
+            // Logic Change for Step Id: 541
+            // Convert 'activeTab' check to use the new endpoints
+            let endpoint = '/attendance/filters'; // Default to generic filters (All Students)
+            if (activeTab === 'report') {
+                endpoint = '/internship/filters'; // Specific filters for assigned students
+            }
+
+            const res = await api.get(endpoint, { params: { ...filters } });
             if (res.data.success) {
                 setFilterOptions(prev => ({
                     ...prev,
@@ -230,7 +244,11 @@ const InternshipAdmin = () => {
             year: '',
             semester: ''
         });
-        fetchReport();
+        // Remove fetchReport() call here to avoid auto-fetching report on clear if not in report tab
+        if (activeTab === 'report') {
+            // Let the useEffect handle it or call explicitly if needed, but usually redundant
+            // fetchReport(); 
+        }
     };
 
 
@@ -256,6 +274,31 @@ const InternshipAdmin = () => {
             }
         } catch (error) {
             console.error("Reverse geocoding failed", error);
+        }
+    };
+
+    const fetchStudentsForAssignment = async () => {
+        try {
+            setLoadingStudents(true);
+            // Changed to use the new eligible-students endpoint
+            const res = await api.get('/internship/eligible-students', { params: { ...filters } });
+            if (res.data.success) {
+                const students = res.data.data.map(r => ({
+                    id: r.id,
+                    name: r.student_name,
+                    batch: r.batch,
+                    branch: r.branch,
+                    year: r.current_year,
+                    semester: r.current_semester
+                }));
+                setAvailableStudents(students);
+                setSelectedStudentIds([]); // Reset selection
+                if (students.length === 0) toast('No students found with these filters');
+            }
+        } catch (error) {
+            toast.error('Failed to fetch students');
+        } finally {
+            setLoadingStudents(false);
         }
     };
 
@@ -313,7 +356,7 @@ const InternshipAdmin = () => {
         if (activeTab === 'report') {
             fetchReport();
         }
-    }, [activeTab]); // Fetch initially, and when explicit refresh or filters applied (see button)
+    }, [activeTab, filters]); // Fetch initially, and when active tab or filters change
 
     const fetchReport = async () => {
         try {
@@ -328,6 +371,66 @@ const InternshipAdmin = () => {
             setLoadingReport(false);
         }
     };
+
+    const handleDayEndReport = async () => {
+        if (dayEndReportOpen) return;
+        setDayEndReportLoading(true);
+        try {
+            const params = {
+                date: new Date().toISOString().split('T')[0], // Default to today
+                ...filters
+            };
+            // Remove empty filters
+            Object.keys(params).forEach(key => {
+                if (params[key] === '' || params[key] === null || params[key] === undefined) {
+                    delete params[key];
+                }
+            });
+
+            const res = await api.get('/internship/day-end-report', { params });
+            if (res.data.success) {
+                setDayEndReportData(res.data.data);
+                setDayEndReportOpen(true);
+            }
+        } catch (error) {
+            toast.error('Failed to fetch day end report');
+        } finally {
+            setDayEndReportLoading(false);
+        }
+    };
+
+    const handleDayEndDownload = async (format = 'xlsx') => {
+        try {
+            const params = new URLSearchParams({
+                date: dayEndReportData?.date || new Date().toISOString().split('T')[0],
+                format,
+                ...filters
+            });
+            // Remove empty filters from URLSearchParams
+            Object.keys(filters).forEach(key => {
+                if (!filters[key]) params.delete(key);
+            });
+
+            const response = await api.get(`/internship/day-end-download?${params.toString()}`, {
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `internship_day_end_${params.get('date')}.xlsx`;
+            link.click();
+            window.URL.revokeObjectURL(url);
+            toast.success(`Downloaded ${format.toUpperCase()} report`);
+        } catch (error) {
+            console.error('Download report error:', error);
+            toast.error('Unable to download report');
+        }
+    };
+
 
     const handleCreate = async (e) => {
         e.preventDefault();
@@ -352,6 +455,15 @@ const InternshipAdmin = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleDay = (day) => {
+        setAssignmentData(prev => {
+            const days = prev.allowedDays.includes(day)
+                ? prev.allowedDays.filter(d => d !== day)
+                : [...prev.allowedDays, day];
+            return { ...prev, allowedDays: days };
+        });
     };
 
     const handleAssign = async (e) => {
@@ -380,45 +492,19 @@ const InternshipAdmin = () => {
                 setSelectedStudentIds([]);
             }
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Assignment failed');
+            if (error.response?.status === 409 && error.response?.data?.conflicts) {
+                setConflictData(error.response.data.conflicts);
+                setConflictModalOpen(true);
+                toast.error('Assignment conflicts detected');
+            } else {
+                toast.error(error.response?.data?.message || 'Assignment failed');
+            }
         } finally {
             setLoading(false);
         }
     };
 
-    const toggleDay = (day) => {
-        setAssignmentData(prev => {
-            const days = prev.allowedDays.includes(day)
-                ? prev.allowedDays.filter(d => d !== day)
-                : [...prev.allowedDays, day];
-            return { ...prev, allowedDays: days };
-        });
-    };
-
-    const fetchStudentsForAssignment = async () => {
-        try {
-            setLoadingStudents(true);
-            // Reusing report endpoint as it returns all students matching filters
-            const res = await api.get('/internship/report', { params: { ...filters } });
-            if (res.data.success) {
-                const students = res.data.data.map(r => ({
-                    id: r.studentId,
-                    name: r.studentDetails?.name || r.studentId,
-                    batch: r.studentDetails?.batch,
-                    branch: r.studentDetails?.branch,
-                    year: r.studentDetails?.year,
-                    semester: r.studentDetails?.semester
-                }));
-                setAvailableStudents(students);
-                setSelectedStudentIds([]); // Reset selection
-                if (students.length === 0) toast('No students found with these filters');
-            }
-        } catch (error) {
-            toast.error('Failed to fetch students');
-        } finally {
-            setLoadingStudents(false);
-        }
-    };
+    // Duplicates removed
 
     const handleViewStudents = async (id, name) => {
         setCurrentInternshipName(name);
@@ -1011,36 +1097,41 @@ const InternshipAdmin = () => {
                         <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                             <Filter className="w-4 h-4" /> Filter Attendance
                         </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.batch} onChange={e => handleFilterChange('batch', e.target.value)}>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.batch} onChange={e => handleFilterChange('batch', e.target.value)}>
                                 <option value="">All Batches</option>
                                 {filterOptions.batches?.map(b => <option key={b} value={b}>{b}</option>)}
                             </select>
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.college} onChange={e => handleFilterChange('college', e.target.value)}>
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.college} onChange={e => handleFilterChange('college', e.target.value)}>
                                 <option value="">All Colleges</option>
                                 {/* Usually college options might need ID vs Name handling. Assuming Name based on common pattern */}
                                 {filterOptions.colleges?.map(c => <option key={c.id || c} value={c.name || c}>{c.name || c}</option>)}
                             </select>
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.course} onChange={e => handleFilterChange('course', e.target.value)}>
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.course} onChange={e => handleFilterChange('course', e.target.value)}>
                                 <option value="">All Courses</option>
                                 {filterOptions.courses?.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.branch} onChange={e => handleFilterChange('branch', e.target.value)}>
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.branch} onChange={e => handleFilterChange('branch', e.target.value)}>
                                 <option value="">All Branches</option>
                                 {filterOptions.branches?.map(b => <option key={b} value={b}>{b}</option>)}
                             </select>
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}>
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}>
                                 <option value="">All Years</option>
                                 {filterOptions.years?.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
-                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" value={filters.semester} onChange={e => handleFilterChange('semester', e.target.value)}>
+                            <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.semester} onChange={e => handleFilterChange('semester', e.target.value)}>
                                 <option value="">All Semesters</option>
                                 {filterOptions.semesters?.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
-                        </div>
-                        <div className="flex justify-end gap-2 mt-3">
-                            <button onClick={clearFilters} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1">Clear</button>
-                            <button onClick={fetchReport} className="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded-md hover:bg-indigo-700">Apply Filters</button>
+
+                            <button
+                                onClick={handleDayEndReport}
+                                disabled={dayEndReportLoading}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm whitespace-nowrap ml-auto sm:ml-0"
+                            >
+                                {dayEndReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-indigo-600" />}
+                                Day End Report
+                            </button>
                         </div>
                     </div>
 
@@ -1418,6 +1509,171 @@ const InternshipAdmin = () => {
                 </div>
             )}
 
+            {/* Day End Report Modal */}
+            {dayEndReportOpen && dayEndReportData && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70]">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+                        {/* Header */}
+                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-indigo-600" />
+                                    Internship Day End Report
+                                </h2>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Date: {new Date(dayEndReportData.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleDayEndDownload('xlsx')}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                                >
+                                    <Download className="w-4 h-4" /> Download Excel
+                                </button>
+                                <button onClick={() => setDayEndReportOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto flex-1">
+                            {/* Stats Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                    <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1">Total Assigned</div>
+                                    <div className="text-2xl font-bold text-indigo-900">{dayEndReportData.totalStudents}</div>
+                                </div>
+                                <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                                    <div className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-1">Present</div>
+                                    <div className="text-2xl font-bold text-green-900">{dayEndReportData.presentToday}</div>
+                                </div>
+                                <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                                    <div className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Absent</div>
+                                    <div className="text-2xl font-bold text-red-900">{dayEndReportData.absentToday}</div>
+                                </div>
+                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                    <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">Marked</div>
+                                    <div className="text-2xl font-bold text-blue-900">{dayEndReportData.markedToday}</div>
+                                </div>
+                                <div className="bg-gray-100 p-4 rounded-xl border border-gray-200">
+                                    <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">Unmarked</div>
+                                    <div className="text-2xl font-bold text-gray-900">{dayEndReportData.unmarkedToday}</div>
+                                </div>
+                            </div>
+
+                            {/* Grouped Data Table */}
+                            {dayEndReportData.groupedSummary && dayEndReportData.groupedSummary.length > 0 ? (
+                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-700 font-semibold border-b border-gray-200">
+                                            <tr>
+                                                <th className="px-4 py-3">College</th>
+                                                <th className="px-4 py-3">Batch</th>
+                                                <th className="px-4 py-3">Branch</th>
+                                                <th className="px-4 py-3">Sem</th>
+                                                <th className="px-4 py-3 text-center">Total</th>
+                                                <th className="px-4 py-3 text-center text-green-700">Present</th>
+                                                <th className="px-4 py-3 text-center text-red-700">Absent</th>
+                                                <th className="px-4 py-3 text-center text-blue-700">Marked</th>
+                                                <th className="px-4 py-3 text-center text-gray-500">Pending</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {dayEndReportData.groupedSummary.map((group, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-medium text-gray-900">{group.college}</td>
+                                                    <td className="px-4 py-3">{group.batch}</td>
+                                                    <td className="px-4 py-3">{group.course} - {group.branch}</td>
+                                                    <td className="px-4 py-3">{group.year}-{group.semester}</td>
+                                                    <td className="px-4 py-3 text-center font-semibold">{group.totalStudents}</td>
+                                                    <td className="px-4 py-3 text-center text-green-600 font-medium">{group.presentToday}</td>
+                                                    <td className="px-4 py-3 text-center text-red-600 font-medium">{group.absentToday}</td>
+                                                    <td className="px-4 py-3 text-center text-blue-600 font-medium">{group.markedToday}</td>
+                                                    <td className="px-4 py-3 text-center text-gray-500">{group.pendingToday}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-gray-50 font-semibold border-t border-gray-200">
+                                            <tr>
+                                                <td colSpan="4" className="px-4 py-3 text-right">Total</td>
+                                                <td className="px-4 py-3 text-center">{dayEndReportData.totalStudents}</td>
+                                                <td className="px-4 py-3 text-center text-green-700">{dayEndReportData.presentToday}</td>
+                                                <td className="px-4 py-3 text-center text-red-700">{dayEndReportData.absentToday}</td>
+                                                <td className="px-4 py-3 text-center text-blue-700">{dayEndReportData.markedToday}</td>
+                                                <td className="px-4 py-3 text-center text-gray-500">{dayEndReportData.unmarkedToday}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    No data available for this day.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Conflict Modal */}
+            {conflictModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[200]">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 flex flex-col max-h-[80vh]">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
+                                <AlertTriangle className="w-6 h-6" />
+                                Overlapping Assignments Detected
+                            </h3>
+                            <button onClick={() => setConflictModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">
+                            The following students already have internships assigned during the selected period. These assignments prevent the new internship from being assigned.
+                        </p>
+
+                        <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md mb-4">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50 text-gray-700 font-semibold sticky top-0">
+                                    <tr>
+                                        <th className="px-4 py-2 border-b">Student</th>
+                                        <th className="px-4 py-2 border-b">Existing Internship</th>
+                                        <th className="px-4 py-2 border-b">Dates</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {conflictData.map((c, i) => (
+                                        <tr key={i} className="hover:bg-red-50">
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-gray-900">{c.studentName}</div>
+                                                <div className="text-xs text-gray-500">{c.admissionNumber}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-gray-800 font-medium">{c.companyName}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                                                {new Date(c.startDate).toLocaleDateString()} - <br />{new Date(c.endDate).toLocaleDateString()}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex justify-end pt-2 border-t border-gray-100">
+                            <button
+                                onClick={() => setConflictModalOpen(false)}
+                                className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium transition-colors"
+                            >
+                                Close & Adjust Dates
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* View Attendance Details Modal */}
             {viewAttendanceModal && selectedAttendance && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[100]">
@@ -1464,6 +1720,7 @@ const InternshipAdmin = () => {
                                                 <div className="font-medium text-gray-900">{selectedAttendance.internshipId?.companyName || 'Unknown'}</div>
                                                 <div className="text-xs text-gray-500 mt-1">
                                                     {selectedAttendance.internshipId?.address && <div title={selectedAttendance.internshipId.address} className="truncate max-w-[200px]">{selectedAttendance.internshipId.address}</div>}
+
                                                     {selectedAttendance.internshipId?.latitude && (
                                                         <div>Target: {Number(selectedAttendance.internshipId.latitude).toFixed(4)}, {Number(selectedAttendance.internshipId.longitude).toFixed(4)}</div>
                                                     )}

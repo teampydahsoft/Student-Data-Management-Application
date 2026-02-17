@@ -226,6 +226,242 @@ exports.getAttendanceReport = async (req, res) => {
     }
 };
 
+exports.getDayEndReport = async (req, res) => {
+    try {
+        const { date, batch, college, course, branch, year, semester } = req.query;
+        const reportDate = date || new Date().toISOString().split('T')[0];
+
+        // Base query to get students with active internships and their attendance for the date
+        let query = `
+            SELECT 
+                s.college,
+                s.batch,
+                s.course,
+                s.branch,
+                s.current_year AS year,
+                s.current_semester AS semester,
+                COUNT(s.id) AS total_students,
+                SUM(CASE WHEN ia.status = 'Present' THEN 1 ELSE 0 END) AS present,
+                SUM(CASE WHEN ia.status = 'Absent' THEN 1 ELSE 0 END) AS absent,
+                SUM(CASE WHEN ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
+                MAX(COALESCE(ia.check_out_time, ia.check_in_time)) AS last_updated
+            FROM students s
+            JOIN internship_assignments i_assign
+                ON s.id = i_assign.student_id
+                AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+            LEFT JOIN internship_attendance ia 
+                ON s.id = ia.student_id 
+                AND ia.attendance_date = ?
+            WHERE s.student_status = 'Regular'
+        `;
+
+        const params = [reportDate, reportDate];
+
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (college) { query += ' AND s.college = ?'; params.push(college); }
+        if (course) { query += ' AND s.course = ?'; params.push(course); }
+        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (year) { query += ' AND s.current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
+
+        query += `
+            GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+            ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+        `;
+
+        const [groupedRows] = await masterPool.query(query, params);
+
+        // Calculate totals
+        let totalStudents = 0;
+        let presentToday = 0;
+        let absentToday = 0;
+        let rejectedToday = 0;
+        let markedToday = 0;
+
+        const groupedData = groupedRows.map(row => {
+            const total = Number(row.total_students) || 0;
+            const present = Number(row.present) || 0;
+            const absent = Number(row.absent) || 0;
+            const rejected = Number(row.rejected) || 0;
+            const marked = present + absent + rejected;
+
+            totalStudents += total;
+            presentToday += present;
+            absentToday += absent;
+            rejectedToday += rejected;
+            markedToday += marked;
+
+            return {
+                college: row.college || '—',
+                batch: row.batch || '—',
+                course: row.course || '—',
+                branch: row.branch || '—',
+                year: row.year || '—',
+                semester: row.semester || '—',
+                totalStudents: total,
+                presentToday: present,
+                absentToday: absent,
+                rejectedToday: rejected,
+                markedToday: marked,
+                pendingToday: Math.max(0, total - marked),
+                lastUpdated: row.last_updated || null
+            };
+        });
+
+        const unmarkedToday = Math.max(0, totalStudents - markedToday);
+
+        res.json({
+            success: true,
+            data: {
+                totalStudents,
+                presentToday,
+                absentToday,
+                rejectedToday,
+                markedToday,
+                unmarkedToday,
+                holidayToday: 0, // Not implemented for internships yet
+                date: reportDate,
+                groupedSummary: groupedData
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching day end report:', error);
+        res.status(500).json({ success: false, message: 'Server error while fetching day end report.' });
+    }
+};
+
+exports.downloadDayEndReport = async (req, res) => {
+    try {
+        const { date, format, batch, college, course, branch, year, semester } = req.query;
+        const reportDate = date || new Date().toISOString().split('T')[0];
+        const normalizedFormat = (format || 'xlsx').toLowerCase();
+
+        // Re-use logic from getDayEndReport to fetch data
+        // For DRY, we should ideally refactor this into a service, but for now duplicate query logic
+        let query = `
+            SELECT 
+                s.college,
+                s.batch,
+                s.course,
+                s.branch,
+                s.current_year AS year,
+                s.current_semester AS semester,
+                COUNT(s.id) AS total_students,
+                SUM(CASE WHEN ia.status = 'Present' THEN 1 ELSE 0 END) AS present,
+                SUM(CASE WHEN ia.status = 'Absent' THEN 1 ELSE 0 END) AS absent,
+                SUM(CASE WHEN ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
+                MAX(COALESCE(ia.check_out_time, ia.check_in_time)) AS last_updated
+            FROM students s
+            JOIN internship_assignments i_assign
+                ON s.id = i_assign.student_id
+                AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+            LEFT JOIN internship_attendance ia 
+                ON s.id = ia.student_id 
+                AND ia.attendance_date = ?
+            WHERE s.student_status = 'Regular'
+        `;
+
+        const params = [reportDate, reportDate];
+
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (college) { query += ' AND s.college = ?'; params.push(college); }
+        if (course) { query += ' AND s.course = ?'; params.push(course); }
+        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (year) { query += ' AND s.current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
+
+        query += `
+            GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+            ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+        `;
+
+        const [groupedRows] = await masterPool.query(query, params);
+
+        const groupedData = groupedRows.map(row => {
+            const total = Number(row.total_students) || 0;
+            const present = Number(row.present) || 0;
+            const absent = Number(row.absent) || 0;
+            const rejected = Number(row.rejected) || 0;
+            const marked = present + absent + rejected;
+
+            return {
+                college: row.college || '—',
+                batch: row.batch || '—',
+                course: row.course || '—',
+                branch: row.branch || '—',
+                year: row.year || '—',
+                semester: row.semester || '—',
+                totalStudents: total,
+                presentToday: present,
+                absentToday: absent,
+                rejectedToday: rejected,
+                markedToday: marked,
+                pendingToday: Math.max(0, total - marked),
+                lastUpdated: row.last_updated
+            };
+        });
+
+        // Generate Excel
+        if (normalizedFormat === 'xlsx') {
+            const XLSX = require('xlsx');
+            const workbook = XLSX.utils.book_new();
+
+            // Summary Sheet calculations
+            let totalStudents = 0, presentToday = 0, absentToday = 0, rejectedToday = 0, markedToday = 0;
+            groupedData.forEach(d => {
+                totalStudents += d.totalStudents;
+                presentToday += d.presentToday;
+                absentToday += d.absentToday;
+                rejectedToday += d.rejectedToday;
+                markedToday += d.markedToday;
+            });
+            const unmarkedToday = Math.max(0, totalStudents - markedToday);
+
+            const summaryData = [
+                ['Internship Day End Report'],
+                ['Date', reportDate],
+                [''],
+                ['Summary'],
+                ['Total Assigned Students', totalStudents],
+                ['Total Marked', markedToday],
+                ['Present', presentToday],
+                ['Absent', absentToday],
+                ['Rejected', rejectedToday],
+                ['Unmarked', unmarkedToday],
+                [''],
+                ['Detailed Breakdown']
+            ];
+            const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+            const tableData = [
+                ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Students', 'Present', 'Absent', 'Rejected', 'Marked', 'Pending', 'Last Updated'],
+                ...groupedData.map(row => [
+                    row.college, row.batch, row.course, row.branch, row.year, row.semester,
+                    row.totalStudents, row.presentToday, row.absentToday, row.rejectedToday,
+                    row.markedToday, row.pendingToday,
+                    row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString() : '—'
+                ])
+            ];
+            const tableSheet = XLSX.utils.aoa_to_sheet(tableData);
+            XLSX.utils.book_append_sheet(workbook, tableSheet, 'Grouped Data');
+
+            const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="internship_day_end_${reportDate}.xlsx"`);
+            return res.send(buffer);
+        } else {
+            return res.status(400).json({ success: false, message: 'Only XLSX format is currently supported.' });
+        }
+
+    } catch (error) {
+        console.error('Error generating day end report download:', error);
+        res.status(500).json({ success: false, message: 'Server error while generating download.' });
+    }
+};
+
 exports.getAttendanceDetails = async (req, res) => {
     try {
         const { id } = req.params;
@@ -315,7 +551,42 @@ exports.assignInternship = async (req, res) => {
 
         console.log(`Found ${students.length} students to assign.`);
 
-        // 2. Prepare bulk insert
+        // 2. Check for Overlapping Assignments
+        const studentIdList = students.map(s => s.id);
+        if (studentIdList.length > 0) {
+            // Overlap Condition: (NewStart <= ExistingEnd) AND (NewEnd >= ExistingStart)
+            const [existingAssignments] = await masterPool.query(`
+                SELECT 
+                    ia.student_id, 
+                    s.student_name, 
+                    s.admission_number, 
+                    il.company_name, 
+                    ia.start_date, 
+                    ia.end_date
+                FROM internship_assignments ia
+                JOIN students s ON ia.student_id = s.id
+                JOIN internship_locations il ON ia.internship_id = il.id
+                WHERE ia.student_id IN (?)
+                AND ia.start_date <= ? 
+                AND ia.end_date >= ?
+            `, [studentIdList, endDate, startDate]);
+
+            if (existingAssignments.length > 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Some students already have overlapping internships.',
+                    conflicts: existingAssignments.map(c => ({
+                        studentName: c.student_name,
+                        admissionNumber: c.admission_number,
+                        companyName: c.company_name,
+                        startDate: c.start_date,
+                        endDate: c.end_date
+                    }))
+                });
+            }
+        }
+
+        // 3. Prepare bulk insert
         // allowedDays should be JSON string
         const allowedDaysStr = JSON.stringify(allowedDays);
         const values = students.map(s => [
@@ -713,5 +984,103 @@ exports.getMyAssignment = async (req, res) => {
     } catch (error) {
         console.error('Error fetching my assignment:', error);
         res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+exports.getInternshipFilters = async (req, res) => {
+    try {
+        const { batch, college, course, branch, year, semester } = req.query;
+
+        let query = `
+            SELECT DISTINCT
+                s.batch,
+                s.course,
+                s.branch,
+                s.current_year,
+                s.current_semester,
+                s.college
+            FROM students s
+            JOIN internship_assignments ia ON s.id = ia.student_id
+            WHERE ia.end_date >= CURDATE()
+            AND s.student_status = 'Regular'
+        `;
+
+        const params = [];
+
+        // Apply filters dynamically for cascading
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (college) { query += ' AND s.college = ?'; params.push(college); } // Helper if colleges have IDs
+        if (course) { query += ' AND s.course = ?'; params.push(course); }
+        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (year) { query += ' AND s.current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
+
+        query += ' ORDER BY s.batch, s.course, s.branch';
+
+        const [rows] = await masterPool.query(query, params);
+
+        // Extract unique values
+        const batches = [...new Set(rows.map(r => r.batch).filter(Boolean))].sort();
+        const courses = [...new Set(rows.map(r => r.course).filter(Boolean))].sort();
+        const branches = [...new Set(rows.map(r => r.branch).filter(Boolean))].sort();
+        const years = [...new Set(rows.map(r => r.current_year).filter(Boolean))].sort((a, b) => a - b);
+        const semesters = [...new Set(rows.map(r => r.current_semester).filter(Boolean))].sort((a, b) => a - b);
+        const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))].sort();
+
+        res.json({
+            success: true,
+            data: {
+                batches,
+                courses,
+                branches,
+                years,
+                semesters,
+                colleges
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching internship filters:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching filters' });
+    }
+};
+
+exports.getEligibleStudents = async (req, res) => {
+    try {
+        const { batch, college, course, branch, year, semester } = req.query;
+
+        // Base query for all regular students
+        let query = `
+            SELECT 
+                id, 
+                student_name, 
+                admission_number, 
+                batch, 
+                course, 
+                branch, 
+                current_year, 
+                current_semester 
+            FROM students 
+            WHERE student_status = 'Regular'
+        `;
+        const params = [];
+
+        if (batch) { query += ' AND batch = ?'; params.push(batch); }
+        if (college) { query += ' AND college = ?'; params.push(college); }
+        if (course) { query += ' AND course = ?'; params.push(course); }
+        if (branch) { query += ' AND branch = ?'; params.push(branch); }
+        if (year) { query += ' AND current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND current_semester = ?'; params.push(semester); }
+
+        query += ' ORDER BY student_name ASC';
+
+        const [rows] = await masterPool.query(query, params);
+
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching eligible students:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching students' });
     }
 };
