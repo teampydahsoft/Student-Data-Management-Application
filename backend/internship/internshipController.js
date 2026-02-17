@@ -1048,30 +1048,35 @@ exports.getEligibleStudents = async (req, res) => {
     try {
         const { batch, college, course, branch, year, semester } = req.query;
 
-        // Base query for all regular students
+        // Base query for all regular students, with LEFT JOIN to find active internships
         let query = `
             SELECT 
-                id, 
-                student_name, 
-                admission_number, 
-                batch, 
-                course, 
-                branch, 
-                current_year, 
-                current_semester 
-            FROM students 
-            WHERE student_status = 'Regular'
+                s.id, 
+                s.student_name, 
+                s.admission_number, 
+                s.batch, 
+                s.course, 
+                s.branch, 
+                s.current_year, 
+                s.current_semester,
+                il.company_name AS current_company,
+                ia.start_date AS current_start_date,
+                ia.end_date AS current_end_date
+            FROM students s
+            LEFT JOIN internship_assignments ia ON s.id = ia.student_id AND ia.end_date >= CURDATE()
+            LEFT JOIN internship_locations il ON ia.internship_id = il.id
+            WHERE s.student_status = 'Regular'
         `;
         const params = [];
 
-        if (batch) { query += ' AND batch = ?'; params.push(batch); }
-        if (college) { query += ' AND college = ?'; params.push(college); }
-        if (course) { query += ' AND course = ?'; params.push(course); }
-        if (branch) { query += ' AND branch = ?'; params.push(branch); }
-        if (year) { query += ' AND current_year = ?'; params.push(year); }
-        if (semester) { query += ' AND current_semester = ?'; params.push(semester); }
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (college) { query += ' AND s.college = ?'; params.push(college); }
+        if (course) { query += ' AND s.course = ?'; params.push(course); }
+        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (year) { query += ' AND s.current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
-        query += ' ORDER BY student_name ASC';
+        query += ' ORDER BY s.student_name ASC';
 
         const [rows] = await masterPool.query(query, params);
 

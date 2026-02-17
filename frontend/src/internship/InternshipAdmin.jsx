@@ -289,10 +289,22 @@ const InternshipAdmin = () => {
                     batch: r.batch,
                     branch: r.branch,
                     year: r.current_year,
-                    semester: r.current_semester
+                    semester: r.current_semester,
+                    currentCompany: r.current_company,
+                    currentStartDate: r.current_start_date,
+                    currentEndDate: r.current_end_date
                 }));
                 setAvailableStudents(students);
                 setSelectedStudentIds([]); // Reset selection
+
+                const assignedCount = students.filter(s => s.currentCompany).length;
+                if (assignedCount > 0) {
+                    toast(`${assignedCount} students are currently assigned to an internship.`, {
+                        icon: '⚠️',
+                        duration: 5000,
+                    });
+                }
+
                 if (students.length === 0) toast('No students found with these filters');
             }
         } catch (error) {
@@ -922,11 +934,12 @@ const InternshipAdmin = () => {
                                                     </th>
                                                     <th className="px-4 py-2">Name / ID</th>
                                                     <th className="px-4 py-2">Branch / Batch</th>
+                                                    <th className="px-4 py-2">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200 bg-white">
                                                 {availableStudents.map(student => (
-                                                    <tr key={student.id} className="hover:bg-gray-50">
+                                                    <tr key={student.id} className={`hover:bg-gray-50 ${student.currentCompany ? 'bg-yellow-50' : ''}`}>
                                                         <td className="px-4 py-2">
                                                             <input
                                                                 type="checkbox"
@@ -941,6 +954,17 @@ const InternshipAdmin = () => {
                                                         <td className="px-4 py-2 text-xs text-gray-600">
                                                             <div>{student.batch} - {student.branch}</div>
                                                             <div>{student.year}-{student.semester}</div>
+                                                        </td>
+                                                        <td className="px-4 py-2">
+                                                            {student.currentCompany ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                                    At {student.currentCompany}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                                                    Available
+                                                                </span>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 ))}
