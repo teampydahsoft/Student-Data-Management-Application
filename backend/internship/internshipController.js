@@ -135,7 +135,7 @@ exports.getAttendanceReport = async (req, res) => {
                 AND ia.attendance_date = CURDATE()
             LEFT JOIN internship_locations il 
                 ON ia.internship_id = il.id
-            LEFT JOIN internship_assignments i_assign
+            JOIN internship_assignments i_assign
                 ON s.id = i_assign.student_id
                 AND CURDATE() BETWEEN i_assign.start_date AND i_assign.end_date
             LEFT JOIN internship_locations il_assigned
