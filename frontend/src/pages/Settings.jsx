@@ -20,7 +20,8 @@ import {
   FileText,
   Calendar,
   Bell,
-  TrendingUp
+  TrendingUp,
+  Layout
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -31,6 +32,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import AcademicCalendar from '../components/AcademicCalendar';
 import NotificationSettings from '../components/NotificationSettings';
 import CollegeTransfer from './CollegeTransfer';
+import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettings';
 import { isFullAccessRole } from '../constants/rbac';
 
 // Field categorization function (same as PublicForm.jsx)
@@ -2003,6 +2005,25 @@ const Settings = () => {
             </div>
           </button>
 
+          <button
+            onClick={() => setActiveSection('student-layout')}
+            className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'student-layout'
+              ? 'border-blue-500 bg-blue-50 shadow-md'
+              : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-full p-2 ${activeSection === 'student-layout' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+                }`}>
+                <Layout size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Student Portal Layout</h2>
+                <p className="text-xs text-gray-500">Enable/Disable sidebar items</p>
+              </div>
+            </div>
+          </button>
+
         </div>
 
         {/* Content Section */}
@@ -2880,6 +2901,7 @@ const Settings = () => {
                       const addressFields = formEditData.formFields.filter(f => categorizeField(f) === 'address');
                       // Additional fields exclude Caste (moved to Basic) and Personal Information fields
                       const additionalFields = formEditData.formFields.filter(f => {
+                        if (f.isEnabled === false) return false;
                         const cat = categorizeField(f);
                         if (cat !== 'additional') return false;
                         const key = f.key?.toLowerCase() || '';
@@ -3319,10 +3341,8 @@ const Settings = () => {
                       const label = f.label?.toLowerCase() || '';
                       // Exclude Caste, DOB, and Aadhar from additional
                       if (key.includes('caste') || label.includes('caste') ||
-                        key.includes('dob') || key.includes('date of birth') ||
-                        label.includes('dob') || label.includes('date of birth') ||
-                        key.includes('adhar') || key.includes('aadhar') ||
-                        label.includes('adhar') || label.includes('aadhar')) {
+                        key.includes('dob') || label.includes('date of birth') ||
+                        key.includes('adhar') || label.includes('aadhar')) {
                         return false;
                       }
                       return true;
@@ -3413,8 +3433,14 @@ const Settings = () => {
 
         {/* College Transfer Section */}
         {activeSection === 'college-transfer' && (
-          <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden p-4">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 min-h-[500px]">
             <CollegeTransfer />
+          </div>
+        )}
+
+        {activeSection === 'student-layout' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
+            <StudentPortalLayoutSettings />
           </div>
         )}
 

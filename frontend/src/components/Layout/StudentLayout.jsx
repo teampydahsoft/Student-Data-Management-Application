@@ -60,6 +60,7 @@ const StudentLayout = ({ children }) => {
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
     const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
     const [hasInternship, setHasInternship] = useState(false);
+    const [layoutSettings, setLayoutSettings] = useState(null);
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -96,6 +97,21 @@ const StudentLayout = ({ children }) => {
             }
         };
         checkInternship();
+    }, []);
+
+    // Fetch Layout Settings
+    useEffect(() => {
+        const fetchLayoutSettings = async () => {
+            try {
+                const res = await api.get('/settings/student-layout');
+                if (res.data.success) {
+                    setLayoutSettings(res.data.data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch layout settings in student layout', error);
+            }
+        };
+        fetchLayoutSettings();
     }, []);
 
     // Birthday check: is today the student's birthday? (for portal birthday theme)
@@ -217,11 +233,19 @@ const StudentLayout = ({ children }) => {
         { icon: RiFileList3Line, activeIcon: RiFileList3Fill, label: 'Sem Registration', path: '/student/semester-registration' },
         { icon: RiServiceLine, activeIcon: RiServiceFill, label: 'Services', path: '/student/services' },
         { icon: RiTicketLine, activeIcon: RiTicketFill, label: 'Maintenance', path: '/student/my-tickets', isExternal: true, isTicketApp: true },
-        // { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
-        // { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
+        { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
+        { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
         { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' },
     ].filter(item => {
         if (item.label === 'Internship' && !hasInternship) return false;
+
+        if (layoutSettings) {
+            // Map path to setting key
+            const key = item.path.replace('/student/', '');
+            // Check if explicitly disabled (if key exists and is false)
+            if (layoutSettings[key] === false) return false;
+        }
+
         return true;
     });
 

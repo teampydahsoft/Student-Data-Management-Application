@@ -332,3 +332,90 @@ exports.updateAttendanceSettings = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/settings/student-layout
+ * Get student portal layout settings
+ */
+exports.getStudentLayoutSettings = async (req, res) => {
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['student_portal_layout']
+    );
+
+    let layout = {
+      dashboard: true,
+      announcements: true,
+      clubs: true,
+      events: true,
+      attendance: true,
+      internship: true,
+      timetable: true,
+      'semester-registration': true,
+      services: true,
+      'my-tickets': true,
+      feedback: true,
+      transport: false,
+      fees: false
+    };
+
+    if (settings && settings.length > 0) {
+      try {
+        const storedLayout = JSON.parse(settings[0].value);
+        layout = { ...layout, ...storedLayout };
+      } catch (e) {
+        console.error('Error parsing student layout settings:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: layout
+    });
+  } catch (error) {
+    console.error('Get student layout settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching student layout settings'
+    });
+  }
+};
+
+/**
+ * PUT /api/settings/student-layout
+ * Update student portal layout settings
+ */
+exports.updateStudentLayoutSettings = async (req, res) => {
+  try {
+    const { layout } = req.body;
+
+    if (!layout || typeof layout !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Layout object is required'
+      });
+    }
+
+    const value = JSON.stringify(layout);
+
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) 
+       VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['student_portal_layout', value, new Date(), value, new Date()]
+    );
+
+    res.json({
+      success: true,
+      message: 'Student layout settings saved successfully',
+      data: layout
+    });
+  } catch (error) {
+    console.error('Update student layout settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating student layout settings'
+    });
+  }
+};
