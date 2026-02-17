@@ -190,25 +190,47 @@ function CategoryReport() {
 
   const handleDownload = async (format) => {
     setDownloading(true);
+    const downloadToast = toast.loading(`Preparing ${format === 'pdf' ? 'PDF' : 'Excel'}...`);
     try {
       const params = buildExportParams();
       params.append('format', format);
+
       const res = await api.get(`/students/reports/category/export?${params.toString()}`, {
-        responseType: 'blob'
+        responseType: 'blob',
+        // Ensure we catch server-side errors even with blob response
+        validateStatus: (status) => status >= 200 && status < 300
       });
+
+      // Check if result is actually a JSON error (can happen if header isn't set right or interceptors miss it)
+      if (res.data.type === 'application/json') {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const errorData = JSON.parse(reader.result);
+            toast.error(errorData.message || 'Export failed', { id: downloadToast });
+          } catch (e) {
+            toast.error('Export failed on server', { id: downloadToast });
+          }
+        };
+        reader.readAsText(res.data);
+        return;
+      }
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
       const ext = format === 'pdf' ? 'pdf' : 'xlsx';
-      link.setAttribute('download', `category_report_${new Date().toISOString().split('T')[0]}.${ext}`);
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `category_report_${dateStr}.${ext}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      toast.success(`${format === 'pdf' ? 'PDF' : 'Excel'} downloaded`);
+      toast.success(`${format === 'pdf' ? 'PDF' : 'Excel'} downloaded`, { id: downloadToast });
     } catch (e) {
-      console.error(e);
-      toast.error(`Failed to download ${format === 'pdf' ? 'PDF' : 'Excel'}`);
+      console.error('Download error:', e);
+      const message = e.response?.data?.message || `Failed to download ${format.toUpperCase()}`;
+      toast.error(message, { id: downloadToast });
     } finally {
       setDownloading(false);
     }

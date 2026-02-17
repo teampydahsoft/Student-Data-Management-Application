@@ -421,10 +421,10 @@ const generateAttendanceReportPDF = async ({
   doc.fillColor('#1E40AF'); // Blue for percentage
   doc.font('Helvetica-Bold');
   // attendancePercentage is already a string with '%' appended, so don't add another '%'
-  const percentageDisplay = attendancePercentage && typeof attendancePercentage === 'string' 
-    ? attendancePercentage 
-    : (attendancePercentage && typeof attendancePercentage === 'number' 
-      ? `${attendancePercentage.toFixed(2)}%` 
+  const percentageDisplay = attendancePercentage && typeof attendancePercentage === 'string'
+    ? attendancePercentage
+    : (attendancePercentage && typeof attendancePercentage === 'number'
+      ? `${attendancePercentage.toFixed(2)}%`
       : '0.00%');
   doc.text(percentageDisplay, rightCol + 70, yPos + (lineHeight * 6));
   doc.fillColor('#000000'); // Reset to black
@@ -1218,103 +1218,285 @@ const generateCategoryReportPDF = async ({ data = [], categoryColumns = [], filt
   const fileName = `category_report_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`;
   const filePath = path.join(tempDir, fileName);
 
-  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 24 });
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  doc.fontSize(16).text('Category Report (Abstract)', { align: 'center' });
-  doc.moveDown(0.3);
-  doc.fontSize(9).fillColor('#666').text(`Generated on ${new Date().toLocaleString()}`, { align: 'center' });
-  doc.moveDown(0.5);
+  // ============================================
+  // HEADER SECTION: COLLEGE HEADER (Report Style)
+  // ============================================
+  const collegeName = filters.college && filters.college !== 'All' ? filters.college : 'Pydah Group of Educational Institutions';
+  const isGlobalReport = !filters.college || filters.college === 'All';
 
-  if (filters && (filters.college !== 'All' || filters.batch !== 'All' || filters.course !== 'All' || filters.branch !== 'All' || filters.year !== 'All' || filters.semester !== 'All')) {
-    doc.fontSize(9).fillColor('#333').text(`Filters: College ${filters.college || 'All'} | Batch ${filters.batch || 'All'} | Program ${filters.course || 'All'} | Branch ${filters.branch || 'All'} | Year ${filters.year || 'All'} | Sem ${filters.semester || 'All'}`);
+  // Fetch college details from database
+  let collegeDetails = {
+    name: collegeName,
+    affiliation: isGlobalReport ? 'All Campuses' : 'An Autonomous Institution',
+    location: 'Kakinada | Andhra Pradesh | INDIA'
+  };
+
+  if (!isGlobalReport) {
+    try {
+      const [collegeRows] = await masterPool.query(
+        'SELECT name, metadata FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
+        [collegeName]
+      );
+      if (collegeRows && collegeRows.length > 0) {
+        const college = collegeRows[0];
+        collegeDetails.name = college.name;
+        if (college.metadata) {
+          const metadata = typeof college.metadata === 'string'
+            ? JSON.parse(college.metadata)
+            : college.metadata;
+          if (metadata.affiliation) collegeDetails.affiliation = metadata.affiliation;
+          if (metadata.location) collegeDetails.location = metadata.location;
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch college details:', error.message);
+    }
+  }
+
+  const headerTop = 30;
+  const pageWidth = doc.page.width;
+  const leftMargin = 30;
+  const rightMargin = 30;
+  const contentWidth = pageWidth - leftMargin - rightMargin;
+
+  // Logo section
+  const logoWidth = 60;
+  const logoHeight = 60;
+  const logoLeft = leftMargin;
+  const logoTop = headerTop;
+
+  let logoLoaded = false;
+  try {
+    const tempLogoPath = await downloadLogo();
+    if (fs.existsSync(tempLogoPath)) {
+      doc.image(tempLogoPath, logoLeft, logoTop, {
+        width: logoWidth,
+        height: logoHeight,
+        fit: [logoWidth, logoHeight]
+      });
+      logoLoaded = true;
+      setTimeout(() => {
+        try { if (fs.existsSync(tempLogoPath)) fs.unlinkSync(tempLogoPath); } catch (e) { }
+      }, 5000);
+    }
+  } catch (e) { }
+
+  if (!logoLoaded) {
+    const localLogoPath = path.join(process.cwd(), 'frontend', 'public', 'logo.png');
+    if (fs.existsSync(localLogoPath)) {
+      try {
+        doc.image(localLogoPath, logoLeft, logoTop, { width: logoWidth, height: logoHeight });
+        logoLoaded = true;
+      } catch (e) { }
+    }
+  }
+
+  // College Info
+  const infoLeft = logoLeft + logoWidth + 15;
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('#1F2937');
+  doc.text(collegeDetails.name, infoLeft, logoTop);
+
+  doc.fontSize(8).font('Helvetica').fillColor('#6B7280');
+  doc.text(`${collegeDetails.affiliation} | ${collegeDetails.location}`, infoLeft, logoTop + 22);
+
+  doc.fontSize(12).font('Helvetica-Bold').fillColor('#FF6B35');
+  doc.text('Category Distribution Report (Abstract)', infoLeft, logoTop + 35);
+
+  const formattedDate = new Date().toLocaleDateString('en-IN', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+  doc.fontSize(8).font('Helvetica').fillColor('#374151');
+  doc.text(`Generated on: ${formattedDate}`, infoLeft, logoTop + 50);
+
+  doc.rect(leftMargin, headerTop + 65, contentWidth, 1.5).fillColor('#FF6B35').fill();
+
+  doc.y = headerTop + 75;
+
+  // Filter Summary
+  const filterTerms = [];
+  if (filters.college && filters.college !== 'All') filterTerms.push(`College: ${filters.college}`);
+  if (filters.batch && filters.batch !== 'All') filterTerms.push(`Batch: ${filters.batch}`);
+  if (filters.course && filters.course !== 'All') filterTerms.push(`Course: ${filters.course}`);
+  if (filters.branch && filters.branch !== 'All') filterTerms.push(`Branch: ${filters.branch}`);
+  if (filters.year && filters.year !== 'All') filterTerms.push(`Year: ${filters.year}`);
+  if (filters.semester && filters.semester !== 'All') filterTerms.push(`Sem: ${filters.semester}`);
+
+  if (filterTerms.length > 0) {
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#1F2937').text('Filters Applied:', leftMargin, doc.y, { continued: true });
+    doc.font('Helvetica').text(` ${filterTerms.join(' | ')}`);
     doc.moveDown(0.5);
   }
 
   const isAbstract = Array.isArray(categoryColumns) && categoryColumns.length > 0 && data.length > 0 && data[0].category_breakdown != null;
-  const rowHeight = 16;
-  const headerBg = '#f3f4f6';
-  const startX = 24;
+  const rowHeight = 18;
+  const headerBg = '#1E40AF';
+  const startX = leftMargin;
 
   if (isAbstract) {
-    const fixedCols = ['College', 'Batch', 'Program', 'Branch', 'Year', 'Sem', 'Total'];
-    const allHeaders = [...fixedCols, ...categoryColumns];
-    const numCols = allHeaders.length;
-    const pageWidth = doc.page.width - 48;
-    const fixedWidth = Math.min(55, (pageWidth - 30 * Math.max(0, numCols - 7)) / 7);
-    const catColWidth = Math.max(18, (pageWidth - fixedWidth * 7) / Math.max(1, categoryColumns.length));
-    const colWidths = [...Array(7)].fill(fixedWidth).concat([...Array(categoryColumns.length)].fill(catColWidth));
+    const fixedHeaders = ['College', 'Batch', 'Program', 'Branch', 'Yr', 'Sem', 'Total'];
+    const allHeaders = [...fixedHeaders, ...categoryColumns];
+
+    // Dynamic column calculation - Optimized for A4 Landscape
+    // Total content width is ~782
+    const fixedColWidths = [140, 40, 115, 100, 22, 22, 35];
+    const usedWidth = fixedColWidths.reduce((a, b) => a + b, 0);
+    const remainingWidth = contentWidth - usedWidth;
+    const catWidth = Math.max(18, remainingWidth / Math.max(1, categoryColumns.length));
+
+    const colWidths = [...fixedColWidths, ...Array(categoryColumns.length).fill(catWidth)];
     const tableWidth = colWidths.reduce((a, b) => a + b, 0);
 
+    const headerRowHeight = 24;
     const drawHeader = (y) => {
-      doc.rect(startX, y, tableWidth, rowHeight).fill(headerBg);
-      doc.fillColor('#000').fontSize(7).font('Helvetica-Bold');
+      doc.rect(startX, y, tableWidth, headerRowHeight).fill(headerBg);
+      doc.fillColor('#FFFFFF').fontSize(7).font('Helvetica-Bold');
+
       let x = startX + 3;
-      allHeaders.forEach((h, idx) => {
-        doc.text(String(h).substring(0, 12), x, y + 4, { width: colWidths[idx] - 4, align: idx >= 7 ? 'right' : 'left' });
+
+      // First Row: Standard labels (vertically centered in 24 height)
+      fixedHeaders.forEach((h, idx) => {
+        doc.text(String(h), x, y + 8, {
+          width: colWidths[idx] - 4,
+          height: 12,
+          align: idx === 6 ? 'right' : 'left',
+          lineBreak: false
+        });
         x += colWidths[idx];
+      });
+
+      // Top Row Title for Categories
+      const categoriesStartX = x;
+      const categoriesWidth = tableWidth - (categoriesStartX - startX);
+      doc.fontSize(6).text('CATEGORY DISTRIBUTION BREAKDOWN', categoriesStartX, y + 3, {
+        width: categoriesWidth,
+        align: 'center',
+        lineBreak: false
+      });
+
+      // Bottom Row Individual Caste Names
+      x = categoriesStartX;
+      categoryColumns.forEach((h, idx) => {
+        doc.text(String(h), x, y + 13, {
+          width: colWidths[fixedHeaders.length + idx] - 4,
+          align: 'center',
+          ellipsis: true,
+          lineBreak: false
+        });
+        x += colWidths[fixedHeaders.length + idx];
       });
       doc.font('Helvetica');
     };
 
     let currentY = doc.y;
     drawHeader(currentY);
-    currentY += rowHeight;
+    currentY += headerRowHeight;
 
     data.forEach((row, i) => {
-      if (currentY + rowHeight > doc.page.height - 30) {
-        doc.addPage('a4', 'landscape');
-        currentY = 24;
+      // Check for page break
+      if (currentY + rowHeight > doc.page.height - 60) {
+        doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 });
+
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1F2937');
+        doc.text(collegeDetails.name, 30, 30);
+        doc.fontSize(7).font('Helvetica').fillColor('#6B7280');
+        doc.text('Category Distribution Report (Abstract) - Continued', 30, 42);
+        doc.rect(30, 52, contentWidth, 1).fillColor('#FF6B35').fill();
+
+        currentY = 65;
         drawHeader(currentY);
-        currentY += rowHeight;
+        currentY += headerRowHeight;
       }
-      doc.fillColor(i % 2 === 0 ? '#fff' : '#f9fafb');
-      doc.rect(startX, currentY, tableWidth, rowHeight).fillAndStroke('#fff', '#e5e7eb');
-      doc.fillColor('#000').fontSize(7);
+
+      // Alternate row bg
+      if (i % 2 === 1) {
+        doc.rect(startX, currentY, tableWidth, rowHeight).fillColor('#F8FAFC').fill();
+      }
+
+      doc.rect(startX, currentY, tableWidth, rowHeight).strokeColor('#E2E8F0').stroke();
+      doc.fillColor('#1F2937').fontSize(7);
+
       let x = startX + 3;
       const vals = [row.college, row.batch, row.course, row.branch, row.current_year, row.current_semester, row.total];
+
       vals.forEach((v, idx) => {
-        doc.text(String(v ?? '-').substring(0, 10), x, currentY + 4, { width: colWidths[idx] - 4, align: idx >= 6 ? 'right' : 'left' });
+        const text = String(v ?? '-');
+        doc.text(text, x, currentY + 5, {
+          width: colWidths[idx] - 4,
+          height: 10,
+          align: idx === 6 ? 'right' : 'left',
+          ellipsis: true,
+          lineBreak: false
+        });
         x += colWidths[idx];
       });
+
       categoryColumns.forEach((c, idx) => {
         const n = row.category_breakdown[c] ?? 0;
-        doc.text(String(n), x, currentY + 4, { width: colWidths[7 + idx] - 4, align: 'right' });
-        x += colWidths[7 + idx];
+        doc.text(String(n), x, currentY + 5, {
+          width: colWidths[fixedHeaders.length + idx] - 4,
+          height: 10,
+          align: 'right',
+          lineBreak: false
+        });
+        x += colWidths[fixedHeaders.length + idx];
       });
+
       currentY += rowHeight;
     });
 
     const grandTotal = data.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-    doc.y = currentY + 6;
-    doc.font('Helvetica-Bold').fontSize(8).text(`Grand Total: ${grandTotal}`, startX, doc.y, { width: tableWidth, align: 'right' });
+    // Ensure Grand Total doesn't split onto a new page alone
+    if (currentY + 30 > doc.page.height - 40) {
+      doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 });
+      currentY = 30;
+    }
+    doc.y = currentY + 10;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#1E40AF');
+    doc.text(`Grand Total: ${grandTotal}`, startX, doc.y, { width: tableWidth, align: 'right' });
   } else {
-    const colWidths = [280, 120];
-    const tableWidth = colWidths[0] + colWidths[1];
-    const tableTop = doc.y;
-    doc.rect(startX, tableTop, tableWidth, rowHeight).fill(headerBg);
-    doc.fillColor('#000').fontSize(10).font('Helvetica-Bold');
-    doc.text('Category', startX + 5, tableTop + 5, { width: colWidths[0] - 10 });
-    doc.text('Count', startX + colWidths[0], tableTop + 5, { width: colWidths[1] - 10, align: 'right' });
-    doc.font('Helvetica').fontSize(10);
-    let currentY = tableTop + rowHeight;
+    // Normal List Format
+    const colWidths = [contentWidth - 80, 80];
+    const tableWidth = contentWidth;
+
+    const drawSimpleHeader = (y) => {
+      doc.rect(startX, y, tableWidth, rowHeight).fill(headerBg);
+      doc.fillColor('#FFFFFF').fontSize(9).font('Helvetica-Bold');
+      doc.text('Category', startX + 5, y + 5, { width: colWidths[0] - 10 });
+      doc.text('Count', startX + colWidths[0], y + 5, { width: colWidths[1] - 10, align: 'right' });
+    };
+
+    let currentY = doc.y;
+    drawSimpleHeader(currentY);
+    currentY += rowHeight;
+
     data.forEach((row, i) => {
-      doc.fillColor(i % 2 === 0 ? '#fff' : '#f9fafb');
-      doc.rect(startX, currentY, tableWidth, rowHeight).fillAndStroke('#fff', '#e5e7eb');
-      doc.fillColor('#000');
-      doc.text(String(row.category || '').substring(0, 50), startX + 5, currentY + 5, { width: colWidths[0] - 10 });
-      doc.text(String(row.count), startX + colWidths[0], currentY + 5, { width: colWidths[1] - 10, align: 'right' });
+      if (currentY + rowHeight > doc.page.height - 40) {
+        doc.addPage('a4', 'landscape');
+        currentY = 30;
+        drawSimpleHeader(currentY);
+        currentY += rowHeight;
+      }
+
+      if (i % 2 === 1) doc.rect(startX, currentY, tableWidth, rowHeight).fillColor('#F8FAFC').fill();
+      doc.rect(startX, currentY, tableWidth, rowHeight).strokeColor('#E2E8F0').stroke();
+      doc.fillColor('#1F2937').fontSize(8).font('Helvetica');
+
+      doc.text(String(row.category || 'Not Specified'), startX + 5, currentY + 5, { width: colWidths[0] - 10 });
+      doc.text(String(row.count || 0), startX + colWidths[0], currentY + 5, { width: colWidths[1] - 10, align: 'right' });
       currentY += rowHeight;
     });
+
     const totalCount = data.reduce((sum, r) => sum + (Number(r.count) || 0), 0);
     doc.y = currentY + 10;
-    doc.font('Helvetica-Bold').text(`Total: ${totalCount}`, startX, doc.y, { width: tableWidth, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#1E40AF');
+    doc.text(`Total Students: ${totalCount}`, startX, doc.y, { width: tableWidth, align: 'right' });
   }
 
-  doc.font('Helvetica');
   doc.end();
-
   return new Promise((resolve, reject) => {
     stream.on('finish', () => resolve(filePath));
     stream.on('error', reject);
