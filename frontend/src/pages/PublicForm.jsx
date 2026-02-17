@@ -80,7 +80,7 @@ const ADDITIONAL_FIELDS = [
 const categorizeField = (field) => {
   const key = field.key?.toLowerCase() || '';
   const label = field.label?.toLowerCase() || '';
-  
+
   // Normalize: remove special chars, extra spaces, and parentheses content
   const normalize = (str) => {
     return str
@@ -91,33 +91,33 @@ const categorizeField = (field) => {
       .trim()
       .toLowerCase();
   };
-  
+
   const normalizedKey = normalize(key);
   const normalizedLabel = normalize(label);
-  
+
   // Helper to check if pattern matches
   const matches = (pattern) => {
     const normalizedPattern = normalize(pattern);
-    return normalizedKey.includes(normalizedPattern) || 
-           normalizedLabel.includes(normalizedPattern) ||
-           normalizedKey.startsWith(normalizedPattern) || 
-           normalizedLabel.startsWith(normalizedPattern) ||
-           normalizedKey === normalizedPattern || 
-           normalizedLabel === normalizedPattern;
+    return normalizedKey.includes(normalizedPattern) ||
+      normalizedLabel.includes(normalizedPattern) ||
+      normalizedKey.startsWith(normalizedPattern) ||
+      normalizedLabel.startsWith(normalizedPattern) ||
+      normalizedKey === normalizedPattern ||
+      normalizedLabel === normalizedPattern;
   };
-  
+
   // IMPORTANT: Check ACADEMIC_FIELDS first to catch "Admission Year" before it matches BASIC_FIELDS
   if (ACADEMIC_FIELDS.some(matches)) return 'academic';
-  
+
   // Check ADDRESS_FIELDS before BASIC_FIELDS to catch "CityVillage Name", "Mandal Name", "District Name"
   if (ADDRESS_FIELDS.some(matches)) return 'address';
-  
+
   if (BASIC_FIELDS.some(matches)) return 'basic';
-  
+
   if (CONTACT_FIELDS.some(matches)) return 'contact';
-  
+
   if (ADDITIONAL_FIELDS.some(matches)) return 'additional';
-  
+
   return 'other';
 };
 
@@ -131,7 +131,7 @@ const PublicForm = () => {
   const [formData, setFormData] = useState({});
   const [admissionNumber, setAdmissionNumber] = useState('');
   const [fileData, setFileData] = useState({});
-  
+
   // Certificate status state - tracks Yes/No for each certificate
   const [certificateStatus, setCertificateStatus] = useState({});
   const [fetchingForm, setFetchingForm] = useState(false);
@@ -139,7 +139,7 @@ const PublicForm = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [courseOptions, setCourseOptions] = useState([]);
   const [courseOptionsLoading, setCourseOptionsLoading] = useState(true);
-  
+
   // Additional state for structured form
   const [colleges, setColleges] = useState([]);
   const [collegesLoading, setCollegesLoading] = useState(true);
@@ -147,7 +147,7 @@ const PublicForm = () => {
   const [academicYearsLoading, setAcademicYearsLoading] = useState(true);
   const [selectedCollegeId, setSelectedCollegeId] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
-  
+
 
   // Mobile browser detection - moved to component level
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -235,7 +235,7 @@ const PublicForm = () => {
       // Initialize form data for enabled fields only
       const initialData = {};
       let enabledFields = (cachedForm.form_fields || []).filter(field => field.isEnabled !== false);
-      
+
       // Add system fields if missing (order: Batch → College → Course → Branch → Year → Semester)
       // IMPORTANT: Use required: false by default - admin must set required status in Settings
       const requiredSystemFields = [
@@ -247,9 +247,9 @@ const PublicForm = () => {
         { key: 'current_semester', label: 'Current Semester', type: 'select', required: false },
         { key: 'apaar_id', label: 'APAAR ID', type: 'text', required: false }
       ];
-      
+
       requiredSystemFields.forEach(systemField => {
-        const exists = enabledFields.some(f => 
+        const exists = enabledFields.some(f =>
           f.key?.toLowerCase() === systemField.key.toLowerCase() ||
           f.label?.toLowerCase() === systemField.label.toLowerCase()
         );
@@ -257,13 +257,13 @@ const PublicForm = () => {
           enabledFields.push({ ...systemField, isEnabled: true, isSystemField: true });
         }
       });
-      
+
       // IMPORTANT: Use required status from form builder settings - do NOT override
       // Only set default to false if not specified
       enabledFields = enabledFields.map(field => {
         return { ...field, required: field.required === true ? true : false };
       });
-      
+
       enabledFields.forEach((field) => {
         initialData[field.label] = field.type === 'checkbox' ? [] : '';
       });
@@ -301,7 +301,7 @@ const PublicForm = () => {
       // Initialize form data for enabled fields only
       const initialData = {};
       let enabledFields = (response.data.data.form_fields || []).filter(field => field.isEnabled !== false);
-      
+
       // Add system fields if missing (order: Batch → College → Course → Branch → Year → Semester)
       // IMPORTANT: Use required: false by default - admin must set required status in Settings
       const requiredSystemFields = [
@@ -313,9 +313,9 @@ const PublicForm = () => {
         { key: 'current_semester', label: 'Current Semester', type: 'select', required: false },
         { key: 'apaar_id', label: 'APAAR ID', type: 'text', required: false }
       ];
-      
+
       requiredSystemFields.forEach(systemField => {
-        const exists = enabledFields.some(f => 
+        const exists = enabledFields.some(f =>
           f.key?.toLowerCase() === systemField.key.toLowerCase() ||
           f.label?.toLowerCase() === systemField.label.toLowerCase()
         );
@@ -323,13 +323,13 @@ const PublicForm = () => {
           enabledFields.push({ ...systemField, isEnabled: true, isSystemField: true });
         }
       });
-      
+
       // IMPORTANT: Use required status from form builder settings - do NOT override
       // Only set default to false if not specified
       enabledFields = enabledFields.map(field => {
         return { ...field, required: field.required === true ? true : false };
       });
-      
+
       enabledFields.forEach((field) => {
         initialData[field.label] = field.type === 'checkbox' ? [] : '';
       });
@@ -458,7 +458,7 @@ const PublicForm = () => {
     if (!courseType) return;
     const certificates = getCertificatesForCourse();
     if (certificates.length === 0) return;
-    
+
     const allYes = certificates.every(cert => certificateStatus[cert.key] === true);
     if (allYes && certificates.length > 0) {
       setFormData(prev => ({ ...prev, certificates_status: 'Verified' }));
@@ -504,13 +504,13 @@ const PublicForm = () => {
     if (!batchString || typeof batchString !== 'string') {
       return null;
     }
-    
+
     // Try to extract year from formats like "2026-2027", "2026-27", "2026"
     const yearMatch = batchString.match(/^(\d{4})/);
     if (yearMatch) {
       return parseInt(yearMatch[1], 10);
     }
-    
+
     // Try 2-digit year format (e.g., "26-27" -> 2026)
     const shortYearMatch = batchString.match(/^(\d{2})/);
     if (shortYearMatch) {
@@ -518,7 +518,7 @@ const PublicForm = () => {
       // Assume years 00-50 are 2000-2050, 51-99 are 1951-1999
       return shortYear <= 50 ? 2000 + shortYear : 1900 + shortYear;
     }
-    
+
     return null;
   };
 
@@ -529,16 +529,16 @@ const PublicForm = () => {
       .filter(field => {
         const key = (field.key || '').toLowerCase();
         const label = (field.label || '').toLowerCase();
-        return key.includes('batch') || label.includes('batch') || 
-               (label.includes('academic year') && !label.includes('current'));
+        return key.includes('batch') || label.includes('batch') ||
+          (label.includes('academic year') && !label.includes('current'));
       })
       .map(field => field.label);
-    
+
     // Also check for system field "Batch"
     if (batchFieldLabels.length === 0) {
       batchFieldLabels.push('Batch');
     }
-    
+
     for (const label of batchFieldLabels) {
       const value = formData[label];
       if (value) {
@@ -554,7 +554,7 @@ const PublicForm = () => {
       if (!selectedBatch) {
         return ['1', '2', '3', '4'];
       }
-      
+
       // Try to generate from batch
       const batchYear = extractStartYearFromBatch(selectedBatch);
       if (batchYear) {
@@ -569,7 +569,7 @@ const PublicForm = () => {
       }
       return ['1', '2', '3', '4'];
     }
-    
+
     // If batch is selected, generate academic year ranges
     if (selectedBatch) {
       const batchYear = extractStartYearFromBatch(selectedBatch);
@@ -584,7 +584,7 @@ const PublicForm = () => {
         );
       }
     }
-    
+
     // Fallback to year numbers if batch parsing fails
     return Array.from(
       { length: activeStructure.totalYears },
@@ -616,7 +616,7 @@ const PublicForm = () => {
         return yearConfig.semesters.map(sem => String(sem.semesterNumber));
       }
     }
-    
+
     // Fallback to default semestersPerYear
     if (!activeStructure?.semestersPerYear) {
       return ['1', '2'];
@@ -709,8 +709,8 @@ const PublicForm = () => {
           const fieldKey = (field.key || '').toLowerCase();
           const fieldLabel = (field.label || '').toLowerCase();
           return (field.label === label) && (
-            fieldKey.includes('batch') || 
-            fieldLabel.includes('batch') || 
+            fieldKey.includes('batch') ||
+            fieldLabel.includes('batch') ||
             (fieldLabel.includes('academic year') && !fieldLabel.includes('current'))
           );
         }) || label === 'Batch';
@@ -801,7 +801,7 @@ const PublicForm = () => {
       // Map form fields to database columns (exclude admission_no for students)
       // Include both enabled fields and system fields
       let enabledFields = (form.form_fields || []).filter(field => field.isEnabled !== false);
-      
+
       // Add system fields if they don't exist
       const requiredSystemFields = [
         { key: 'college', label: 'College', type: 'select' },
@@ -811,9 +811,9 @@ const PublicForm = () => {
         { key: 'current_semester', label: 'Current Semester', type: 'select' },
         { key: 'apaar_id', label: 'APAAR ID', type: 'text' }
       ];
-      
+
       requiredSystemFields.forEach(systemField => {
-        const exists = enabledFields.some(f => 
+        const exists = enabledFields.some(f =>
           f.key?.toLowerCase() === systemField.key.toLowerCase() ||
           f.label?.toLowerCase() === systemField.label.toLowerCase()
         );
@@ -821,7 +821,7 @@ const PublicForm = () => {
           enabledFields.push({ ...systemField, isEnabled: true, isSystemField: true });
         }
       });
-      
+
       enabledFields.forEach((field) => {
         if (field.type === 'file' || field.key.toLowerCase().includes('photo')) {
           // Handle file uploads
@@ -852,8 +852,8 @@ const PublicForm = () => {
     const fieldLabel = field.label?.toLowerCase() || '';
 
     // Previous College - must be an input field, not dropdown
-    if (fieldKey.includes('previous_college') || fieldKey.includes('previouscollege') || 
-        fieldLabel.includes('previous college') || fieldLabel.includes('previouscollege')) {
+    if (fieldKey.includes('previous_college') || fieldKey.includes('previouscollege') ||
+      fieldLabel.includes('previous college') || fieldLabel.includes('previouscollege')) {
       return (
         <input
           type="text"
@@ -867,8 +867,8 @@ const PublicForm = () => {
     }
 
     // College dropdown (not Previous College)
-    if ((fieldKey.includes('college') || fieldLabel.includes('college')) && 
-        !fieldKey.includes('previous') && !fieldLabel.includes('previous')) {
+    if ((fieldKey.includes('college') || fieldLabel.includes('college')) &&
+      !fieldKey.includes('previous') && !fieldLabel.includes('previous')) {
       if (collegesLoading) {
         return (
           <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 flex items-center gap-2 text-sm">
@@ -957,7 +957,7 @@ const PublicForm = () => {
 
     // Branch dropdown
     if (matchesFieldIdentifier(field, BRANCH_FIELD_IDENTIFIERS)) {
-      let availableBranches = selectedCourseOption 
+      let availableBranches = selectedCourseOption
         ? (selectedCourseOption.branches || []).filter((branch) => branch.isActive)
         : [];
 
@@ -1002,11 +1002,11 @@ const PublicForm = () => {
 
     // Current Academic Year - must check AFTER DOB and Admission Year to avoid conflicts
     // Only match if it's explicitly "Current Academic Year" or "current_year" key
-    if (matchesFieldIdentifier(field, YEAR_FIELD_IDENTIFIERS) && 
-        !fieldLabel.includes('dob') && 
-        !fieldLabel.includes('date of birth') &&
-        !fieldLabel.includes('admission') &&
-        (fieldKey === 'current_year' || fieldLabel.includes('current academic year') || fieldLabel.includes('current year'))) {
+    if (matchesFieldIdentifier(field, YEAR_FIELD_IDENTIFIERS) &&
+      !fieldLabel.includes('dob') &&
+      !fieldLabel.includes('date of birth') &&
+      !fieldLabel.includes('admission') &&
+      (fieldKey === 'current_year' || fieldLabel.includes('current academic year') || fieldLabel.includes('current year'))) {
       return (
         <select
           value={formData[field.label] || ''}
@@ -1043,9 +1043,9 @@ const PublicForm = () => {
     }
 
     // Date of Birth - special date field handling (must check BEFORE year field identifiers)
-    if (fieldKey.includes('dob') || fieldLabel.includes('date of birth') || fieldLabel.includes('birth date') || 
-        (fieldLabel.includes('dob') && field.type === 'date') ||
-        (fieldLabel.includes('dob') && fieldLabel.includes('date-month-year'))) {
+    if (fieldKey.includes('dob') || fieldLabel.includes('date of birth') || fieldLabel.includes('birth date') ||
+      (fieldLabel.includes('dob') && field.type === 'date') ||
+      (fieldLabel.includes('dob') && fieldLabel.includes('date-month-year'))) {
       return (
         <input
           type="date"
@@ -1061,8 +1061,8 @@ const PublicForm = () => {
     // Admission Year/Date - must be a date field, not academic year dropdown
     // Check BEFORE year field identifiers to prevent incorrect categorization
     if (fieldKey.includes('admission_date') || fieldKey.includes('admission_date') ||
-        (fieldLabel.includes('admission') && (fieldLabel.includes('date') || fieldLabel.includes('year')) && 
-         !fieldLabel.includes('academic year') && !fieldLabel.includes('current'))) {
+      (fieldLabel.includes('admission') && (fieldLabel.includes('date') || fieldLabel.includes('year')) &&
+        !fieldLabel.includes('academic year') && !fieldLabel.includes('current'))) {
       // If it's explicitly a date type, render as date
       if (field.type === 'date') {
         return (
@@ -1460,13 +1460,15 @@ const PublicForm = () => {
         <div className="bg-white rounded-lg sm:rounded-2xl shadow-xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-indigo-700 text-white p-4 sm:p-6">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <img
-                src="/logo.png"
-                alt="Pydah DB Logo"
-                className="h-10 sm:h-14 w-auto object-contain bg-white/20 rounded-lg p-1 flex-shrink-0"
-                loading="lazy"
-              />
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="p-2 sm:p-2.5 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-lg flex-shrink-0">
+                <img
+                  src="/logo.png"
+                  alt="Pydah DB Logo"
+                  className="h-10 sm:h-12 w-auto object-contain drop-shadow-md transition-transform duration-300 hover:scale-105"
+                  loading="lazy"
+                />
+              </div>
               <div className="min-w-0 flex-1">
                 <h1 className="text-lg sm:text-xl lg:text-2xl font-bold break-words">{form.form_name}</h1>
                 {form.form_description && (
@@ -1475,447 +1477,447 @@ const PublicForm = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="p-4 sm:p-6 lg:p-8">
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-            {/* Categorize fields */}
-            {(() => {
-              // Get all enabled fields from form builder - treat undefined/null as enabled (default behavior)
-              // Only exclude fields explicitly set to false
-              // IMPORTANT: This ensures ALL fields configured in Settings -> Registration Form are displayed
-              let enabledFields = (form.form_fields || []).filter(field => {
-                // If isEnabled is undefined, null, or true, show the field
-                // Only hide if explicitly set to false
-                return field.isEnabled !== false;
-              }).map(field => {
-                // Ensure field has all required properties for rendering
-                // IMPORTANT: Use required status from form builder - do NOT set default to true
-                return {
-                  ...field,
-                  key: field.key || field.label?.toLowerCase().replace(/\s+/g, '_') || `field_${Date.now()}`,
-                  label: field.label || 'Unnamed Field',
-                  type: field.type || 'text',
-                  required: field.required === true ? true : false, // Only true if explicitly set to true
-                  isEnabled: field.isEnabled !== undefined ? field.isEnabled : true
-                };
-              });
-              
-              // CRITICAL: Ensure Batch, College, Course, Branch, Year, and Semester fields are always present
-              // These are required for form functionality
-              // Order: Batch → College → Course → Branch → Year → Semester
-              // IMPORTANT: Use required: false by default - admin must set required status in Settings
-              const requiredSystemFields = [
-                {
-                  key: 'batch',
-                  label: 'Batch',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'college',
-                  label: 'College',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'course',
-                  label: 'Course',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'branch',
-                  label: 'Branch',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'current_year',
-                  label: 'Current Academic Year',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'current_semester',
-                  label: 'Current Semester',
-                  type: 'select',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                },
-                {
-                  key: 'apaar_id',
-                  label: 'APAAR ID',
-                  type: 'text',
-                  required: false,
-                  isEnabled: true,
-                  isSystemField: true
-                }
-              ];
-              
-              // Add system fields if they don't exist in the form
-              // IMPORTANT: System fields are only added if missing - they don't override form builder fields
-              requiredSystemFields.forEach(systemField => {
-                const exists = enabledFields.some(f => {
-                  const fieldKey = (f.key || '').toLowerCase();
-                  const fieldLabel = (f.label || '').toLowerCase();
-                  const systemKey = systemField.key.toLowerCase();
-                  const systemLabel = systemField.label.toLowerCase();
-                  
-                  return fieldKey === systemKey || 
-                         fieldLabel === systemLabel ||
-                         fieldKey.includes(systemKey) ||
-                         fieldLabel.includes(systemLabel);
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+              {/* Categorize fields */}
+              {(() => {
+                // Get all enabled fields from form builder - treat undefined/null as enabled (default behavior)
+                // Only exclude fields explicitly set to false
+                // IMPORTANT: This ensures ALL fields configured in Settings -> Registration Form are displayed
+                let enabledFields = (form.form_fields || []).filter(field => {
+                  // If isEnabled is undefined, null, or true, show the field
+                  // Only hide if explicitly set to false
+                  return field.isEnabled !== false;
+                }).map(field => {
+                  // Ensure field has all required properties for rendering
+                  // IMPORTANT: Use required status from form builder - do NOT set default to true
+                  return {
+                    ...field,
+                    key: field.key || field.label?.toLowerCase().replace(/\s+/g, '_') || `field_${Date.now()}`,
+                    label: field.label || 'Unnamed Field',
+                    type: field.type || 'text',
+                    required: field.required === true ? true : false, // Only true if explicitly set to true
+                    isEnabled: field.isEnabled !== undefined ? field.isEnabled : true
+                  };
                 });
-                if (!exists) {
-                  enabledFields.push(systemField);
-                }
-              });
-              
-              // IMPORTANT: Use required status from form builder settings - do NOT override
-              // Only set default to false if not specified
-              enabledFields = enabledFields.map(field => {
-                return { ...field, required: field.required === true ? true : false };
-              });
-              
-              // Categorize all fields - ensure every field gets a category
-              // First, separate Personal Information fields (Date of Birth, Aadhar Number) from Basic Information
-              const personalFields = enabledFields.filter(f => {
-                const key = f.key?.toLowerCase() || '';
-                const label = f.label?.toLowerCase() || '';
-                return key.includes('dob') || key.includes('date of birth') ||
-                       label.includes('dob') || label.includes('date of birth') ||
-                       key.includes('adhar') || key.includes('aadhar') ||
-                       label.includes('adhar') || label.includes('aadhar');
-              });
-              
-              // Basic fields exclude Personal Information fields
-              const basicFields = enabledFields.filter(f => {
-                const cat = categorizeField(f);
-                if (cat !== 'basic') return false;
-                const key = f.key?.toLowerCase() || '';
-                const label = f.label?.toLowerCase() || '';
-                // Exclude DOB and Aadhar from basic
-                if (key.includes('dob') || key.includes('date of birth') ||
+
+                // CRITICAL: Ensure Batch, College, Course, Branch, Year, and Semester fields are always present
+                // These are required for form functionality
+                // Order: Batch → College → Course → Branch → Year → Semester
+                // IMPORTANT: Use required: false by default - admin must set required status in Settings
+                const requiredSystemFields = [
+                  {
+                    key: 'batch',
+                    label: 'Batch',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'college',
+                    label: 'College',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'course',
+                    label: 'Course',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'branch',
+                    label: 'Branch',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'current_year',
+                    label: 'Current Academic Year',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'current_semester',
+                    label: 'Current Semester',
+                    type: 'select',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  },
+                  {
+                    key: 'apaar_id',
+                    label: 'APAAR ID',
+                    type: 'text',
+                    required: false,
+                    isEnabled: true,
+                    isSystemField: true
+                  }
+                ];
+
+                // Add system fields if they don't exist in the form
+                // IMPORTANT: System fields are only added if missing - they don't override form builder fields
+                requiredSystemFields.forEach(systemField => {
+                  const exists = enabledFields.some(f => {
+                    const fieldKey = (f.key || '').toLowerCase();
+                    const fieldLabel = (f.label || '').toLowerCase();
+                    const systemKey = systemField.key.toLowerCase();
+                    const systemLabel = systemField.label.toLowerCase();
+
+                    return fieldKey === systemKey ||
+                      fieldLabel === systemLabel ||
+                      fieldKey.includes(systemKey) ||
+                      fieldLabel.includes(systemLabel);
+                  });
+                  if (!exists) {
+                    enabledFields.push(systemField);
+                  }
+                });
+
+                // IMPORTANT: Use required status from form builder settings - do NOT override
+                // Only set default to false if not specified
+                enabledFields = enabledFields.map(field => {
+                  return { ...field, required: field.required === true ? true : false };
+                });
+
+                // Categorize all fields - ensure every field gets a category
+                // First, separate Personal Information fields (Date of Birth, Aadhar Number) from Basic Information
+                const personalFields = enabledFields.filter(f => {
+                  const key = f.key?.toLowerCase() || '';
+                  const label = f.label?.toLowerCase() || '';
+                  return key.includes('dob') || key.includes('date of birth') ||
+                    label.includes('dob') || label.includes('date of birth') ||
+                    key.includes('adhar') || key.includes('aadhar') ||
+                    label.includes('adhar') || label.includes('aadhar');
+                });
+
+                // Basic fields exclude Personal Information fields
+                const basicFields = enabledFields.filter(f => {
+                  const cat = categorizeField(f);
+                  if (cat !== 'basic') return false;
+                  const key = f.key?.toLowerCase() || '';
+                  const label = f.label?.toLowerCase() || '';
+                  // Exclude DOB and Aadhar from basic
+                  if (key.includes('dob') || key.includes('date of birth') ||
                     label.includes('dob') || label.includes('date of birth') ||
                     key.includes('adhar') || key.includes('aadhar') ||
                     label.includes('adhar') || label.includes('aadhar')) {
-                  return false;
-                }
-                return true;
-              });
-              
-              // Move Caste from Additional to Basic Information
-              const casteFields = enabledFields.filter(f => {
-                const key = f.key?.toLowerCase() || '';
-                const label = f.label?.toLowerCase() || '';
-                return key.includes('caste') || label.includes('caste');
-              });
-              
-              // Add Caste to Basic Information if it exists
-              casteFields.forEach(casteField => {
-                if (!basicFields.some(f => f.key === casteField.key || f.label === casteField.label)) {
-                  basicFields.push(casteField);
-                }
-              });
-              
-              let academicFields = enabledFields.filter(f => categorizeField(f) === 'academic');
-              const contactFields = enabledFields.filter(f => categorizeField(f) === 'contact');
-              const addressFields = enabledFields.filter(f => categorizeField(f) === 'address');
-              // Additional fields exclude Caste (moved to Basic) and Certificates Status (auto-calculated)
-              const additionalFields = enabledFields.filter(f => {
-                const cat = categorizeField(f);
-                if (cat !== 'additional') return false;
-                const key = f.key?.toLowerCase() || '';
-                const label = f.label?.toLowerCase() || '';
-                // Exclude Caste from additional (moved to Basic)
-                if (key.includes('caste') || label.includes('caste')) {
-                  return false;
-                }
-                // Exclude Certificates Status (auto-calculated, not user input)
-                if (key.includes('certificate') && (key.includes('status') || label.includes('status'))) {
-                  return false;
-                }
-                return true;
-              });
-              // Other fields exclude Certificates Status (auto-calculated)
-              const otherFields = enabledFields.filter(f => {
-                const cat = categorizeField(f);
-                if (cat !== 'other') return false;
-                const key = f.key?.toLowerCase() || '';
-                const label = f.label?.toLowerCase() || '';
-                // Exclude Certificates Status (auto-calculated, not user input)
-                if (key.includes('certificate') && (key.includes('status') || label.includes('status'))) {
-                  return false;
-                }
-                return true;
-              });
-              
-              // Sort academic fields in the correct order to match AddStudent page: College → Batch → Course → Branch → Current Academic Year → Current Semester → Student Type → Student Status → Scholar Status → Previous College
-              const academicFieldOrder = [
-                { key: 'college', label: 'college' },
-                { key: 'batch', label: 'batch' },
-                { key: 'course', label: 'course' },
-                { key: 'branch', label: 'branch' },
-                { key: 'current_year', label: 'current academic year' },
-                { key: 'current_semester', label: 'current semester' },
-                { key: 'stud_type', label: 'student type' },
-                { key: 'student_status', label: 'student status' },
-                { key: 'scholar_status', label: 'scholar status' },
-                { key: 'previous_college', label: 'previous college' }
-              ];
-              
-              academicFields.sort((a, b) => {
-                const getFieldOrder = (field) => {
-                  const key = field.key?.toLowerCase() || '';
-                  const label = field.label?.toLowerCase() || '';
-                  
-                  for (let i = 0; i < academicFieldOrder.length; i++) {
-                    const orderItem = academicFieldOrder[i];
-                    if (key.includes(orderItem.key) || label.includes(orderItem.label) ||
-                        key === orderItem.key || label === orderItem.label) {
-                      return i;
-                    }
+                    return false;
                   }
-                  // Other academic fields go after the ordered ones
-                  return academicFieldOrder.length;
-                };
-                
-                return getFieldOrder(a) - getFieldOrder(b);
-              });
+                  return true;
+                });
 
-              // Safety check: Ensure we're showing all enabled fields
-              const totalCategorized = basicFields.length + academicFields.length + contactFields.length + 
-                                      addressFields.length + additionalFields.length + otherFields.length;
+                // Move Caste from Additional to Basic Information
+                const casteFields = enabledFields.filter(f => {
+                  const key = f.key?.toLowerCase() || '';
+                  const label = f.label?.toLowerCase() || '';
+                  return key.includes('caste') || label.includes('caste');
+                });
 
-              return (
-                <>
-                  {/* Basic Information */}
-                  {basicFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        Basic Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        {basicFields.map((field, index) => (
-                          <div key={index}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                // Add Caste to Basic Information if it exists
+                casteFields.forEach(casteField => {
+                  if (!basicFields.some(f => f.key === casteField.key || f.label === casteField.label)) {
+                    basicFields.push(casteField);
+                  }
+                });
 
-                  {/* Academic Information */}
-                  {academicFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        Academic Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                        {academicFields.map((field, index) => (
-                          <div key={index}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                let academicFields = enabledFields.filter(f => categorizeField(f) === 'academic');
+                const contactFields = enabledFields.filter(f => categorizeField(f) === 'contact');
+                const addressFields = enabledFields.filter(f => categorizeField(f) === 'address');
+                // Additional fields exclude Caste (moved to Basic) and Certificates Status (auto-calculated)
+                const additionalFields = enabledFields.filter(f => {
+                  const cat = categorizeField(f);
+                  if (cat !== 'additional') return false;
+                  const key = f.key?.toLowerCase() || '';
+                  const label = f.label?.toLowerCase() || '';
+                  // Exclude Caste from additional (moved to Basic)
+                  if (key.includes('caste') || label.includes('caste')) {
+                    return false;
+                  }
+                  // Exclude Certificates Status (auto-calculated, not user input)
+                  if (key.includes('certificate') && (key.includes('status') || label.includes('status'))) {
+                    return false;
+                  }
+                  return true;
+                });
+                // Other fields exclude Certificates Status (auto-calculated)
+                const otherFields = enabledFields.filter(f => {
+                  const cat = categorizeField(f);
+                  if (cat !== 'other') return false;
+                  const key = f.key?.toLowerCase() || '';
+                  const label = f.label?.toLowerCase() || '';
+                  // Exclude Certificates Status (auto-calculated, not user input)
+                  if (key.includes('certificate') && (key.includes('status') || label.includes('status'))) {
+                    return false;
+                  }
+                  return true;
+                });
 
-                  {/* Contact Information */}
-                  {contactFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                        Contact Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                        {contactFields.map((field, index) => (
-                          <div key={index}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                // Sort academic fields in the correct order to match AddStudent page: College → Batch → Course → Branch → Current Academic Year → Current Semester → Student Type → Student Status → Scholar Status → Previous College
+                const academicFieldOrder = [
+                  { key: 'college', label: 'college' },
+                  { key: 'batch', label: 'batch' },
+                  { key: 'course', label: 'course' },
+                  { key: 'branch', label: 'branch' },
+                  { key: 'current_year', label: 'current academic year' },
+                  { key: 'current_semester', label: 'current semester' },
+                  { key: 'stud_type', label: 'student type' },
+                  { key: 'student_status', label: 'student status' },
+                  { key: 'scholar_status', label: 'scholar status' },
+                  { key: 'previous_college', label: 'previous college' }
+                ];
 
-                  {/* Address Information */}
-                  {addressFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                        Address Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                        {addressFields.map((field, index) => (
-                          <div key={index}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                academicFields.sort((a, b) => {
+                  const getFieldOrder = (field) => {
+                    const key = field.key?.toLowerCase() || '';
+                    const label = field.label?.toLowerCase() || '';
 
-                  {/* Personal Information */}
-                  {personalFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                        Personal Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                        {personalFields.map((field, index) => (
-                          <div key={index}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    for (let i = 0; i < academicFieldOrder.length; i++) {
+                      const orderItem = academicFieldOrder[i];
+                      if (key.includes(orderItem.key) || label.includes(orderItem.label) ||
+                        key === orderItem.key || label === orderItem.label) {
+                        return i;
+                      }
+                    }
+                    // Other academic fields go after the ordered ones
+                    return academicFieldOrder.length;
+                  };
 
-                  {/* Additional Information */}
-                  {additionalFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                        Additional Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        {additionalFields.map((field, index) => (
-                          <div key={index} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required ? (
-                                <span className="text-red-500 ml-1">*</span>
-                              ) : (
-                                <span className="text-gray-400 ml-1">(Optional)</span>
-                              )}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  return getFieldOrder(a) - getFieldOrder(b);
+                });
 
-                  {/* Other/Uncategorized Fields - Always show these */}
-                  {otherFields.length > 0 && (
-                    <div className="border-b border-gray-200 pb-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                        Other Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        {otherFields.map((field, index) => (
-                          <div key={index} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            {renderField(field)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                </>
-              );
-            })(                  )}
+                // Safety check: Ensure we're showing all enabled fields
+                const totalCategorized = basicFields.length + academicFields.length + contactFields.length +
+                  addressFields.length + additionalFields.length + otherFields.length;
 
-                  {/* Certificate Information Section - Dynamic with Yes/No toggles */}
-                  {courseType && (
-                    <div className="border-t border-gray-200 pt-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
-                        Certificate Information
-                      </h3>
-                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                          <FileText size={16} className="text-gray-600" />
-                          Default Certification Fields
-                        </h4>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {getCertificatesForCourse().map((cert) => (
-                            <div key={cert.key} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
-                              <span className="text-sm text-gray-700">{cert.label}</span>
-                              <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={certificateStatus[cert.key] || false}
-                                  onChange={(e) => {
-                                    setCertificateStatus(prev => ({
-                                      ...prev,
-                                      [cert.key]: e.target.checked
-                                    }));
-                                  }}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
-                                <span className="ml-2 text-xs text-gray-500">
-                                  {certificateStatus[cert.key] ? 'Yes' : 'No'}
-                                </span>
+                return (
+                  <>
+                    {/* Basic Information */}
+                    {basicFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          Basic Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          {basicFields.map((field, index) => (
+                            <div key={index}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
                               </label>
+                              {renderField(field)}
                             </div>
                           ))}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-            <div className="flex items-center gap-3 sm:gap-4 pt-4 border-t border-gray-200">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full sm:flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3.5 sm:py-3 px-6 rounded-lg sm:rounded-xl font-semibold shadow-md hover:from-purple-700 hover:to-indigo-700 active:from-purple-800 active:to-indigo-800 hover:shadow-lg focus:ring-4 focus:ring-purple-200 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[44px] text-base sm:text-sm"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="animate-spin" size={20} />
-                    <span>Submitting...</span>
+                    {/* Academic Information */}
+                    {academicFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                          Academic Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {academicFields.map((field, index) => (
+                            <div key={index}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Contact Information */}
+                    {contactFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                          Contact Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {contactFields.map((field, index) => (
+                            <div key={index}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Address Information */}
+                    {addressFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                          Address Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {addressFields.map((field, index) => (
+                            <div key={index}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Personal Information */}
+                    {personalFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                          Personal Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {personalFields.map((field, index) => (
+                            <div key={index}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Additional Information */}
+                    {additionalFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                          Additional Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          {additionalFields.map((field, index) => (
+                            <div key={index} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-red-500 ml-1">*</span>
+                                ) : (
+                                  <span className="text-gray-400 ml-1">(Optional)</span>
+                                )}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other/Uncategorized Fields - Always show these */}
+                    {otherFields.length > 0 && (
+                      <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                          Other Information
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          {otherFields.map((field, index) => (
+                            <div key={index} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                   </>
-                ) : (
-                  <>
-                    <CheckCircle size={20} />
-                    <span>Submit for Approval</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+                );
+              })()}
+
+              {/* Certificate Information Section - Dynamic with Yes/No toggles */}
+              {courseType && (
+                <div className="border-t border-gray-200 pt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                    Certificate Information
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <FileText size={16} className="text-gray-600" />
+                      Default Certification Fields
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {getCertificatesForCourse().map((cert) => (
+                        <div key={cert.key} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                          <span className="text-sm text-gray-700">{cert.label}</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={certificateStatus[cert.key] || false}
+                              onChange={(e) => {
+                                setCertificateStatus(prev => ({
+                                  ...prev,
+                                  [cert.key]: e.target.checked
+                                }));
+                              }}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+                            <span className="ml-2 text-xs text-gray-500">
+                              {certificateStatus[cert.key] ? 'Yes' : 'No'}
+                            </span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 sm:gap-4 pt-4 border-t border-gray-200">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full sm:flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3.5 sm:py-3 px-6 rounded-lg sm:rounded-xl font-semibold shadow-md hover:from-purple-700 hover:to-indigo-700 active:from-purple-800 active:to-indigo-800 hover:shadow-lg focus:ring-4 focus:ring-purple-200 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[44px] text-base sm:text-sm"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={20} />
+                      <span>Submit for Approval</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
 

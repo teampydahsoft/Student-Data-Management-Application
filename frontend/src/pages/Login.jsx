@@ -207,12 +207,12 @@ const Login = () => {
 
           {/* Center Illustration Placeholder */}
           <div className="relative z-10 flex-1 flex items-center justify-center my-8">
-            <div className="relative w-64 h-64">
-              <div className="absolute inset-0 bg-white/10 rounded-full animate-pulse-subtle" />
+            <div className="relative w-64 h-64 flex items-center justify-center">
+              <div className="absolute inset-0 bg-white/5 backdrop-blur-md rounded-full border border-white/20 shadow-2xl animate-pulse-subtle scale-110" />
               <img
                 src="/logo.png"
                 alt="Illustration"
-                className="relative w-full h-full object-contain drop-shadow-2xl"
+                className="relative w-48 h-48 object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-transform duration-500 hover:scale-110"
                 onError={(e) => e.target.style.display = 'none'}
               />
             </div>
@@ -248,12 +248,15 @@ const Login = () => {
           )}
 
           <div className="max-w-sm mx-auto w-full">
-            {/* Mobile Logo */}
-            <img
-              src="/logo.png"
-              alt="Logo"
-              className="h-16 w-auto mx-auto mb-6 lg:hidden object-contain"
-            />
+            <div className="lg:hidden mb-8 flex justify-center">
+              <div className="p-3 bg-primary/5 rounded-2xl border border-primary/10 shadow-sm">
+                <img
+                  src="/logo.png"
+                  alt="Logo"
+                  className="h-14 w-auto object-contain"
+                />
+              </div>
+            </div>
 
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">

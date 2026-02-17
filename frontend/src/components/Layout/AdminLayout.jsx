@@ -360,7 +360,7 @@ const AdminLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex overflow-hidden">
       {/* Mobile Header */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm sticky top-0 z-30">
         <h1 className="text-lg sm:text-xl font-bold text-gray-900 heading-font">
@@ -378,7 +378,7 @@ const AdminLayout = () => {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 z-40 h-screen bg-white border-r border-gray-200
+          fixed top-0 left-0 z-40 h-screen premium-stars-sidebar border-r border-white/10
           transition-[width,transform] duration-300 ease-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           lg:translate-x-0
@@ -390,17 +390,24 @@ const AdminLayout = () => {
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo and Close Button */}
           <div
-            className={`border-b border-gray-200 flex items-center transition-[padding,justify-content] duration-300 ease-out ${sidebarCollapsed ? "justify-center p-3 lg:p-4" : "justify-between p-4 lg:p-6"}`}
+            className={`border-b border-white/10 flex items-center transition-[padding,justify-content] duration-300 ease-out ${sidebarCollapsed ? "justify-center p-3 lg:p-4" : "justify-between p-4 lg:p-6"}`}
           >
-            <img
-              src="/logo.png"
-              alt="Pydah DB Logo"
-              className={`
-                h-10 sm:h-12 w-auto max-w-full object-contain transition-opacity duration-300 ease-out
-                ${sidebarCollapsed ? "opacity-0 w-0 h-0 overflow-hidden" : "opacity-100"}
-              `}
-              loading="lazy"
-            />
+            <div className={`p-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 shadow-lg flex items-center justify-center transition-all duration-300 ${sidebarCollapsed ? 'w-10 h-10' : 'w-full px-4 py-3'}`}>
+              <img
+                src="/logo.png"
+                alt="Pydah DB Logo"
+                className={`
+                  h-10 sm:h-12 w-auto max-w-full object-contain transition-opacity duration-300 ease-out
+                  ${sidebarCollapsed ? "opacity-0 w-0 h-0 overflow-hidden" : "opacity-100"}
+                `}
+                loading="lazy"
+              />
+              {sidebarCollapsed && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-white opacity-50 animate-pulse"></div>
+                </div>
+              )}
+            </div>
             {/* Close button for mobile, collapse button for desktop */}
             <button
               onClick={() => {
@@ -426,7 +433,7 @@ const AdminLayout = () => {
 
           {/* Navigation */}
           <nav
-            className={`flex-1 space-y-1 transition-[padding] duration-300 ease-out overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
+            className={`flex-1 space-y-1 transition-[padding] duration-300 ease-out overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 premium-sidebar-nav ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
             style={{
               scrollBehavior: "smooth",
             }}
@@ -454,13 +461,13 @@ const AdminLayout = () => {
                         setSidebarOpen(false);
                       }}
                       className={`
-                        w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation
+                        w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation premium-sidebar-link
                         gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px]
                         ${isActive && !isActuallyExpanded
-                          ? "bg-blue-600 text-white font-semibold shadow-md"
+                          ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
                           : isActuallyExpanded
-                            ? "bg-gray-50 text-gray-900 font-medium"
-                            : "text-gray-800 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900"
+                            ? "bg-white/5 text-white font-medium"
+                            : "text-gray-100/90 hover:bg-white/10 hover:text-white"
                         }
                       `}
                       aria-label={
@@ -486,7 +493,7 @@ const AdminLayout = () => {
                       )}
                     </button>
                     {isActuallyExpanded && (
-                      <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-blue-300 bg-gradient-to-r from-blue-50/50 to-transparent rounded-r-md">
+                      <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-[#4a5d3f] bg-gradient-to-r from-white/5 to-transparent rounded-r-md">
                         {item.subItems.map((subItem, index) => {
                           const isSubActive =
                             location.pathname === subItem.path;
@@ -497,12 +504,12 @@ const AdminLayout = () => {
                                 key={subItem.path}
                                 href={subItem.isTicketApp ? getTicketAppUrl(subItem.path) : subItem.path}
                                 className={`
-                                    flex items-center rounded-md transition-all duration-200 touch-manipulation
+                                    flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
                                     gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
-                                    text-gray-700 hover:bg-blue-100 active:bg-blue-200 hover:text-blue-700 hover:translate-x-1 hover:shadow-sm
+                                    text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1
                                   `}
                               >
-                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-blue-500"></div>
+                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#4a5d3f]"></div>
                                 <span className="whitespace-nowrap">
                                   {subItem.label}
                                 </span>
@@ -524,16 +531,16 @@ const AdminLayout = () => {
                                 }
                               }}
                               className={`
-                                flex items-center rounded-md transition-all duration-200 touch-manipulation
+                                flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
                                 gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
                                 ${isSubActive
-                                  ? "bg-blue-600 text-white font-semibold shadow-lg transform scale-[1.02] border-l-2 border-blue-400"
-                                  : "text-gray-700 hover:bg-blue-100 active:bg-blue-200 hover:text-blue-700 hover:translate-x-1 hover:shadow-sm"
+                                  ? "bg-[#4a5d3f] text-white font-semibold shadow-lg transform scale-[1.02] active"
+                                  : "text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1"
                                 }
                               `}
                             >
                               <div
-                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSubActive ? "bg-white" : "bg-blue-500"}`}
+                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSubActive ? "bg-white" : "bg-gray-400"}`}
                               ></div>
                               <span className="whitespace-nowrap">
                                 {subItem.label}
@@ -564,9 +571,9 @@ const AdminLayout = () => {
                       key={item.path}
                       href={item.isTicketApp ? getTicketAppUrl(item.subItems ? (item.subItems[0]?.path || item.path) : item.path) : (item.subItems ? (item.subItems[0]?.path || item.path) : item.path)}
                       className={`
-                          flex items-center justify-center rounded-md transition-colors
+                          flex items-center justify-center rounded-md transition-colors premium-sidebar-link
                           px-2 py-3
-                          text-gray-800 hover:bg-blue-100 hover:text-blue-700
+                          text-gray-100/90 hover:bg-white/10 hover:text-white
                         `}
                       title={item.label}
                     >
@@ -581,11 +588,11 @@ const AdminLayout = () => {
                     to={item.subItems[0]?.path || item.path}
                     onClick={() => setSidebarOpen(false)}
                     className={`
-                      flex items-center justify-center rounded-md transition-colors
+                      flex items-center justify-center rounded-md transition-colors premium-sidebar-link
                       px-2 py-3
                       ${isActiveState
-                        ? "bg-blue-600 text-white font-semibold shadow-md"
-                        : "text-gray-800 hover:bg-blue-100 hover:text-blue-700"
+                        ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
+                        : "text-gray-100/90 hover:bg-white/10 hover:text-white"
                       }
                     `}
                     title={item.label}
@@ -601,10 +608,10 @@ const AdminLayout = () => {
                     key={item.path}
                     href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
                     className={`
-                        flex items-center rounded-md transition-all duration-200 touch-manipulation
+                        flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
                         ${sidebarCollapsed ? "justify-center px-1.5 py-2.5" : "gap-2 px-2.5 py-1.5"}
                         min-h-[36px]
-                        text-gray-800 hover:bg-blue-100 active:bg-blue-200 hover:text-blue-700
+                        text-gray-100/90 hover:bg-white/10 hover:text-white
                       `}
                     title={sidebarCollapsed ? item.label : ""}
                   >
@@ -627,12 +634,12 @@ const AdminLayout = () => {
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
                   className={`
-                    flex items-center rounded-md transition-all duration-200 touch-manipulation
+                    flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
                     ${sidebarCollapsed ? "justify-center px-1.5 py-2.5" : "gap-2 px-2.5 py-1.5"}
                     min-h-[36px]
                     ${isActive
-                      ? "bg-blue-600 text-white font-semibold shadow-md"
-                      : "text-gray-800 hover:bg-blue-100 active:bg-blue-200 hover:text-blue-700"
+                      ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
+                      : "text-gray-100/90 hover:bg-white/10 hover:text-white"
                     }
                   `}
                   title={sidebarCollapsed ? item.label : ""}
@@ -653,7 +660,7 @@ const AdminLayout = () => {
 
           {/* Workspace Dropdown - only show when user has access to at least one workspace item (e.g. Ticket Management) */}
           {hasWorkspaceAccess && (
-            <div className={`border-t border-gray-200 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}>
+            <div className={`border-t border-white/10 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}>
               <div className="space-y-1">
                 <button
                   onClick={() => {
@@ -663,11 +670,11 @@ const AdminLayout = () => {
                     setSidebarOpen(false);
                   }}
                   className={`
-                    w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation
+                    w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation premium-sidebar-link
                     gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px]
                     ${workspaceDropdownOpen
-                      ? "bg-gray-50 text-gray-900 font-medium"
-                      : "text-gray-800 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900"
+                      ? "bg-white/5 text-white font-medium"
+                      : "text-gray-100/90 hover:bg-white/10 hover:text-white"
                     }
                   `}
                   aria-label={workspaceDropdownOpen ? "Collapse workspace menu" : "Expand workspace menu"}
@@ -694,11 +701,11 @@ const AdminLayout = () => {
                   <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-blue-300 bg-gradient-to-r from-blue-50/50 to-transparent rounded-r-md">
                     <a
                       href={getTicketAppUrl("/dashboard")}
-                      className="flex items-center rounded-md transition-all duration-200 touch-manipulation
+                      className="flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
                         gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
-                        text-gray-700 hover:bg-blue-100 active:bg-blue-200 hover:text-blue-700 hover:translate-x-1 hover:shadow-sm"
+                        text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1"
                     >
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-blue-500"></div>
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#4a5d3f]"></div>
                       <span className="whitespace-nowrap">
                         Maintenance Management
                       </span>
@@ -711,7 +718,7 @@ const AdminLayout = () => {
 
           {/* User Info & Logout */}
           <div
-            className={`border-t border-gray-200 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
+            className={`border-t border-white/10 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
           >
             <div
               className={`
@@ -725,10 +732,10 @@ const AdminLayout = () => {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-white truncate">
                   {user?.name || user?.username || "User"}
                 </p>
-                <p className="text-xs text-gray-600 truncate">
+                <p className="text-xs text-gray-300 truncate">
                   {user?.email ||
                     (isFullAccessRole(user?.role)
                       ? "Administrator"
@@ -743,7 +750,7 @@ const AdminLayout = () => {
               onClick={() => {
                 if (window.innerWidth < 1024) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-colors duration-200 touch-manipulation min-h-[44px] mb-2 ${sidebarCollapsed
+              className={`w-full flex items-center rounded-md bg-white/5 text-gray-100 hover:bg-white/10 transition-colors duration-200 touch-manipulation min-h-[44px] mb-2 ${sidebarCollapsed
                 ? "justify-center p-3"
                 : "gap-3 px-4 py-2.5 sm:py-3"
                 }`}
@@ -762,7 +769,7 @@ const AdminLayout = () => {
 
             <button
               onClick={handleLogout}
-              className={`w-full flex items-center rounded-md bg-gray-100 text-gray-700 hover:bg-red-100 active:bg-red-200 hover:text-red-700 transition-colors duration-200 touch-manipulation min-h-[44px] ${sidebarCollapsed
+              className={`w-full flex items-center rounded-md bg-white/5 text-gray-100 hover:bg-red-500/20 hover:text-red-400 transition-colors duration-200 touch-manipulation min-h-[44px] ${sidebarCollapsed
                 ? "justify-center p-3"
                 : "gap-3 px-4 py-2.5 sm:py-3"
                 }`}
@@ -792,7 +799,7 @@ const AdminLayout = () => {
 
       {/* Main Content */}
       <main
-        className={`h-screen bg-white transition-[margin-left] duration-300 ease-out flex flex-col ${sidebarCollapsed ? "lg:ml-16" : "lg:ml-56"}`}
+        className="flex-1 h-screen overflow-hidden flex flex-col relative z-0 premium-stars-content"
       >
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-2 sm:p-2 lg:p-3 flex flex-col">
           <Outlet />
