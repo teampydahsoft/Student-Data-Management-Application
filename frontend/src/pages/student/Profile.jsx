@@ -101,19 +101,21 @@ const Profile = () => {
             doc.rect(0, 0, redBarW, cardH, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(12); // Increased size
+            doc.setFontSize(22); // Significantly increased size
             const letters = ['P', 'Y', 'D', 'A', 'H'];
-            const startY = (cardH - (letters.length * 10)) / 2 + 5; // Center vertically
+            const startY = (cardH - (letters.length * 12)) / 2 + 8; // Adjust centering for larger font
             letters.forEach((letter, i) => {
-                doc.text(letter, redBarW / 2 - 2, startY + i * 10, { align: 'center' });
+                doc.text(letter, redBarW / 2, startY + i * 14, { align: 'center' }); // Increase vertical gap
             });
 
             let x = redBarW + 3;
             let y = 8;
             doc.setTextColor(0, 0, 0);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(8);
-            doc.text(college.length > 32 ? college.substring(0, 31) + '…' : college, (redBarW + cardW) / 2, y, { align: 'center' });
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10); // Slightly larger header
+            // User requested to remove "Pydah" from header since it's on the side
+            const displayCollege = college.replace(/^Pydah\s+/i, '');
+            doc.text(displayCollege.length > 32 ? displayCollege.substring(0, 31) + '…' : displayCollege, (redBarW + cardW) / 2, y, { align: 'center' });
             y += 7;
 
             // Updated Photo dimensions: 35x35mm centered square
@@ -151,16 +153,19 @@ const Profile = () => {
 
             doc.setFontSize(7);
             const detailLineH = 3.5;
+            const colonX = x + 12; // Fixed X position for colons
+            const valueX = colonX + 3; // Fixed X position for values
+
             const row = (label, value) => {
                 const str = String(value);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`${label} :`, x, y);
+                doc.text(label, x, y);
+                doc.text(':', colonX, y); // Aligned colon
                 doc.setFont('helvetica', 'normal');
 
-                const textX = x + 20;
-                const maxWidth = cardW - redBarW - 26;
+                const maxWidth = cardW - valueX - 3;
                 const lines = doc.splitTextToSize(str, maxWidth);
-                doc.text(lines, textX, y);
+                doc.text(lines, valueX, y);
 
                 y += Math.max(lines.length, 1) * detailLineH + 1.2;
             };
