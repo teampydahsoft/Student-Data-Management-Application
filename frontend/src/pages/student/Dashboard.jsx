@@ -123,17 +123,26 @@ const Dashboard = () => {
                 // Handle Announcements
                 if (announcementsRes.status === 'fulfilled' && announcementsRes.value.data.success) {
                     const allAnnouncements = announcementsRes.value.data.data;
-                    setAnnouncements(allAnnouncements);
+                    
+                    // Sort announcements by date descending (latest first)
+                    const sortedAnnouncements = [...allAnnouncements].sort((a, b) => 
+                        new Date(b.created_at) - new Date(a.created_at)
+                    );
+                    
+                    setAnnouncements(sortedAnnouncements);
 
                     // Show latest unseen announcement popup (only check once per session)
-                    if (!hasCheckedAnnouncements.current && !showAnnouncement) {
+                    if (!hasCheckedAnnouncements.current && !showAnnouncement && sortedAnnouncements.length > 0) {
                         hasCheckedAnnouncements.current = true;
+                        
+                        // We only care about the absolute latest announcement
+                        const latestAnnouncement = sortedAnnouncements[0];
                         const seenIds = JSON.parse(localStorage.getItem('seen_announcements') || '[]');
-                        // Convert all IDs to strings for consistent comparison
                         const seenIdsStr = seenIds.map(id => String(id));
-                        const unseen = allAnnouncements.filter(a => !seenIdsStr.includes(String(a.id)));
-                        if (unseen.length > 0) {
-                            setCurrentAnnouncement(unseen[0]);
+                        
+                        // Only show popup if the ABSOLUTE LATEST announcement is unseen
+                        if (!seenIdsStr.includes(String(latestAnnouncement.id))) {
+                            setCurrentAnnouncement(latestAnnouncement);
                             setShowAnnouncement(true);
                         }
                     }

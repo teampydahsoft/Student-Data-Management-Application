@@ -17,6 +17,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
       const mapped = {
         student_name: 'Student Name',
         admission_number: 'Admission Number',
+        pin_no: 'PIN Number',
         college: 'College',
         course: 'Program',
         branch: 'Branch',
@@ -38,7 +39,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
     : '';
 
   const name = get('student_name', '—');
-  const admissionNumber = get('admission_number', '—');
+  const pinNumber = get('pin_no', '') || get('admission_number', '—');
   const college = get('college', '—');
   const program = get('course', '—');
   const branch = get('branch', '—');
@@ -63,7 +64,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-slate-900 truncate" title={name}>{name}</p>
-          <p className="text-[10px] font-mono text-indigo-600">{admissionNumber}</p>
+          <p className="text-[10px] font-mono text-indigo-600">{pinNumber}</p>
           <p className="text-[10px] text-slate-500 truncate">{college}</p>
         </div>
       </div>
@@ -104,7 +105,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         {/* Details */}
         <div className="flex-1 min-w-0 space-y-1">
           <p className="text-base font-bold text-slate-900 truncate" title={name}>{name}</p>
-          <p className="text-xs font-mono font-semibold text-indigo-600">{admissionNumber}</p>
+          <p className="text-xs font-mono font-semibold text-indigo-600">PIN: {pinNumber}</p>
           <p className="text-xs text-slate-600 font-medium truncate" title={college}>{college}</p>
           <p className="text-xs text-slate-500">
             {program} · {branch}

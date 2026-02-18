@@ -84,7 +84,8 @@ const Profile = () => {
             const red = [160, 30, 40];
 
             const name = displayData.student_name || getStudentData('Student Name') || '—';
-            const admissionNumber = displayData.admission_number || getStudentData('Admission Number') || getStudentData('Roll No') || '—';
+            // User requested Pin No instead of Roll No
+            const pinNumber = displayData.pin_no || getStudentData('PIN NO') || getStudentData('pin_no') || displayData.admission_number || getStudentData('Admission Number') || '—';
             const college = displayData.college || getStudentData('College') || '—';
             const program = displayData.course || getStudentData('Program') || '—';
             const branch = displayData.branch || getStudentData('Branch') || '—';
@@ -100,9 +101,11 @@ const Profile = () => {
             doc.rect(0, 0, redBarW, cardH, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(9);
-            ['P', 'Y', 'D', 'A', 'H'].forEach((letter, i) => {
-                doc.text(letter, 4, 16 + i * 7);
+            doc.setFontSize(12); // Increased size
+            const letters = ['P', 'Y', 'D', 'A', 'H'];
+            const startY = (cardH - (letters.length * 10)) / 2 + 5; // Center vertically
+            letters.forEach((letter, i) => {
+                doc.text(letter, redBarW / 2 - 2, startY + i * 10, { align: 'center' });
             });
 
             let x = redBarW + 3;
@@ -113,59 +116,62 @@ const Profile = () => {
             doc.text(college.length > 32 ? college.substring(0, 31) + '…' : college, (redBarW + cardW) / 2, y, { align: 'center' });
             y += 7;
 
-            const photoBoxH = 26;
+            // Updated Photo dimensions: 35x35mm centered square
+            const photoW = 35;
+            const photoH = 35;
+            const photoX = x + (cardW - redBarW - 6 - photoW) / 2;
             doc.setFillColor(...red);
-            doc.rect(x, y, cardW - redBarW - 6, photoBoxH, 'F');
+            doc.rect(photoX - 1, y - 1, photoW + 2, photoH + 2, 'F'); // Border
+
             const photo = displayData.student_photo;
             const photoUrl = photo
                 ? (photo.startsWith('http') || photo.startsWith('data:')) ? photo : getStaticFileUrlDirect(photo)
                 : '';
             if (photoUrl && photoUrl.startsWith('data:')) {
                 try {
-                    doc.addImage(photoUrl, 'JPEG', x + 2, y + 2, (cardW - redBarW - 6) - 4, photoBoxH - 4);
+                    doc.addImage(photoUrl, 'JPEG', photoX, y, photoW, photoH);
                 } catch {
                     doc.setTextColor(255, 255, 255);
                     doc.setFontSize(7);
-                    doc.text('Photo', x + (cardW - redBarW - 6) / 2 - 4, y + photoBoxH / 2 + 2);
+                    doc.text('Photo', photoX + photoW / 2 - 4, y + photoH / 2 + 2);
                 }
             } else {
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(7);
-                doc.text('Photo', x + (cardW - redBarW - 6) / 2 - 4, y + photoBoxH / 2 + 2);
+                doc.text('Photo', photoX + photoW / 2 - 4, y + photoH / 2 + 2);
             }
             doc.setTextColor(0, 0, 0);
-            y += photoBoxH + 4;
+            y += photoH + 5;
 
-            doc.setFont('helvetica', 'normal');
+            // Add Digital ID Card label
+            doc.setFont('helvetica', 'bold');
             doc.setFontSize(7);
-            const lineH = 4.5;
-            const maxValLen = 24;
+            doc.text('DIGITAL STUDENT ID CARD', (redBarW + cardW) / 2, y, { align: 'center' });
+            y += 6;
+
+            doc.setFontSize(7);
+            const detailLineH = 3.5;
             const row = (label, value) => {
                 const str = String(value);
-                const val = str.length > maxValLen ? str.substring(0, maxValLen - 1) + '…' : str;
+                doc.setFont('helvetica', 'bold');
                 doc.text(`${label} :`, x, y);
-                doc.text(val, x + 20, y, { maxWidth: cardW - redBarW - 26 });
-                y += lineH;
+                doc.setFont('helvetica', 'normal');
+
+                const textX = x + 20;
+                const maxWidth = cardW - redBarW - 26;
+                const lines = doc.splitTextToSize(str, maxWidth);
+                doc.text(lines, textX, y);
+
+                y += Math.max(lines.length, 1) * detailLineH + 1.2;
             };
-            row('Roll No', admissionNumber);
+
+            row('PIN No', pinNumber);
             row('Name', name);
             row('Batch', batch);
             row('Course', course);
             row('Address', address);
             row('Phone', phone);
-            row('B.Group', bloodGroup);
-
-            y += 2;
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.text('PYDAH GROUP', cardW - 22, y);
-            y += 4;
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(6);
-            doc.text('Education & Beyond', cardW - 24, y);
-            y += 6;
-            doc.setFont('helvetica', 'normal');
-            doc.text('Principal', cardW - 18, y);
+            // row('B.Group', bloodGroup); // Removed as requested
 
             doc.setFillColor(...red);
             doc.rect(0, cardH - 10, cardW, 10, 'F');
@@ -174,7 +180,7 @@ const Profile = () => {
             doc.setFontSize(6);
             doc.text('Yanam Road, Patavala, Kakinada. Ph: 0884-2315333', cardW / 2, cardH - 4, { align: 'center' });
 
-            doc.save(`student_id_${admissionNumber || 'card'}.pdf`);
+            doc.save(`student_id_${pinNumber || 'card'}.pdf`);
             toast.success('Digital student ID card downloaded');
         } catch (err) {
             console.error('Failed to generate ID card PDF:', err);
