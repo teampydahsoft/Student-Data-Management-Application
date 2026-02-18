@@ -83,7 +83,6 @@ const FeeManagement = () => {
                 amount: amountToPay,
                 feeHeadId: feeItem?.feeHead?._id,
                 studentYear: feeItem?.studentYear || feeData?.studentDetails?.currentYear,
-                studentYear: feeItem?.studentYear || feeData?.studentDetails?.currentYear,
                 semester: feeItem?.semester || feeData?.studentDetails?.currentSemester,
                 remarks: feeItem ? (feeItem.remarks || `Payment for ${feeItem.feeHead?.name}`) : 'General Fee Payment'
             });

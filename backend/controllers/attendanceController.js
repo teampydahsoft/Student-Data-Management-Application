@@ -7,7 +7,8 @@ const { sendAttendanceReportNotifications } = require('../services/attendanceNot
 const { getAllAttendanceForDate, areAllBatchesMarked, areAllBatchesMarkedForCollege, areAllBatchesMarkedForCollegeCourseBranch } = require('../services/getAllAttendanceForDate');
 const {
   getNonWorkingDayInfo,
-  getNonWorkingDaysForRange
+  getNonWorkingDaysForRange,
+  clearCache
 } = require('../services/nonWorkingDayService');
 const { listCustomHolidays } = require('../services/customHolidayService');
 const { getPublicHolidaysForYear } = require('../services/holidayService');
@@ -3509,7 +3510,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
 
       semesterAttendance = {
         startDate: formatDateKey(semesterStartDate),
-        endDate: semesterEndDate > referenceDate ? todayKey : formatDateKey(semesterEndDate),
+        endDate: formatDateKey(semesterEndDate),
         totals: semesterSeries.totals,
         series: semesterSeries.series,
         holidays: semesterSeries.series.filter((entry) => entry.isHoliday),

@@ -123,23 +123,23 @@ const Dashboard = () => {
                 // Handle Announcements
                 if (announcementsRes.status === 'fulfilled' && announcementsRes.value.data.success) {
                     const allAnnouncements = announcementsRes.value.data.data;
-                    
+
                     // Sort announcements by date descending (latest first)
-                    const sortedAnnouncements = [...allAnnouncements].sort((a, b) => 
+                    const sortedAnnouncements = [...allAnnouncements].sort((a, b) =>
                         new Date(b.created_at) - new Date(a.created_at)
                     );
-                    
+
                     setAnnouncements(sortedAnnouncements);
 
                     // Show latest unseen announcement popup (only check once per session)
                     if (!hasCheckedAnnouncements.current && !showAnnouncement && sortedAnnouncements.length > 0) {
                         hasCheckedAnnouncements.current = true;
-                        
+
                         // We only care about the absolute latest announcement
                         const latestAnnouncement = sortedAnnouncements[0];
                         const seenIds = JSON.parse(localStorage.getItem('seen_announcements') || '[]');
                         const seenIdsStr = seenIds.map(id => String(id));
-                        
+
                         // Only show popup if the ABSOLUTE LATEST announcement is unseen
                         if (!seenIdsStr.includes(String(latestAnnouncement.id))) {
                             setCurrentAnnouncement(latestAnnouncement);
@@ -251,7 +251,10 @@ const Dashboard = () => {
         let activeDays = 0; // Working days (excluding holidays)
 
         // Find Today's status from history if available
-        const todayStr = new Date().toISOString().split('T')[0];
+        // Use local date (not UTC) to avoid timezone shift in IST
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isTodaySunday = now.getDay() === 0;
         let todayStatus = 'not marked';
 
         const todayEntry = series.find(d => d.date.startsWith(todayStr));
@@ -259,6 +262,11 @@ const Dashboard = () => {
             todayStatus = todayEntry.status === 'present' ? 'present' :
                 todayEntry.status === 'absent' ? 'absent' :
                     todayEntry.isHoliday ? 'holiday' : 'not marked';
+        }
+
+        // If today is Sunday and not yet marked, treat as holiday (no class)
+        if (todayStatus === 'not marked' && isTodaySunday) {
+            todayStatus = 'holiday';
         }
 
         series.forEach(day => {
@@ -675,6 +683,12 @@ const Dashboard = () => {
 
                                 // Safe fallback
                                 if (status === 'not marked yet') status = 'not marked';
+
+                                // If today is Sunday, override any 'present' or 'not marked' to 'holiday'
+                                const isSunday = new Date().getDay() === 0;
+                                if (isSunday && (status === 'present' || status === 'not marked')) {
+                                    status = 'holiday';
+                                }
 
                                 let colorClass = 'bg-gray-100 text-gray-600';
                                 let Icon = Clock;

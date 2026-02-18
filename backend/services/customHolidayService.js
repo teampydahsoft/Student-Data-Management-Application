@@ -47,7 +47,7 @@ const listCustomHolidays = async ({ startDate, endDate } = {}) => {
     `
       SELECT
         id,
-        holiday_date AS date,
+        DATE_FORMAT(holiday_date, '%Y-%m-%d') AS date,
         title,
         description,
         created_by AS createdBy,
@@ -91,7 +91,7 @@ const upsertCustomHoliday = async ({ date, title, description, createdBy }) => {
     `
       SELECT
         id,
-        holiday_date AS date,
+        DATE_FORMAT(holiday_date, '%Y-%m-%d') AS date,
         title,
         description,
         created_by AS createdBy,

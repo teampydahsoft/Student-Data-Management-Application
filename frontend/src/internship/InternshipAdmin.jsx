@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../config/api';
 import { toast } from 'react-hot-toast';
-import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText } from 'lucide-react';
+import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText, Lock } from 'lucide-react';
+import useAuthStore from '../store/authStore';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -60,6 +62,28 @@ const MapFlyTo = ({ coords }) => {
 };
 
 const InternshipAdmin = () => {
+    const { user } = useAuthStore();
+
+    // Permission check
+    const hasAccess = useMemo(() => {
+        if (!user) return false;
+        if (isFullAccessRole(user.role)) return true;
+        return hasPermission(user.permissions, BACKEND_MODULES.ATTENDANCE, 'view_internship');
+    }, [user]);
+
+    if (!hasAccess && user) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] p-4 text-center">
+                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                    <Lock className="text-red-500" size={32} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+                <p className="text-gray-600 max-w-sm">
+                    You do not have permission to view Internship Attendance.
+                </p>
+            </div>
+        );
+    }
     const [activeTab, setActiveTab] = useState('create');
     const [formData, setFormData] = useState({
         companyName: '',

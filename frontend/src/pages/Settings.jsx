@@ -34,6 +34,7 @@ import NotificationSettings from '../components/NotificationSettings';
 import CollegeTransfer from './CollegeTransfer';
 import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettings';
 import { isFullAccessRole } from '../constants/rbac';
+import { formatDateToLocalISO } from '../utils/dateUtils';
 
 // Field categorization function (same as PublicForm.jsx)
 const BASIC_FIELDS = [
@@ -121,7 +122,7 @@ const formatDateInput = (date) => {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return formatDateToLocalISO(today);
   }
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -2537,20 +2538,20 @@ const Settings = () => {
 
                           let cellBgColor = 'bg-white';
                           if (isHoliday) {
-                            if (publicHoliday) cellBgColor = 'bg-orange-50';
-                            else if (customHoliday) cellBgColor = 'bg-purple-50';
-                            else if (isSunday) cellBgColor = 'bg-amber-50';
+                            cellBgColor = 'bg-amber-50/50';
                           } else {
-                            cellBgColor = 'bg-blue-50';
+                            cellBgColor = 'bg-blue-50/30';
                           }
 
                           const badgeColor = isHoliday
                             ? publicHoliday
-                              ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                              ? 'bg-amber-100 text-amber-700 border border-amber-300'
                               : customHoliday
-                                ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                                ? 'bg-amber-100 text-amber-700 border border-amber-300'
                                 : 'bg-amber-100 text-amber-700 border border-amber-300'
-                            : 'bg-blue-100 text-blue-700 border border-blue-300';
+                            : statusInfo
+                              ? statusInfo.badgeClass
+                              : 'bg-gray-100 text-gray-500 border border-gray-200';
 
                           const baseClasses = cell.isCurrentMonth
                             ? 'cursor-pointer hover:border-blue-500 hover:text-blue-600'

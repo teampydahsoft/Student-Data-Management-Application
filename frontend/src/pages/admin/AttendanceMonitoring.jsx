@@ -4,13 +4,38 @@
 
 import React, { useEffect, useState } from 'react';
 import api from '../../config/api';
-import { CalendarCheck, Loader2 } from 'lucide-react';
+import { CalendarCheck, Loader2, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
+import useAuthStore from '../../store/authStore';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../../constants/rbac';
+import { useMemo } from 'react';
 
 export default function AttendanceMonitoring() {
+  const { user } = useAuthStore();
+
+  const hasAccess = useMemo(() => {
+    if (!user) return false;
+    if (isFullAccessRole(user.role)) return true;
+    return hasPermission(user.permissions, BACKEND_MODULES.ATTENDANCE, 'view_hourly');
+  }, [user]);
+
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  if (!hasAccess && user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] p-4 text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+          <Lock className="text-red-500" size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-slate-600 max-w-sm">
+          You do not have permission to view Hourly Attendance Monitoring.
+        </p>
+      </div>
+    );
+  }
 
   useEffect(() => {
     setLoading(true);

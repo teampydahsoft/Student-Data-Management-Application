@@ -10,21 +10,21 @@ const { MODULES } = require('../../constants/rbac');
 router.get(
   '/registration/abstract',
   authMiddleware,
-  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  verifyPermission(MODULES.REPORTS, 'view_registration'),
   attachUserScope,
   studentController.getRegistrationAbstract
 );
 router.get(
   '/registration',
   authMiddleware,
-  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  verifyPermission(MODULES.REPORTS, 'view_registration'),
   attachUserScope,
   studentController.getRegistrationReport
 );
 router.get(
   '/registration/export',
   authMiddleware,
-  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  verifyPermission(MODULES.REPORTS, 'view_registration'),
   attachUserScope,
   studentController.exportRegistrationReport
 );
@@ -33,14 +33,14 @@ router.get(
 router.get(
   '/category',
   authMiddleware,
-  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  verifyPermission(MODULES.REPORTS, 'view_category'),
   attachUserScope,
   categoryReportController.getCategoryReport
 );
 router.get(
   '/category/export',
   authMiddleware,
-  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  verifyPermission(MODULES.REPORTS, 'view_category'),
   attachUserScope,
   categoryReportController.exportCategoryReport
 );

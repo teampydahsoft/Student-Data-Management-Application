@@ -38,6 +38,8 @@ import {
   getAllowedFrontendModules,
   isFullAccessRole,
   FRONTEND_MODULES,
+  FRONTEND_TO_BACKEND_MAP,
+  hasPermission,
 } from "../../constants/rbac";
 import toast from "react-hot-toast";
 
@@ -97,16 +99,19 @@ const NAV_ITEMS = [
         path: "/attendance",
         label: "Daily Attendance",
         permission: FRONTEND_MODULES.ATTENDANCE,
+        action: 'view'
       },
       {
         path: "/attendance-monitoring",
         label: "Hourly Attendance",
         permission: FRONTEND_MODULES.ATTENDANCE,
+        action: 'view_hourly'
       },
       {
         path: "/internship-management",
         label: "Internship Attendance",
         permission: FRONTEND_MODULES.ATTENDANCE,
+        action: 'view_internship'
       }
     ]
   },
@@ -153,21 +158,25 @@ const NAV_ITEMS = [
         path: "/reports",
         label: "Registration Reports",
         permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_registration'
       },
       {
         path: "/reports/attendance",
         label: "Attendance Reports",
         permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_attendance'
       },
       {
         path: "/reports/day-end",
         label: "Day End Report",
         permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_day_end'
       },
       {
         path: "/reports/category",
         label: "Category Report",
         permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_category'
       },
     ],
   },
@@ -276,6 +285,15 @@ const AdminLayout = () => {
           if (isFullAccessRole(user?.role)) return true;
 
           if (user?.permissions) {
+            // If specific action is required, check that action
+            if (subItem.action) {
+              const backendModules = FRONTEND_TO_BACKEND_MAP[subItem.permission];
+              if (!backendModules || backendModules.length === 0) return false;
+              // Check if user has the specific action in ANY of the backend modules mapped to this frontend module
+              return backendModules.some(backendModule =>
+                hasPermission(user.permissions, backendModule, subItem.action)
+              );
+            }
             return hasModuleAccess(user.permissions, subItem.permission);
           }
 

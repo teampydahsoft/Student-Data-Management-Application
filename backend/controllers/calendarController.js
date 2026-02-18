@@ -5,6 +5,11 @@ const {
   deleteCustomHoliday,
   normalizeDate
 } = require('../services/customHolidayService');
+const {
+  getNonWorkingDayInfo,
+  getNonWorkingDaysForRange,
+  clearCache
+} = require('../services/nonWorkingDayService');
 const { getAttendanceStatusForRange } = require('../services/attendanceStatusService');
 const { masterPool } = require('../config/database');
 const { sendNotificationToUser } = require('./pushController');
@@ -253,6 +258,9 @@ exports.saveCustomHoliday = async (req, res) => {
       createdBy
     });
 
+    // Clear holiday cache to reflect changes immediately
+    clearCache();
+
     res.json({
       success: true,
       data: holiday
@@ -281,6 +289,9 @@ exports.deleteCustomHoliday = async (req, res) => {
     }
 
     const deleted = await deleteCustomHoliday(date);
+
+    // Clear holiday cache to reflect changes immediately
+    clearCache();
 
     res.json({
       success: true,

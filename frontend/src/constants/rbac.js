@@ -60,11 +60,13 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.ATTENDANCE]: {
-    permissions: ['view', 'mark', 'download'],
+    permissions: ['view', 'mark', 'download', 'view_hourly', 'view_internship'],
     labels: {
       view: 'View Attendance',
       mark: 'Mark Attendance',
-      download: 'Download Reports'
+      download: 'Download Reports',
+      view_hourly: 'View Hourly Attendance Monitoring',
+      view_internship: 'View Internship Attendance'
     }
   },
   [BACKEND_MODULES.FEE_MANAGEMENT]: {
@@ -89,10 +91,14 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.REPORTS]: {
-    permissions: ['view', 'download'],
+    permissions: ['view', 'download', 'view_registration', 'view_attendance', 'view_day_end', 'view_category'],
     labels: {
       view: 'View Reports',
-      download: 'Download Reports'
+      download: 'Download Reports',
+      view_registration: 'View Registration Reports',
+      view_attendance: 'View Attendance Reports',
+      view_day_end: 'View Day End Reports',
+      view_category: 'View Category Reports'
     }
   },
   [BACKEND_MODULES.TICKET_MANAGEMENT]: {

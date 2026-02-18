@@ -19,7 +19,8 @@ import {
   ChevronRight,
   Mail,
   Users,
-  Settings
+  Settings,
+  Lock
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import toast from 'react-hot-toast';
@@ -40,7 +41,7 @@ import { SkeletonTable, SkeletonAttendanceTable } from '../components/SkeletonLo
 import HolidayCalendarModal from '../components/Attendance/HolidayCalendarModal';
 import AttendanceSettingsModal from '../components/Attendance/AttendanceSettingsModal';
 import useAuthStore from '../store/authStore';
-import { isFullAccessRole } from '../constants/rbac';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import { useInvalidateStudents } from '../hooks/useStudents';
 
 const normalizeDateToIST = (dateStr) => {
@@ -124,6 +125,28 @@ const getMonthKeyFromDate = (dateString) => {
 };
 
 const Attendance = () => {
+  const { user } = useAuthStore();
+
+  // Permission check
+  const hasAccess = useMemo(() => {
+    if (!user) return false;
+    if (isFullAccessRole(user.role)) return true;
+    return hasPermission(user.permissions, BACKEND_MODULES.ATTENDANCE, 'view');
+  }, [user]);
+
+  if (!hasAccess && user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] p-4 text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+          <Lock className="text-red-500" size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-gray-600 max-w-sm">
+          You do not have permission to view Daily Attendance.
+        </p>
+      </div>
+    );
+  }
   const StatPill = ({ label, value, color }) => {
     const colorMap = {
       gray: 'bg-gray-50 border-gray-200 text-gray-900',
@@ -404,7 +427,6 @@ const Attendance = () => {
   const [attendanceReport, setAttendanceReport] = useState(null);
   const calendarCacheRef = useRef(new Map());
 
-  const user = useAuthStore((state) => state.user);
   const isAdmin = isFullAccessRole(user?.role);
 
   const setCachedCalendarData = (monthKey, updater) => {
@@ -512,10 +534,11 @@ const Attendance = () => {
     return fallback;
   };
 
-  const effectiveStatus = (studentId) => {
+  const effectiveStatus = (studentId, isNonWorkingDay = false) => {
     const status = statusMap[studentId];
-    // Default to 'present' if no status is set
-    return status ? status.toLowerCase() : 'present';
+    if (status) return status.toLowerCase();
+    // Default to 'holiday' on non-working days (Sundays, public/custom holidays)
+    return isNonWorkingDay ? 'holiday' : 'present';
   };
 
   // Use statistics from API (based on total students, not just current page)
@@ -1372,8 +1395,15 @@ const Attendance = () => {
           ? regRaw.trim()
           : regRaw;
 
-        // If student has attendanceStatus, use it; otherwise default to 'present' for display
-        const status = student.attendanceStatus ? student.attendanceStatus.toLowerCase() : 'present';
+        // Check if the selected date is a Sunday (non-working day)
+        const selectedDateObj = new Date(`${attendanceDate}T00:00:00`);
+        const isSundayDate = selectedDateObj.getDay() === 0;
+
+        // If student has attendanceStatus, use it; otherwise default based on day type
+        // On Sundays, default to 'holiday'; on regular days, default to 'present'
+        const status = student.attendanceStatus
+          ? student.attendanceStatus.toLowerCase()
+          : isSundayDate ? 'holiday' : 'present';
 
         // Enhanced holiday reason mapping - ensure we get it from multiple possible sources
         let holidayReason = student.holiday_reason || null;
@@ -2186,7 +2216,7 @@ const Attendance = () => {
     const absentStudents = [];
 
     students.forEach((student) => {
-      const current = effectiveStatus(student.id);
+      const current = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
       if (current === 'present') {
         presentStudents.push(student);
       } else if (current === 'absent') {
@@ -2216,7 +2246,7 @@ const Attendance = () => {
 
     // Check if there are any changes or unmarked students
     const hasChanges = students.some((student) => {
-      const current = effectiveStatus(student.id);
+      const current = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
       const initial = initialStatusMap[student.id];
       // If student doesn't have initial status, they need to be saved
       if (initial === undefined) return true;
@@ -2241,7 +2271,7 @@ const Attendance = () => {
     }
     const records = students
       .map((student) => {
-        const current = effectiveStatus(student.id);
+        const current = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
         const initial = initialStatusMap[student.id];
 
         // Save if:
@@ -3495,7 +3525,7 @@ const Attendance = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {sortedStudents.map((student) => {
-                      const status = effectiveStatus(student.id);
+                      const status = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
                       const parentContact = student.parentMobile1 || student.parentMobile2 || 'Not available';
                       return (
                         <tr
@@ -3827,7 +3857,7 @@ const Attendance = () => {
               {/* Mobile Card View */}
               <div className="lg:hidden space-y-3 p-3 sm:p-4">
                 {sortedStudents.map((student) => {
-                  const status = effectiveStatus(student.id);
+                  const status = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
                   const parentContact = student.parentMobile1 || student.parentMobile2 || 'Not available';
                   const hasDbRecord = student.attendanceStatus !== null;
                   const statusChanged = statusMap[student.id] !== initialStatusMap[student.id];

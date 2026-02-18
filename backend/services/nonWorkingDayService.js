@@ -170,8 +170,13 @@ const getNonWorkingDaysForRange = async (startDate, endDate, countryCode = DEFAU
   };
 };
 
+const clearCache = () => {
+  monthCache.clear();
+};
+
 module.exports = {
   getNonWorkingDayInfo,
-  getNonWorkingDaysForRange
+  getNonWorkingDaysForRange,
+  clearCache
 };
 

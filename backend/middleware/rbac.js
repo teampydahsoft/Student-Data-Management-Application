@@ -503,5 +503,6 @@ module.exports = {
   attachUserScope,
   verifyCanCreateRole,
   verifyCanManageUser,
-  parseArrayData
+  parseArrayData,
+  MODULES
 };

@@ -3,6 +3,7 @@ const { masterPool } = require('../config/database');
 const { sendBrevoEmail } = require('../utils/emailService');
 const { checkAndSendBirthdayNotifications } = require('./birthdayNotificationService');
 const { createBroadcastNotification } = require('./notificationService');
+const { getNonWorkingDayInfo } = require('./nonWorkingDayService');
 
 // Helper to check if a form falls due today based on recurrence config
 const isFormDue = (form, today) => {
@@ -364,8 +365,15 @@ const sendDailyAttendanceReports = async () => {
         }
 
         // 0.5. Mark pending students as present before sending reports
+        // Skip auto-marking on Sundays and holidays (non-working days)
         try {
-            await markPendingStudentsAsPresent(attendanceDate, excludedCourses, excludedStudents);
+            const nonWorkingInfo = await getNonWorkingDayInfo(attendanceDate);
+            if (nonWorkingInfo && nonWorkingInfo.isNonWorkingDay) {
+                const reasons = (nonWorkingInfo.reasons || []).join(', ') || 'non-working day';
+                console.log(`⏭️ Skipping auto-present marking for ${attendanceDate} — it is a ${reasons}.`);
+            } else {
+                await markPendingStudentsAsPresent(attendanceDate, excludedCourses, excludedStudents);
+            }
         } catch (err) {
             console.error('❌ Failed to mark pending students as present:', err);
             // Continue to send reports with current data

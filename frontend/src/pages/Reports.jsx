@@ -20,7 +20,10 @@ import {
   Calendar,
   CalendarDays,
   Mail,
-  Loader2
+  Loader2,
+  Lock,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -28,9 +31,13 @@ import {
   LineChart, Line
 } from 'recharts';
 import toast from 'react-hot-toast';
+import { Navigate } from 'react-router-dom';
 import RegistrationDownloadModal from '../components/Reports/RegistrationDownloadModal';
 import api from '../config/api';
 import CalendarWidget from '../components/Attendance/CalendarWidget';
+import useAuthStore from '../store/authStore';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
+import { formatDateToLocalISO } from '../utils/dateUtils';
 
 const StatusBadge = ({ status, type = 'icon' }) => {
   const isCompleted = status === 'completed' || status === 'Verified' || status === 'No Due';
@@ -62,10 +69,37 @@ const StatusBadge = ({ status, type = 'icon' }) => {
 };
 
 const Reports = () => {
+  const { user } = useAuthStore();
   const location = useLocation();
   const isAttendanceReports = location.pathname === '/reports/attendance';
   const isDayEndReports = location.pathname === '/reports/day-end';
   const reportType = isDayEndReports ? 'dayend' : (isAttendanceReports ? 'attendance' : 'registration');
+
+  // Permission check
+  const hasAccess = useMemo(() => {
+    if (!user) return false;
+    if (isFullAccessRole(user.role)) return true;
+
+    let action = 'view_registration';
+    if (isAttendanceReports) action = 'view_attendance';
+    else if (isDayEndReports) action = 'view_day_end';
+
+    return hasPermission(user.permissions, BACKEND_MODULES.REPORTS, action);
+  }, [user, isAttendanceReports, isDayEndReports]);
+
+  if (!hasAccess && user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] p-4 text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+          <Lock className="text-red-500" size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-gray-600 max-w-sm">
+          You do not have permission to view {isDayEndReports ? 'Day End' : (isAttendanceReports ? 'Attendance' : 'Registration')} Reports.
+        </p>
+      </div>
+    );
+  }
 
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -124,10 +158,13 @@ const Reports = () => {
   });
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [attendanceDateRange, setAttendanceDateRange] = useState({
-    fromDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
-    toDate: new Date().toISOString().split('T')[0]
+    fromDate: formatDateToLocalISO(new Date(new Date().setDate(new Date().getDate() - 30))),
+    toDate: formatDateToLocalISO(new Date())
   });
-  const [attendanceDateMode, setAttendanceDateMode] = useState('range'); // 'today' or 'range'
+  const [attendanceDateMode, setAttendanceDateMode] = useState('range'); // 'today' or 'range' or 'monthly'
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [viewType, setViewType] = useState('list'); // 'list' or 'grid'
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [calendarAttendanceData, setCalendarAttendanceData] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -161,7 +198,7 @@ const Reports = () => {
   const [sendingReports, setSendingReports] = useState(false);
   const dayEndStatsRef = useRef(null);
   const [statsSectionHeight, setStatsSectionHeight] = useState(180);
-  const [dayEndDate, setDayEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dayEndDate, setDayEndDate] = useState(formatDateToLocalISO(new Date()));
 
   // Fetch Abstract Data
   useEffect(() => {
@@ -467,15 +504,15 @@ const Reports = () => {
   const fetchAttendanceReport = useCallback(async () => {
     let fromDate = attendanceDateRange.fromDate;
     let toDate = attendanceDateRange.toDate;
-    
+
     // If in today mode and dates are not set, use today's date
     if (attendanceDateMode === 'today' && (!fromDate || !toDate)) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatDateToLocalISO(new Date());
       fromDate = today;
       toDate = today;
       setAttendanceDateRange({ fromDate: today, toDate: today });
     }
-    
+
     if (!fromDate || !toDate) {
       toast.error('Please select both from and to dates');
       return;
@@ -486,7 +523,7 @@ const Reports = () => {
       const params = new URLSearchParams();
       params.append('fromDate', fromDate);
       params.append('toDate', toDate);
-      
+
       if (attendanceFilters.college) params.append('college', attendanceFilters.college);
       if (attendanceFilters.level) params.append('level', attendanceFilters.level);
       if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
@@ -513,7 +550,7 @@ const Reports = () => {
   const fetchAttendanceAbstract = useCallback(async () => {
     const fromDate = attendanceDateRange.fromDate;
     const toDate = attendanceDateRange.toDate;
-    
+
     if (!fromDate || !toDate) {
       toast.error('Please select both from and to dates');
       return;
@@ -524,7 +561,7 @@ const Reports = () => {
       const params = new URLSearchParams();
       params.append('fromDate', fromDate);
       params.append('toDate', toDate);
-      
+
       if (attendanceFilters.college) params.append('college', attendanceFilters.college);
       if (attendanceFilters.level) params.append('level', attendanceFilters.level);
       if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
@@ -551,7 +588,7 @@ const Reports = () => {
   const fetchCalendarAttendanceData = useCallback(async () => {
     const fromDate = attendanceDateRange.fromDate;
     const toDate = attendanceDateRange.toDate;
-    
+
     if (!fromDate || !toDate) {
       return;
     }
@@ -561,7 +598,7 @@ const Reports = () => {
       const params = new URLSearchParams();
       params.append('fromDate', fromDate);
       params.append('toDate', toDate);
-      
+
       if (attendanceFilters.college) params.append('college', attendanceFilters.college);
       if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
       if (attendanceFilters.course) params.append('course', attendanceFilters.course);
@@ -586,6 +623,21 @@ const Reports = () => {
       fetchCalendarAttendanceData();
     }
   }, [calendarModalOpen, fetchCalendarAttendanceData]);
+
+  // Handle Monthly date range calculation
+  useEffect(() => {
+    if (attendanceDateMode === 'monthly') {
+      const firstDay = new Date(selectedYear, selectedMonth - 1, 1);
+      const lastDay = new Date(selectedYear, selectedMonth, 0);
+
+      const fromDate = formatDateToLocalISO(firstDay);
+      const toDate = formatDateToLocalISO(lastDay);
+
+      if (attendanceDateRange.fromDate !== fromDate || attendanceDateRange.toDate !== toDate) {
+        setAttendanceDateRange({ fromDate, toDate });
+      }
+    }
+  }, [attendanceDateMode, selectedMonth, selectedYear, attendanceDateRange.fromDate, attendanceDateRange.toDate]);
 
   // Auto-fetch data when filters or date range change
   useEffect(() => {
@@ -778,7 +830,7 @@ const Reports = () => {
         date: dayEndDate,
         holidayReason: extractHolidayReason(groupedData)
       });
-      
+
       // Fetch courses with level information
       try {
         const coursesResponse = await api.get('/courses?includeInactive=false');
@@ -788,7 +840,7 @@ const Reports = () => {
       } catch (error) {
         console.error('Failed to fetch courses with levels:', error);
       }
-      
+
       const colleges = [...new Set(groupedData.map(item => item.college).filter(Boolean))].sort();
       const batches = [...new Set(groupedData.map(item => item.batch).filter(Boolean))].sort();
       const courses = [...new Set(groupedData.map(item => item.course).filter(Boolean))].sort();
@@ -984,7 +1036,7 @@ const Reports = () => {
       params.append('fromDate', attendanceReportData.fromDate);
       params.append('toDate', attendanceReportData.toDate);
       params.append('format', 'excel');
-      
+
       if (attendanceFilters.college) params.append('college', attendanceFilters.college);
       if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
       if (attendanceFilters.course) params.append('course', attendanceFilters.course);
@@ -1029,7 +1081,7 @@ const Reports = () => {
       params.append('fromDate', attendanceDateRange.fromDate);
       params.append('toDate', attendanceDateRange.toDate);
       params.append('format', 'excel');
-      
+
       // Only add filters if they are set (empty filters mean "all students" which generates aggregated report)
       if (attendanceFilters.college) params.append('college', attendanceFilters.college);
       if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
@@ -1086,7 +1138,7 @@ const Reports = () => {
       const totalPresent = attendanceAbstractData.reduce((sum, row) => sum + (row.totalPresentDays || 0), 0);
       const totalAbsent = attendanceAbstractData.reduce((sum, row) => sum + (row.totalAbsentDays || 0), 0);
       const totalMarked = totalPresent + totalAbsent;
-      
+
       const overallPresentPercentage = workingDays > 0 && totalStudents > 0
         ? ((totalPresent / (totalStudents * workingDays)) * 100).toFixed(2)
         : '0.00';
@@ -1118,11 +1170,11 @@ const Reports = () => {
       const colWidths = [45, 20, 35, 15, 12, 18, 25, 18, 18, 20];
       const headerStartX = 14;
       const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
-      
+
       // Draw header background
       doc.setFillColor(240, 240, 240);
       doc.rect(headerStartX, yPos - 5, tableWidth, 7, 'F');
-      
+
       doc.setFontSize(9);
       doc.setFont(undefined, 'bold');
       let xPos = headerStartX;
@@ -1131,7 +1183,7 @@ const Reports = () => {
         xPos += colWidths[idx];
       });
       doc.setFont(undefined, 'normal');
-      
+
       // Draw header bottom line
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.5);
@@ -1508,282 +1560,289 @@ const Reports = () => {
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6 w-full h-full overflow-hidden">
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between flex-shrink-0">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="rounded-full bg-blue-100 p-3 text-blue-600">
-              <FileText size={32} />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 heading-font">
-                    {reportType === 'registration' ? 'Registration Reports' : reportType === 'dayend' ? 'Day End Report' : 'Attendance Reports'}
-                  </h1>
-                  <p className="text-sm text-gray-600">
-                    {reportType === 'registration' 
-                      ? 'Track student registration status across the 5 stages.'
-                      : reportType === 'dayend'
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between flex-shrink-0">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="rounded-full bg-blue-100 p-3 text-blue-600">
+            <FileText size={32} />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 heading-font">
+                  {reportType === 'registration' ? 'Registration Reports' : reportType === 'dayend' ? 'Day End Report' : 'Attendance Reports'}
+                </h1>
+                <p className="text-sm text-gray-600">
+                  {reportType === 'registration'
+                    ? 'Track student registration status across the 5 stages.'
+                    : reportType === 'dayend'
                       ? 'View daily attendance summary and statistics.'
                       : 'View and analyze student attendance with percentage calculations.'}
-                  </p>
-                </div>
-                {/* Today/Range Tabs and Calendar - Only for Attendance Reports */}
-                {reportType === 'attendance' && (
-                  <>
-                    <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
-                      <button
-                        onClick={() => {
-                          setAttendanceDateMode('today');
-                          const today = new Date().toISOString().split('T')[0];
-                          setAttendanceDateRange({ fromDate: today, toDate: today });
-                        }}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                          attendanceDateMode === 'today'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        Today
-                      </button>
-                      <button
-                        onClick={() => setAttendanceDateMode('range')}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                          attendanceDateMode === 'range'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        Range
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => setCalendarModalOpen(true)}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
-                      title="View Calendar"
-                    >
-                      <CalendarDays size={18} />
-                      Calendar
-                    </button>
-                  </>
-                )}
+                </p>
               </div>
+              {/* Today/Range Tabs and Calendar - Only for Attendance Reports */}
+              {reportType === 'attendance' && (
+                <>
+                  <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+                    <button
+                      onClick={() => {
+                        setAttendanceDateMode('today');
+                        const today = formatDateToLocalISO(new Date());
+                        setAttendanceDateRange({ fromDate: today, toDate: today });
+                      }}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${attendanceDateMode === 'today'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={() => setAttendanceDateMode('range')}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${attendanceDateMode === 'range'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                      Range
+                    </button>
+                    <button
+                      onClick={() => setAttendanceDateMode('monthly')}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${attendanceDateMode === 'monthly'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                      Monthly
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setCalendarModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+                    title="View Calendar"
+                  >
+                    <CalendarDays size={18} />
+                    Calendar
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Registration Report Tabs - Only show when registration is selected */}
-            {reportType === 'registration' && (
-              <div className='flex bg-gray-100 p-1 rounded-lg mr-2'>
-                <button
-                  onClick={() => setActiveTab('abstract')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'abstract'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                  Abstract
-                </button>
-                <button
-                  onClick={() => setActiveTab('sheet')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'sheet'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                  Sheets
-                </button>
-                <button
-                  onClick={() => setActiveTab('analytics')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'analytics'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                  Graphs
-                </button>
-              </div>
-            )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Registration Report Tabs - Only show when registration is selected */}
+          {reportType === 'registration' && (
+            <div className='flex bg-gray-100 p-1 rounded-lg mr-2'>
+              <button
+                onClick={() => setActiveTab('abstract')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'abstract'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                Abstract
+              </button>
+              <button
+                onClick={() => setActiveTab('sheet')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'sheet'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                Sheets
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'analytics'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                Graphs
+              </button>
+            </div>
+          )}
 
 
 
 
-            {reportType === 'registration' && (
-              <>
-                <button
-                  onClick={() => loadReport(filters)}
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
-                >
-                  {loading ? <span className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <RefreshCw size={16} />}
-                  Refresh
-                </button>
-                <button
-                  onClick={() => setDownloadModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors"
-                >
-                  <Download size={16} />
-                  Download
-                </button>
-              </>
-            )}
-            {reportType === 'dayend' && (
-              <div className="flex items-center gap-3">
-                <input
-                  type="date"
-                  value={dayEndDate}
-                  onChange={(e) => setDayEndDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={handleDayEndReport}
-                  disabled={dayEndReportLoading}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {dayEndReportLoading ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw size={16} />
-                      Refresh Report
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+          {reportType === 'registration' && (
+            <>
+              <button
+                onClick={() => loadReport(filters)}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                {loading ? <span className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" /> : <RefreshCw size={16} />}
+                Refresh
+              </button>
+              <button
+                onClick={() => setDownloadModalOpen(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors"
+              >
+                <Download size={16} />
+                Download
+              </button>
+            </>
+          )}
+          {reportType === 'dayend' && (
+            <div className="flex items-center gap-3">
+              <input
+                type="date"
+                value={dayEndDate}
+                onChange={(e) => setDayEndDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleDayEndReport}
+                disabled={dayEndReportLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {dayEndReportLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={16} />
+                    Refresh Report
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
       {/* Filters Section - Only for Registration Reports */}
       {reportType === 'registration' && (
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex-shrink-0">
           {/* Filters and Actions Row */}
           <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 w-full">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 w-full">
 
 
-            {/* College */}
-            <select
-              value={filters.college || ''}
-              onChange={(e) => handleFilterChange('college', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Colleges</option>
-              {filterOptions.colleges.map((college) => (
-                <option key={college} value={college}>
-                  {college}
-                </option>
-              ))}
-            </select>
+              {/* College */}
+              <select
+                value={filters.college || ''}
+                onChange={(e) => handleFilterChange('college', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Colleges</option>
+                {filterOptions.colleges.map((college) => (
+                  <option key={college} value={college}>
+                    {college}
+                  </option>
+                ))}
+              </select>
 
-            {/* Level */}
-            <select
-              value={filters.level || ''}
-              onChange={(e) => handleFilterChange('level', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Levels</option>
-              <option value="diploma">Diploma</option>
-              <option value="ug">UG</option>
-              <option value="pg">PG</option>
-            </select>
+              {/* Level */}
+              <select
+                value={filters.level || ''}
+                onChange={(e) => handleFilterChange('level', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Levels</option>
+                <option value="diploma">Diploma</option>
+                <option value="ug">UG</option>
+                <option value="pg">PG</option>
+              </select>
 
-            {/* Batch */}
-            <select
-              value={filters.batch}
-              onChange={(e) => handleFilterChange('batch', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Batches</option>
-              {(filterOptions.batches || []).map((batch) => (
-                <option key={batch} value={batch}>
-                  {batch}
-                </option>
-              ))}
-            </select>
+              {/* Batch */}
+              <select
+                value={filters.batch}
+                onChange={(e) => handleFilterChange('batch', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Batches</option>
+                {(filterOptions.batches || []).map((batch) => (
+                  <option key={batch} value={batch}>
+                    {batch}
+                  </option>
+                ))}
+              </select>
 
-            {/* Program */}
-            <select
-              value={filters.course || ''}
-              onChange={(e) => handleFilterChange('course', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Programs</option>
-              {availableCourses.map((course) => (
-                <option key={course} value={course}>
-                  {course}
-                </option>
-              ))}
-            </select>
+              {/* Program */}
+              <select
+                value={filters.course || ''}
+                onChange={(e) => handleFilterChange('course', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Programs</option>
+                {availableCourses.map((course) => (
+                  <option key={course} value={course}>
+                    {course}
+                  </option>
+                ))}
+              </select>
 
-            {/* Branch */}
-            <select
-              value={filters.branch || ''}
-              onChange={(e) => handleFilterChange('branch', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Branches</option>
-              {(filterOptions.branches || []).map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
-              ))}
-            </select>
+              {/* Branch */}
+              <select
+                value={filters.branch || ''}
+                onChange={(e) => handleFilterChange('branch', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Branches</option>
+                {(filterOptions.branches || []).map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </select>
 
-            {/* Year */}
-            <select
-              value={filters.year}
-              onChange={(e) => handleFilterChange('year', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Years</option>
-              {availableYears.map((year) => (
-                <option key={year} value={String(year)}>
-                  Year {year}
-                </option>
-              ))}
-            </select>
+              {/* Year */}
+              <select
+                value={filters.year}
+                onChange={(e) => handleFilterChange('year', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Years</option>
+                {availableYears.map((year) => (
+                  <option key={year} value={String(year)}>
+                    Year {year}
+                  </option>
+                ))}
+              </select>
 
-            {/* Semester */}
-            <select
-              value={filters.semester}
-              onChange={(e) => handleFilterChange('semester', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Sems</option>
-              {availableSemesters.map((semester) => (
-                <option key={semester} value={String(semester)}>
-                  Sem {semester}
-                </option>
-              ))}
-            </select>
+              {/* Semester */}
+              <select
+                value={filters.semester}
+                onChange={(e) => handleFilterChange('semester', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Sems</option>
+                {availableSemesters.map((semester) => (
+                  <option key={semester} value={String(semester)}>
+                    Sem {semester}
+                  </option>
+                ))}
+              </select>
 
-            {/* Scholarship Status - quickly find pending/eligible/not eligible */}
-            <select
-              value={filters.scholarshipStatus || ''}
-              onChange={(e) => handleFilterChange('scholarshipStatus', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              title="Filter by scholarship status to find students"
-            >
-              <option value="">All Scholarship</option>
-              <option value="pending">Pending (empty)</option>
-              <option value="eligible">Eligible</option>
-              <option value="not_eligible">Not eligible</option>
-            </select>
+              {/* Scholarship Status - quickly find pending/eligible/not eligible */}
+              <select
+                value={filters.scholarshipStatus || ''}
+                onChange={(e) => handleFilterChange('scholarshipStatus', e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                title="Filter by scholarship status to find students"
+              >
+                <option value="">All Scholarship</option>
+                <option value="pending">Pending (empty)</option>
+                <option value="eligible">Eligible</option>
+                <option value="not_eligible">Not eligible</option>
+              </select>
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors"
+              >
+                <XCircle size={16} />
+                Clear
+              </button>
+            )}
           </div>
-
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors"
-            >
-              <XCircle size={16} />
-              Clear
-            </button>
-          )}
-        </div>
-      </section>
+        </section>
       )}
 
       {/* Abstract View */}
@@ -2147,6 +2206,40 @@ const Reports = () => {
                   </div>
                 )}
 
+                {/* Monthly Selection */}
+                {attendanceDateMode === 'monthly' && (
+                  <div className="col-span-12 md:col-span-4 lg:col-span-3 xl:col-span-3 flex items-center justify-between gap-3 bg-gray-50 border border-gray-300 rounded-lg px-2 py-1">
+                    <button
+                      onClick={() => {
+                        const newMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+                        const newYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+                        setSelectedMonth(newMonth);
+                        setSelectedYear(newYear);
+                      }}
+                      className="p-1 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <div className="flex-1 text-center">
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Attendance Month</div>
+                      <div className="text-sm font-bold text-blue-700">
+                        {new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const newMonth = selectedMonth === 12 ? 1 : selectedMonth + 1;
+                        const newYear = selectedMonth === 12 ? selectedYear + 1 : selectedYear;
+                        setSelectedMonth(newMonth);
+                        setSelectedYear(newYear);
+                      }}
+                      className="p-1 hover:bg-white hover:shadow-sm rounded-md transition-all text-gray-600"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                )}
+
                 {/* College */}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">College</label>
@@ -2416,13 +2509,12 @@ const Reports = () => {
                               {row.absentPercentage?.toFixed(2) || '0.00'}%
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                row.attendancePercentage >= 75
-                                  ? 'bg-green-100 text-green-800 border border-green-300'
-                                  : row.attendancePercentage >= 60
-                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                                    : 'bg-red-100 text-red-800 border border-red-300'
-                              }`}>
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${row.attendancePercentage >= 75
+                                ? 'bg-green-100 text-green-800 border border-green-300'
+                                : row.attendancePercentage >= 60
+                                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                  : 'bg-red-100 text-red-800 border border-red-300'
+                                }`}>
                                 {row.attendancePercentage?.toFixed(2) || '0.00'}%
                               </span>
                             </td>
@@ -2468,13 +2560,12 @@ const Reports = () => {
                                   ? (totalPresent / (totalStudents * workingDays)) * 100
                                   : 0;
                                 return (
-                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                    overallPercentage >= 75
-                                      ? 'bg-green-100 text-green-800 border border-green-300'
-                                      : overallPercentage >= 60
-                                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                                        : 'bg-red-100 text-red-800 border border-red-300'
-                                  }`}>
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${overallPercentage >= 75
+                                    ? 'bg-green-100 text-green-800 border border-green-300'
+                                    : overallPercentage >= 60
+                                      ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                      : 'bg-red-100 text-red-800 border border-red-300'
+                                    }`}>
                                     {overallPercentage.toFixed(2)}%
                                   </span>
                                 );
@@ -2516,149 +2607,292 @@ const Reports = () => {
               </div>
               {/* Statistics Cards */}
               {attendanceReportData && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
-              <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <div className="text-xs text-blue-600 uppercase font-semibold">Total Students</div>
-                <div className="text-lg font-bold text-blue-900">{attendanceReportData.statistics.totalStudents}</div>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                <div className="text-xs text-gray-600 uppercase font-semibold">Working Days</div>
-                <div className="text-lg font-bold text-gray-900">{attendanceReportData.statistics.totalWorkingDays}</div>
-              </div>
-              <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                <div className="text-xs text-green-600 uppercase font-semibold">Present Students %</div>
-                <div className="text-lg font-bold text-green-900">
-                  {attendanceReportData.statistics.presentStudentsPercentage?.toFixed(2) || '0.00'}%
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    <div className="text-xs text-blue-600 uppercase font-semibold">Total Students</div>
+                    <div className="text-lg font-bold text-blue-900">{attendanceReportData.statistics.totalStudents}</div>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <div className="text-xs text-gray-600 uppercase font-semibold">Working Days</div>
+                    <div className="text-lg font-bold text-gray-900">{attendanceReportData.statistics.totalWorkingDays}</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+                    <div className="text-xs text-green-600 uppercase font-semibold">Present Students %</div>
+                    <div className="text-lg font-bold text-green-900">
+                      {attendanceReportData.statistics.presentStudentsPercentage?.toFixed(2) || '0.00'}%
+                    </div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg border border-red-100">
+                    <div className="text-xs text-red-600 uppercase font-semibold">Absent Students %</div>
+                    <div className="text-lg font-bold text-red-900">
+                      {attendanceReportData.statistics.absentStudentsPercentage?.toFixed(2) || '0.00'}%
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="bg-red-50 p-3 rounded-lg border border-red-100">
-                <div className="text-xs text-red-600 uppercase font-semibold">Absent Students %</div>
-                <div className="text-lg font-bold text-red-900">
-                  {attendanceReportData.statistics.absentStudentsPercentage?.toFixed(2) || '0.00'}%
-                </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Report Table */}
-          {attendanceLoading ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
-              <RefreshCw className="animate-spin" size={24} />
-              Loading attendance report...
-            </div>
-          ) : attendanceReportData && attendanceReportData.students.length > 0 ? (
-            <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">PIN No</th>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Student Name</th>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Admission No</th>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Batch</th>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Course</th>
-                      <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Branch</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Year</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Sem</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-blue-50">Working Days</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-green-50">Present %</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-red-50">Absent %</th>
-                      <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider bg-purple-50">Attendance %</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {attendanceReportData.students
-                      .filter(student => {
-                        if (!studentSearchQuery) return true;
-                        const query = studentSearchQuery.toLowerCase();
-                        return (
-                          (student.studentName || '').toLowerCase().includes(query) ||
-                          (student.pinNumber || '').toLowerCase().includes(query) ||
-                          (student.admissionNumber || '').toLowerCase().includes(query)
-                        );
-                      })
-                      .map((student, index) => (
-                      <tr 
-                        key={student.id} 
-                        onClick={() => {
-                          setSelectedStudent(student);
-                          setShowStudentModal(true);
-                        }}
-                        className={`hover:bg-blue-50 transition-colors cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-                      >
-                        <td className="px-4 py-3 font-semibold text-gray-900 border-r border-gray-100">{student.pinNumber || '-'}</td>
-                        <td className="px-4 py-3 text-gray-800 font-medium border-r border-gray-100">{student.studentName || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.admissionNumber || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.batch || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.course || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.branch || '-'}</td>
-                        <td className="px-4 py-3 text-center text-gray-700 font-medium border-r border-gray-100">{student.year || '-'}</td>
-                        <td className="px-4 py-3 text-center text-gray-700 font-medium border-r border-gray-100">{student.semester || '-'}</td>
-                        <td className="px-4 py-3 text-center font-bold text-blue-700 bg-blue-50/50 border-r border-gray-100">{student.statistics.workingDays}</td>
-                        <td className="px-4 py-3 text-center font-bold bg-green-50/50 border-r border-gray-100">
-                          <span className="text-green-700">
-                            {(() => {
-                              const markedDays = (student.statistics.presentDays || 0) + (student.statistics.absentDays || 0);
-                              return markedDays > 0 
-                                ? ((student.statistics.presentDays / markedDays) * 100).toFixed(2)
-                                : '0.00';
-                            })()}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center font-bold bg-red-50/50 border-r border-gray-100">
-                          <span className="text-red-700">
-                            {(() => {
-                              const markedDays = (student.statistics.presentDays || 0) + (student.statistics.absentDays || 0);
-                              return markedDays > 0 
-                                ? ((student.statistics.absentDays / markedDays) * 100).toFixed(2)
-                                : '0.00';
-                            })()}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center font-bold bg-purple-50/50">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            student.statistics.attendancePercentage >= 75 
-                              ? 'bg-green-100 text-green-800 border border-green-300' 
-                              : student.statistics.attendancePercentage >= 60 
-                                ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' 
-                                : 'bg-red-100 text-red-800 border border-red-300'
-                          }`}>
-                            {student.statistics.attendancePercentage.toFixed(2)}%
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {attendanceReportData.students.length > 0 && (
-                    <tfoot className="bg-gray-100 border-t-2 border-gray-300 font-bold">
-                      <tr>
-                        <td colSpan="8" className="px-4 py-3 text-right text-gray-700">Total:</td>
-                        <td className="px-4 py-3 text-center text-blue-700 bg-blue-100 border-r border-gray-200">
-                          {attendanceReportData.statistics.totalWorkingDays}
-                        </td>
-                        <td className="px-4 py-3 text-center text-green-700 bg-green-100 border-r border-gray-200">
-                          {attendanceReportData.statistics.presentStudentsPercentage?.toFixed(2) || '0.00'}%
-                        </td>
-                        <td className="px-4 py-3 text-center text-red-700 bg-red-100 border-r border-gray-200">
-                          {attendanceReportData.statistics.absentStudentsPercentage?.toFixed(2) || '0.00'}%
-                        </td>
-                        <td className="px-4 py-3 text-center text-purple-700 bg-purple-100">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-200 text-purple-900 border border-purple-300">
-                            {attendanceReportData.statistics.overallAttendancePercentage.toFixed(2)}%
-                          </span>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+              {/* View Type Toggler - Only in detailed view */}
+              <div className="flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+                  <button
+                    onClick={() => setViewType('list')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${viewType === 'list'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                  >
+                    List View
+                  </button>
+                  <button
+                    onClick={() => setViewType('grid')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${viewType === 'grid'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                  >
+                    Grid View
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className="text-xs text-gray-600">Present (P)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span className="text-xs text-gray-600">Absent (A)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                    <span className="text-xs text-gray-600">Holiday (H)</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          ) : attendanceReportData && attendanceReportData.students.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
-              <AlertCircle size={32} />
-              <p>No students found matching the selected criteria.</p>
-            </div>
-          ) : null}
+
+              {/* Report Table / Grid */}
+              {attendanceLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                  <RefreshCw className="animate-spin" size={24} />
+                  Loading attendance report...
+                </div>
+              ) : attendanceReportData && attendanceReportData.students.length > 0 ? (
+                viewType === 'list' ? (
+                  <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="flex-1 overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 sticky top-0 z-10">
+                          <tr>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">PIN No</th>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Student Name</th>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Admission No</th>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Batch</th>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Course</th>
+                            <th className="px-4 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Branch</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Year</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">Sem</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-blue-50">Working Days</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-green-50">Present %</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-red-50">Absent %</th>
+                            <th className="px-4 py-3.5 text-center text-xs font-bold text-gray-700 uppercase tracking-wider bg-purple-50">Attendance %</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {attendanceReportData.students
+                            .filter(student => {
+                              if (!studentSearchQuery) return true;
+                              const query = studentSearchQuery.toLowerCase();
+                              return (
+                                (student.studentName || '').toLowerCase().includes(query) ||
+                                (student.pinNumber || '').toLowerCase().includes(query) ||
+                                (student.admissionNumber || '').toLowerCase().includes(query)
+                              );
+                            })
+                            .map((student, index) => (
+                              <tr
+                                key={student.id}
+                                onClick={() => {
+                                  setSelectedStudent(student);
+                                  setShowStudentModal(true);
+                                }}
+                                className={`hover:bg-blue-50 transition-colors cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                              >
+                                <td className="px-4 py-3 font-semibold text-gray-900 border-r border-gray-100">{student.pinNumber || '-'}</td>
+                                <td className="px-4 py-3 text-gray-800 font-medium border-r border-gray-100">{student.studentName || '-'}</td>
+                                <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.admissionNumber || '-'}</td>
+                                <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.batch || '-'}</td>
+                                <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.course || '-'}</td>
+                                <td className="px-4 py-3 text-gray-600 border-r border-gray-100">{student.branch || '-'}</td>
+                                <td className="px-4 py-3 text-center text-gray-700 font-medium border-r border-gray-100">{student.year || '-'}</td>
+                                <td className="px-4 py-3 text-center text-gray-700 font-medium border-r border-gray-100">{student.semester || '-'}</td>
+                                <td className="px-4 py-3 text-center font-bold text-blue-700 bg-blue-50/50 border-r border-gray-100">{student.statistics.workingDays}</td>
+                                <td className="px-4 py-3 text-center font-bold bg-green-50/50 border-r border-gray-100">
+                                  <span className="text-green-700">
+                                    {(() => {
+                                      const markedDays = (student.statistics.presentDays || 0) + (student.statistics.absentDays || 0);
+                                      return markedDays > 0
+                                        ? ((student.statistics.presentDays / markedDays) * 100).toFixed(2)
+                                        : '0.00';
+                                    })()}%
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center font-bold bg-red-50/50 border-r border-gray-100">
+                                  <span className="text-red-700">
+                                    {(() => {
+                                      const markedDays = (student.statistics.presentDays || 0) + (student.statistics.absentDays || 0);
+                                      return markedDays > 0
+                                        ? ((student.statistics.absentDays / markedDays) * 100).toFixed(2)
+                                        : '0.00';
+                                    })()}%
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center font-bold bg-purple-50/50">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${student.statistics.attendancePercentage >= 75
+                                    ? 'bg-green-100 text-green-800 border border-green-300'
+                                    : student.statistics.attendancePercentage >= 60
+                                      ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                      : 'bg-red-100 text-red-800 border border-red-300'
+                                    }`}>
+                                    {student.statistics.attendancePercentage.toFixed(2)}%
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                        {attendanceReportData.students.length > 0 && (
+                          <tfoot className="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                            <tr>
+                              <td colSpan="8" className="px-4 py-3 text-right text-gray-700">Total:</td>
+                              <td className="px-4 py-3 text-center text-blue-700 bg-blue-100 border-r border-gray-200">
+                                {attendanceReportData.statistics.totalWorkingDays}
+                              </td>
+                              <td className="px-4 py-3 text-center text-green-700 bg-green-100 border-r border-gray-200">
+                                {attendanceReportData.statistics.presentStudentsPercentage?.toFixed(2) || '0.00'}%
+                              </td>
+                              <td className="px-4 py-3 text-center text-red-700 bg-red-100 border-r border-gray-200">
+                                {attendanceReportData.statistics.absentStudentsPercentage?.toFixed(2) || '0.00'}%
+                              </td>
+                              <td className="px-4 py-3 text-center text-purple-700 bg-purple-100">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-200 text-purple-900 border border-purple-300">
+                                  {attendanceReportData.statistics.overallAttendancePercentage.toFixed(2)}%
+                                </span>
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="flex-1 overflow-auto">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead className="bg-gray-50 sticky top-0 z-20">
+                          <tr>
+                            <th rowSpan={2} className="px-3 py-2 border-b border-r bg-gray-50 sticky left-0 z-30 min-w-[120px] text-xs font-bold text-gray-700 uppercase">PIN No</th>
+                            <th rowSpan={2} className="px-3 py-2 border-b border-r bg-gray-50 sticky left-[120px] z-30 min-w-[200px] text-xs font-bold text-gray-700 uppercase">Student Name</th>
+                            {(attendanceReportData.dates || []).map((date) => (
+                              <th key={`num-${date}`} className="px-1 py-1 border-b border-r text-center min-w-[32px] font-bold text-gray-700 bg-blue-50/30">
+                                {new Date(date).getDate()}
+                              </th>
+                            ))}
+                            <th rowSpan={2} className="px-3 py-2 border-b border-r bg-blue-50 sticky right-[120px] z-30 min-w-[60px] text-center text-xs font-bold text-blue-700 uppercase">TOTAL</th>
+                            <th rowSpan={2} className="px-3 py-2 border-b border-r bg-gray-50 sticky right-[60px] z-30 min-w-[60px] text-center text-xs font-bold text-gray-700 uppercase">PRES</th>
+                            <th rowSpan={2} className="px-3 py-2 border-b bg-gray-50 sticky right-0 z-30 min-w-[60px] text-center text-xs font-bold text-gray-700 uppercase">%</th>
+                          </tr>
+                          <tr className="bg-gray-50">
+                            {(attendanceReportData.dates || []).map((date) => (
+                              <th key={`day-${date}`} className="px-1 py-1 border-b border-r text-center min-w-[32px] text-[9px] font-medium uppercase text-gray-500">
+                                {new Date(date).toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {(attendanceReportData.students || [])
+                            .filter(student => {
+                              if (!studentSearchQuery) return true;
+                              const query = studentSearchQuery.toLowerCase();
+                              return (
+                                (student.studentName || '').toLowerCase().includes(query) ||
+                                (student.pinNumber || '').toLowerCase().includes(query) ||
+                                (student.admissionNumber || '').toLowerCase().includes(query)
+                              );
+                            })
+                            .map((student, index) => (
+                              <tr
+                                key={student.id}
+                                onClick={() => {
+                                  setSelectedStudent(student);
+                                  setShowStudentModal(true);
+                                }}
+                                className={`hover:bg-blue-50 transition-colors cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                              >
+                                <td className="px-3 py-2 border-r bg-white sticky left-0 z-10 font-medium">{student.pinNumber || '-'}</td>
+                                <td className="px-3 py-2 border-r bg-white sticky left-[120px] z-10 font-medium truncate max-w-[200px]" title={student.studentName}>
+                                  {student.studentName}
+                                </td>
+                                {(attendanceReportData.dates || []).map((date) => {
+                                  const status = student.attendance?.[date];
+                                  const isHoliday = attendanceReportData.holidayInfo?.dates?.includes(date) ||
+                                    new Date(date).getDay() === 0;
+
+                                  let cellContent = '-';
+                                  let cellClass = 'text-gray-300';
+
+                                  if (status === 'present') {
+                                    cellContent = 'P';
+                                    cellClass = 'bg-green-100 text-green-700 font-bold';
+                                  } else if (status === 'absent') {
+                                    cellContent = 'A';
+                                    cellClass = 'bg-red-100 text-red-700 font-bold';
+                                  } else if (status === 'holiday' || isHoliday) {
+                                    cellContent = 'H';
+                                    cellClass = 'bg-gray-100 text-gray-500 font-bold';
+                                  }
+
+                                  return (
+                                    <td key={date} className={`px-1 py-2 border-r text-center text-[10px] ${cellClass}`}>
+                                      {cellContent}
+                                    </td>
+                                  );
+                                })}
+                                <td className="px-3 py-2 sticky right-[120px] z-10 font-bold text-center border-l border-r bg-blue-50 text-blue-700">
+                                  {attendanceReportData.statistics?.totalWorkingDays || 0}
+                                </td>
+                                <td className={`px-3 py-2 sticky right-[60px] z-10 font-bold text-center border-r ${student.statistics?.presentDays >= (attendanceReportData.statistics?.totalWorkingDays || 0) * 0.75 ? 'bg-green-50 text-green-700' :
+                                  student.statistics?.presentDays >= (attendanceReportData.statistics?.totalWorkingDays || 0) * 0.60 ? 'bg-yellow-50 text-yellow-700' :
+                                    'bg-red-50 text-red-700'
+                                  }`}>
+                                  {student.statistics?.presentDays || 0}
+                                </td>
+                                {(() => {
+                                  const totalWD = attendanceReportData.statistics?.totalWorkingDays || 0;
+                                  const pct = totalWD > 0
+                                    ? (student.statistics?.presentDays || 0) / totalWD * 100
+                                    : 0;
+                                  const colorClass = pct >= 75 ? 'bg-green-50 text-green-700' :
+                                    pct >= 60 ? 'bg-yellow-50 text-yellow-700' :
+                                      'bg-red-50 text-red-700';
+                                  return (
+                                    <td className={`px-3 py-2 sticky right-0 z-10 font-bold text-center border-l ${colorClass}`}>
+                                      {pct.toFixed(1)}%
+                                    </td>
+                                  );
+                                })()}
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              ) : attendanceReportData && attendanceReportData.students.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                  <AlertCircle size={32} />
+                  <p>No students found matching the selected criteria.</p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -2672,582 +2906,571 @@ const Reports = () => {
       />
 
       {/* Student Detail Modal */}
-      {showStudentModal && selectedStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6 overflow-y-auto">
-          <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setShowStudentModal(false);
-                    setSelectedStudent(null);
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  aria-label="Back"
-                >
-                  <ArrowLeft size={20} className="text-gray-600" />
-                </button>
-                <div className="rounded-full bg-blue-100 p-3 text-blue-600">
-                  <User size={24} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">{selectedStudent.studentName || 'Student Details'}</h2>
-                  <p className="text-sm text-gray-500">
-                    {selectedStudent.pinNumber || selectedStudent.admissionNumber || 'N/A'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowStudentModal(false);
-                  setSelectedStudent(null);
-                }}
-                className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                aria-label="Close"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-6">
-              {/* Student Information */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">PIN Number</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.pinNumber || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Admission Number</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.admissionNumber || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Batch</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.batch || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Program</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.course || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Branch</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.branch || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Year</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.year || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Semester</label>
-                  <p className="text-sm font-medium text-gray-900 mt-1">{selectedStudent.semester || '-'}</p>
-                </div>
-              </div>
+      {showStudentModal && (
+        (() => {
+          const currentStudent = (attendanceReportData?.students || []).find(s => s.id === selectedStudent?.id) || selectedStudent;
+          if (!currentStudent) return null;
 
-              {/* Attendance Statistics */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-base font-semibold text-gray-900 mb-4">Attendance Statistics</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                    <div className="text-xs text-blue-600 uppercase font-semibold">Working Days</div>
-                    <div className="text-2xl font-bold text-blue-900 mt-1">{selectedStudent.statistics?.workingDays || 0}</div>
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6 overflow-y-auto">
+              <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setShowStudentModal(false);
+                        setSelectedStudent(null);
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      aria-label="Back"
+                    >
+                      <ArrowLeft size={20} className="text-gray-600" />
+                    </button>
+                    <div className="rounded-full bg-blue-100 p-3 text-blue-600">
+                      <User size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">{currentStudent.studentName || 'Student Details'}</h2>
+                      <p className="text-sm text-gray-500">
+                        {currentStudent.pinNumber || currentStudent.admissionNumber || 'N/A'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                    <div className="text-xs text-green-600 uppercase font-semibold">Present Days</div>
-                    <div className="text-2xl font-bold text-green-900 mt-1">{selectedStudent.statistics?.presentDays || 0}</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStudentModal(false);
+                      setSelectedStudent(null);
+                    }}
+                    className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                    aria-label="Close"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <div className="p-6 space-y-6">
+                  {/* Student Information */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">PIN Number</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.pinNumber || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Admission Number</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.admissionNumber || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Batch</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.batch || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Program</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.course || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Branch</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.branch || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Year</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.year || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Semester</label>
+                      <p className="text-sm font-medium text-gray-900 mt-1">{currentStudent.semester || '-'}</p>
+                    </div>
                   </div>
-                  <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-                    <div className="text-xs text-red-600 uppercase font-semibold">Absent Days</div>
-                    <div className="text-2xl font-bold text-red-900 mt-1">{selectedStudent.statistics?.absentDays || 0}</div>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-                    <div className="text-xs text-purple-600 uppercase font-semibold">Attendance %</div>
-                    <div className="text-2xl font-bold text-purple-900 mt-1">
-                      {selectedStudent.statistics?.attendancePercentage?.toFixed(2) || '0.00'}%
+
+                  {/* Attendance Statistics */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-base font-semibold text-gray-900 mb-4">Attendance Statistics</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <div className="text-xs text-blue-600 uppercase font-semibold">Working Days</div>
+                        <div className="text-2xl font-bold text-blue-900 mt-1">{currentStudent.statistics?.workingDays || 0}</div>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                        <div className="text-xs text-green-600 uppercase font-semibold">Present Days</div>
+                        <div className="text-2xl font-bold text-green-900 mt-1">{currentStudent.statistics?.presentDays || 0}</div>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                        <div className="text-xs text-red-600 uppercase font-semibold">Absent Days</div>
+                        <div className="text-2xl font-bold text-red-900 mt-1">{currentStudent.statistics?.absentDays || 0}</div>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+                        <div className="text-xs text-purple-600 uppercase font-semibold">Agg. Attendance %</div>
+                        <div className="text-2xl font-bold text-purple-900 mt-1">{(currentStudent.statistics?.attendancePercentage || 0).toFixed(2)}%</div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* Date Range Info */}
-              {attendanceReportData && (
-                <div className="border-t border-gray-200 pt-4">
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Report Period:</span> {attendanceReportData.fromDate} to {attendanceReportData.toDate}
-                  </p>
-                </div>
-              )}
             </div>
-            <div className="border-t border-gray-200 px-6 py-4 flex justify-end">
-              <button
-                onClick={() => {
-                  setShowStudentModal(false);
-                  setSelectedStudent(null);
-                }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+          );
+        })()
       )}
 
+
       {/* Calendar Modal */}
-      {calendarModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6 overflow-y-auto">
-          <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="rounded-full bg-blue-100 p-3 text-blue-600">
-                  <CalendarDays size={24} />
+      {
+        calendarModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6 overflow-y-auto">
+            <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-blue-100 p-3 text-blue-600">
+                    <CalendarDays size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Attendance Calendar</h2>
+                    <p className="text-sm text-gray-500">
+                      View working days and holidays for the selected period.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Attendance Calendar</h2>
-                  <p className="text-sm text-gray-500">
-                    View working days and holidays for the selected period.
-                  </p>
+                <button
+                  type="button"
+                  onClick={() => setCalendarModalOpen(false)}
+                  className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  aria-label="Close calendar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6">
+                {calendarLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="flex flex-col items-center gap-3 text-gray-500">
+                      <RefreshCw className="animate-spin" size={24} />
+                      <p>Loading calendar data...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <CalendarWidget
+                    monthKey={(() => {
+                      const date = calendarAttendanceData?.fromDate || attendanceReportData?.fromDate
+                        ? new Date(calendarAttendanceData?.fromDate || attendanceReportData.fromDate)
+                        : new Date(attendanceDateRange.fromDate);
+                      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    })()}
+                    onMonthChange={(monthKey) => {
+                      const [year, month] = monthKey.split('-');
+                      const firstDay = new Date(parseInt(year), parseInt(month) - 1, 1);
+                      const lastDay = new Date(parseInt(year), parseInt(month), 0);
+                      setAttendanceDateRange({
+                        fromDate: firstDay.toISOString().split('T')[0],
+                        toDate: lastDay.toISOString().split('T')[0]
+                      });
+                    }}
+                    calendarData={{
+                      sundays: [],
+                      publicHolidays: ((calendarAttendanceData || attendanceReportData)?.holidayInfo?.details || [])
+                        .filter(h => h.type === 'public' || !h.type)
+                        .map(h => ({ date: h.date, name: h.name || h.title || 'Holiday' })),
+                      customHolidays: ((calendarAttendanceData || attendanceReportData)?.holidayInfo?.details || [])
+                        .filter(h => h.type === 'custom')
+                        .map(h => ({ date: h.date, title: h.title || h.name || 'Holiday' })),
+                      attendanceStatus: (() => {
+                        // Use calendarAttendanceData if available, otherwise fall back to attendanceReportData
+                        const dataSource = calendarAttendanceData || attendanceReportData;
+                        const statusMap = {};
+                        if (dataSource?.dates && dataSource?.students) {
+                          dataSource.dates.forEach(date => {
+                            const holidayDates = new Set(dataSource.holidayInfo?.dates || []);
+                            if (!holidayDates.has(date)) {
+                              // Check if any student has attendance for this date
+                              const hasAttendance = dataSource.students.some(student =>
+                                student.attendance && student.attendance[date]
+                              );
+                              if (hasAttendance) {
+                                statusMap[date] = 'present'; // Marked day
+                              } else {
+                                statusMap[date] = 'absent'; // Unmarked day (shown as red)
+                              }
+                            }
+                          });
+                        }
+                        return statusMap;
+                      })()
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Day End Report Content */}
+      {
+        reportType === 'dayend' && (
+          <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            {/* Header Section */}
+            <div className="px-5 py-4 flex items-start justify-between border-b border-gray-200 shrink-0 bg-white">
+              <div>
+                <p className="text-sm font-medium text-gray-700">{dayEndReportData?.date || dayEndDate}</p>
+                {/* Filter Toggles */}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs font-medium text-gray-500">Show:</span>
+                  <div className="inline-flex rounded-md shadow-sm" role="group">
+                    <button
+                      type="button"
+                      onClick={() => setDayEndPreviewFilter('all')}
+                      className={`px-3 py-1 text-xs font-medium rounded-l-md ${dayEndPreviewFilter === 'all'
+                        ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+                        }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDayEndPreviewFilter('marked')}
+                      className={`px-3 py-1 text-xs font-medium ${dayEndPreviewFilter === 'marked'
+                        ? 'bg-green-100 text-green-700 border border-green-300'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 border-t border-b border-gray-300'
+                        }`}
+                    >
+                      Marked
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDayEndPreviewFilter('unmarked')}
+                      className={`px-3 py-1 text-xs font-medium rounded-r-md ${dayEndPreviewFilter === 'unmarked'
+                        ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+                        }`}
+                    >
+                      Unmarked
+                    </button>
+                  </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setCalendarModalOpen(false)}
-                className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                aria-label="Close calendar"
-              >
-                <X size={20} />
-              </button>
             </div>
-            <div className="p-6">
-              {calendarLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex flex-col items-center gap-3 text-gray-500">
-                    <RefreshCw className="animate-spin" size={24} />
-                    <p>Loading calendar data...</p>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {dayEndReportLoading ? (
+                <div className="flex items-center justify-center p-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                  <span className="ml-3 text-gray-600">Loading day end report...</span>
+                </div>
+              ) : dayEndReportData ? (
+                <div className="p-5">
+                  {/* Sticky Stats Section */}
+                  <div
+                    ref={dayEndStatsRef}
+                    className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-200 -mx-5 px-5"
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3 mb-4">
+                      <div className="bg-gray-50 p-2 rounded-lg border border-gray-200">
+                        <div className="text-xs text-gray-600 font-medium">Total Students</div>
+                        <div className="text-lg font-bold text-gray-900">{filteredStats.totalStudents}</div>
+                      </div>
+                      <div className="bg-green-50 p-2 rounded-lg border border-green-200">
+                        <div className="text-xs text-green-600 font-medium">Marked Today</div>
+                        <div className="text-lg font-bold text-green-700">{filteredStats.markedToday}</div>
+                      </div>
+                      <div className="bg-red-50 p-2 rounded-lg border border-red-200">
+                        <div className="text-xs text-red-600 font-medium">Absent Today</div>
+                        <div className="text-lg font-bold text-red-700">{filteredStats.absentToday}</div>
+                      </div>
+                      <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">
+                        <div className="text-xs text-blue-600 font-medium">Present Today</div>
+                        <div className="text-lg font-bold text-blue-700">{filteredStats.presentToday}</div>
+                      </div>
+                      <div className="bg-green-50 p-2 rounded-lg border border-green-200" title={filteredStats.holidayReason}>
+                        <div className="text-xs text-green-600 font-medium truncate">
+                          {filteredStats.holidayReason ? `Holiday: ${filteredStats.holidayReason.length > 20 ? filteredStats.holidayReason.substring(0, 20) + '...' : filteredStats.holidayReason}` : 'No Class Work Today'}
+                        </div>
+                        <div className="text-lg font-bold text-green-700">{filteredStats.holidayToday}</div>
+                      </div>
+                      <div className="bg-amber-50 p-2 rounded-lg border border-amber-200">
+                        <div className="text-xs text-amber-600 font-medium">Unmarked Today</div>
+                        <div className="text-lg font-bold text-amber-700">{filteredStats.unmarkedToday}</div>
+                      </div>
+                    </div>
+                    {/* Table Header with Filters */}
+                    <div className="overflow-x-auto -mx-5 px-5">
+                      <table className="w-full border-collapse table-fixed">
+                        <colgroup>
+                          <col style={{ width: '180px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '120px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '80px' }} />
+                          <col style={{ width: '150px' }} />
+                          <col style={{ width: '100px' }} />
+                        </colgroup>
+                        <thead className="bg-gray-50 sticky" style={{ position: 'sticky', top: `${statsSectionHeight}px`, zIndex: 20 }}>
+                          <tr>
+                            <th className="px-2 py-2 text-left align-top">
+                              <select
+                                value={dayEndFilters.college}
+                                onChange={(e) => {
+                                  setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }));
+                                }}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
+                              >
+                                <option value="">COLLEGE</option>
+                                {dayEndFilterOptions.colleges.map(opt => (
+                                  <option key={opt} value={opt} title={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-left align-top">
+                              <select
+                                value={dayEndFilters.level}
+                                onChange={(e) => {
+                                  setDayEndFilters(prev => ({ ...prev, level: e.target.value, course: '' }));
+                                }}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
+                              >
+                                <option value="">LEVEL</option>
+                                <option value="diploma">DIPLOMA</option>
+                                <option value="ug">UG</option>
+                                <option value="pg">PG</option>
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-left align-top">
+                              <select
+                                value={dayEndFilters.batch}
+                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value }))}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
+                              >
+                                <option value="">BATCH</option>
+                                {dayEndFilterOptions.batches.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-left align-top">
+                              <select
+                                value={dayEndFilters.course}
+                                onChange={(e) => {
+                                  setDayEndFilters(prev => ({ ...prev, course: e.target.value, branch: '' }));
+                                }}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
+                              >
+                                <option value="">PROGRAM</option>
+                                {filteredCourses
+                                  .filter(opt => {
+                                    // Filter by level if level is selected
+                                    if (dayEndFilters.level) {
+                                      const courseName = typeof opt === 'string' ? opt : opt.name;
+                                      const courseInfo = coursesWithLevels.find(c => c.name === courseName);
+                                      return courseInfo?.level === dayEndFilters.level;
+                                    }
+                                    return true;
+                                  })
+                                  .map(opt => {
+                                    const courseName = typeof opt === 'string' ? opt : opt.name;
+                                    return (
+                                      <option key={courseName} value={courseName} title={courseName}>
+                                        {courseName}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-left align-top">
+                              <select
+                                value={dayEndFilters.branch}
+                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, branch: e.target.value }))}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
+                              >
+                                <option value="">BRANCH</option>
+                                {filteredBranches.map(opt => (
+                                  <option key={opt} value={opt} title={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-center align-top">
+                              <select
+                                value={dayEndFilters.year}
+                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, year: e.target.value }))}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
+                              >
+                                <option value="">YEAR</option>
+                                {dayEndFilterOptions.years.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-center align-top">
+                              <select
+                                value={dayEndFilters.semester}
+                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, semester: e.target.value }))}
+                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
+                              >
+                                <option value="">SEM</option>
+                                {dayEndFilterOptions.semesters.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Students</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Absent</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Marked</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Percentage %</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Pending</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">No Class Work</th>
+                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Time Stamp</th>
+                          </tr>
+                        </thead>
+                      </table>
+                    </div>
+                  </div>
+                  <>
+                    {dayEndGroupedDisplay.length > 0 ? (
+                      <div className="-mx-5">
+                        <div className="overflow-x-auto px-5">
+                          <table className="w-full divide-y divide-gray-200 border-collapse table-fixed">
+                            <colgroup>
+                              <col style={{ width: '180px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '120px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '60px' }} />
+                              <col style={{ width: '60px' }} />
+                              <col style={{ width: '60px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '80px' }} />
+                              <col style={{ width: '150px' }} />
+                              <col style={{ width: '100px' }} />
+                            </colgroup>
+                            <tbody className="divide-y divide-gray-100">
+                              {dayEndGroupedDisplay.map((row, idx) => {
+                                const courseInfo = coursesWithLevels.find(c => c.name === row.course);
+                                const level = courseInfo?.level ? courseInfo.level.toUpperCase() : '—';
+                                return (
+                                  <tr key={`${row.college || 'N/A'}-${idx}`} className="bg-white hover:bg-gray-50">
+                                    <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.college || ''}>
+                                      {row.college || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-gray-800 text-sm truncate" title={level}>
+                                      {level}
+                                    </td>
+                                    <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.batch || ''}>
+                                      {row.batch || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.course || ''}>
+                                      {row.course || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.branch || ''}>
+                                      {row.branch || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-center text-gray-800 text-sm">
+                                      {row.year || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-center text-gray-800 text-sm">
+                                      {row.semester || '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-semibold text-gray-900 text-sm">
+                                      {row.totalStudents ?? 0}
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-red-700 font-semibold text-sm">
+                                      {row.absentToday ?? 0}
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
+                                      {row.markedToday ?? 0}
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-blue-700 font-semibold text-sm">
+                                      {row.totalStudents > 0
+                                        ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%'
+                                        : '0.0%'
+                                      }
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-amber-700 font-semibold text-sm">
+                                      {row.pendingToday ?? 0}
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
+                                      <div className="flex flex-col items-end">
+                                        <span>{row.holidayToday ?? 0}</span>
+                                        {row.holidayReasons && (
+                                          <span className="text-xs text-gray-600 font-normal truncate max-w-full" title={row.holidayReasons}>
+                                            {row.holidayReasons.length > 20 ? `${row.holidayReasons.substring(0, 20)}...` : row.holidayReasons}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-gray-600 text-xs">
+                                      {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No records found matching the current filters
+                      </div>
+                    )}
+                  </>
+                  {/* Fixed Download Buttons at Bottom */}
+                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between mt-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleDayEndDownload('pdf')}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
+                      >
+                        <Download size={14} />
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => handleDayEndDownload('xlsx')}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
+                      >
+                        <Download size={14} />
+                        Excel
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSendDayEndReports}
+                        disabled={sendingReports}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-xs"
+                      >
+                        {sendingReports ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Sending
+                          </>
+                        ) : (
+                          <>
+                            <Mail size={14} />
+                            Send Reports
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <CalendarWidget
-                  monthKey={(() => {
-                    const date = calendarAttendanceData?.fromDate || attendanceReportData?.fromDate
-                      ? new Date(calendarAttendanceData?.fromDate || attendanceReportData.fromDate)
-                      : new Date(attendanceDateRange.fromDate);
-                    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                  })()}
-                  onMonthChange={(monthKey) => {
-                    const [year, month] = monthKey.split('-');
-                    const firstDay = new Date(parseInt(year), parseInt(month) - 1, 1);
-                    const lastDay = new Date(parseInt(year), parseInt(month), 0);
-                    setAttendanceDateRange({
-                      fromDate: firstDay.toISOString().split('T')[0],
-                      toDate: lastDay.toISOString().split('T')[0]
-                    });
-                  }}
-                  calendarData={{
-                    sundays: [],
-                    publicHolidays: ((calendarAttendanceData || attendanceReportData)?.holidayInfo?.details || [])
-                      .filter(h => h.type === 'public' || !h.type)
-                      .map(h => ({ date: h.date, name: h.name || h.title || 'Holiday' })),
-                    customHolidays: ((calendarAttendanceData || attendanceReportData)?.holidayInfo?.details || [])
-                      .filter(h => h.type === 'custom')
-                      .map(h => ({ date: h.date, title: h.title || h.name || 'Holiday' })),
-                    attendanceStatus: (() => {
-                      // Use calendarAttendanceData if available, otherwise fall back to attendanceReportData
-                      const dataSource = calendarAttendanceData || attendanceReportData;
-                      const statusMap = {};
-                      if (dataSource?.dates && dataSource?.students) {
-                        dataSource.dates.forEach(date => {
-                          const holidayDates = new Set(dataSource.holidayInfo?.dates || []);
-                          if (!holidayDates.has(date)) {
-                            // Check if any student has attendance for this date
-                            const hasAttendance = dataSource.students.some(student => 
-                              student.attendance && student.attendance[date]
-                            );
-                            if (hasAttendance) {
-                              statusMap[date] = 'present'; // Marked day
-                            } else {
-                              statusMap[date] = 'absent'; // Unmarked day (shown as red)
-                            }
-                          }
-                        });
-                      }
-                      return statusMap;
-                    })()
-                  }}
-                />
+                <div className="flex items-center justify-center p-12 text-gray-500">
+                  <div className="text-center">
+                    <FileText size={48} className="mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">Select a date and click "Refresh Report" to generate the day end report</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Day End Report Content */}
-      {reportType === 'dayend' && (
-        <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          {/* Header Section */}
-          <div className="px-5 py-4 flex items-start justify-between border-b border-gray-200 shrink-0 bg-white">
-            <div>
-              <p className="text-sm font-medium text-gray-700">{dayEndReportData?.date || dayEndDate}</p>
-              {/* Filter Toggles */}
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs font-medium text-gray-500">Show:</span>
-                <div className="inline-flex rounded-md shadow-sm" role="group">
-                  <button
-                    type="button"
-                    onClick={() => setDayEndPreviewFilter('all')}
-                    className={`px-3 py-1 text-xs font-medium rounded-l-md ${dayEndPreviewFilter === 'all'
-                      ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-                      }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDayEndPreviewFilter('marked')}
-                    className={`px-3 py-1 text-xs font-medium ${dayEndPreviewFilter === 'marked'
-                      ? 'bg-green-100 text-green-700 border border-green-300'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border-t border-b border-gray-300'
-                      }`}
-                  >
-                    Marked
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDayEndPreviewFilter('unmarked')}
-                    className={`px-3 py-1 text-xs font-medium rounded-r-md ${dayEndPreviewFilter === 'unmarked'
-                      ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-                      }`}
-                  >
-                    Unmarked
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {dayEndReportLoading ? (
-              <div className="flex items-center justify-center p-12">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-                <span className="ml-3 text-gray-600">Loading day end report...</span>
-              </div>
-            ) : dayEndReportData ? (
-              <div className="p-5">
-                {/* Sticky Stats Section */}
-                <div
-                  ref={dayEndStatsRef}
-                  className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-200 -mx-5 px-5"
-                >
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3 mb-4">
-                    <div className="bg-gray-50 p-2 rounded-lg border border-gray-200">
-                      <div className="text-xs text-gray-600 font-medium">Total Students</div>
-                      <div className="text-lg font-bold text-gray-900">{filteredStats.totalStudents}</div>
-                    </div>
-                    <div className="bg-green-50 p-2 rounded-lg border border-green-200">
-                      <div className="text-xs text-green-600 font-medium">Marked Today</div>
-                      <div className="text-lg font-bold text-green-700">{filteredStats.markedToday}</div>
-                    </div>
-                    <div className="bg-red-50 p-2 rounded-lg border border-red-200">
-                      <div className="text-xs text-red-600 font-medium">Absent Today</div>
-                      <div className="text-lg font-bold text-red-700">{filteredStats.absentToday}</div>
-                    </div>
-                    <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">
-                      <div className="text-xs text-blue-600 font-medium">Present Today</div>
-                      <div className="text-lg font-bold text-blue-700">{filteredStats.presentToday}</div>
-                    </div>
-                    <div className="bg-green-50 p-2 rounded-lg border border-green-200" title={filteredStats.holidayReason}>
-                      <div className="text-xs text-green-600 font-medium truncate">
-                        {filteredStats.holidayReason ? `Holiday: ${filteredStats.holidayReason.length > 20 ? filteredStats.holidayReason.substring(0, 20) + '...' : filteredStats.holidayReason}` : 'No Class Work Today'}
-                      </div>
-                      <div className="text-lg font-bold text-green-700">{filteredStats.holidayToday}</div>
-                    </div>
-                    <div className="bg-amber-50 p-2 rounded-lg border border-amber-200">
-                      <div className="text-xs text-amber-600 font-medium">Unmarked Today</div>
-                      <div className="text-lg font-bold text-amber-700">{filteredStats.unmarkedToday}</div>
-                    </div>
-                  </div>
-                  {/* Table Header with Filters */}
-                  <div className="overflow-x-auto -mx-5 px-5">
-                    <table className="w-full border-collapse table-fixed">
-                      <colgroup>
-                        <col style={{ width: '180px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '120px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '60px' }} />
-                        <col style={{ width: '60px' }} />
-                        <col style={{ width: '60px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '150px' }} />
-                        <col style={{ width: '100px' }} />
-                      </colgroup>
-                      <thead className="bg-gray-50 sticky" style={{ position: 'sticky', top: `${statsSectionHeight}px`, zIndex: 20 }}>
-                        <tr>
-                          <th className="px-2 py-2 text-left align-top">
-                            <select
-                              value={dayEndFilters.college}
-                              onChange={(e) => {
-                                setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }));
-                              }}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                            >
-                              <option value="">COLLEGE</option>
-                              {dayEndFilterOptions.colleges.map(opt => (
-                                <option key={opt} value={opt} title={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-left align-top">
-                            <select
-                              value={dayEndFilters.level}
-                              onChange={(e) => {
-                                setDayEndFilters(prev => ({ ...prev, level: e.target.value, course: '' }));
-                              }}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                            >
-                              <option value="">LEVEL</option>
-                              <option value="diploma">DIPLOMA</option>
-                              <option value="ug">UG</option>
-                              <option value="pg">PG</option>
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-left align-top">
-                            <select
-                              value={dayEndFilters.batch}
-                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value }))}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                            >
-                              <option value="">BATCH</option>
-                              {dayEndFilterOptions.batches.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-left align-top">
-                            <select
-                              value={dayEndFilters.course}
-                              onChange={(e) => {
-                                setDayEndFilters(prev => ({ ...prev, course: e.target.value, branch: '' }));
-                              }}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                            >
-                              <option value="">PROGRAM</option>
-                              {filteredCourses
-                                .filter(opt => {
-                                  // Filter by level if level is selected
-                                  if (dayEndFilters.level) {
-                                    const courseName = typeof opt === 'string' ? opt : opt.name;
-                                    const courseInfo = coursesWithLevels.find(c => c.name === courseName);
-                                    return courseInfo?.level === dayEndFilters.level;
-                                  }
-                                  return true;
-                                })
-                                .map(opt => {
-                                  const courseName = typeof opt === 'string' ? opt : opt.name;
-                                  return (
-                                    <option key={courseName} value={courseName} title={courseName}>
-                                      {courseName}
-                                    </option>
-                                  );
-                                })}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-left align-top">
-                            <select
-                              value={dayEndFilters.branch}
-                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, branch: e.target.value }))}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                            >
-                              <option value="">BRANCH</option>
-                              {filteredBranches.map(opt => (
-                                <option key={opt} value={opt} title={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-center align-top">
-                            <select
-                              value={dayEndFilters.year}
-                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, year: e.target.value }))}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
-                            >
-                              <option value="">YEAR</option>
-                              {dayEndFilterOptions.years.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-center align-top">
-                            <select
-                              value={dayEndFilters.semester}
-                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, semester: e.target.value }))}
-                              className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
-                            >
-                              <option value="">SEM</option>
-                              {dayEndFilterOptions.semesters.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Students</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Absent</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Marked</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Percentage %</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Pending</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">No Class Work</th>
-                          <th className="px-2 py-2 text-right align-top text-xs font-semibold">Time Stamp</th>
-                        </tr>
-                      </thead>
-                    </table>
-                  </div>
-                </div>
-                <>
-                  {dayEndGroupedDisplay.length > 0 ? (
-                    <div className="-mx-5">
-                      <div className="overflow-x-auto px-5">
-                        <table className="w-full divide-y divide-gray-200 border-collapse table-fixed">
-                          <colgroup>
-                            <col style={{ width: '180px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '120px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '60px' }} />
-                            <col style={{ width: '60px' }} />
-                            <col style={{ width: '60px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '80px' }} />
-                            <col style={{ width: '150px' }} />
-                            <col style={{ width: '100px' }} />
-                          </colgroup>
-                          <tbody className="divide-y divide-gray-100">
-                            {dayEndGroupedDisplay.map((row, idx) => {
-                              const courseInfo = coursesWithLevels.find(c => c.name === row.course);
-                              const level = courseInfo?.level ? courseInfo.level.toUpperCase() : '—';
-                              return (
-                                <tr key={`${row.college || 'N/A'}-${idx}`} className="bg-white hover:bg-gray-50">
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.college || ''}>
-                                    {row.college || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={level}>
-                                    {level}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.batch || ''}>
-                                    {row.batch || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.course || ''}>
-                                    {row.course || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.branch || ''}>
-                                    {row.branch || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-center text-gray-800 text-sm">
-                                    {row.year || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-center text-gray-800 text-sm">
-                                    {row.semester || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-semibold text-gray-900 text-sm">
-                                    {row.totalStudents ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-red-700 font-semibold text-sm">
-                                    {row.absentToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
-                                    {row.markedToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-blue-700 font-semibold text-sm">
-                                    {row.totalStudents > 0
-                                      ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%'
-                                      : '0.0%'
-                                    }
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-amber-700 font-semibold text-sm">
-                                    {row.pendingToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
-                                    <div className="flex flex-col items-end">
-                                      <span>{row.holidayToday ?? 0}</span>
-                                      {row.holidayReasons && (
-                                        <span className="text-xs text-gray-600 font-normal truncate max-w-full" title={row.holidayReasons}>
-                                          {row.holidayReasons.length > 20 ? `${row.holidayReasons.substring(0, 20)}...` : row.holidayReasons}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-gray-600 text-xs">
-                                    {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No records found matching the current filters
-                    </div>
-                  )}
-                </>
-                {/* Fixed Download Buttons at Bottom */}
-                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between mt-4">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleDayEndDownload('pdf')}
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
-                    >
-                      <Download size={14} />
-                      PDF
-                    </button>
-                    <button
-                      onClick={() => handleDayEndDownload('xlsx')}
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
-                    >
-                      <Download size={14} />
-                      Excel
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSendDayEndReports}
-                      disabled={sendingReports}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-xs"
-                    >
-                      {sendingReports ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" />
-                          Sending
-                        </>
-                      ) : (
-                        <>
-                          <Mail size={14} />
-                          Send Reports
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center p-12 text-gray-500">
-                <div className="text-center">
-                  <FileText size={48} className="mx-auto mb-3 text-gray-300" />
-                  <p className="text-sm">Select a date and click "Refresh Report" to generate the day end report</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
+        )
+      }
     </div>
   );
 };
