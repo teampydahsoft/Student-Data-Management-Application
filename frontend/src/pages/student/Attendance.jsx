@@ -300,52 +300,131 @@ const WeeklyTab = ({ weekly, semesterSeries }) => {
 // ─── Monthly Tab ─────────────────────────────────────────────────────────────
 
 const MonthlyTab = ({ monthly, semesterSeries }) => {
-    // Build monthly breakdown from semester series (full picture)
-    const monthlyBreakdown = useMemo(() => {
-        if (!semesterSeries) return [];
-        const data = {};
-        semesterSeries.forEach(entry => {
-            const d = new Date(`${entry.date}T00:00:00+05:30`);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const name = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-            if (!data[key]) data[key] = { name, present: 0, absent: 0, holidays: 0, unmarked: 0 };
-            if (entry.isHoliday) data[key].holidays++;
-            else if (entry.status === 'present') data[key].present++;
-            else if (entry.status === 'absent') data[key].absent++;
-            else data[key].unmarked++;
+    // Selected month (defaults to API month or current month in IST)
+    const initialMonth = useMemo(() => {
+        if (monthly?.startDate) return dateFromKeyIST(monthly.startDate);
+        return getNowInIST();
+    }, [monthly]);
+
+    const [monthCursor, setMonthCursor] = useState(initialMonth);
+
+    useEffect(() => {
+        setMonthCursor(initialMonth);
+    }, [initialMonth]);
+
+    const { monthLabel, startOfMonth, days, totals, pct, colors } = useMemo(() => {
+        const start = new Date(monthCursor);
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+
+        const label = start.toLocaleDateString('en-IN', {
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata'
         });
-        return Object.keys(data).sort().map(k => ({ key: k, ...data[k] }));
-    }, [semesterSeries]);
 
-    // Current month stats (from the `monthly` object in API)
-    const present = monthly?.totals?.present ?? 0;
-    const absent = monthly?.totals?.absent ?? 0;
-    const holidays = monthly?.totals?.holidays ?? 0;
-    const unmarked = monthly?.totals?.unmarked ?? 0;
-    const pct = calcPct(present, absent);
-    const colors = pctColors(pct);
+        const map = new Map((semesterSeries || []).map(e => [e.date, e]));
+        const dayCells = [];
+        const totalsAcc = { present: 0, absent: 0, holidays: 0, unmarked: 0 };
 
-    const chartData = monthlyBreakdown.map(m => ({
-        name: m.name.replace(' ', '\n').slice(0, 8),
-        Present: m.present,
-        Absent: m.absent,
-        Holiday: m.holidays,
-    }));
+        const daysInMonth = end.getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cur = new Date(start.getFullYear(), start.getMonth(), d);
+            const key = dateKeyFromDate(cur);
+            const entry = map.get(key);
+            const isHoliday = Boolean(entry?.isHoliday) || entry?.status === 'holiday';
+            const status = entry?.status || 'unmarked';
+            const holiday = entry?.holiday || null;
+
+            if (isHoliday) totalsAcc.holidays += 1;
+            else if (status === 'present') totalsAcc.present += 1;
+            else if (status === 'absent') totalsAcc.absent += 1;
+            else totalsAcc.unmarked += 1;
+
+            dayCells.push({
+                dateKey: key,
+                dayNumber: d,
+                weekday: cur.getDay(),
+                status: isHoliday ? 'holiday' : status,
+                isHoliday,
+                holiday
+            });
+        }
+
+        const percentage = calcPct(totalsAcc.present, totalsAcc.absent);
+        const colorSet = pctColors(percentage);
+
+        return {
+            monthLabel: label,
+            startOfMonth: start,
+            days: dayCells,
+            totals: totalsAcc,
+            pct: percentage,
+            colors: colorSet
+        };
+    }, [monthCursor, semesterSeries]);
+
+    const goToPrevMonth = () => {
+        const prev = new Date(monthCursor);
+        prev.setMonth(prev.getMonth() - 1);
+        setMonthCursor(prev);
+    };
+
+    const goToNextMonth = () => {
+        const next = new Date(monthCursor);
+        next.setMonth(next.getMonth() + 1);
+        setMonthCursor(next);
+    };
+
+    const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    const calendarCells = useMemo(() => {
+        if (!days || days.length === 0) return [];
+        const firstDay = new Date(startOfMonth);
+        const firstWeekday = (firstDay.getDay() + 6) % 7; // 0=Mon..6=Sun
+        const cells = [];
+        for (let i = 0; i < firstWeekday; i++) cells.push(null);
+        days.forEach(day => cells.push(day));
+        return cells;
+    }, [days, startOfMonth]);
+
+    const present = totals.present;
+    const absent = totals.absent;
+    const holidays = totals.holidays;
+    const unmarked = totals.unmarked;
 
     return (
         <div className="space-y-6">
-            {/* Hero Card — current month */}
-            <div className={`bg-white border ${colors.border} rounded-2xl p-5 shadow-sm`}>
+            {/* Hero Card — selected month */}
+            <div className={`bg-white border ${colors.border} rounded-2xl p-4 sm:p-5 shadow-sm`}>
                 <div className="flex flex-col sm:flex-row items-center gap-6">
-                    <CircularRing pct={pct} size={140} />
+                    <CircularRing pct={pct} size={120} />
                     <div className="flex-1 space-y-3 text-center sm:text-left">
-                        <div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">This Month</p>
-                            {monthly?.startDate && monthly?.endDate && (
-                                <p className="text-sm font-bold text-gray-800 mt-0.5">
-                                    {formatDisplayDate(monthly.startDate)} → {formatDisplayDate(monthly.endDate)}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                            <div className="w-full text-center sm:w-auto sm:text-left">
+                                <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    This Month
                                 </p>
-                            )}
+                                <p className="text-sm font-bold text-gray-800 mt-0.5">
+                                    {monthLabel}
+                                </p>
+                            </div>
+                            <div className="flex items-center justify-center sm:justify-end gap-2 shrink-0">
+                                <button
+                                    onClick={goToPrevMonth}
+                                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm grid place-items-center"
+                                >
+                                    ‹
+                                </button>
+                                <button
+                                    onClick={goToNextMonth}
+                                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm grid place-items-center"
+                                >
+                                    ›
+                                </button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <StatCard label="Present" value={present} colorClass="text-green-700" bgClass="bg-green-50" borderClass="border-green-100" />
@@ -353,95 +432,56 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
                             <StatCard label="Holidays" value={holidays} colorClass="text-amber-700" bgClass="bg-amber-50" borderClass="border-amber-100" />
                             <StatCard label="Pending" value={unmarked} colorClass="text-gray-500" bgClass="bg-gray-50" borderClass="border-gray-200" />
                         </div>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[10px] sm:text-xs text-gray-400">
                             Percentage based on <span className="font-semibold">{present + absent}</span> marked day{present + absent !== 1 ? 's' : ''} (holidays &amp; pending excluded)
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Bar Chart */}
-            {chartData.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <BarChart2 size={16} className="text-purple-500" />
-                        Monthly Overview Chart
-                    </h3>
-                    <div className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} barCategoryGap="30%">
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}
-                                    cursor={{ fill: '#f8fafc' }}
-                                />
-                                <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
-                                <Bar dataKey="Present" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="Holiday" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
+            {/* Calendar Grid */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm overflow-hidden">
+                <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Calendar size={16} className="text-blue-500" />
+                    Monthly Calendar
+                </h3>
+                <div className="grid grid-cols-7 gap-1 text-center text-[9px] sm:text-[10px] font-semibold text-gray-400 mb-2">
+                    {weekdayLabels.map(label => (
+                        <div key={label} className="py-1 uppercase tracking-wide">
+                            {label}
+                        </div>
+                    ))}
                 </div>
-            )}
-
-            {/* Month Cards */}
-            {monthlyBreakdown.length > 0 && (
-                <div>
-                    <h3 className="text-base font-bold text-gray-900 mb-4 px-0.5">Month-by-Month Breakdown</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {monthlyBreakdown.map(month => {
-                            const mPct = calcPct(month.present, month.absent);
-                            const mColors = pctColors(mPct);
-                            const marked = month.present + month.absent;
-                            return (
-                                <div
-                                    key={month.key}
-                                    className="bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-md hover:border-gray-300 transition-all duration-200"
-                                >
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="text-sm font-bold text-gray-800">{month.name}</h4>
-                                        <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${mColors.badge}`}>
-                                            {mPct.toFixed(1)}%
-                                        </span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-green-50 rounded-xl p-3">
-                                            <p className="text-[10px] text-green-700 font-semibold uppercase">Present</p>
-                                            <p className="text-xl font-extrabold text-green-800">{month.present}</p>
-                                        </div>
-                                        <div className="bg-red-50 rounded-xl p-3">
-                                            <p className="text-[10px] text-red-700 font-semibold uppercase">Absent</p>
-                                            <p className="text-xl font-extrabold text-red-800">{month.absent}</p>
-                                        </div>
-                                        <div className="bg-amber-50 rounded-xl p-3">
-                                            <p className="text-[10px] text-amber-700 font-semibold uppercase">Holidays</p>
-                                            <p className="text-xl font-extrabold text-amber-800">{month.holidays}</p>
-                                        </div>
-                                        <div className="bg-gray-50 rounded-xl p-3">
-                                            <p className="text-[10px] text-gray-500 font-semibold uppercase">Pending</p>
-                                            <p className="text-xl font-extrabold text-gray-700">{month.unmarked}</p>
-                                        </div>
-                                    </div>
-                                    {/* Progress bar */}
-                                    <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full rounded-full transition-all duration-500"
-                                            style={{
-                                                width: `${Math.min(100, mPct)}%`,
-                                                backgroundColor: mColors.ring
-                                            }}
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 mt-1 text-right">{marked} days marked</p>
+                <div className="grid grid-cols-7 gap-1 text-[10px] sm:text-xs">
+                    {calendarCells.map((cell, idx) => {
+                        if (!cell) return <div key={idx} className="h-14 sm:h-16 rounded-xl" />;
+                        const effectiveStatus = cell.isHoliday ? 'holiday' : (cell.status || 'unmarked');
+                        const baseClasses = statusBg(effectiveStatus);
+                        return (
+                            <div
+                                key={cell.dateKey}
+                                className={`h-14 sm:h-16 rounded-xl border ${baseClasses} flex flex-col items-start justify-between p-1.5 sm:p-2`}
+                            >
+                                <div className="flex items-center justify-between w-full">
+                                    <span className="text-[11px] sm:text-[11px] font-bold text-gray-900">
+                                        {cell.dayNumber}
+                                    </span>
+                                    <span className={`w-2 h-2 rounded-full ${statusDot(effectiveStatus)}`} />
                                 </div>
-                            );
-                        })}
-                    </div>
+                                <div className="w-full text-[8px] sm:text-[9px] text-gray-500 capitalize line-clamp-1">
+                                    {cell.isHoliday
+                                        ? getHolidayLabel(cell.holiday)
+                                        : effectiveStatus === 'present'
+                                            ? 'Present'
+                                            : effectiveStatus === 'absent'
+                                                ? 'Absent'
+                                                : 'Pending / Unmarked'}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
-            )}
+            </div>
         </div>
     );
 };

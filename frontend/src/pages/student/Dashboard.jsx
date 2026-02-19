@@ -270,16 +270,14 @@ const Dashboard = () => {
         }
 
         // Filter for Current Month Only
-        const currentMonth = now.getMonth(); // 0-11
+        const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
         series.forEach(day => {
             const dayDate = new Date(day.date);
-            // Check if date is valid and in current month & year
             if (!isNaN(dayDate.getTime()) &&
                 dayDate.getMonth() === currentMonth &&
                 dayDate.getFullYear() === currentYear) {
-
                 if (!day.isHoliday) {
                     activeDays++;
                     if (day.status === 'present') present++;
@@ -298,6 +296,13 @@ const Dashboard = () => {
             percentage
         };
     }, [attendanceHistory]);
+
+    // Quick helper for percentages
+    const calcPct = (present, absent) => {
+        const marked = (present || 0) + (absent || 0);
+        if (!marked) return 0;
+        return (present / marked) * 100;
+    };
 
 
     // Combined Feed (Announcements + Active Polls)
@@ -738,35 +743,72 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* Semester Summary */}
+                {/* Attendance Summary: Current Week & Month */}
                 {isEnabled('attendance') && (
                     <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
                         <div className="flex justify-between items-start mb-2 lg:mb-4">
-                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Semester Overview</h3>
-                            <Link to="/student/attendance" className="hidden lg:block text-xs text-blue-600 hover:underline font-medium">View History</Link>
+                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Summary</h3>
+                            <Link to="/student/attendance" className="hidden lg:block text-xs text-blue-600 hover:underline font-medium">View Details</Link>
                         </div>
-                        {attendanceStats ? (
-                            <div className="flex items-center justify-between gap-1 overflow-hidden">
-                                <div className="min-w-0">
-                                    <p className="text-2xl lg:text-4xl font-bold text-indigo-700">{attendanceStats.percentage}%</p>
-                                    <p className="text-[10px] lg:text-xs text-gray-500 mt-1 truncate">
-                                        {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                                    </p>
-                                </div>
-                                <div className="flex flex-col items-end gap-1 text-right shrink-0">
-                                    <div>
-                                        <p className="text-xs lg:text-sm font-bold text-green-600 leading-none">{attendanceStats.present}</p>
-                                        <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Present</p>
+                        {attendanceHistory?.weekly && attendanceHistory?.monthly ? (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">This Week</p>
+                                        <p className="text-lg lg:text-2xl font-bold text-indigo-700">
+                                            {calcPct(
+                                                attendanceHistory.weekly.totals?.present || 0,
+                                                attendanceHistory.weekly.totals?.absent || 0
+                                            ).toFixed(1)}%
+                                        </p>
                                     </div>
-                                    <div>
-                                        <p className="text-xs lg:text-sm font-bold text-red-500 leading-none">{attendanceStats.absent}</p>
-                                        <p className="text-[8px] lg:text-[10px] uppercase text-gray-400 font-bold leading-none mt-0.5">Absent</p>
+                                    <div className="text-right text-[10px] text-gray-500">
+                                        <div>
+                                            <span className="font-semibold text-green-600">
+                                                {attendanceHistory.weekly.totals?.present || 0}
+                                            </span>{' '}
+                                            P
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold text-red-500">
+                                                {attendanceHistory.weekly.totals?.absent || 0}
+                                            </span>{' '}
+                                            A
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="h-px bg-gray-100 my-1" />
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">This Month</p>
+                                        <p className="text-lg lg:text-2xl font-bold text-indigo-700">
+                                            {attendanceHistory.monthly?.totals
+                                                ? calcPct(
+                                                    attendanceHistory.monthly.totals.present || 0,
+                                                    attendanceHistory.monthly.totals.absent || 0
+                                                ).toFixed(1)
+                                                : attendanceStats?.percentage || '0.0'}%
+                                        </p>
+                                    </div>
+                                    <div className="text-right text-[10px] text-gray-500">
+                                        <div>
+                                            <span className="font-semibold text-green-600">
+                                                {attendanceHistory.monthly.totals?.present || 0}
+                                            </span>{' '}
+                                            P
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold text-red-500">
+                                                {attendanceHistory.monthly.totals?.absent || 0}
+                                            </span>{' '}
+                                            A
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-16 text-gray-400 text-sm">
-                                Loading...
+                                Attendance data not available.
                             </div>
                         )}
                     </div>
@@ -847,33 +889,7 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {/* Academic Dashboard (v2.0) – attendance %, internal marks, tests, notes */}
-            {isEnabled('dashboard') && (
-                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <BookOpen size={16} /> Academic
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                        <div className="p-3 rounded-lg bg-slate-50">
-                            <p className="text-2xl font-bold text-indigo-600">{hourlySummary?.percentage ?? attendanceStats?.percentage ?? '–'}%</p>
-                            <p className="text-xs text-gray-500">Attendance</p>
-                        </div>
-                        <div className="p-3 rounded-lg bg-slate-50">
-                            <p className="text-2xl font-bold text-slate-700">{internalMarksCount > 0 ? internalMarksCount : '–'}</p>
-                            <p className="text-xs text-gray-500">Internal Marks</p>
-                        </div>
-                        <div className="p-3 rounded-lg bg-slate-50">
-                            <p className="text-2xl font-bold text-slate-700">{academicContent.tests > 0 ? academicContent.tests : '–'}</p>
-                            <p className="text-xs text-gray-500">Upcoming Tests</p>
-                        </div>
-                        <div className="p-3 rounded-lg bg-slate-50">
-                            <p className="text-2xl font-bold text-slate-700">{academicContent.notes > 0 ? academicContent.notes : '–'}</p>
-                            <p className="text-xs text-gray-500">Shared Notes</p>
-                        </div>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">Hourly attendance %, internal marks, tests and notes from faculty.</p>
-                </div>
-            )}
+            {/* Academic summary block removed per requirement */}
 
             {/* Today's Schedule (NEW) */}
             {isEnabled('timetable') && (
