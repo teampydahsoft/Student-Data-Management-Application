@@ -101,6 +101,9 @@ exports.getAttendanceReport = async (req, res) => {
     console.log('Fetching internship attendance report with filters:', req.query);
     try {
         const { batch, college, course, branch, year, semester, location } = req.query;
+        const reportDate = new Date().toISOString().split('T')[0];
+        // before generating report, mark any overdue students as absent
+        await autoMarkAbsentees(reportDate);
 
         // Fetch students and LEFT JOIN attendance for TODAY (or recent/all)
         // Usually report shows presence/absence for today if context is "Current Attendance"
@@ -234,6 +237,8 @@ exports.getDayEndReport = async (req, res) => {
     try {
         const { date, batch, college, course, branch, year, semester } = req.query;
         const reportDate = date || new Date().toISOString().split('T')[0];
+        // automatically mark absentees for provided date as well
+        await autoMarkAbsentees(reportDate);
 
         // Base query to get students with active internships and their attendance for the date
         let query = `
@@ -466,12 +471,56 @@ exports.downloadDayEndReport = async (req, res) => {
     }
 };
 
+// helper that inserts 'Absent' records for any student who is assigned,
+// has no attendance for a given date and whose internship location's
+// allowed_end_time has already passed the current server time.
+async function autoMarkAbsentees(reportDate) {
+    const now = new Date();
+    const nowTime = now.toISOString().substr(11,5); // HH:MM
+    try {
+        await masterPool.query(
+            `
+            INSERT INTO internship_attendance (student_id, internship_id, attendance_date, status, created_at)
+            SELECT ia.student_id, ia.internship_id, ?, 'Absent', NOW()
+            FROM internship_assignments ia
+            JOIN internship_locations il ON ia.internship_id = il.id
+            LEFT JOIN internship_attendance att 
+                ON att.student_id = ia.student_id 
+                AND att.attendance_date = ?
+            WHERE ia.start_date <= ? AND ia.end_date >= ?
+              AND att.id IS NULL
+              AND ? > il.allowed_end_time
+            `,
+            [reportDate, reportDate, reportDate, reportDate, nowTime]
+        );
+    } catch (err) {
+        console.error('Error auto-marking absentees:', err);
+    }
+}
+
 exports.getAttendanceDetails = async (req, res) => {
     try {
         const { id } = req.params;
         // id can be 'temp-studentID' or actual attendance ID
         if (id.startsWith('temp-')) {
-            return res.status(404).json({ success: false, message: 'No attendance record found for this student.' });
+            // parse numeric id and return a minimal response
+            const sid = id.split('-')[1];
+            const [students] = await masterPool.query(
+                'SELECT student_name, admission_number FROM students WHERE id = ?',
+                [sid]
+            );
+            if (students.length === 0) {
+                return res.status(404).json({ success: false, message: 'Student not found.' });
+            }
+            const student = students[0];
+            return res.json({
+                success: true,
+                data: {
+                    studentName: student.student_name,
+                    admissionNumber: student.admission_number,
+                    status: 'Not Marked'
+                }
+            });
         }
 
         const [rows] = await masterPool.query(
@@ -809,6 +858,10 @@ exports.markAttendance = async (req, res) => {
         let attendance = existing[0];
 
         if (attendance) {
+            // existing record already present
+            if (attendance.status === 'Absent') {
+                return res.status(400).json({ success: false, message: 'Attendance has already been recorded as absent; cannot check in.' });
+            }
             // Check-out
             if (!attendance.check_out_time) {
                 const checkOutLocation = JSON.stringify({

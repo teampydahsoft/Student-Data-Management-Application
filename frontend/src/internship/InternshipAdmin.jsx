@@ -631,10 +631,20 @@ const InternshipAdmin = () => {
     };
 
     const handleViewAttendance = async (record) => {
+        const ref = record._id || record.id;
+        // if this is a temporary row (no attendance yet), just inform user
+        if (typeof ref === 'string' && ref.startsWith('temp-')) {
+            const tempRec = { ...record, status: 'Not Marked' };
+            setSelectedAttendance(tempRec);
+            setViewAttendanceModal(true);
+            // react-hot-toast doesn't provide toast.info, use default toast
+            toast('Attendance has not been recorded for this student yet.');
+            return;
+        }
         setSelectedAttendance(record); // Show basic info first
         setViewAttendanceModal(true);
         try {
-            const res = await api.get(`/internship/attendance-details/${record._id || record.id}`);
+            const res = await api.get(`/internship/attendance-details/${ref}`);
             if (res.data.success) {
                 setSelectedAttendance(res.data.data); // Update with full details (images)
             }
