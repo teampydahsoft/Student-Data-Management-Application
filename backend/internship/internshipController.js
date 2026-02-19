@@ -130,8 +130,10 @@ exports.getAttendanceReport = async (req, res) => {
                 ia.attendance_date,
                 il.company_name,
                 il.address,
+                il.allowed_end_time AS attendance_allowed_end_time,
                 il_assigned.company_name AS assigned_company_name,
-                il_assigned.address AS assigned_address
+                il_assigned.address AS assigned_address,
+                il_assigned.allowed_end_time AS assigned_allowed_end_time
             FROM students s
             LEFT JOIN internship_attendance ia 
                 ON s.id = ia.student_id 
@@ -191,10 +193,12 @@ exports.getAttendanceReport = async (req, res) => {
             studentId: row.admission_number,
             internshipId: row.company_name ? {
                 companyName: row.company_name,
-                address: row.address
+                address: row.address,
+                allowedEndTime: row.attendance_allowed_end_time || row.assigned_allowed_end_time
             } : (row.assigned_company_name ? {
                 companyName: row.assigned_company_name,
-                address: row.assigned_address
+                address: row.assigned_address,
+                allowedEndTime: row.assigned_allowed_end_time
             } : null),
             studentDetails: {
                 name: row.student_name,
@@ -476,9 +480,12 @@ exports.downloadDayEndReport = async (req, res) => {
 // allowed_end_time has already passed the current server time.
 async function autoMarkAbsentees(reportDate) {
     const now = new Date();
-    const nowTime = now.toISOString().substr(11,5); // HH:MM
+    // use local hours/minutes rather than UTC so comparison with allowed_end_time (stored as local) works
+    const nowHour = now.getHours().toString().padStart(2, '0');
+    const nowMinute = now.getMinutes().toString().padStart(2, '0');
+    const nowTime = `${nowHour}:${nowMinute}`; // HH:MM local
     try {
-        await masterPool.query(
+        const [result] = await masterPool.query(
             `
             INSERT INTO internship_attendance (student_id, internship_id, attendance_date, status, created_at)
             SELECT ia.student_id, ia.internship_id, ?, 'Absent', NOW()
@@ -493,6 +500,9 @@ async function autoMarkAbsentees(reportDate) {
             `,
             [reportDate, reportDate, reportDate, reportDate, nowTime]
         );
+        if (result && result.affectedRows) {
+            console.log(`autoMarkAbsentees on ${reportDate} inserted ${result.affectedRows} records (time ${nowTime})`);
+        }
     } catch (err) {
         console.error('Error auto-marking absentees:', err);
     }

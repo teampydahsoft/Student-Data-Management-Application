@@ -395,12 +395,36 @@ const InternshipAdmin = () => {
         }
     }, [activeTab, filters]); // Fetch initially, and when active tab or filters change
 
+    // periodically refresh report while tab is open
+    useEffect(() => {
+        if (activeTab !== 'report') return;
+        const interval = setInterval(() => {
+            fetchReport();
+        }, 60 * 1000); // every minute
+        return () => clearInterval(interval);
+    }, [activeTab, filters]);
+
     const fetchReport = async () => {
         try {
             setLoadingReport(true);
             const res = await api.get('/internship/report', { params: { ...filters } });
             if (res.data.success) {
-                setReportData(res.data.data);
+                // post-process to handle any in-browser overdue cells
+                // compute local time string (avoid UTC offsets)
+                const nowDate = new Date();
+                const nowTime = nowDate.getHours().toString().padStart(2,'0') + ':' + nowDate.getMinutes().toString().padStart(2,'0');
+                const today = new Date().toISOString().split('T')[0];
+                const updated = res.data.data.map(r => {
+                    // if still not marked and it's today and we know allowedEndTime
+                    if (r.status === 'Not Marked' && r.date && r.date.split('T')[0] === today) {
+                        const allowed = r.internshipId?.allowedEndTime;
+                        if (allowed && nowTime > allowed) {
+                            return { ...r, status: 'Absent' };
+                        }
+                    }
+                    return r;
+                });
+                setReportData(updated);
             }
         } catch (error) {
             toast.error('Failed to fetch report');
