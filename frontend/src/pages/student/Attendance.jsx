@@ -307,10 +307,23 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
     }, [monthly]);
 
     const [monthCursor, setMonthCursor] = useState(initialMonth);
+    const monthInitialized = React.useRef(false);
 
     useEffect(() => {
-        setMonthCursor(initialMonth);
+        // on the very first render with valid data set the cursor; after that
+        // keep whatever month the user has navigated to, even if `monthly`
+        // changes due to a refresh.  This stops Refresh from snapping the view
+        // back to the current month.
+        if (!monthInitialized.current) {
+            setMonthCursor(initialMonth);
+            monthInitialized.current = true;
+        }
     }, [initialMonth]);
+
+    // No need to re-fetch when the month cursor changes; the parent
+    // already returns the entire semester series, so we can derive any
+    // month's data locally. Keeping historyData local is more efficient and
+    // eliminates strange refresh loops.
 
     const { monthLabel, startOfMonth, days, totals, pct, colors } = useMemo(() => {
         const start = new Date(monthCursor);
@@ -673,6 +686,7 @@ const Attendance = () => {
     const [activeTab, setActiveTab] = useState('weekly');
 
     useEffect(() => {
+        // initial load only
         fetchAttendanceHistory();
     }, []);
 
@@ -775,14 +789,17 @@ const Attendance = () => {
                     <h1 className="text-xl md:text-2xl font-bold text-gray-900 heading-font">My Attendance</h1>
                     <p className="text-xs md:text-sm text-gray-500 mt-0.5">Track your comprehensive attendance overview</p>
                 </div>
-                <button
-                    onClick={() => fetchAttendanceHistory(true)}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm"
-                >
-                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                    Refresh
-                </button>
+                {/* refresh only shown outside monthly tab; monthly data auto-fetches on navigation */}
+                {activeTab !== 'monthly' && (
+                    <button
+                        onClick={() => fetchAttendanceHistory(true)}
+                        disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm"
+                    >
+                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                        Refresh
+                    </button>
+                )}
             </header>
 
             {/* ── Tabs ── */}

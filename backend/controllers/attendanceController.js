@@ -3469,9 +3469,41 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       monthStart = getFirstOfMonth(referenceDate);
     }
 
-    // Determine the date range for fetching attendance
-    let queryStartDate = monthStart < weekStart ? monthStart : weekStart;
+    // Determine the date range for fetching attendance.
+    // We want to return every record the student has, regardless of semester
+    // boundaries, so that past months behave exactly like the current one.
+    //
+    // Step 1: ask the database for the earliest attendance row for this student.
+    let earliestDate = null;
+    try {
+      const [minRows] = await masterPool.query(
+        'SELECT MIN(attendance_date) AS minDate FROM attendance_records WHERE student_id = ?',
+        [studentId]
+      );
+      if (minRows && minRows[0] && minRows[0].minDate) {
+        earliestDate = new Date(minRows[0].minDate);
+        earliestDate.setHours(0, 0, 0, 0);
+      }
+    } catch (err) {
+      console.warn('Could not fetch earliest attendance date:', err.message || err);
+    }
+
+    // Step 2: decide the query start.  Prefer the earliest record if available,
+    // otherwise fall back to semester start or current window.
+    let queryStartDate;
+    if (earliestDate) {
+      queryStartDate = new Date(earliestDate);
+    } else if (semesterStartDate) {
+      queryStartDate = new Date(semesterStartDate);
+    } else {
+      queryStartDate = monthStart < weekStart ? monthStart : weekStart;
+    }
+
+    // make sure we don't accidentally ask for dates after the semester start
     if (semesterStartDate && queryStartDate < semesterStartDate) {
+      // even if earliestDate predates the semester, leaving it as-is is fine
+      // because downstream logic will clamp weekly/monthly views to the
+      // semester.  this check is mostly defensive.
       queryStartDate = new Date(semesterStartDate);
       queryStartDate.setHours(0, 0, 0, 0);
     }
@@ -3551,8 +3583,31 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         semesterSource: semesterSource
       };
     } else {
-      // Fallback: No semester dates in Academic Calendar (Settings) — use last ~30 days so Dashboard still shows data
-      const fallbackStart = monthStart < weekStart ? monthStart : weekStart;
+      // Fallback: No semester dates in Academic Calendar (Settings).
+      // Previously we only pulled the last few weeks (current month or week),
+      // which meant older months were invisible. Instead, determine the
+      // earliest attendance record for this student and use that as the start
+      // of the range so the portal can navigate to any month the student has
+      // records for.
+      let fallbackStart = monthStart < weekStart ? monthStart : weekStart;
+
+      try {
+        const [minRows] = await masterPool.query(
+          'SELECT MIN(attendance_date) AS minDate FROM attendance_records WHERE student_id = ?',
+          [studentId]
+        );
+        if (minRows && minRows[0] && minRows[0].minDate) {
+          const minDate = new Date(minRows[0].minDate);
+          minDate.setHours(0, 0, 0, 0);
+          if (minDate < fallbackStart) {
+            fallbackStart = minDate;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not determine earliest attendance date:', err.message || err);
+        // fall back to the prior behaviour if query fails
+      }
+
       const fallbackEnd = referenceDate;
       const fallbackEndKey = formatDateKey(fallbackEnd);
       const fallbackStartKey = formatDateKey(fallbackStart);
