@@ -523,12 +523,16 @@ exports.assignInternship = async (req, res) => {
 
         // 1. Find eligible students
         if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
-            // Provided IDs are likely admission numbers or pin numbers (strings)
-            // Query to find their internal IDs.
-            // Note: studentIds array is used twice for both columns.
+            // Provided IDs may be admission numbers, pin numbers or the internal id.
+            // We will select any students matching any of the possibilities so the
+            // frontend can continue to send the value shown in the table (which is
+            // the internal id) while older code might send admission numbers.
             const [rows] = await masterPool.query(
-                'SELECT id FROM students WHERE admission_number IN (?) OR pin_no IN (?)',
-                [studentIds, studentIds]
+                `SELECT id FROM students 
+                 WHERE id IN (?) 
+                    OR admission_number IN (?) 
+                    OR pin_no IN (?)`,
+                [studentIds, studentIds, studentIds]
             );
             students = rows; // rows contains objects like { id: 123 }
         } else {
@@ -550,7 +554,8 @@ exports.assignInternship = async (req, res) => {
         }
 
         if (students.length === 0) {
-            return res.status(404).json({ success: false, message: 'No valid students found matching the selection.' });
+            // no students matched the provided filters/ids; treat as bad request rather than missing endpoint
+            return res.status(400).json({ success: false, message: 'No valid students found matching the selection.' });
         }
 
         console.log(`Found ${students.length} students to assign.`);

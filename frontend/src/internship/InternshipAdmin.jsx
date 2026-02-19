@@ -515,6 +515,12 @@ const InternshipAdmin = () => {
                 toast.error('Please select at least one student from the list, or clear the list to use bulk filters.');
                 return;
             }
+            // Prevent submitting if nothing is selected and no filters are applied
+            const filtersApplied = filters && Object.values(filters).some(v => v !== '' && v !== null && v !== undefined);
+            if (availableStudents.length === 0 && selectedStudentIds.length === 0 && !filtersApplied) {
+                toast.error('No students selected and no filters provided.');
+                return;
+            }
 
             setLoading(true);
             const payload = {
@@ -529,10 +535,13 @@ const InternshipAdmin = () => {
                 setSelectedStudentIds([]);
             }
         } catch (error) {
+            // backend now returns 400 when no students match the provided filters/ids
             if (error.response?.status === 409 && error.response?.data?.conflicts) {
                 setConflictData(error.response.data.conflicts);
                 setConflictModalOpen(true);
                 toast.error('Assignment conflicts detected');
+            } else if (error.response?.status === 400) {
+                toast.error(error.response?.data?.message || 'No students available for assignment');
             } else {
                 toast.error(error.response?.data?.message || 'Assignment failed');
             }
@@ -969,7 +978,7 @@ const InternshipAdmin = () => {
                                                             checked={availableStudents.length > 0 && selectedStudentIds.length === availableStudents.length}
                                                         />
                                                     </th>
-                                                    <th className="px-4 py-2">Name / ID</th>
+                                                    <th className="px-4 py-2">Name / Admission No.</th>
                                                     <th className="px-4 py-2">Branch / Batch</th>
                                                     <th className="px-4 py-2">Status</th>
                                                 </tr>
@@ -986,7 +995,7 @@ const InternshipAdmin = () => {
                                                         </td>
                                                         <td className="px-4 py-2">
                                                             <div className="font-medium text-gray-900">{student.name}</div>
-                                                            <div className="text-xs text-gray-500">{student.id}</div>
+                                                            <div className="text-xs text-gray-500">{student.admission_number || student.id}</div>
                                                         </td>
                                                         <td className="px-4 py-2 text-xs text-gray-600">
                                                             <div>{student.batch} - {student.branch}</div>
