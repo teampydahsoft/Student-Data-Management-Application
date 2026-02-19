@@ -269,15 +269,27 @@ const Dashboard = () => {
             todayStatus = 'holiday';
         }
 
+        // Filter for Current Month Only
+        const currentMonth = now.getMonth(); // 0-11
+        const currentYear = now.getFullYear();
+
         series.forEach(day => {
-            if (!day.isHoliday) {
-                activeDays++;
-                if (day.status === 'present') present++;
-                else if (day.status === 'absent') absent++;
+            const dayDate = new Date(day.date);
+            // Check if date is valid and in current month & year
+            if (!isNaN(dayDate.getTime()) &&
+                dayDate.getMonth() === currentMonth &&
+                dayDate.getFullYear() === currentYear) {
+
+                if (!day.isHoliday) {
+                    activeDays++;
+                    if (day.status === 'present') present++;
+                    else if (day.status === 'absent') absent++;
+                }
             }
         });
 
-        const percentage = activeDays > 0 ? ((present / activeDays) * 100).toFixed(1) : '0.0';
+        const markedDays = present + absent;
+        const percentage = markedDays > 0 ? ((present / markedDays) * 100).toFixed(1) : '0.0';
 
         return {
             todayStatus,
@@ -737,7 +749,9 @@ const Dashboard = () => {
                             <div className="flex items-center justify-between gap-1 overflow-hidden">
                                 <div className="min-w-0">
                                     <p className="text-2xl lg:text-4xl font-bold text-indigo-700">{attendanceStats.percentage}%</p>
-                                    <p className="text-[10px] lg:text-xs text-gray-500 mt-1 truncate">Overall Semester</p>
+                                    <p className="text-[10px] lg:text-xs text-gray-500 mt-1 truncate">
+                                        {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                                    </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-1 text-right shrink-0">
                                     <div>

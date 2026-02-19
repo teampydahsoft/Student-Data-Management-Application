@@ -2857,27 +2857,52 @@ const Reports = () => {
                                     </td>
                                   );
                                 })}
-                                <td className="px-3 py-2 sticky right-[120px] z-10 font-bold text-center border-l border-r bg-blue-50 text-blue-700">
-                                  {attendanceReportData.statistics?.totalWorkingDays || 0}
-                                </td>
-                                <td className={`px-3 py-2 sticky right-[60px] z-10 font-bold text-center border-r ${student.statistics?.presentDays >= (attendanceReportData.statistics?.totalWorkingDays || 0) * 0.75 ? 'bg-green-50 text-green-700' :
-                                  student.statistics?.presentDays >= (attendanceReportData.statistics?.totalWorkingDays || 0) * 0.60 ? 'bg-yellow-50 text-yellow-700' :
-                                    'bg-red-50 text-red-700'
-                                  }`}>
-                                  {student.statistics?.presentDays || 0}
-                                </td>
                                 {(() => {
-                                  const totalWD = attendanceReportData.statistics?.totalWorkingDays || 0;
-                                  const pct = totalWD > 0
-                                    ? (student.statistics?.presentDays || 0) / totalWD * 100
+                                  // Calculate student's personal working days
+                                  // Global working days (excluding global holidays)
+                                  const globalWorkingDays = attendanceReportData.statistics?.totalWorkingDays || 0;
+
+                                  // Count days marked as 'holiday' for THIS student that are otherwise working days
+                                  // (i.e. days in the grid that are NOT global holidays)
+                                  let studentHolidays = 0;
+                                  (attendanceReportData.dates || []).forEach(date => {
+                                    const status = student.attendance?.[date];
+                                    // If student is marked as 'holiday' on a day that is NOT a global holiday/Sunday, it's a personal exemption
+                                    // We need to check if this date is part of the global working days set
+                                    // The global working days are dates in range - global holidays
+                                    const isGlobalHoliday = attendanceReportData.holidayInfo?.dates?.includes(date) || new Date(date).getDay() === 0;
+
+                                    if (!isGlobalHoliday && status === 'holiday') {
+                                      studentHolidays++;
+                                    }
+                                  });
+
+                                  const studentWorkingDays = Math.max(0, globalWorkingDays - studentHolidays);
+
+                                  // Calculate percentage based on student's personal working days
+                                  const pct = studentWorkingDays > 0
+                                    ? (student.statistics?.presentDays || 0) / studentWorkingDays * 100
                                     : 0;
+
                                   const colorClass = pct >= 75 ? 'bg-green-50 text-green-700' :
                                     pct >= 60 ? 'bg-yellow-50 text-yellow-700' :
                                       'bg-red-50 text-red-700';
+
                                   return (
-                                    <td className={`px-3 py-2 sticky right-0 z-10 font-bold text-center border-l ${colorClass}`}>
-                                      {pct.toFixed(1)}%
-                                    </td>
+                                    <>
+                                      <td className="px-3 py-2 sticky right-[120px] z-10 font-bold text-center border-l border-r bg-blue-50 text-blue-700">
+                                        {studentWorkingDays}
+                                      </td>
+                                      <td className={`px-3 py-2 sticky right-[60px] z-10 font-bold text-center border-r ${student.statistics?.presentDays >= studentWorkingDays * 0.75 ? 'bg-green-50 text-green-700' :
+                                        student.statistics?.presentDays >= studentWorkingDays * 0.60 ? 'bg-yellow-50 text-yellow-700' :
+                                          'bg-red-50 text-red-700'
+                                        }`}>
+                                        {student.statistics?.presentDays || 0}
+                                      </td>
+                                      <td className={`px-3 py-2 sticky right-0 z-10 font-bold text-center border-l ${colorClass}`}>
+                                        {pct.toFixed(1)}%
+                                      </td>
+                                    </>
                                   );
                                 })()}
                               </tr>
