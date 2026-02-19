@@ -2999,10 +2999,19 @@ exports.getAttendanceSummary = async (req, res) => {
     const referenceDate = safeDate(req.query.date) || new Date();
     const todayKey = formatDateKey(referenceDate);
 
+    // Weekly should be current week Monday → Saturday (Mon–Sat).
     const weekStart = new Date(referenceDate);
-    weekStart.setDate(referenceDate.getDate() - 6);
     weekStart.setHours(0, 0, 0, 0);
+    // getDay(): 0=Sun,1=Mon,...,6=Sat
+    const dow = weekStart.getDay();
+    const diffToMonday = dow === 0 ? -6 : 1 - dow;
+    weekStart.setDate(weekStart.getDate() + diffToMonday);
 
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 5); // Mon -> Sat
+    weekEnd.setHours(23, 59, 59, 999);
+
+    // Monthly should be current calendar month (1st → today).
     const monthStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
     monthStart.setHours(0, 0, 0, 0);
 
@@ -3120,7 +3129,8 @@ exports.getAttendanceSummary = async (req, res) => {
     }
 
     try {
-      weeklyHolidayInfo = await getNonWorkingDaysForRange(formatDateKey(weekStart), todayKey);
+      // Include the full week window (Mon–Sat) so future weekdays can show holidays if applicable.
+      weeklyHolidayInfo = await getNonWorkingDaysForRange(formatDateKey(weekStart), formatDateKey(weekEnd));
     } catch (error) {
       console.warn('Failed to resolve weekly holiday range:', error.message || error);
     }
@@ -3137,7 +3147,7 @@ exports.getAttendanceSummary = async (req, res) => {
     const weeklySeries = ensureContinuousSeries(
       weeklyAggregated,
       weekStart,
-      referenceDate,
+      weekEnd,
       weeklyHolidayInfo
     );
     const monthlySeries = ensureContinuousSeries(
@@ -3198,7 +3208,7 @@ exports.getAttendanceSummary = async (req, res) => {
         },
         weekly: {
           startDate: formatDateKey(weekStart),
-          endDate: todayKey,
+          endDate: formatDateKey(weekEnd),
           totals: weeklyTotals,
           series: weeklySeries,
           holidays: weeklySeries.filter((entry) => entry.isHoliday)
@@ -3403,39 +3413,60 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       }
     }
 
-    // Fallback to fixed windows if semester dates not found
-    let weekStart, monthStart;
-    if (semesterStartDate && semesterEndDate) {
-      // Use semester dates, but limit to current date if semester hasn't ended
-      const effectiveEndDate = semesterEndDate > referenceDate ? referenceDate : semesterEndDate;
-      const effectiveStartDate = semesterStartDate < referenceDate ? semesterStartDate : referenceDate;
+    // Compute weekStart = Monday of the current week
+    // weekEnd = Saturday of the current week (Mon–Sat)
+    // and monthStart = 1st day of the current calendar month
+    let weekStart, weekEnd, monthStart;
 
-      // For weekly: last 7 days from reference date, but within semester
-      weekStart = new Date(referenceDate);
-      weekStart.setDate(referenceDate.getDate() - 6);
-      weekStart.setHours(0, 0, 0, 0);
+    // Helper: Monday of the week containing `referenceDate`
+    const getMondayOfWeek = (date) => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      // getDay() → 0=Sun,1=Mon,...,6=Sat; shift so Mon=0
+      const dayOfWeek = d.getDay(); // 0=Sun
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      d.setDate(d.getDate() + diffToMonday);
+      return d;
+    };
+
+    // Helper: 1st of the current calendar month
+    const getFirstOfMonth = (date) => {
+      const d = new Date(date);
+      d.setDate(1);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+
+    if (semesterStartDate && semesterEndDate) {
+      // Weekly: Monday of current week, clamped to semester start
+      weekStart = getMondayOfWeek(referenceDate);
       if (weekStart < semesterStartDate) {
         weekStart = new Date(semesterStartDate);
         weekStart.setHours(0, 0, 0, 0);
       }
 
-      // For monthly: use semester start date or last 30 days, whichever is more recent
-      monthStart = new Date(referenceDate);
-      monthStart.setDate(referenceDate.getDate() - 29);
-      monthStart.setHours(0, 0, 0, 0);
+      // Weekly end: Saturday of the same week, clamped to semester end
+      weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 5); // Mon -> Sat
+      weekEnd.setHours(23, 59, 59, 999);
+      if (weekEnd > semesterEndDate) {
+        weekEnd = new Date(semesterEndDate);
+        weekEnd.setHours(23, 59, 59, 999);
+      }
+
+      // Monthly: 1st of current month, clamped to semester start
+      monthStart = getFirstOfMonth(referenceDate);
       if (monthStart < semesterStartDate) {
         monthStart = new Date(semesterStartDate);
         monthStart.setHours(0, 0, 0, 0);
       }
     } else {
-      // Fallback to original logic
-      weekStart = new Date(referenceDate);
-      weekStart.setDate(referenceDate.getDate() - 6);
-      weekStart.setHours(0, 0, 0, 0);
-
-      monthStart = new Date(referenceDate);
-      monthStart.setDate(referenceDate.getDate() - 29);
-      monthStart.setHours(0, 0, 0, 0);
+      // Fallback: same calendar-based logic without semester clamping
+      weekStart = getMondayOfWeek(referenceDate);
+      weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 5); // Mon -> Sat
+      weekEnd.setHours(23, 59, 59, 999);
+      monthStart = getFirstOfMonth(referenceDate);
     }
 
     // Determine the date range for fetching attendance
@@ -3456,12 +3487,11 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       [studentId, formatDateKey(queryStartDate), todayKey]
     );
 
-    const weeklyRows = historyRows.filter(
-      (row) => {
-        const rowDate = new Date(row.attendance_date);
-        return rowDate >= weekStart && rowDate <= referenceDate;
-      }
-    );
+    const weeklyRows = historyRows.filter((row) => {
+      const rowDate = new Date(row.attendance_date);
+      // Note: historyRows only goes up to "todayKey", so this will naturally exclude future dates.
+      return rowDate >= weekStart && rowDate <= weekEnd;
+    });
 
     const monthlyRows = historyRows.filter(
       (row) => {
@@ -3472,14 +3502,18 @@ exports.getStudentAttendanceHistory = async (req, res) => {
 
     // Determine holiday range
     const holidayStartDate = monthStart < weekStart ? monthStart : weekStart;
+    const holidayEndDate = weekEnd > referenceDate ? weekEnd : referenceDate;
     let holidayRangeInfo = { dates: new Set(), details: new Map() };
     try {
-      holidayRangeInfo = await getNonWorkingDaysForRange(formatDateKey(holidayStartDate), todayKey);
+      holidayRangeInfo = await getNonWorkingDaysForRange(
+        formatDateKey(holidayStartDate),
+        formatDateKey(holidayEndDate)
+      );
     } catch (error) {
       console.warn('Failed to fetch holiday range for student history:', error.message || error);
     }
 
-    const weekly = buildStudentSeries(weeklyRows, weekStart, referenceDate, holidayRangeInfo);
+    const weekly = buildStudentSeries(weeklyRows, weekStart, weekEnd, holidayRangeInfo);
     const monthly = buildStudentSeries(monthlyRows, monthStart, referenceDate, holidayRangeInfo);
 
     // Calculate attendance percentage based on semester dates
@@ -3568,7 +3602,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         },
         weekly: {
           startDate: formatDateKey(weekStart),
-          endDate: todayKey,
+          endDate: formatDateKey(weekEnd),
           totals: weekly.totals,
           series: weekly.series,
           holidays: weekly.series.filter((entry) => entry.isHoliday)
