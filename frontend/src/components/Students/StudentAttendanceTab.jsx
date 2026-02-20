@@ -112,13 +112,11 @@ const StudentAttendanceTab = ({ student }) => {
                             <div className="text-right">
                                 {(() => {
                                     const semesterTotals = historyData.semester?.totals || {};
-                                    const totalDays =
+                                    const markedDays =
                                         (semesterTotals.present || 0) +
-                                        (semesterTotals.absent || 0) +
-                                        (semesterTotals.unmarked || 0) +
-                                        (semesterTotals.holidays || 0);
+                                        (semesterTotals.absent || 0);
                                     const presentDays = semesterTotals.present || 0;
-                                    const percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '0.0';
+                                    const percentage = markedDays > 0 ? ((presentDays / markedDays) * 100).toFixed(1) : '0.0';
                                     return (
                                         <div className="inline-flex items-center gap-3 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-100">
                                             <div className="text-left">
@@ -251,9 +249,9 @@ const StudentAttendanceTab = ({ student }) => {
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {months.map((month) => {
-                                const totalWorkingDays = month.total - month.holidays;
-                                const percentage = totalWorkingDays > 0
-                                    ? ((month.present / totalWorkingDays) * 100).toFixed(1)
+                                const markedDays = month.present + month.absent;
+                                const percentage = markedDays > 0
+                                    ? ((month.present / markedDays) * 100).toFixed(1)
                                     : '0.0';
 
                                 return (
