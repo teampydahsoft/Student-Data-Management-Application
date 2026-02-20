@@ -194,6 +194,29 @@ const Students = () => {
   const [profileCompletion, setProfileCompletion] = useState({ percentage: 0, filledCount: 0, totalCount: 0 });
   const [forms, setForms] = useState([]);
   const [loadingForms, setLoadingForms] = useState(false);
+  const [certificateConfig, setCertificateConfig] = useState({
+    diploma: [
+      { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+      { id: '10th_study', name: '10th Study Certificate', required: true }
+    ],
+    ug: [
+      { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+      { id: '10th_study', name: '10th Study Certificate', required: true },
+      { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
+      { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true }
+    ],
+    pg: [
+      { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+      { id: '10th_study', name: '10th Study Certificate', required: true },
+      { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
+      { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true },
+      { id: 'ug_study', name: 'UG Study Certificate', required: true },
+      { id: 'ug_tc', name: 'UG TC (Transfer Certificate)', required: true },
+      { id: 'ug_pc', name: 'UG PC (Provisional Certificate)', required: true },
+      { id: 'ug_cmm', name: 'UG CMM (Consolidated Marks Memo)', required: true },
+      { id: 'ug_od', name: 'UG OD (Original Degree)', required: true }
+    ]
+  });
   const [selectedAdmissionNumbers, setSelectedAdmissionNumbers] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -426,6 +449,11 @@ const Students = () => {
     }, 500); // 500ms debounce delay for immediate fetch
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Fetch certificate settings and forms on mount
+  useEffect(() => {
+    fetchForms();
+  }, []);
 
   // Fetch full student details (including photo) when opening modal
   useEffect(() => {
@@ -1145,14 +1173,19 @@ const Students = () => {
     }
     setLoadingForms(true);
     try {
-      const response = await api.get('/forms');
-      if (response.data?.success) {
-        setForms(response.data.data || []);
-      } else {
-        toast.error(response.data?.message || 'Failed to load forms');
+      const formPromise = api.get('/forms');
+      const certPromise = api.get('/settings/certificates');
+      const [formResponse, certResponse] = await Promise.all([formPromise, certPromise]);
+
+      if (formResponse.data?.success) {
+        setForms(formResponse.data.data || []);
+      }
+
+      if (certResponse.data?.success && certResponse.data.data) {
+        setCertificateConfig(certResponse.data.data);
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to load forms');
+      console.error('Failed to load form/certificate settings', error);
     } finally {
       setLoadingForms(false);
     }
@@ -1955,72 +1988,16 @@ const Students = () => {
     });
   };
 
-  // Helper function to get certificates for course type
-  const getCertificatesForCourse = (courseType) => {
-    if (courseType === 'Diploma') {
-      return [
-        { key: 'ssc_certificate', label: 'SSC Certificate' },
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' }
-      ];
-    } else if (courseType === 'UG') {
-      return [
-        { key: 'ssc_certificate', label: 'SSC Certificate' },
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' }
-      ];
-    } else if (courseType === 'PG') {
-      return [
-        { key: 'ssc_certificate', label: 'SSC Certificate' },
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' },
-        { key: 'ug_study', label: 'UG Study Certificate' },
-        { key: 'ug_tc', label: 'UG TC (Transfer Certificate)' },
-        { key: 'ug_pc', label: 'UG PC (Provisional Certificate)' },
-        { key: 'ug_cmm', label: 'UG CMM (Consolidated Marks Memo)' },
-        { key: 'ug_od', label: 'UG OD (Original Degree)' }
-      ];
-    }
-    return [];
-  };
+  // Helper function to determine course type from course name
+  const getCourseType = (courseNameRaw) => {
+    const courseName = (courseNameRaw || '').toLowerCase();
+    if (!courseName) return null;
 
-  // Helper function to check if certificate is present
-  const isCertificatePresent = (certKey) => {
-    // Check in editData first, then selectedStudent.student_data
-    const studentData = editData || selectedStudent?.student_data || {};
-    const parsedData = typeof studentData === 'string' ? JSON.parse(studentData || '{}') : studentData;
-    return parsedData[certKey] === true || parsedData[certKey] === 'Yes' || parsedData[certKey] === 'yes';
-  };
-
-  // Helper function to get certificate status display
-  const getCertificateStatusDisplay = (certKey, overallStatus) => {
-    // If overall status is Verified or Submitted, show Yes
-    if (overallStatus === 'Verified' || overallStatus === 'Submitted') {
-      return 'Yes';
-    }
-    // If overall status is Unverified, Pending, or null, check individual certificate
-    if (overallStatus === 'Unverified' || overallStatus === 'Pending' || !overallStatus) {
-      return isCertificatePresent(certKey) ? 'Yes' : 'No';
-    }
-    // For other statuses, check individual certificate
-    return isCertificatePresent(certKey) ? 'Yes' : 'No';
-  };
-
-  // Update certificate status
-  const updateCertificateStatus = (certKey, value) => {
-    const newEditData = { ...editData };
-    newEditData[certKey] = value;
-
-    // Auto-update certificates_status based on all certificates
-    const courseName = (editData.course || selectedStudent?.course || '').toLowerCase();
-    let courseType = null;
     if (courseName.includes('diploma')) {
-      courseType = 'Diploma';
-    } else if (
+      return 'Diploma';
+    }
+
+    if (
       courseName.includes('pg') ||
       courseName.includes('post graduate') ||
       courseName.includes('m.tech') ||
@@ -2034,16 +2011,63 @@ const Students = () => {
       courseName.includes('m pharma') ||
       (courseName.includes('pharma') && (courseName.includes('m') || courseName.startsWith('pharma')))
     ) {
-      courseType = 'PG';
-    } else if (courseName) {
-      courseType = 'UG';
+      return 'PG';
     }
+
+    return 'UG';
+  };
+
+  // Helper function to get certificates for course type
+  const getCertificatesForCourse = (courseType) => {
+    const type = courseType?.toLowerCase();
+    if (type === 'diploma') {
+      return certificateConfig.diploma.map(c => ({ key: c.id, label: c.name }));
+    } else if (type === 'ug') {
+      return certificateConfig.ug.map(c => ({ key: c.id, label: c.name }));
+    } else if (type === 'pg') {
+      return certificateConfig.pg.map(c => ({ key: c.id, label: c.name }));
+    }
+    return [];
+  };
+
+  // Helper function to check if certificate is present
+  const isCertificatePresent = (certKey) => {
+    // Check in editData first, then selectedStudent.student_data
+    const studentData = editData || selectedStudent?.student_data || {};
+    const parsedData = typeof studentData === 'string' ? JSON.parse(studentData || '{}') : studentData;
+    const value = parsedData[certKey];
+    if (value === true || value === 'Yes' || value === 'yes') return true;
+    // Also consider any non-empty string as present if it's from a dropdown
+    if (typeof value === 'string' && value.trim() !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'pending') return true;
+    return false;
+  };
+
+  // Helper function to get certificate status display
+  const getCertificateStatusDisplay = (certKey) => {
+    const studentData = editData || selectedStudent?.student_data || {};
+    const parsedData = typeof studentData === 'string' ? JSON.parse(studentData || '{}') : studentData;
+    const value = parsedData[certKey];
+
+    if (!value || value === false || value === 'No' || value === 'no') return 'No';
+    if (value === true || value === 'Yes' || value === 'yes') return 'Yes';
+    return value; // Return the specific dropdown value like "Original"
+  };
+
+  // Update certificate status
+  const updateCertificateStatus = (certKey, value) => {
+    const newEditData = { ...editData };
+    newEditData[certKey] = value;
+
+    // Auto-update certificates_status based on all certificates
+    const courseType = getCourseType(editData.course || selectedStudent?.course || '');
 
     if (courseType) {
       const certificates = getCertificatesForCourse(courseType);
       const allYes = certificates.every(cert => {
         const certValue = cert.key === certKey ? value : newEditData[cert.key];
-        return certValue === true || certValue === 'Yes' || certValue === 'yes';
+        if (certValue === true || certValue === 'Yes' || certValue === 'yes') return true;
+        if (typeof certValue === 'string' && certValue.trim() !== '' && certValue.toLowerCase() !== 'no' && certValue.toLowerCase() !== 'pending') return true;
+        return false;
       });
       newEditData.certificates_status = allYes && certificates.length > 0 ? 'Verified' : 'Unverified';
     }
@@ -4412,28 +4436,7 @@ const Students = () => {
                   {/* Certificate Information Section */}
                   {canViewField('certificates_status') && (() => {
                     // Determine course type from student data
-                    const courseName = (editData.course || selectedStudent?.course || '').toLowerCase();
-                    let courseType = null;
-                    if (courseName.includes('diploma')) {
-                      courseType = 'Diploma';
-                    } else if (
-                      courseName.includes('pg') ||
-                      courseName.includes('post graduate') ||
-                      courseName.includes('m.tech') ||
-                      courseName.includes('mtech') ||
-                      courseName.includes('mba') ||
-                      courseName.includes('mca') ||
-                      courseName.includes('msc') ||
-                      courseName.includes('m sc') ||
-                      courseName.includes('aqua') ||
-                      courseName.includes('m.pharma') ||
-                      courseName.includes('m pharma') ||
-                      (courseName.includes('pharma') && (courseName.includes('m') || courseName.startsWith('pharma')))
-                    ) {
-                      courseType = 'PG';
-                    } else if (courseName) {
-                      courseType = 'UG';
-                    }
+                    const courseType = getCourseType(editData.course || selectedStudent?.course || '');
 
                     if (!courseType) return null;
 
@@ -4467,20 +4470,26 @@ const Students = () => {
                                   <span className="text-xs text-gray-700 flex-1 pr-2">{cert.label}</span>
 
                                   {editMode ? (
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={isPresent}
-                                        onChange={(e) => updateCertificateStatus(cert.key, e.target.checked)}
-                                        className="sr-only peer"
-                                      />
-                                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                                      <span className="ml-2 text-xs font-medium text-gray-700 min-w-[30px]">
-                                        {isPresent ? 'Yes' : 'No'}
-                                      </span>
-                                    </label>
+                                    <select
+                                      value={getCertificateStatusDisplay(cert.key) === 'No' ? '' : getCertificateStatusDisplay(cert.key)}
+                                      onChange={(e) => updateCertificateStatus(cert.key, e.target.value)}
+                                      className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white"
+                                    >
+                                      <option value="">No</option>
+                                      {(() => {
+                                        const type = courseType.toLowerCase();
+                                        const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
+                                        const options = configCert?.options || [];
+                                        if (options.length > 0) {
+                                          return options.map((opt, idx) => (
+                                            <option key={idx} value={opt}>{opt}</option>
+                                          ));
+                                        }
+                                        return <option value="Yes">Yes</option>;
+                                      })()}
+                                    </select>
                                   ) : (
-                                    <span className={`text-xs font-medium px-2 py-1 rounded ${isYes
+                                    <span className={`text-xs font-medium px-2 py-1 rounded ${isPresent
                                       ? 'text-green-700 bg-green-100'
                                       : 'text-red-700 bg-red-100'
                                       }`}>

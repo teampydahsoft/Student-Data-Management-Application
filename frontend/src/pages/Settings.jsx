@@ -342,7 +342,8 @@ const Settings = () => {
     const newCert = {
       id: `custom_${Date.now()}`,
       name: '',
-      required: false
+      required: false,
+      options: []
     };
     setCertificateConfig(prev => ({
       ...prev,
@@ -375,7 +376,67 @@ const Settings = () => {
     }));
   };
 
+  const addCertificateOption = (type, certId) => {
+    setCertificateConfig(prev => ({
+      ...prev,
+      [type]: prev[type].map(cert =>
+        cert.id === certId ? { ...cert, options: [...(cert.options || []), ''] } : cert
+      )
+    }));
+  };
 
+  const updateCertificateOption = (type, certId, optionIndex, value) => {
+    setCertificateConfig(prev => ({
+      ...prev,
+      [type]: prev[type].map(cert => {
+        if (cert.id === certId) {
+          const newOptions = [...(cert.options || [])];
+          newOptions[optionIndex] = value;
+          return { ...cert, options: newOptions };
+        }
+        return cert;
+      })
+    }));
+  };
+
+  const removeCertificateOption = (type, certId, optionIndex) => {
+    setCertificateConfig(prev => ({
+      ...prev,
+      [type]: prev[type].map(cert => {
+        if (cert.id === certId) {
+          return { ...cert, options: (cert.options || []).filter((_, i) => i !== optionIndex) };
+        }
+        return cert;
+      })
+    }));
+  };
+
+
+  const fetchCertificateSettings = async () => {
+    try {
+      const response = await api.get('/settings/certificates');
+      if (response.data.success && response.data.data) {
+        setCertificateConfig(response.data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch certificate settings', error);
+    }
+  };
+
+  const [savingCertificates, setSavingCertificates] = useState(false);
+
+  const saveCertificateSettings = async () => {
+    try {
+      setSavingCertificates(true);
+      await api.put('/settings/certificates', { config: certificateConfig });
+      toast.success('Certificate settings saved successfully');
+    } catch (error) {
+      console.error('Failed to save certificate settings', error);
+      toast.error('Failed to save certificate settings');
+    } finally {
+      setSavingCertificates(false);
+    }
+  };
 
   // Calendar state
   const [calendarViewMonthKey, setCalendarViewMonthKey] = useState(() => {
@@ -1176,6 +1237,7 @@ const Settings = () => {
       await fetchCourses();
       await fetchAcademicYears();
       await fetchRegistrationForms();
+      await fetchCertificateSettings();
     };
     initializeData();
   }, []);
@@ -3108,30 +3170,67 @@ const Settings = () => {
                         </div>
                         <div className="space-y-2">
                           {certificateConfig.diploma.map((cert) => (
-                            <div key={cert.id} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
-                              <input
-                                type="text"
-                                value={cert.name}
-                                onChange={(e) => updateCertificateName('diploma', cert.id, e.target.value)}
-                                placeholder="Certificate name"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                              />
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <div key={cert.id} className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="flex items-center gap-3">
                                 <input
-                                  type="checkbox"
-                                  checked={cert.required}
-                                  onChange={(e) => updateCertificateRequired('diploma', cert.id, e.target.checked)}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  type="text"
+                                  value={cert.name}
+                                  onChange={(e) => updateCertificateName('diploma', cert.id, e.target.value)}
+                                  placeholder="Certificate name"
+                                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none font-medium"
                                 />
-                                <span className="text-xs text-gray-600">Required</span>
-                              </label>
-                              <button
-                                onClick={() => removeCertificate('diploma', cert.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Remove certificate"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={cert.required}
+                                    onChange={(e) => updateCertificateRequired('diploma', cert.id, e.target.checked)}
+                                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  />
+                                  <span className="text-xs text-gray-600">Required</span>
+                                </label>
+                                <button
+                                  onClick={() => removeCertificate('diploma', cert.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Remove certificate"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+
+                              {/* Options management */}
+                              <div className="pl-4 border-l-2 border-teal-50 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase">Dropdown Options</span>
+                                  <button
+                                    onClick={() => addCertificateOption('diploma', cert.id)}
+                                    className="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded hover:bg-teal-100 transition-colors border border-teal-200 flex items-center gap-1"
+                                  >
+                                    <Plus size={10} /> Add Option
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {(cert.options || []).map((opt, optIdx) => (
+                                    <div key={optIdx} className="flex items-center gap-1 group">
+                                      <input
+                                        type="text"
+                                        value={opt}
+                                        onChange={(e) => updateCertificateOption('diploma', cert.id, optIdx, e.target.value)}
+                                        placeholder="e.g. Original"
+                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                      />
+                                      <button
+                                        onClick={() => removeCertificateOption('diploma', cert.id, optIdx)}
+                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {(cert.options || []).length === 0 && (
+                                    <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -3151,30 +3250,67 @@ const Settings = () => {
                         </div>
                         <div className="space-y-2">
                           {certificateConfig.ug.map((cert) => (
-                            <div key={cert.id} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
-                              <input
-                                type="text"
-                                value={cert.name}
-                                onChange={(e) => updateCertificateName('ug', cert.id, e.target.value)}
-                                placeholder="Certificate name"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                              />
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <div key={cert.id} className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="flex items-center gap-3">
                                 <input
-                                  type="checkbox"
-                                  checked={cert.required}
-                                  onChange={(e) => updateCertificateRequired('ug', cert.id, e.target.checked)}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  type="text"
+                                  value={cert.name}
+                                  onChange={(e) => updateCertificateName('ug', cert.id, e.target.value)}
+                                  placeholder="Certificate name"
+                                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none font-medium"
                                 />
-                                <span className="text-xs text-gray-600">Required</span>
-                              </label>
-                              <button
-                                onClick={() => removeCertificate('ug', cert.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Remove certificate"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={cert.required}
+                                    onChange={(e) => updateCertificateRequired('ug', cert.id, e.target.checked)}
+                                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  />
+                                  <span className="text-xs text-gray-600">Required</span>
+                                </label>
+                                <button
+                                  onClick={() => removeCertificate('ug', cert.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Remove certificate"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+
+                              {/* Options management */}
+                              <div className="pl-4 border-l-2 border-teal-50 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase">Dropdown Options</span>
+                                  <button
+                                    onClick={() => addCertificateOption('ug', cert.id)}
+                                    className="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded hover:bg-teal-100 transition-colors border border-teal-200 flex items-center gap-1"
+                                  >
+                                    <Plus size={10} /> Add Option
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {(cert.options || []).map((opt, optIdx) => (
+                                    <div key={optIdx} className="flex items-center gap-1 group">
+                                      <input
+                                        type="text"
+                                        value={opt}
+                                        onChange={(e) => updateCertificateOption('ug', cert.id, optIdx, e.target.value)}
+                                        placeholder="e.g. Original"
+                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                      />
+                                      <button
+                                        onClick={() => removeCertificateOption('ug', cert.id, optIdx)}
+                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {(cert.options || []).length === 0 && (
+                                    <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -3194,34 +3330,91 @@ const Settings = () => {
                         </div>
                         <div className="space-y-2">
                           {certificateConfig.pg.map((cert) => (
-                            <div key={cert.id} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
-                              <input
-                                type="text"
-                                value={cert.name}
-                                onChange={(e) => updateCertificateName('pg', cert.id, e.target.value)}
-                                placeholder="Certificate name"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                              />
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <div key={cert.id} className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="flex items-center gap-3">
                                 <input
-                                  type="checkbox"
-                                  checked={cert.required}
-                                  onChange={(e) => updateCertificateRequired('pg', cert.id, e.target.checked)}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  type="text"
+                                  value={cert.name}
+                                  onChange={(e) => updateCertificateName('pg', cert.id, e.target.value)}
+                                  placeholder="Certificate name"
+                                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 outline-none font-medium"
                                 />
-                                <span className="text-xs text-gray-600">Required</span>
-                              </label>
-                              <button
-                                onClick={() => removeCertificate('pg', cert.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Remove certificate"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={cert.required}
+                                    onChange={(e) => updateCertificateRequired('pg', cert.id, e.target.checked)}
+                                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  />
+                                  <span className="text-xs text-gray-600">Required</span>
+                                </label>
+                                <button
+                                  onClick={() => removeCertificate('pg', cert.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Remove certificate"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+
+                              {/* Options management */}
+                              <div className="pl-4 border-l-2 border-teal-50 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase">Dropdown Options</span>
+                                  <button
+                                    onClick={() => addCertificateOption('pg', cert.id)}
+                                    className="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded hover:bg-teal-100 transition-colors border border-teal-200 flex items-center gap-1"
+                                  >
+                                    <Plus size={10} /> Add Option
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {(cert.options || []).map((opt, optIdx) => (
+                                    <div key={optIdx} className="flex items-center gap-1 group">
+                                      <input
+                                        type="text"
+                                        value={opt}
+                                        onChange={(e) => updateCertificateOption('pg', cert.id, optIdx, e.target.value)}
+                                        placeholder="e.g. Original"
+                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                      />
+                                      <button
+                                        onClick={() => removeCertificateOption('pg', cert.id, optIdx)}
+                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {(cert.options || []).length === 0 && (
+                                    <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        onClick={saveCertificateSettings}
+                        disabled={savingCertificates}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all font-semibold shadow-sm disabled:opacity-50"
+                      >
+                        {savingCertificates ? (
+                          <>
+                            <RefreshCcw size={16} className="animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Settings2 size={16} />
+                            Save Certificate Settings
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
 

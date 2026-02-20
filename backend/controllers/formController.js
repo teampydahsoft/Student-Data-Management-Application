@@ -217,6 +217,43 @@ exports.updateForm = async (req, res) => {
       values
     );
 
+    // Sync dynamic table schema if fields were updated
+    if (formFields !== undefined) {
+      const destinationTable = `form_${formId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
+      // Ensure table exists
+      await conn.query(
+        `CREATE TABLE IF NOT EXISTS ${destinationTable} (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          admission_number VARCHAR(100),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`
+      );
+
+      // Add columns for new fields
+      for (const field of formFields) {
+        const col = field.key?.replace(/[^a-zA-Z0-9_]/g, '_');
+        if (!col) continue;
+
+        const [columns] = await conn.query(
+          `SELECT COUNT(*) as count 
+           FROM information_schema.COLUMNS 
+           WHERE TABLE_SCHEMA = DATABASE() 
+           AND TABLE_NAME = ? 
+           AND COLUMN_NAME = ?`,
+          [destinationTable, col]
+        );
+
+        if (columns[0].count === 0) {
+          await conn.query(
+            `ALTER TABLE ${destinationTable} ADD COLUMN ${col} VARCHAR(1024) NULL`
+          );
+        }
+      }
+      console.log(`✅ Synced schema for dynamic table ${destinationTable}`);
+    }
+
     // Log action
     const adminIdForDb = getAdminIdForDb(req);
     await conn.query(

@@ -419,3 +419,99 @@ exports.updateStudentLayoutSettings = async (req, res) => {
     });
   }
 };
+/**
+ * GET /api/settings/certificates
+ * Get certificate configuration settings
+ */
+exports.getCertificateSettings = async (req, res) => {
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['certificate_config']
+    );
+
+    let config = {
+      diploma: [
+        { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+        { id: '10th_study', name: '10th Study Certificate', required: true }
+      ],
+      ug: [
+        { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+        { id: '10th_study', name: '10th Study Certificate', required: true },
+        { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
+        { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true }
+      ],
+      pg: [
+        { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
+        { id: '10th_study', name: '10th Study Certificate', required: true },
+        { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
+        { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true },
+        { id: 'ug_study', name: 'UG Study Certificate', required: true },
+        { id: 'ug_tc', name: 'UG TC (Transfer Certificate)', required: true },
+        { id: 'ug_pc', name: 'UG PC (Provisional Certificate)', required: true },
+        { id: 'ug_cmm', name: 'UG CMM (Consolidated Marks Memo)', required: true },
+        { id: 'ug_od', name: 'UG OD (Original Degree)', required: true }
+      ]
+    };
+
+    if (settings && settings.length > 0) {
+      try {
+        const storedConfig = JSON.parse(settings[0].value);
+        if (storedConfig && typeof storedConfig === 'object') {
+          config = storedConfig;
+        }
+      } catch (e) {
+        console.error('Error parsing certificate settings:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: config
+    });
+  } catch (error) {
+    console.error('Get certificate settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching certificate settings'
+    });
+  }
+};
+
+/**
+ * PUT /api/settings/certificates
+ * Update certificate configuration settings
+ */
+exports.updateCertificateSettings = async (req, res) => {
+  try {
+    const { config } = req.body;
+
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Config object is required'
+      });
+    }
+
+    const value = JSON.stringify(config);
+
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) 
+       VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['certificate_config', value, new Date(), value, new Date()]
+    );
+
+    res.json({
+      success: true,
+      message: 'Certificate settings saved successfully',
+      data: config
+    });
+  } catch (error) {
+    console.error('Update certificate settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating certificate settings'
+    });
+  }
+};

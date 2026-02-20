@@ -134,6 +134,7 @@ const PublicForm = () => {
 
   // Certificate status state - tracks Yes/No for each certificate
   const [certificateStatus, setCertificateStatus] = useState({});
+  const [certificateConfig, setCertificateConfig] = useState(null);
   const [fetchingForm, setFetchingForm] = useState(false);
   const [formCache, setFormCache] = useState(new Map());
   const [retryCount, setRetryCount] = useState(0);
@@ -173,10 +174,11 @@ const PublicForm = () => {
     const loadAllData = async () => {
       try {
         // Fetch all data in parallel using Promise.allSettled - use public endpoints
-        const [coursesRes, collegesRes, yearsRes] = await Promise.allSettled([
+        const [coursesRes, collegesRes, yearsRes, certRes] = await Promise.allSettled([
           api.get('/courses/options'),
           api.get('/colleges/public'),
-          api.get('/academic-years/public')
+          api.get('/academic-years/public'),
+          api.get('/settings/certificates')
         ]);
 
         // Process results
@@ -188,6 +190,12 @@ const PublicForm = () => {
         }
         if (yearsRes.status === 'fulfilled') {
           setAcademicYears(yearsRes.value.data.data || []);
+        }
+        if (certRes.status === 'fulfilled' && certRes.value.value?.data?.success) {
+          setCertificateConfig(certRes.value.value.data.data);
+        } else if (certRes.status === 'fulfilled' && certRes.value.data?.success) {
+          // Handle both promise settled structures
+          setCertificateConfig(certRes.value.data.data);
         }
       } catch (error) {
         // Silent fail - dropdowns will show text inputs as fallback
@@ -417,7 +425,20 @@ const PublicForm = () => {
     if (courseNameLower.includes('diploma')) {
       return 'Diploma';
     }
-    if (courseNameLower.includes('pg') || courseNameLower.includes('post graduate') || courseNameLower.includes('m.tech') || courseNameLower.includes('mtech')) {
+    if (
+      courseNameLower.includes('pg') ||
+      courseNameLower.includes('post graduate') ||
+      courseNameLower.includes('m.tech') ||
+      courseNameLower.includes('mtech') ||
+      courseNameLower.includes('mba') ||
+      courseNameLower.includes('mca') ||
+      courseNameLower.includes('msc') ||
+      courseNameLower.includes('m sc') ||
+      courseNameLower.includes('aqua') ||
+      courseNameLower.includes('m.pharma') ||
+      courseNameLower.includes('m pharma') ||
+      (courseNameLower.includes('pharma') && (courseNameLower.includes('m') || courseNameLower.startsWith('pharma')))
+    ) {
       return 'PG';
     }
     return 'UG';
@@ -425,32 +446,15 @@ const PublicForm = () => {
 
   // Get certificates based on course type
   const getCertificatesForCourse = () => {
-    if (courseType === 'Diploma') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' }
-      ];
-    } else if (courseType === 'UG') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' }
-      ];
-    } else if (courseType === 'PG') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' },
-        { key: 'ug_study', label: 'UG Study Certificate' },
-        { key: 'ug_tc', label: 'UG TC (Transfer Certificate)' },
-        { key: 'ug_pc', label: 'UG PC (Provisional Certificate)' },
-        { key: 'ug_cmm', label: 'UG CMM (Consolidated Marks Memo)' },
-        { key: 'ug_od', label: 'UG OD (Original Degree)' }
-      ];
-    }
-    return [];
+    if (!certificateConfig) return [];
+    const type = courseType?.toLowerCase();
+    const config = certificateConfig[type] || [];
+    return config.map(c => ({
+      key: c.id,
+      label: c.name,
+      required: c.required,
+      options: c.options
+    }));
   };
 
   // Update certificates_status based on certificate status
@@ -459,7 +463,12 @@ const PublicForm = () => {
     const certificates = getCertificatesForCourse();
     if (certificates.length === 0) return;
 
-    const allYes = certificates.every(cert => certificateStatus[cert.key] === true);
+    const allYes = certificates.every(cert => {
+      const val = certificateStatus[cert.key];
+      if (val === true || val === 'Yes' || val === 'yes') return true;
+      if (typeof val === 'string' && val.trim() !== '' && val.toLowerCase() !== 'no') return true;
+      return false;
+    });
     if (allYes && certificates.length > 0) {
       setFormData(prev => ({ ...prev, certificates_status: 'Verified' }));
     } else {
@@ -1870,27 +1879,36 @@ const PublicForm = () => {
                       Default Certification Fields
                     </h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {getCertificatesForCourse().map((cert) => (
-                        <div key={cert.key} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
-                          <span className="text-sm text-gray-700">{cert.label}</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={certificateStatus[cert.key] || false}
-                              onChange={(e) => {
-                                setCertificateStatus(prev => ({
-                                  ...prev,
-                                  [cert.key]: e.target.checked
-                                }));
-                              }}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
-                            <span className="ml-2 text-xs text-gray-500">
-                              {certificateStatus[cert.key] ? 'Yes' : 'No'}
-                            </span>
+                        <div key={cert.key} className="space-y-1">
+                          <label className="block text-sm font-medium text-gray-700">
+                            {cert.label}
+                            {cert.required && <span className="text-red-500 ml-1">*</span>}
                           </label>
+                          <select
+                            value={certificateStatus[cert.key] || ''}
+                            onChange={(e) => {
+                              setCertificateStatus(prev => ({
+                                ...prev,
+                                [cert.key]: e.target.value
+                              }));
+                            }}
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none text-sm transition-all shadow-sm"
+                            required={cert.required}
+                          >
+                            <option value="">Select status</option>
+                            {(cert.options || []).length > 0 ? (
+                              cert.options.map((opt, idx) => (
+                                <option key={idx} value={opt}>{opt}</option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                              </>
+                            )}
+                          </select>
                         </div>
                       ))}
                     </div>

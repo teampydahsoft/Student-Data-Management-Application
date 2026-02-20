@@ -19,6 +19,10 @@ router.put('/attendance', settingsController.updateAttendanceSettings);
 router.get('/student-layout', settingsController.getStudentLayoutSettings);
 router.put('/student-layout', settingsController.updateStudentLayoutSettings);
 
+// Certificate configuration routes
+router.get('/certificates', settingsController.getCertificateSettings);
+router.put('/certificates', settingsController.updateCertificateSettings);
+
 // Document requirements settings routes (new CRUD API)
 router.get('/documents', documentSettingsController.getAllDocumentRequirements);
 router.get('/documents/:courseType/:academicStage', documentSettingsController.getDocumentRequirements);
