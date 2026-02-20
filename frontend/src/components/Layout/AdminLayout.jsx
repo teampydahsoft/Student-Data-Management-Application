@@ -21,6 +21,10 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
+  ChevronUp,
+  ChevronsLeft,
+  ChevronsRight,
   DollarSign,
   Ticket,
   FolderTree,
@@ -29,6 +33,14 @@ import {
   ArrowLeftRight,
   Wrench,
   GraduationCap,
+  Building2,
+  Database,
+  UserPlus,
+  Clock,
+  UserSquare,
+  MessageSquare,
+  PieChart,
+  Tag,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -74,11 +86,13 @@ const NAV_ITEMS = [
       {
         path: "/students",
         label: "Students Database",
+        icon: Database,
         permission: FRONTEND_MODULES.STUDENTS,
       },
       {
         path: "/students/self-registration",
         label: "Self Registration",
+        icon: UserPlus,
         permission: FRONTEND_MODULES.SUBMISSIONS,
       },
     ],
@@ -98,18 +112,21 @@ const NAV_ITEMS = [
       {
         path: "/attendance",
         label: "Daily Attendance",
+        icon: CalendarCheck,
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view'
       },
       {
         path: "/attendance-monitoring",
         label: "Hourly Attendance",
+        icon: Clock,
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view_hourly'
       },
       {
         path: "/internship-management",
         label: "Internship Attendance",
+        icon: Briefcase,
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view_internship'
       }
@@ -139,11 +156,13 @@ const NAV_ITEMS = [
       {
         path: "/faculty-management",
         label: "Faculty List",
+        icon: UserSquare,
         permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
       },
       {
         path: "/feedback-forms",
         label: "Feed Back",
+        icon: MessageSquare,
         permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
       }
     ]
@@ -157,24 +176,28 @@ const NAV_ITEMS = [
       {
         path: "/reports",
         label: "Registration Reports",
+        icon: FileText,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_registration'
       },
       {
         path: "/reports/attendance",
         label: "Attendance Reports",
+        icon: ClipboardList,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_attendance'
       },
       {
         path: "/reports/day-end",
         label: "Day End Report",
+        icon: PieChart,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_day_end'
       },
       {
         path: "/reports/category",
         label: "Category Report",
+        icon: Tag,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_category'
       },
@@ -189,11 +212,13 @@ const NAV_ITEMS = [
       {
         path: "/services/requests",
         label: "Service Requests",
+        icon: ClipboardList,
         permission: FRONTEND_MODULES.SERVICES,
       },
       {
         path: "/services/config",
         label: "Configuration",
+        icon: Settings,
         permission: FRONTEND_MODULES.SERVICES,
       },
     ],
@@ -410,48 +435,41 @@ const AdminLayout = () => {
           <div
             className={`border-b border-white/10 flex items-center transition-[padding,justify-content] duration-300 ease-out ${sidebarCollapsed ? "justify-center p-3 lg:p-4" : "justify-between p-4 lg:p-6"}`}
           >
-            <div className={`p-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 shadow-lg flex items-center justify-center transition-all duration-300 ${sidebarCollapsed ? 'w-10 h-10' : 'w-full px-4 py-3'}`}>
-              <img
-                src="/logo.png"
-                alt="Pydah DB Logo"
-                className={`
-                  h-10 sm:h-12 w-auto max-w-full object-contain transition-opacity duration-300 ease-out
-                  ${sidebarCollapsed ? "opacity-0 w-0 h-0 overflow-hidden" : "opacity-100"}
-                `}
-                loading="lazy"
-              />
-              {sidebarCollapsed && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 rounded-full bg-white opacity-50 animate-pulse"></div>
+            <div className={`flex items-center gap-3 transition-all duration-300 ${sidebarCollapsed ? 'justify-center w-10 h-10' : 'w-full px-2'}`}>
+              {!sidebarCollapsed && (
+                <div className="p-2 rounded-lg bg-white/10 backdrop-blur-md border border-white/10 shadow-lg flex items-center justify-center shrink-0">
+                  <Building2 size={20} className="text-white" />
                 </div>
               )}
+              {!sidebarCollapsed && (
+                <span className="text-xl font-bold tracking-wider !text-white heading-font">
+                  PYDAH
+                </span>
+              )}
             </div>
-            {/* Close button for mobile, collapse button for desktop */}
+            {/* Toggle button for mobile and desktop */}
             <button
               onClick={() => {
                 if (window.innerWidth < 1024) {
-                  setSidebarOpen(false);
+                  setSidebarOpen(!sidebarOpen);
                 } else {
                   setSidebarCollapsed(!sidebarCollapsed);
                 }
               }}
-              className="lg:hidden p-2.5 rounded-lg hover:bg-gray-100 active:bg-gray-200 text-gray-700 hover:text-gray-900 transition-colors flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label="Close menu"
+              className="p-2.5 rounded-lg text-gray-100 hover:text-white transition-all flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center bg-transparent"
+              aria-label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
-              <X size={20} />
-            </button>
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gray-900 transition-colors flex-shrink-0"
-              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            >
-              <X size={20} />
+              {window.innerWidth < 1024 ? (
+                sidebarOpen ? <ChevronsLeft size={24} /> : <Menu size={24} />
+              ) : (
+                sidebarCollapsed ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />
+              )}
             </button>
           </div>
 
           {/* Navigation */}
           <nav
-            className={`flex-1 space-y-1 transition-[padding] duration-300 ease-out overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 premium-sidebar-nav ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
+            className={`flex-1 space-y-1 transition-[padding] duration-300 ease-out overflow-y-auto overflow-x-hidden premium-sidebar-nav ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
             style={{
               scrollBehavior: "smooth",
             }}
@@ -499,12 +517,12 @@ const AdminLayout = () => {
                         </span>
                       </div>
                       {isActuallyExpanded ? (
-                        <ChevronDown
+                        <ChevronUp
                           size={18}
                           className="flex-shrink-0 transition-transform duration-200"
                         />
                       ) : (
-                        <ChevronRight
+                        <ChevronDown
                           size={18}
                           className="flex-shrink-0 transition-transform duration-200"
                         />
@@ -517,6 +535,7 @@ const AdminLayout = () => {
                             location.pathname === subItem.path;
 
                           if (subItem.isExternal) {
+                            const SubIcon = subItem.icon || LayoutDashboard;
                             return (
                               <a
                                 key={subItem.path}
@@ -527,7 +546,7 @@ const AdminLayout = () => {
                                     text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1
                                   `}
                               >
-                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#4a5d3f]"></div>
+                                <SubIcon size={14} className={`flex-shrink-0 ${isSubActive ? "text-white" : "text-gray-400"}`} />
                                 <span className="whitespace-nowrap">
                                   {subItem.label}
                                 </span>
@@ -535,6 +554,7 @@ const AdminLayout = () => {
                             );
                           }
 
+                          const SubIcon = subItem.icon || LayoutDashboard;
                           return (
                             <Link
                               key={subItem.path}
@@ -557,9 +577,10 @@ const AdminLayout = () => {
                                 }
                               `}
                             >
-                              <div
-                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSubActive ? "bg-white" : "bg-gray-400"}`}
-                              ></div>
+                              <SubIcon
+                                size={14}
+                                className={`flex-shrink-0 ${isSubActive ? "text-white" : "text-gray-400"}`}
+                              />
                               <span className="whitespace-nowrap">
                                 {subItem.label}
                               </span>
@@ -697,22 +718,26 @@ const AdminLayout = () => {
                   `}
                   aria-label={workspaceDropdownOpen ? "Collapse workspace menu" : "Expand workspace menu"}
                 >
-                  <div className="flex items-center gap-2 flex-1">
+                  <div className={`flex items-center gap-2 flex-1 ${sidebarCollapsed ? 'justify-center' : ''}`}>
                     <FolderTree size={18} className="flex-shrink-0" />
-                    <span className="whitespace-nowrap font-medium text-xs">
-                      Workspace
-                    </span>
+                    {!sidebarCollapsed && (
+                      <span className="whitespace-nowrap font-medium text-xs">
+                        Workspace
+                      </span>
+                    )}
                   </div>
-                  {workspaceDropdownOpen ? (
-                    <ChevronDown
-                      size={18}
-                      className="flex-shrink-0 transition-transform duration-200"
-                    />
-                  ) : (
-                    <ChevronRight
-                      size={18}
-                      className="flex-shrink-0 transition-transform duration-200"
-                    />
+                  {!sidebarCollapsed && (
+                    workspaceDropdownOpen ? (
+                      <ChevronUp
+                        size={18}
+                        className="flex-shrink-0 transition-transform duration-200"
+                      />
+                    ) : (
+                      <ChevronDown
+                        size={18}
+                        className="flex-shrink-0 transition-transform duration-200"
+                      />
+                    )
                   )}
                 </button>
                 {workspaceDropdownOpen && !sidebarCollapsed && (
@@ -738,71 +763,36 @@ const AdminLayout = () => {
           <div
             className={`border-t border-white/10 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
           >
-            <div
-              className={`
-                flex items-center gap-3 mb-2 transition-opacity duration-300 ease-out overflow-hidden
-                ${sidebarCollapsed ? "opacity-0 h-0 mb-0" : "opacity-100 h-auto mb-2"}
-              `}
-            >
-              <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-semibold text-sm">
-                  {user?.username?.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {user?.name || user?.username || "User"}
-                </p>
-                <p className="text-xs text-gray-300 truncate">
-                  {user?.email ||
-                    (isFullAccessRole(user?.role)
-                      ? "Administrator"
-                      : "Team Member")}
-                </p>
-              </div>
+            <div className={`flex ${sidebarCollapsed ? "flex-col items-center" : "items-center justify-between"} gap-2`}>
+              <Link
+                to="/profile"
+                onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                className={`flex items-center gap-3 flex-1 min-w-0 group ${sidebarCollapsed ? "justify-center" : ""}`}
+                title={sidebarCollapsed ? "Profile" : ""}
+              >
+                <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center flex-shrink-0 group-hover:ring-2 group-hover:ring-white/20 transition-all">
+                  <span className="text-white font-semibold text-sm">
+                    {user?.username?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                {!sidebarCollapsed && (
+                  <span className="text-sm font-medium text-white truncate group-hover:text-blue-200 transition-colors">
+                    {user?.name || user?.username || "User"}
+                  </span>
+                )}
+              </Link>
+
+              <button
+                onClick={handleLogout}
+                className={`
+                  flex items-center justify-center rounded-md bg-white/5 text-gray-100 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200 
+                  ${sidebarCollapsed ? "w-10 h-10 mt-1" : "p-2"}
+                `}
+                title="Logout"
+              >
+                <LogOut size={sidebarCollapsed ? 20 : 18} />
+              </button>
             </div>
-
-            {/* Profile Link */}
-            <Link
-              to="/profile"
-              onClick={() => {
-                if (window.innerWidth < 1024) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center rounded-md bg-white/5 text-gray-100 hover:bg-white/10 transition-colors duration-200 touch-manipulation min-h-[44px] mb-2 ${sidebarCollapsed
-                ? "justify-center p-3"
-                : "gap-3 px-4 py-2.5 sm:py-3"
-                }`}
-              title={sidebarCollapsed ? "Profile" : ""}
-            >
-              <Users size={20} className="flex-shrink-0" />
-              <span
-                className={`
-                  transition-opacity duration-300 ease-out whitespace-nowrap overflow-hidden
-                  ${sidebarCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto"}
-                `}
-              >
-                Profile
-              </span>
-            </Link>
-
-            <button
-              onClick={handleLogout}
-              className={`w-full flex items-center rounded-md bg-white/5 text-gray-100 hover:bg-red-500/20 hover:text-red-400 transition-colors duration-200 touch-manipulation min-h-[44px] ${sidebarCollapsed
-                ? "justify-center p-3"
-                : "gap-3 px-4 py-2.5 sm:py-3"
-                }`}
-              title={sidebarCollapsed ? "Logout" : ""}
-            >
-              <LogOut size={20} className="flex-shrink-0" />
-              <span
-                className={`
-                  transition-opacity duration-300 ease-out whitespace-nowrap overflow-hidden
-                  ${sidebarCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto"}
-                `}
-              >
-                Logout
-              </span>
-            </button>
           </div>
         </div>
       </aside>

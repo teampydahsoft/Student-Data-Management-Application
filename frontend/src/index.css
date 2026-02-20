@@ -539,6 +539,25 @@ nav:hover::-webkit-scrollbar-thumb {
     z-index: 10;
 }
 
+/* Sidebar specific scrollbar */
+.premium-sidebar-nav::-webkit-scrollbar {
+    width: 5px;
+}
+
+.premium-sidebar-nav::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.premium-sidebar-nav:hover::-webkit-scrollbar-thumb {
+    background-color: #4a5d3f;
+    box-shadow: 0 0 10px rgba(74, 93, 63, 0.5);
+}
+
+.premium-sidebar-nav::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
 .premium-sidebar-link {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
