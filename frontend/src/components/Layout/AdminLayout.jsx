@@ -80,7 +80,7 @@ const NAV_ITEMS = [
   {
     path: "/students",
     icon: Users,
-    label: "Student Management",
+    label: "Students",
     permission: FRONTEND_MODULES.STUDENTS,
     subItems: [
       {
@@ -150,7 +150,7 @@ const NAV_ITEMS = [
   {
     path: "/faculty-management",
     icon: GraduationCap,
-    label: "Faculty Management",
+    label: "Faculty Members",
     permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
     subItems: [
       {
