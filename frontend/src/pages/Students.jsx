@@ -1580,7 +1580,10 @@ const Students = () => {
       certificates_status: student.certificates_status || null,
       ...(student.student_photo && { student_photo: student.student_photo }),
       ...(student.remarks && { remarks: student.remarks, 'Remarks': student.remarks }),
-      ...(student.admission_date && { admission_date: student.admission_date, 'Admission Date': student.admission_date })
+      ...(student.admission_date && { admission_date: student.admission_date, 'Admission Date': student.admission_date }),
+      // APAAR ID - can be in student_data or direct column
+      ...(student.apaar_id && { apaar_id: student.apaar_id }),
+      ...(student.student_data?.apaar_id && !student.apaar_id && { apaar_id: student.student_data.apaar_id })
     };
 
     console.log('Student data:', student);
@@ -4266,6 +4269,32 @@ const Students = () => {
                               )}
                             </div>
                           )}
+                          {/* APAAR ID */}
+                          {canViewField('apaar_id') && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                APAAR ID
+                              </label>
+                              {editMode ? (
+                                <input
+                                  type="text"
+                                  value={editData.apaar_id ?? editData['APAAR ID'] ?? editData['apaar id'] ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                                    updateEditField('apaar_id', val);
+                                  }}
+                                  placeholder="Enter 12-digit APAAR ID"
+                                  maxLength={12}
+                                  inputMode="numeric"
+                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                />
+                              ) : (
+                                <p className="text-sm text-gray-900 font-medium">
+                                  {editData.apaar_id || editData['APAAR ID'] || editData['apaar id'] || selectedStudent?.apaar_id || selectedStudent?.student_data?.apaar_id || '-'}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           {canViewField('admission_date') && (
                             <div>
                               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
@@ -4590,6 +4619,105 @@ const Students = () => {
                               );
                             })}
                           </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Dynamic Additional Registration Fields - auto-synced from Settings registration form */}
+                  {(() => {
+                    // Keys already rendered as hardcoded fields - skip these
+                    const HARDCODED_KEYS = new Set([
+                      'batch', 'college', 'course', 'branch', 'current_year', 'current_semester',
+                      'student_name', 'father_name', 'gender', 'dob', 'student_mobile',
+                      'parent_mobile1', 'parent_mobile2', 'parent_mobile_1', 'parent_mobile_2',
+                      'adhar_no', 'aadhar_no', 'aadhaar_no', 'caste', 'stud_type', 'studtype',
+                      'student_address', 'city_village', 'mandal_name', 'district',
+                      'previous_college', 'certificates_status', 'remarks', 'pin_no',
+                      'admission_date', 'student_status', 'scholar_status', 'fee_status',
+                      'registration_status', 'student_photo', 'apaar_id',
+                      'admission_number', 'created_at', 'updated_at', 'id',
+                      // verification flags stored internally
+                      'is_student_mobile_verified', 'is_parent_mobile_verified'
+                    ]);
+
+                    // Collect all enabled form fields from active forms, excluding hardcoded ones
+                    const extraFields = [];
+                    const seenKeys = new Set();
+
+                    forms.forEach(form => {
+                      if (!form.is_active) return;
+                      const formFields = Array.isArray(form.form_fields) ? form.form_fields : [];
+                      formFields.forEach(field => {
+                        if (field.isEnabled === false) return;
+                        const key = (field.key || '').toLowerCase().trim();
+                        if (!key || HARDCODED_KEYS.has(key) || seenKeys.has(key)) return;
+                        // Also skip keys that start with 'field_' (auto-generated temp keys)
+                        if (key.startsWith('field_') && !editData[field.key] && !editData[field.label]) return;
+                        seenKeys.add(key);
+                        extraFields.push(field);
+                      });
+                    });
+
+                    if (extraFields.length === 0) return null;
+
+                    return (
+                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
+                          Additional Registration Fields
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {extraFields.map((field) => {
+                            const fieldKey = field.key || field.label;
+                            const labelKey = field.label;
+                            const value = editData[fieldKey] ?? editData[labelKey] ?? '';
+                            const isSelectType = field.type === 'select' || field.type === 'radio';
+                            const options = Array.isArray(field.options) ? field.options : [];
+
+                            return (
+                              <div key={fieldKey}>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  {field.label}
+                                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                                </label>
+                                {editMode ? (
+                                  isSelectType ? (
+                                    <select
+                                      value={value}
+                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                    >
+                                      <option value="">Select {field.label}</option>
+                                      {options.map((opt, i) => (
+                                        <option key={i} value={opt}>{opt}</option>
+                                      ))}
+                                    </select>
+                                  ) : field.type === 'textarea' ? (
+                                    <textarea
+                                      value={value}
+                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                      placeholder={field.placeholder || `Enter ${field.label}`}
+                                      rows={3}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                                    />
+                                  ) : (
+                                    <input
+                                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                      value={value}
+                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                      placeholder={field.placeholder || `Enter ${field.label}`}
+                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    />
+                                  )
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {value || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
