@@ -104,8 +104,6 @@ api.interceptors.response.use(
           window.location.href = userType === 'student' ? '/student/login' : '/login';
         }
       }
-    } else if (error.response?.status === 403) {
-      toast.error(error.response?.data?.message || 'Access denied');
     }
     return Promise.reject(error);
   }

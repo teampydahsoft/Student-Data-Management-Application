@@ -47,12 +47,6 @@ exports.getStudentsForHistory = async (req, res) => {
 // Add a new remark to a student's history
 exports.addRemark = async (req, res) => {
     try {
-        // Role check
-        const allowedRoles = ['super_admin', 'admin', 'college_principal', 'college_ao', 'branch_hod', 'cashier', 'office_assistant'];
-        if (!req.user || !allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({ success: false, message: 'Access denied: Insufficient privileges' });
-        }
-
         const { admission_number, remark } = req.body;
 
         if (!admission_number || !remark) {
@@ -87,6 +81,12 @@ exports.addRemark = async (req, res) => {
              (admission_number, remark, remark_category, student_year, student_semester, created_by, created_by_name) 
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [admission_number, remark, remarkCategory, student.current_year, student.current_semester, createdBy, createdByName]
+        );
+
+        // SYNC: Update the main students table with the latest remark
+        await masterPool.query(
+            'UPDATE students SET remarks = ? WHERE admission_number = ?',
+            [remark, admission_number]
         );
 
         res.status(201).json({
@@ -160,6 +160,19 @@ exports.updateRemark = async (req, res) => {
              WHERE id = ?`,
             [remark, req.user.username, id]
         );
+
+        // SYNC: Check if this is the most recent remark for the student; if so, update students table
+        const [latestRemarkRows] = await masterPool.query(
+            'SELECT id FROM student_remarks WHERE admission_number = ? ORDER BY created_at DESC LIMIT 1',
+            [existingRemark.admission_number]
+        );
+
+        if (latestRemarkRows.length > 0 && latestRemarkRows[0].id === parseInt(id)) {
+            await masterPool.query(
+                'UPDATE students SET remarks = ? WHERE admission_number = ?',
+                [remark, existingRemark.admission_number]
+            );
+        }
 
         res.json({
             success: true,
@@ -244,6 +257,33 @@ exports.getRemarks = async (req, res) => {
              ORDER BY created_at DESC`,
             [admission_number]
         );
+
+        // Fetch the legacy remark from the students table to see if it should be included
+        const [legacyRows] = await masterPool.query(
+            'SELECT remarks, created_at FROM students WHERE admission_number = ?',
+            [admission_number]
+        );
+
+        const legacyRemark = legacyRows.length > 0 ? legacyRows[0].remarks : null;
+
+        // If there's a legacy remark and it's not already in the history logs, add it as an "Initial Remark"
+        // We compare against the list of remarks to avoid duplicates if they were already synced
+        if (legacyRemark && legacyRemark.trim() !== '') {
+            const alreadyExists = rows.some(r => r.remark === legacyRemark);
+            if (!alreadyExists) {
+                rows.push({
+                    id: 'legacy-' + admission_number,
+                    admission_number,
+                    remark: legacyRemark,
+                    remark_category: 'Initial',
+                    created_by_name: 'System',
+                    created_at: legacyRows[0].created_at || new Date(0), // Fallback to epoch if unknown
+                    is_legacy: true
+                });
+                // Sort again to ensure legacy remark is in correct chronological position
+                rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            }
+        }
 
         res.json({
             success: true,

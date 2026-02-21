@@ -29,11 +29,13 @@ import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
 import { Link, useLocation } from 'react-router-dom';
 import api, { getStaticFileUrlDirect } from '../config/api';
-import StudentHistoryTab from '../components/Students/StudentHistoryTab';
 import StudentAttendanceTab from '../components/Students/StudentAttendanceTab';
 import StudentSmsTab from '../components/Students/StudentSmsTab';
 import toast from 'react-hot-toast';
 import MobileVerificationModal from '../components/Students/MobileVerificationModal';
+import StudentRemarksModal from '../components/Students/StudentRemarksModal';
+import StudentRemarksContent from '../components/Students/StudentRemarksContent';
+import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 import BulkRollNumberModal from '../components/BulkRollNumberModal';
 import BulkUploadModal from '../components/BulkUploadModal';
 import ManualRollNumberModal from '../components/ManualRollNumberModal';
@@ -128,6 +130,8 @@ const Students = () => {
   const canViewSms = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_sms');
   // Check if user has access to Attendance module
   const canViewAttendance = hasModuleAccess(userPermissions, FRONTEND_MODULES.ATTENDANCE);
+  const canAddRemarks = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'add_remarks');
+  const canManageRemarks = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'manage_remarks');
 
   const isCashier = user?.role === USER_ROLES.CASHIER;
 
@@ -152,6 +156,7 @@ const Students = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [activeStudentTab, setActiveStudentTab] = useState('details');
+  const [historySubTab, setHistorySubTab] = useState('remarks');
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
   const [showFilters, setShowFilters] = useState(false);
@@ -243,6 +248,7 @@ const Students = () => {
   // React Query hooks
   // --- Action Handlers ---
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [showRemarksHistoryModal, setShowRemarksHistoryModal] = useState(false);
 
   const handleVerificationComplete = (updatedStatus) => {
     setSelectedStudent(prev => ({
@@ -1617,6 +1623,11 @@ const Students = () => {
     setShowModal(true);
   };
 
+  const handleViewHistory = (student) => {
+    setSelectedStudent(student);
+    setShowRemarksHistoryModal(true);
+  };
+
   const handleEdit = () => {
     // No need to check permission here since button is only shown if user has edit permission
     setEditMode(true);
@@ -2753,6 +2764,12 @@ const Students = () => {
                           }
                           if (!isCashier) {
                             handleViewDetails(student);
+                          } else if (canAddRemarks || canManageRemarks) {
+                            // Cashiers with remarks permission can open the modal on the History tab
+                            setSelectedStudent(student);
+                            setActiveStudentTab('history');
+                            setHistorySubTab('remarks');
+                            setShowModal(true);
                           }
                         }}
                       >
@@ -2855,19 +2872,27 @@ const Students = () => {
                         {canViewField('current_semester') && (
                           <td className="py-1 px-1 text-[10px] text-gray-700">{student.current_semester || '-'}</td>
                         )}
-                        {!isCashier && (
+                        {(!isCashier || canAddRemarks || canManageRemarks) && (
                           <>
-                            {canViewField('scholar_status') && (
+                            {canViewField('scholar_status') && !isCashier && (
                               <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[100px] truncate" onClick={(e) => e.stopPropagation()}>
                                 {renderEditableCell(student, 'scholar_status', 'select', SCHOLAR_STATUS_OPTIONS)}
                               </td>
                             )}
-                            {canViewField('registration_status') && (
+                            {canViewField('registration_status') && !isCashier && (
                               <td className="py-1 px-1 text-[10px] text-gray-700">{student.registration_status || '-'}</td>
                             )}
                             {canViewField('remarks') && (
-                              <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[120px] truncate" onClick={(e) => e.stopPropagation()}>
-                                {renderEditableCell(student, 'remarks', 'remark_select')}
+                              <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[120px] truncate" onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewHistory(student);
+                              }}>
+                                <div className="flex items-center gap-1.5 px-2 py-1 hover:bg-blue-50 hover:text-blue-600 rounded transition-colors cursor-pointer border border-transparent hover:border-blue-100 min-h-[28px]">
+                                  <MessageSquare size={12} className="text-blue-500 shrink-0" />
+                                  <span className="truncate max-w-[80px]" title={student.remarks || 'View Remarks'}>
+                                    {student.remarks || <span className="text-gray-400 italic">No remarks</span>}
+                                  </span>
+                                </div>
                               </td>
                             )}
                           </>
@@ -3620,7 +3645,7 @@ const Students = () => {
               </div>
 
               {/* Right Side - All Student Data */}
-              <div className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto min-w-0 flex flex-col">
+              <div className={`flex-1 p-3 sm:p-4 lg:p-6 min-w-0 flex flex-col ${activeStudentTab === 'history' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                 <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg mb-6 shrink-0">
                   <button
                     onClick={() => setActiveStudentTab('details')}
@@ -3644,12 +3669,6 @@ const Students = () => {
                       <Calendar size={16} /> Attendance
                     </button>
                   )}
-                  <button
-                    onClick={() => setActiveStudentTab('history')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    <History size={16} /> History
-                  </button>
                   {canViewSms && (
                     <button
                       onClick={() => setActiveStudentTab('sms_tracking')}
@@ -3658,6 +3677,12 @@ const Students = () => {
                       <MessageSquare size={16} /> SMS
                     </button>
                   )}
+                  <button
+                    onClick={() => setActiveStudentTab('history')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <History size={16} /> History
+                  </button>
                 </div>
 
                 {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
@@ -3821,12 +3846,54 @@ const Students = () => {
                   <StudentAttendanceTab student={selectedStudent} />
                 )}
 
-                {activeStudentTab === 'history' && (
-                  <StudentHistoryTab student={selectedStudent} />
-                )}
-
                 {activeStudentTab === 'sms_tracking' && (
                   <StudentSmsTab student={selectedStudent} />
+                )}
+
+                {activeStudentTab === 'history' && (
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden">
+                    {/* Sub-tabs for History */}
+                    <div className="flex items-center justify-between border-b border-gray-100 p-3 bg-gray-50/50">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setHistorySubTab('remarks')}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'remarks'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                            : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                            }`}
+                        >
+                          <MessageSquare size={14} />
+                          Remarks
+                        </button>
+                        <button
+                          onClick={() => setHistorySubTab('audit')}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'audit'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                            : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                            }`}
+                        >
+                          <History size={14} />
+                          Edit History
+                        </button>
+                      </div>
+                      <div className="hidden sm:block text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">
+                        Student Logs
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 overflow-hidden">
+                      {historySubTab === 'remarks' ? (
+                        <StudentRemarksContent
+                          student={selectedStudent}
+                          canAddRemarks={canAddRemarks}
+                          canManageRemarks={canManageRemarks}
+                        />
+                      ) : (
+                        <StudentHistoryLogs student={selectedStudent} />
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
@@ -4411,21 +4478,20 @@ const Students = () => {
                           {canViewField('remarks') && (
                             <div>
                               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Remarks
+                                Latest Remark
                               </label>
-                              {editMode ? (
-                                <textarea
-                                  value={editData.remarks || editData.Remarks || ''}
-                                  onChange={(e) => updateEditField('remarks', e.target.value)}
-                                  placeholder="Enter remarks"
-                                  rows="2"
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
+                              <div className="flex items-start gap-2">
+                                <p className="text-sm text-gray-900 font-medium flex-1">
                                   {editData.remarks || editData.Remarks || selectedStudent?.remarks || '-'}
                                 </p>
-                              )}
+                                <button
+                                  onClick={() => setShowRemarksHistoryModal(true)}
+                                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 shrink-0"
+                                >
+                                  <History size={14} />
+                                  View History
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -4755,6 +4821,14 @@ const Students = () => {
           </div>
         </div>
       )}
+
+      <StudentRemarksModal
+        isOpen={showRemarksHistoryModal}
+        onClose={() => setShowRemarksHistoryModal(false)}
+        student={selectedStudent}
+        canAddRemarks={canAddRemarks}
+        canManageRemarks={canManageRemarks}
+      />
 
       <MobileVerificationModal
         isOpen={showVerificationModal}

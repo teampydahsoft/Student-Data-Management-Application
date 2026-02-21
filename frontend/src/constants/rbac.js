@@ -40,7 +40,7 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -49,7 +49,9 @@ export const MODULE_PERMISSIONS = {
       delete_student: 'Delete Students',
       update_pin: 'Update PIN Number',
       export: 'Export Students',
-      view_sms: 'View SMS Logs'
+      view_sms: 'View SMS Logs',
+      add_remarks: 'Add Remarks',
+      manage_remarks: 'Manage Remarks (Edit/Delete)'
     }
   },
   [BACKEND_MODULES.PROMOTIONS]: {

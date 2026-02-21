@@ -27,6 +27,27 @@ const clearStudentsCache = () => {
   }
 };
 
+/**
+ * Write an audit log entry safely, supporting both legacy admins (admins table)
+ * and RBAC users (rbac_users table). If the actor has a non-'admin' role,
+ * it is treated as an RBAC user and its id is stored in rbac_user_id.
+ */
+const writeAuditLog = async (pool, { actionType, entityType, entityId, actor, details }) => {
+  try {
+    const isRbacUser = actor && actor.role && actor.role !== 'admin';
+    const adminId = isRbacUser ? null : (actor?.id || null);
+    const rbacUserId = isRbacUser ? (actor?.id || null) : null;
+
+    await pool.query(
+      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, rbac_user_id, details)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [actionType, entityType, entityId, adminId, rbacUserId, details ? JSON.stringify(details) : null]
+    );
+  } catch (err) {
+    console.error('Audit log error (non-critical):', err.message);
+  }
+};
+
 // Upload student photo to MySQL database
 exports.uploadStudentPhoto = async (req, res) => {
   try {
@@ -2132,6 +2153,33 @@ exports.commitBulkUploadStudents = async (req, res) => {
         throw dbError;
       }
 
+      // SYNC REMARKS TO HISTORY (Bulk Upload): If remarks are present, add to history log
+      if (sanitized.remarks && String(sanitized.remarks).trim() !== '') {
+        try {
+          const actor = req.user || req.admin;
+          const getCategory = (role) => {
+            switch (role) {
+              case 'college_principal': return 'Principal';
+              case 'college_ao': return 'AO';
+              case 'branch_hod': return 'HOD';
+              case 'cashier': return 'Accountant';
+              case 'super_admin':
+              case 'admin': return 'Admin';
+              default: return 'Other';
+            }
+          };
+          const category = getCategory(actor?.role || 'admin');
+          await connection.query(
+            `INSERT INTO student_remarks 
+             (admission_number, remark, remark_category, student_year, student_semester, created_by, created_by_name) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [sanitized.admission_number, String(sanitized.remarks).trim(), category, resolvedStage.year, resolvedStage.semester, actor?.id || null, actor?.username || 'Admin']
+          );
+        } catch (remarkErr) {
+          console.error('Failed to sync remark during bulk upload:', remarkErr.message);
+        }
+      }
+
       // Generate student login credentials automatically
       if (studentId && sanitized.student_name && sanitized.student_mobile) {
         try {
@@ -3088,17 +3136,82 @@ exports.updateStudent = async (req, res) => {
       console.log(logMessage);
     }
 
-    // Log action (non-blocking - don't fail the operation if logging fails)
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['UPDATE', 'STUDENT', admissionNumber, req.admin?.id || null, serializedStudentData]
-      );
-    } catch (auditError) {
-      console.error('Audit log error (non-critical):', auditError.message);
-      // Don't fail the operation just because audit logging failed
+    // Build a field-level diff for the audit log — only include truly changed values
+    const TRACKED_COLUMNS = [
+      'student_name', 'father_name', 'student_mobile', 'parent_mobile1', 'parent_mobile2',
+      'student_address', 'city_village', 'mandal_name', 'district', 'previous_college',
+      'student_status', 'fee_status', 'certificates_status', 'scholar_status', 'registration_status',
+      'current_year', 'current_semester', 'batch', 'course', 'branch', 'stud_type',
+      'gender', 'dob', 'adhar_no', 'caste', 'pin_no', 'remarks'
+    ];
+    const auditChanges = {};
+    for (const col of TRACKED_COLUMNS) {
+      const oldVal = existingStudent[col] ?? null;
+      // Map the DB column back to what mutableStudentData might contain
+      const newVal = mutableStudentData[col] ??
+        mutableStudentData[Object.keys(FIELD_MAPPING).find(k => FIELD_MAPPING[k] === col)] ??
+        null;
+      const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal).trim();
+      const newStr = newVal === null || newVal === undefined ? '' : String(newVal).trim();
+      if (oldStr !== newStr && (oldStr !== '' || newStr !== '')) {
+        auditChanges[col] = { from: oldStr || null, to: newStr || null };
+      }
     }
+    // True only when a genuinely DIFFERENT photo was uploaded.
+    // The frontend always sends the existing photo back in the payload, so we must
+    // compare the incoming photo against what's currently stored in the DB.
+    const incomingPhoto = studentData.student_photo || studentData['Student Photo'];
+    const hasPhotoChange = !!(
+      incomingPhoto &&
+      typeof incomingPhoto === 'string' &&
+      incomingPhoto.startsWith('data:image/') &&
+      incomingPhoto !== existingStudent.student_photo   // different from what's already stored
+    );
+
+    // SYNC REMARKS TO HISTORY: If remarks changed via this update, add to student_remarks table
+    if (auditChanges.remarks) {
+      try {
+        const newRemark = auditChanges.remarks.to;
+        if (newRemark && newRemark.trim() !== '') {
+          const actor = req.user || req.admin;
+          // Local helper to match studentHistoryController category logic
+          const getCategory = (role) => {
+            switch (role) {
+              case 'college_principal': return 'Principal';
+              case 'college_ao': return 'AO';
+              case 'branch_hod': return 'HOD';
+              case 'cashier': return 'Accountant';
+              case 'super_admin':
+              case 'admin': return 'Admin';
+              default: return 'Other';
+            }
+          };
+          const category = getCategory(actor.role);
+          await masterPool.query(
+            `INSERT INTO student_remarks 
+             (admission_number, remark, remark_category, student_year, student_semester, created_by, created_by_name) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [admissionNumber, newRemark, category, existingStudent.current_year, existingStudent.current_semester, actor.id, actor.username]
+          );
+        }
+      } catch (err) {
+        console.error('Failed to sync remark to history log:', err.message);
+      }
+    }
+
+    // Log action (non-blocking - don't fail the operation if logging fails)
+    await writeAuditLog(masterPool, {
+      actionType: 'UPDATE',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: {
+        changes: auditChanges,
+        photo_updated: hasPhotoChange,
+        fields_changed: Object.keys(auditChanges),
+        total_changed: Object.keys(auditChanges).length
+      }
+    });
 
     await updateStagingStudentStage(admissionNumber, resolvedStage, serializedStudentData);
 
@@ -3184,16 +3297,13 @@ exports.updatePinNumber = async (req, res) => {
     }
 
     // Log action (non-blocking - don't fail the operation if logging fails)
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['UPDATE_PIN_NUMBER', 'STUDENT', admissionNumber, req.admin?.id || null, JSON.stringify({ pinNumber })]
-      );
-    } catch (auditError) {
-      console.error('Audit log error (non-critical):', auditError.message);
-      // Don't fail the operation just because audit logging failed
-    }
+    await writeAuditLog(masterPool, {
+      actionType: 'UPDATE_PIN_NUMBER',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: { pinNumber }
+    });
 
     clearStudentsCache();
 

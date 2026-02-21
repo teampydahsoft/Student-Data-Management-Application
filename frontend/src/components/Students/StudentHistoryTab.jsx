@@ -14,7 +14,7 @@ import api from '../../config/api';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../store/authStore';
 
-const StudentHistoryTab = ({ student }) => {
+const StudentHistoryTab = ({ student, canAddRemarks = false }) => {
     const [remarks, setRemarks] = useState([]);
     const [loadingRemarks, setLoadingRemarks] = useState(false);
     const [newRemark, setNewRemark] = useState('');
@@ -122,7 +122,7 @@ const StudentHistoryTab = ({ student }) => {
     const canEditRemark = (remark) => {
         const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'admin';
         const isCreator = remark.created_by === user?.id;
-        return isSuperAdmin || isCreator;
+        return (isSuperAdmin || isCreator) && canAddRemarks;
     };
 
     return (
@@ -154,9 +154,14 @@ const StudentHistoryTab = ({ student }) => {
 
             {/* Remarks Section */}
             <div>
-                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
-                    <MessageSquare className="text-blue-600" size={20} /> Remarks History
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <MessageSquare className="text-blue-600" size={20} /> Remarks History
+                    </h3>
+                    <div className="text-xs text-gray-500">
+                        Showing remarks from all departments
+                    </div>
+                </div>
 
                 {loadingRemarks ? (
                     <div className="flex justify-center py-10"><Loader2 className="animate-spin text-blue-500" /></div>
@@ -257,27 +262,35 @@ const StudentHistoryTab = ({ student }) => {
             </div>
 
             {/* Add Remark */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <h4 className="font-semibold text-gray-800 mb-2">Add New Remark</h4>
-                <form onSubmit={handleAddRemark} className="flex flex-col sm:flex-row gap-4 items-start">
-                    <textarea
-                        value={newRemark}
-                        onChange={(e) => setNewRemark(e.target.value)}
-                        placeholder="Type remark here..."
-                        className="flex-1 w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
-                    />
-                    <button
-                        type="submit"
-                        disabled={addingRemark || !newRemark.trim()}
-                        className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors shrink-0"
-                    >
-                        {addingRemark ? <Loader2 className="animate-spin" size={18} /> : <><Plus size={18} /> Add</>}
-                    </button>
-                </form>
-                <p className="text-xs text-gray-400 mt-2">
-                    Remark will be logged under your current role automatically with Year {student.current_year}, Semester {student.current_semester}.
-                </p>
-            </div>
+            {canAddRemarks ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">Add New Remark</h4>
+                    <form onSubmit={handleAddRemark} className="flex flex-col sm:flex-row gap-4 items-start">
+                        <textarea
+                            value={newRemark}
+                            onChange={(e) => setNewRemark(e.target.value)}
+                            placeholder="Type remark here..."
+                            className="flex-1 w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
+                        />
+                        <button
+                            type="submit"
+                            disabled={addingRemark || !newRemark.trim()}
+                            className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors shrink-0"
+                        >
+                            {addingRemark ? <Loader2 className="animate-spin" size={18} /> : <><Plus size={18} /> Add</>}
+                        </button>
+                    </form>
+                    <p className="text-xs text-gray-400 mt-2">
+                        Remark will be logged under your current role automatically with Year {student.current_year}, Semester {student.current_semester}.
+                    </p>
+                </div>
+            ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+                    <p className="text-sm text-yellow-800 font-medium">
+                        You do not have permission to add remarks.
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

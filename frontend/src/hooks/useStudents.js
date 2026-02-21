@@ -27,7 +27,7 @@ export const useStudents = ({ page = 1, pageSize = 25, filters = {}, search = ''
     queryKey: studentKeys.list({ page, pageSize, filters, search }),
     queryFn: async () => {
       const queryParams = new URLSearchParams();
-      
+
       // Add filters
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
@@ -58,14 +58,14 @@ export const useStudents = ({ page = 1, pageSize = 25, filters = {}, search = ''
       queryParams.append('offset', Math.max(0, (page - 1) * pageSize).toString());
 
       const response = await api.get(`/students?${queryParams.toString()}`);
-      
+
       return {
         students: response.data?.data || [],
         pagination: {
           total: response.data?.pagination?.total || 0,
           limit: response.data?.pagination?.limit || pageSize,
           offset: response.data?.pagination?.offset || 0,
-          totalPages: response.data?.pagination?.totalPages || 
+          totalPages: response.data?.pagination?.totalPages ||
             Math.ceil((response.data?.pagination?.total || 0) / pageSize),
         },
       };
@@ -88,7 +88,7 @@ export const useAllStudents = ({ filters = {}, enabled = true } = {}) => {
     queryKey: studentKeys.list({ page: 'all', pageSize: 'all', filters, search: '' }),
     queryFn: async () => {
       const queryParams = new URLSearchParams();
-      
+
       // Add filters
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
@@ -132,13 +132,14 @@ export const useStudent = (admissionNumber, enabled = true) => {
 /**
  * Hook to fetch student statistics
  */
-export const useStudentStats = () => {
+export const useStudentStats = ({ enabled = true } = {}) => {
   return useQuery({
     queryKey: studentKeys.stats(),
     queryFn: async () => {
       const response = await api.get('/students/stats');
       return response.data?.data;
     },
+    enabled,
     staleTime: 2 * 60 * 1000, // Stats can be slightly stale
   });
 };

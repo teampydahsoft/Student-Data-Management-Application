@@ -26,12 +26,26 @@ import toast from 'react-hot-toast';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { formatDate } from '../utils/dateUtils';
 import { useStudentStats } from '../hooks/useStudents';
+import useAuthStore from '../store/authStore';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 
 import DashboardSkeleton from '../components/skeletons/DashboardSkeleton';
 
 const Dashboard = () => {
+  const { user } = useAuthStore();
+  const userPermissions = user?.permissions || {};
+  const isAdmin = isFullAccessRole(user?.role);
+
+  // Check individual module permissions
+  const canViewStudents = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view');
+  const canViewAttendance = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.ATTENDANCE, 'view');
+  const canViewColleges = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.SETTINGS, 'view');
+  const canViewSubmissions = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.PRE_REGISTRATION, 'approve') || hasPermission(userPermissions, BACKEND_MODULES.PRE_REGISTRATION, 'add_student');
+
   // Use React Query for stats
-  const { data: stats, isLoading: loadingStats } = useStudentStats();
+  const { data: stats, isLoading: loadingStats } = useStudentStats({
+    enabled: canViewStudents
+  });
 
   // Fetch attendance summary for today
   const { data: attendanceData, isLoading: loadingAttendance } = useQuery({
@@ -41,6 +55,7 @@ const Dashboard = () => {
       const response = await api.get(`/attendance/summary?date=${today}`);
       return response.data?.data || null;
     },
+    enabled: canViewAttendance,
     staleTime: 1 * 60 * 1000, // 1 minute (attendance changes frequently)
   });
 
@@ -51,6 +66,7 @@ const Dashboard = () => {
       const response = await api.get('/colleges');
       return response.data?.data || [];
     },
+    enabled: canViewColleges || canViewStudents, // Often colleges are needed for student filtering
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -65,6 +81,7 @@ const Dashboard = () => {
         .sort((a, b) => new Date(b.created_at || b.submitted_at) - new Date(a.created_at || a.submitted_at))
         .slice(0, 10);
     },
+    enabled: canViewSubmissions,
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 

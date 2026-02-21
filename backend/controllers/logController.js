@@ -95,11 +95,10 @@ const buildFilters = ({
         al.entity_id LIKE ? OR
         al.action_type LIKE ? OR
         al.entity_type LIKE ? OR
-        COALESCE(a.username, '') LIKE ? OR
-        COALESCE(a.full_name, '') LIKE ? OR
+        COALESCE(a.username, ru.username, '') LIKE ? OR
         CAST(al.details AS CHAR) LIKE ?
       )`,
-      values: [likeValue, likeValue, likeValue, likeValue, likeValue, likeValue]
+      values: [likeValue, likeValue, likeValue, likeValue, likeValue]
     });
   }
 
@@ -139,10 +138,12 @@ exports.getAuditLogs = async (req, res) => {
     const dataQuery = `
       SELECT
         al.*,
-        a.username AS admin_username,
-        a.full_name AS admin_full_name
+        COALESCE(a.username, ru.username) AS admin_username,
+        COALESCE(ru.name, a.username) AS admin_full_name,
+        ru.role AS admin_role
       FROM audit_logs al
       LEFT JOIN admins a ON al.admin_id = a.id
+      LEFT JOIN rbac_users ru ON al.rbac_user_id = ru.id
       WHERE 1=1${whereSql}
       ORDER BY al.created_at DESC
       LIMIT ? OFFSET ?
@@ -152,6 +153,7 @@ exports.getAuditLogs = async (req, res) => {
       SELECT COUNT(*) AS total
       FROM audit_logs al
       LEFT JOIN admins a ON al.admin_id = a.id
+      LEFT JOIN rbac_users ru ON al.rbac_user_id = ru.id
       WHERE 1=1${whereSql}
     `;
 
@@ -206,10 +208,12 @@ exports.getAuditLogById = async (req, res) => {
     const query = `
       SELECT
         al.*,
-        a.username AS admin_username,
-        a.full_name AS admin_full_name
+        COALESCE(a.username, ru.username) AS admin_username,
+        COALESCE(ru.name, a.username) AS admin_full_name,
+        ru.role AS admin_role
       FROM audit_logs al
       LEFT JOIN admins a ON al.admin_id = a.id
+      LEFT JOIN rbac_users ru ON al.rbac_user_id = ru.id
       WHERE al.id = ?
       LIMIT 1
     `;
