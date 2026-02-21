@@ -511,15 +511,16 @@ const Students = () => {
   };
 
   const syncStageFields = (data, year, semester) => {
-    if (!year || !semester) {
-      return { ...data };
-    }
+    // If year or semester is provided as empty string, respect it (though typically required)
+    const y = (year !== undefined && year !== null) ? year : data.current_year;
+    const s = (semester !== undefined && semester !== null) ? semester : data.current_semester;
+
     return {
       ...data,
-      current_year: Number(year),
-      current_semester: Number(semester),
-      'Current Academic Year': Number(year),
-      'Current Semester': Number(semester)
+      current_year: (y !== '' && y !== null && y !== undefined) ? Number(y) : y,
+      current_semester: (s !== '' && s !== null && s !== undefined) ? Number(s) : s,
+      'Current Academic Year': (y !== '' && y !== null && y !== undefined) ? Number(y) : y,
+      'Current Semester': (s !== '' && s !== null && s !== undefined) ? Number(s) : s
     };
   };
 
@@ -1636,6 +1637,29 @@ const Students = () => {
   const handleSaveEdit = async () => {
     if (savingEdit) return; // Prevent double submission
 
+    // Validate mandatory fields
+    const mandatoryFields = [
+      { key: 'student_name', label: 'Student Name', altKey: 'Student Name' },
+      { key: 'student_mobile', label: 'Mobile Number', altKey: 'Student Mobile Number' },
+      { key: 'college', label: 'College', altKey: 'College' },
+      { key: 'batch', label: 'Batch', altKey: 'Batch' },
+      { key: 'course', label: 'Program (Course)', altKey: 'Program' },
+      { key: 'branch', label: 'Branch', altKey: 'Branch' },
+      { key: 'parent_mobile1', label: 'Parent Mobile Number 1', altKey: 'Parent Mobile Number 1' }
+    ];
+
+    for (const field of mandatoryFields) {
+      const value = editData[field.key] ?? editData[field.altKey] ?? '';
+      if (typeof value === 'string' && value.trim() === '') {
+        toast.error(`${field.label} is required`);
+        return;
+      }
+      if (value === null || value === undefined) {
+        toast.error(`${field.label} is required`);
+        return;
+      }
+    }
+
     // Check if student status is being changed to "Rejoined"
     if (editData.student_status === 'Rejoined' && selectedStudent.student_status !== 'Rejoined') {
       // Open rejoin modal instead of saving directly
@@ -1651,8 +1675,8 @@ const Students = () => {
 
       const synchronizedData = syncStageFields(
         editData,
-        editData.current_year || editData['Current Academic Year'],
-        editData.current_semester || editData['Current Semester']
+        editData.current_year ?? editData['Current Academic Year'],
+        editData.current_semester ?? editData['Current Semester']
       );
 
       // Ensure statuses are included within studentData (backend maps these via FIELD_MAPPING)
@@ -1705,9 +1729,9 @@ const Students = () => {
           ? {
             ...prev,
             current_year:
-              synchronizedData.current_year || prev.current_year,
+              synchronizedData.current_year ?? prev.current_year,
             current_semester:
-              synchronizedData.current_semester || prev.current_semester,
+              synchronizedData.current_semester ?? prev.current_semester,
             student_data: synchronizedData
           }
           : prev
@@ -3333,7 +3357,7 @@ const Students = () => {
                         {editMode ? (
                           <input
                             type="text"
-                            value={editData.student_name || editData['Student Name'] || ''}
+                            value={editData.student_name ?? editData['Student Name'] ?? ''}
                             onChange={(e) => updateEditField('student_name', e.target.value)}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                           />
@@ -3425,7 +3449,7 @@ const Students = () => {
                         </label>
                         {editMode ? (
                           <select
-                            value={editData.college || editData.College || selectedStudent?.college || ''}
+                            value={editData.college ?? editData.College ?? selectedStudent?.college ?? ''}
                             onChange={(e) => updateEditField('college', e.target.value)}
                             disabled={collegesLoading}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -3437,7 +3461,7 @@ const Students = () => {
                           </select>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">
-                            {editData.college || editData.College || selectedStudent?.college || '-'}
+                            {editData.college ?? editData.College ?? selectedStudent?.college ?? '-'}
                           </p>
                         )}
                       </div>
@@ -3449,7 +3473,7 @@ const Students = () => {
                         </label>
                         {editMode ? (
                           <select
-                            value={editData.batch || editData.Batch || selectedStudent?.batch || ''}
+                            value={editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? ''}
                             onChange={(e) => updateEditField('batch', e.target.value)}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                           >
@@ -3458,7 +3482,7 @@ const Students = () => {
                               <option key={batch} value={batch}>{batch}</option>
                             ))}
                             {(() => {
-                              const currentBatch = editData.batch || editData.Batch || selectedStudent?.batch || '';
+                              const currentBatch = editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? '';
                               return currentBatch && !(quickFilterOptions.batches || []).includes(currentBatch) ? (
                                 <option value={currentBatch}>{currentBatch}</option>
                               ) : null;
@@ -3466,7 +3490,7 @@ const Students = () => {
                           </select>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">
-                            {editData.batch || editData.Batch || selectedStudent?.batch || '-'}
+                            {editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? '-'}
                           </p>
                         )}
                       </div>
@@ -3478,7 +3502,7 @@ const Students = () => {
                         </label>
                         {editMode ? (
                           <select
-                            value={editData.course || selectedStudent.course || ''}
+                            value={editData.course ?? selectedStudent.course ?? ''}
                             onChange={(e) => updateEditField('course', e.target.value)}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                           >
@@ -3487,7 +3511,7 @@ const Students = () => {
                               <option key={course} value={course}>{course}</option>
                             ))}
                             {(() => {
-                              const currentCourse = editData.course || selectedStudent?.course || '';
+                              const currentCourse = editData.course ?? selectedStudent?.course ?? '';
                               return currentCourse && !(quickFilterOptions.courses || []).includes(currentCourse) ? (
                                 <option value={currentCourse}>{currentCourse}</option>
                               ) : null;
@@ -3495,7 +3519,7 @@ const Students = () => {
                           </select>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">
-                            {editData.course || selectedStudent.course || '-'}
+                            {editData.course ?? selectedStudent.course ?? '-'}
                           </p>
                         )}
                       </div>
@@ -3507,7 +3531,7 @@ const Students = () => {
                         </label>
                         {editMode ? (
                           <select
-                            value={editData.branch || editData.Branch || selectedStudent?.branch || ''}
+                            value={editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? ''}
                             onChange={(e) => updateEditField('branch', e.target.value)}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                           >
@@ -3516,7 +3540,7 @@ const Students = () => {
                               <option key={branch} value={branch}>{branch}</option>
                             ))}
                             {(() => {
-                              const currentBranch = editData.branch || editData.Branch || selectedStudent?.branch || '';
+                              const currentBranch = editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? '';
                               return currentBranch && !(quickFilterOptions.branches || []).includes(currentBranch) ? (
                                 <option value={currentBranch}>{currentBranch}</option>
                               ) : null;
@@ -3524,7 +3548,7 @@ const Students = () => {
                           </select>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">
-                            {editData.branch || editData.Branch || selectedStudent?.branch || '-'}
+                            {editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? '-'}
                           </p>
                         )}
                       </div>
@@ -3538,7 +3562,7 @@ const Students = () => {
                           <div className="grid grid-cols-2 gap-2 min-w-0">
                             {canViewField('current_year') && (
                               <select
-                                value={editData.current_year || editData['Current Academic Year'] || selectedStudent.current_year || '1'}
+                                value={editData.current_year ?? editData['Current Academic Year'] ?? selectedStudent.current_year ?? '1'}
                                 onChange={(e) => {
                                   const value = e.target.value;
                                   setEditData((prev) =>
@@ -3563,7 +3587,7 @@ const Students = () => {
                             )}
                             {canViewField('current_semester') && (
                               <select
-                                value={editData.current_semester || editData['Current Semester'] || selectedStudent.current_semester || '1'}
+                                value={editData.current_semester ?? editData['Current Semester'] ?? selectedStudent.current_semester ?? '1'}
                                 onChange={(e) => {
                                   const value = e.target.value;
                                   setEditData((prev) =>
@@ -3606,7 +3630,7 @@ const Students = () => {
                         </label>
                         {editMode ? (
                           <select
-                            value={editData.stud_type || editData.StudType || ''}
+                            value={editData.stud_type ?? editData.StudType ?? ''}
                             onChange={(e) => updateEditField('stud_type', e.target.value)}
                             disabled={!canEditField('stud_type')}
                             className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-50 disabled:cursor-not-allowed"
@@ -3979,7 +4003,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="tel"
-                                  value={editData.parent_mobile1 || editData['Parent Mobile Number 1'] || ''}
+                                  value={editData.parent_mobile1 ?? editData['Parent Mobile Number 1'] ?? ''}
                                   onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
                                   placeholder="Enter parent mobile 1"
                                   maxLength={10}
@@ -4000,7 +4024,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="tel"
-                                  value={editData.parent_mobile2 || editData['Parent Mobile Number 2'] || ''}
+                                  value={editData.parent_mobile2 ?? editData['Parent Mobile Number 2'] ?? ''}
                                   onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
                                   placeholder="Enter parent mobile 2"
                                   maxLength={10}
@@ -4030,7 +4054,7 @@ const Students = () => {
                               </label>
                               {editMode ? (
                                 <textarea
-                                  value={editData.student_address || editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] || ''}
+                                  value={editData.student_address ?? editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] ?? ''}
                                   onChange={(e) => updateEditField('student_address', e.target.value)}
                                   placeholder="Enter student address"
                                   rows="3"
@@ -4052,7 +4076,7 @@ const Students = () => {
                                 {editMode ? (
                                   <input
                                     type="text"
-                                    value={editData.city_village || editData['City/Village'] || ''}
+                                    value={editData.city_village ?? editData['City/Village'] ?? ''}
                                     onChange={(e) => updateEditField('city_village', e.target.value)}
                                     placeholder="Enter city/village"
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
@@ -4072,7 +4096,7 @@ const Students = () => {
                                 {editMode ? (
                                   <input
                                     type="text"
-                                    value={editData.mandal_name || editData['Mandal Name'] || ''}
+                                    value={editData.mandal_name ?? editData['Mandal Name'] ?? ''}
                                     onChange={(e) => updateEditField('mandal_name', e.target.value)}
                                     placeholder="Enter mandal name"
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
@@ -4092,7 +4116,7 @@ const Students = () => {
                                 {editMode ? (
                                   <input
                                     type="text"
-                                    value={editData.district || editData.District || ''}
+                                    value={editData.district ?? editData.District ?? ''}
                                     onChange={(e) => updateEditField('district', e.target.value)}
                                     placeholder="Enter district"
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
@@ -4112,7 +4136,7 @@ const Students = () => {
                                 {editMode ? (
                                   <input
                                     type="text"
-                                    value={editData.caste || editData.Caste || ''}
+                                    value={editData.caste ?? editData.Caste ?? ''}
                                     onChange={(e) => updateEditField('caste', e.target.value)}
                                     placeholder="Enter caste"
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
@@ -4131,7 +4155,7 @@ const Students = () => {
                                 </label>
                                 {editMode ? (
                                   <select
-                                    value={editData.gender || editData['M/F'] || ''}
+                                    value={editData.gender ?? editData['M/F'] ?? ''}
                                     onChange={(e) => updateEditField('gender', e.target.value)}
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
                                   >
@@ -4169,7 +4193,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="tel"
-                                  value={editData.student_mobile || editData['Student Mobile Number'] || ''}
+                                  value={editData.student_mobile ?? editData['Student Mobile Number'] ?? ''}
                                   onChange={(e) => updateEditField('student_mobile', e.target.value)}
                                   placeholder="Enter mobile number"
                                   maxLength={10}
@@ -4190,7 +4214,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="text"
-                                  value={editData.father_name || editData['Father Name'] || ''}
+                                  value={editData.father_name ?? editData['Father Name'] ?? ''}
                                   onChange={(e) => updateEditField('father_name', e.target.value)}
                                   placeholder="Enter father name"
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
@@ -4210,8 +4234,8 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="date"
-                                  value={editData.dob || editData['DOB (Date of Birth - DD-MM-YYYY)'] ?
-                                    (editData.dob || editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
+                                  value={(editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']) ?
+                                    (editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
                                   onChange={(e) => updateEditField('dob', e.target.value)}
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                                 />
@@ -4230,7 +4254,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="text"
-                                  value={editData.adhar_no || editData['ADHAR No'] || ''}
+                                  value={editData.adhar_no ?? editData['ADHAR No'] ?? ''}
                                   onChange={(e) => updateEditField('adhar_no', e.target.value)}
                                   placeholder="Enter Aadhar number"
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
@@ -4250,8 +4274,8 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="date"
-                                  value={editData.admission_date || editData['Admission Date'] ?
-                                    (editData.admission_date || editData['Admission Date']).split('T')[0] : ''}
+                                  value={(editData.admission_date ?? editData['Admission Date']) ?
+                                    (editData.admission_date ?? editData['Admission Date']).split('T')[0] : ''}
                                   onChange={(e) => updateEditField('admission_date', e.target.value)}
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
                                 />
@@ -4280,7 +4304,7 @@ const Students = () => {
                               </label>
                               {editMode ? (
                                 <select
-                                  value={editData.student_status || editData['Student Status'] || selectedStudent?.student_status || ''}
+                                  value={editData.student_status ?? editData['Student Status'] ?? selectedStudent?.student_status ?? ''}
                                   onChange={(e) => updateEditField('student_status', e.target.value)}
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
                                 >
@@ -4307,7 +4331,7 @@ const Students = () => {
                               </label>
                               {editMode ? (
                                 <select
-                                  value={editData.scholar_status || editData['Scholar Status'] || selectedStudent?.scholar_status || ''}
+                                  value={editData.scholar_status ?? editData['Scholar Status'] ?? selectedStudent?.scholar_status ?? ''}
                                   onChange={(e) => updateEditField('scholar_status', e.target.value)}
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
                                 >
@@ -4450,7 +4474,7 @@ const Students = () => {
                               {editMode ? (
                                 <input
                                   type="text"
-                                  value={editData.previous_college || ''}
+                                  value={editData.previous_college ?? ''}
                                   onChange={(e) => updateEditField('previous_college', e.target.value)}
                                   placeholder="Enter previous college"
                                   className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
@@ -4582,7 +4606,21 @@ const Students = () => {
                     <button
                       type="button"
                       onClick={handleSaveEdit}
-                      disabled={savingEdit}
+                      disabled={savingEdit || !(() => {
+                        const mandatoryKeys = [
+                          { k: 'student_name', alt: 'Student Name' },
+                          { k: 'student_mobile', alt: 'Student Mobile Number' },
+                          { k: 'college', alt: 'College' },
+                          { k: 'batch', alt: 'Batch' },
+                          { k: 'course', alt: 'Program' },
+                          { k: 'branch', alt: 'Branch' },
+                          { k: 'parent_mobile1', alt: 'Parent Mobile Number 1' }
+                        ];
+                        return mandatoryKeys.every(field => {
+                          const val = editData[field.k] ?? editData[field.alt] ?? '';
+                          return typeof val === 'string' ? val.trim() !== '' : (val !== null && val !== undefined);
+                        });
+                      })()}
                       className="w-full sm:flex-1 bg-green-600 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[44px]"
                     >
                       {savingEdit ? (

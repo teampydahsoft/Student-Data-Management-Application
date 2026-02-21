@@ -16,7 +16,10 @@ import {
     Edit3,
     UserPlus,
     Trash2,
-    Star
+    Star,
+    CreditCard,
+    LogIn,
+    ArrowRightLeft
 } from 'lucide-react';
 import api from '../../config/api';
 import { formatDate } from '../../utils/dateUtils';
@@ -62,6 +65,10 @@ const ACTION_CONFIG = {
     DELETE: { label: 'Record Deleted', icon: Trash2, dot: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-100' },
     BULK_UPLOAD: { label: 'Bulk Upload', icon: Upload, dot: 'bg-teal-500', badge: 'bg-teal-50 text-teal-700 border-teal-100' },
     STATUS_CHANGE: { label: 'Status Changed', icon: RefreshCw, dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-100' },
+    UPDATE_FEE_STATUS: { label: 'Fee Updated', icon: CreditCard, dot: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 border-rose-100' },
+    UPDATE_REGISTRATION_STATUS: { label: 'Reg. Status Updated', icon: Star, dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-100' },
+    REJOIN: { label: 'Student Rejoined', icon: LogIn, dot: 'bg-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+    TRANSFER: { label: 'College Transfer', icon: ArrowRightLeft, dot: 'bg-indigo-500', badge: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
     DEFAULT: { label: 'Action', icon: FileText, dot: 'bg-gray-400', badge: 'bg-gray-50 text-gray-700 border-gray-100' },
 };
 
@@ -120,13 +127,100 @@ const LogDetails = ({ log }) => {
         );
     }
 
-    // UPDATE_PIN_NUMBER
     if (type === 'UPDATE_PIN_NUMBER') {
         return (
             <div className="mt-3 flex items-center gap-2 text-sm">
                 <KeyRound className="w-3.5 h-3.5 text-amber-500" />
                 <span className="text-gray-600">PIN number updated{d.pinNumber ? ` to ` : ''}</span>
                 {d.pinNumber && <span className="font-mono font-semibold text-gray-900 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">{d.pinNumber}</span>}
+            </div>
+        );
+    }
+
+    // UPDATE_FEE_STATUS
+    if (type === 'UPDATE_FEE_STATUS') {
+        return (
+            <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${['no due', 'no_due', 'permitted', 'completed'].includes(d.fee_status?.toLowerCase())
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                        : 'bg-rose-50 text-rose-700 border border-rose-100'
+                        }`}>
+                        {d.fee_status}
+                    </span>
+                    {d.permit_ending_date && (
+                        <span className="text-xs text-gray-500">
+                            Permit until: <span className="font-semibold text-gray-700">{formatDate(d.permit_ending_date)}</span>
+                        </span>
+                    )}
+                </div>
+                {d.permit_remarks && (
+                    <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 italic">
+                        "{d.permit_remarks}"
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // UPDATE_REGISTRATION_STATUS
+    if (type === 'UPDATE_REGISTRATION_STATUS') {
+        return (
+            <div className="mt-3">
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${d.registration_status?.toLowerCase() === 'completed'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                    : 'bg-blue-50 text-blue-700 border border-blue-100'
+                    }`}>
+                    {d.registration_status}
+                </span>
+            </div>
+        );
+    }
+
+    // REJOIN
+    if (type === 'REJOIN') {
+        return (
+            <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{d.fromBatch}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-xs font-bold border border-emerald-100">{d.toBatch}</span>
+                </div>
+                {d.remarks && (
+                    <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 italic">
+                        "{d.remarks}"
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // TRANSFER
+    if (type === 'TRANSFER') {
+        const diffs = [];
+        if (d.from?.college !== d.to?.college) diffs.push({ label: 'College', from: d.from?.college, to: d.to?.college });
+        if (d.from?.course !== d.to?.course) diffs.push({ label: 'Course', from: d.from?.course, to: d.to?.course });
+        if (d.from?.branch !== d.to?.branch) diffs.push({ label: 'Branch', from: d.from?.branch, to: d.to?.branch });
+        if (d.from?.batch !== d.to?.batch) diffs.push({ label: 'Batch', from: d.from?.batch, to: d.to?.batch });
+
+        return (
+            <div className="mt-3 space-y-2">
+                <div className="grid grid-cols-1 gap-2">
+                    {diffs.map(diff => (
+                        <div key={diff.label} className="flex items-center gap-2 text-xs">
+                            <span className="w-16 font-bold text-gray-400 uppercase tracking-tighter">{diff.label}</span>
+                            <span className="px-2 py-1 bg-gray-50 text-gray-500 rounded-lg border border-gray-100 truncate max-w-[120px]" title={diff.from}>{diff.from || '—'}</span>
+                            <ArrowRight className="w-3 h-3 text-gray-300" />
+                            <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-100 font-bold truncate max-w-[120px]" title={diff.to}>{diff.to || '—'}</span>
+                        </div>
+                    ))}
+                </div>
+                {(d.from?.year !== d.to?.year || d.from?.semester !== d.to?.semester) && (
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mt-1">
+                        <TrendingUp className="w-3 h-3 text-purple-400" />
+                        STAGE: {d.from?.year}.{d.from?.semester} → {d.to?.year}.{d.to?.semester}
+                    </div>
+                )}
             </div>
         );
     }

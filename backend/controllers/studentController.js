@@ -162,6 +162,23 @@ const parseJSON = (data) => {
   return data;
 };
 
+// Clean up student metadata and recursion from JSON objects
+const cleanStudentMetadata = (obj) => {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const cleanObj = { ...obj };
+
+  // List of keys identified as causing recursion or bloat
+  const keysToRemove = [
+    'student_data', 'studentData', 'synchronizedData',
+    'id', 'admission_number', 'admission_no',
+    'created_at', 'updated_at', 'student_photo',
+    'student_marks', 'student_attendance', 'today_attendance_status'
+  ];
+
+  keysToRemove.forEach(key => delete cleanObj[key]);
+  return cleanObj;
+};
+
 const YEAR_KEYS = [
   'current_year',
   'Current Year',
@@ -2866,8 +2883,6 @@ exports.updateStudent = async (req, res) => {
       'admission_number',
       'admission_no',
       'id',
-      'fee_status',
-      'registration_status',
       'pin_no',
       'created_at',
       'updated_at'
@@ -2947,7 +2962,7 @@ exports.updateStudent = async (req, res) => {
     console.log('Existing student data:', JSON.stringify(sanitizedExisting, null, 2));
 
     // Parse existing student_data to merge with incoming data
-    const existingStudentData = parseJSON(existingStudent.student_data) || {};
+    const existingStudentData = cleanStudentMetadata(parseJSON(existingStudent.student_data) || {});
 
     // Map form field names to database columns
     // Build update query for individual columns
@@ -2955,7 +2970,28 @@ exports.updateStudent = async (req, res) => {
     const updateValues = [];
 
     // Merge incoming data with existing data (incoming takes precedence)
-    const mutableStudentData = { ...existingStudentData, ...studentData };
+    const mutableStudentData = { ...existingStudentData };
+
+    // Clean up the incoming studentData too
+    const incomingStudentData = cleanStudentMetadata(studentData);
+
+    Object.keys(incomingStudentData).forEach(incomingKey => {
+      const normalizedIncoming = normalizeHeaderKeyForLookup(incomingKey);
+      const incomingCol = FIELD_LOOKUP[normalizedIncoming];
+
+      if (incomingCol) {
+        // Remove all variations of this column from existing data to ensure the new one takes over
+        Object.keys(mutableStudentData).forEach(existingKey => {
+          const normalizedExisting = normalizeHeaderKeyForLookup(existingKey);
+          if (FIELD_LOOKUP[normalizedExisting] === incomingCol) {
+            delete mutableStudentData[existingKey];
+          }
+        });
+      }
+
+      // Set the new value
+      mutableStudentData[incomingKey] = incomingStudentData[incomingKey];
+    });
 
     // Check if mobile numbers have changed and reset verification status if needed
     const oldStudentMobile = existingStudent.student_mobile || existingStudentData.student_mobile || existingStudentData['Student Mobile number'] || existingStudentData['Student Mobile Number'] || '';
@@ -3023,9 +3059,19 @@ exports.updateStudent = async (req, res) => {
     ]);
 
     for (const [key, value] of Object.entries(mutableStudentData)) {
-      const columnName = FIELD_MAPPING[key];
+      // Use FIELD_LOOKUP with normalized key for robust column resolution
+      const normalizedKey = normalizeHeaderKeyForLookup(key);
+      const columnName = FIELD_LOOKUP[normalizedKey];
+
+      // If the field was explicitly sent in THIS request, allow it to be empty (to clear values)
+      const isExplicitUpdate = Object.keys(incomingStudentData).some(k => normalizeHeaderKeyForLookup(k) === normalizedKey);
+
       const hasNonEmptyValue = value !== undefined && value !== '' && value !== '{}' && value !== null;
-      const shouldAllowEmptyUpdate = columnName && allowEmptyUpdates.has(columnName) && (value === '' || value === null);
+      const shouldAllowEmptyUpdate = columnName && (
+        (allowEmptyUpdates.has(columnName) && (value === '' || value === null)) ||
+        (isExplicitUpdate && (value === '' || value === null))
+      );
+
       if (
         columnName &&
         !updatedColumns.has(columnName) &&
@@ -3787,8 +3833,10 @@ exports.createStudent = async (req, res) => {
     const protectedCreateSet = new Set(PROTECTED_COLUMNS_CREATE);
 
     Object.keys(incomingData).forEach(key => {
-      // Check both direct key and mapped column
-      const columnName = FIELD_MAPPING[key];
+      // Check both direct key and mapped column via FIELD_LOOKUP
+      const normalizedKey = normalizeHeaderKeyForLookup(key);
+      const columnName = FIELD_LOOKUP[normalizedKey];
+
       if (protectedCreateSet.has(columnName) || protectedCreateSet.has(key)) {
         console.warn(`⚠️ Create Student: Removed protected field '${key}' (maps to '${columnName || key}')`);
         delete incomingData[key];
@@ -3863,7 +3911,9 @@ exports.createStudent = async (req, res) => {
     const updatedColumns = new Set(['admission_number', 'current_year', 'current_semester']);
 
     Object.entries(incomingData).forEach(([key, value]) => {
-      const columnName = FIELD_MAPPING[key];
+      const normalizedKey = normalizeHeaderKeyForLookup(key);
+      const columnName = FIELD_LOOKUP[normalizedKey];
+
       if (
         columnName &&
         !updatedColumns.has(columnName) &&
@@ -5641,6 +5691,20 @@ exports.updateFeeStatus = async (req, res) => {
     // However, if !isFeeCleared, checkAndAutoCompleteRegistration's "Fee Check" will also fail, so it won't autoComplete.
     await checkAndAutoCompleteRegistration(admissionNumber);
 
+    // Audit Log for Fee Status Update
+    await writeAuditLog(masterPool, {
+      actionType: 'UPDATE_FEE_STATUS',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: {
+        fee_status,
+        permit_ending_date: permit_ending_date || null,
+        permit_remarks: permit_remarks || null,
+        registration_auto_check: true
+      }
+    });
+
     clearStudentsCache();
 
     res.json({
@@ -5856,6 +5920,17 @@ exports.updateRegistrationStatus = async (req, res) => {
         throw err;
       }
     }
+
+    // Audit Log for Registration Status Update
+    await writeAuditLog(masterPool, {
+      actionType: 'UPDATE_REGISTRATION_STATUS',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: {
+        registration_status
+      }
+    });
 
     clearStudentsCache();
 
@@ -6229,6 +6304,21 @@ exports.rejoinStudent = async (req, res) => {
       console.error('Failed to record rejoin in history:', historyError);
       // Continue even if history recording fails
     }
+
+    // Also record in audit_logs for the Edit History tab
+    await writeAuditLog(masterPool, {
+      actionType: 'REJOIN',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: {
+        fromBatch,
+        toBatch,
+        remarks,
+        previousStatus: student.student_status,
+        newStatus: 'Regular (Rejoined)'
+      }
+    });
 
     // Clear cache
     clearStudentsCache();
