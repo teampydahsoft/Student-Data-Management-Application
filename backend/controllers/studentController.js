@@ -2975,18 +2975,21 @@ exports.updateStudent = async (req, res) => {
     // Clean up the incoming studentData too
     const incomingStudentData = cleanStudentMetadata(studentData);
 
+    const clearedColumns = new Set();
     Object.keys(incomingStudentData).forEach(incomingKey => {
       const normalizedIncoming = normalizeHeaderKeyForLookup(incomingKey);
       const incomingCol = FIELD_LOOKUP[normalizedIncoming];
 
-      if (incomingCol) {
+      if (incomingCol && !clearedColumns.has(incomingCol)) {
         // Remove all variations of this column from existing data to ensure the new one takes over
+        // But only do this ONCE per column, preventing multiple incoming variations from overwriting each other
         Object.keys(mutableStudentData).forEach(existingKey => {
           const normalizedExisting = normalizeHeaderKeyForLookup(existingKey);
           if (FIELD_LOOKUP[normalizedExisting] === incomingCol) {
             delete mutableStudentData[existingKey];
           }
         });
+        clearedColumns.add(incomingCol);
       }
 
       // Set the new value
@@ -3193,10 +3196,16 @@ exports.updateStudent = async (req, res) => {
     const auditChanges = {};
     for (const col of TRACKED_COLUMNS) {
       const oldVal = existingStudent[col] ?? null;
-      // Map the DB column back to what mutableStudentData might contain
-      const newVal = mutableStudentData[col] ??
-        mutableStudentData[Object.keys(FIELD_MAPPING).find(k => FIELD_MAPPING[k] === col)] ??
-        null;
+      // Map the DB column back to what mutableStudentData might contain using robust FIELD_LOOKUP
+      let newVal = mutableStudentData[col] ?? null;
+      if (newVal === null) {
+        for (const [k, v] of Object.entries(mutableStudentData)) {
+          if (FIELD_LOOKUP[normalizeHeaderKeyForLookup(k)] === col) {
+            newVal = v;
+            break;
+          }
+        }
+      }
       const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal).trim();
       const newStr = newVal === null || newVal === undefined ? '' : String(newVal).trim();
       if (oldStr !== newStr && (oldStr !== '' || newStr !== '')) {
