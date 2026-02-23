@@ -178,6 +178,7 @@ app.use("/api/academic-content", require("./routes/academicContentRoutes"));
 app.use("/api/internal-marks", require("./routes/internalMarksRoutes"));
 app.use("/api/chat", require("./routes/chatRoutes"));
 app.use("/api/internship", require("./internship/internshipRoutes"));
+app.use("/api/profile-changes", require("./routes/profileChangeRoutes"));
 
 // Legacy route support for direct API access (without /api prefix)
 app.use("/auth", authRoutes);

@@ -36,6 +36,7 @@ import AddServiceWizard from './pages/admin/AddServiceWizard';
 import FacultyManagement from './pages/admin/FacultyManagement';
 import AttendanceMonitoring from './pages/admin/AttendanceMonitoring';
 import Profile from './pages/Profile';
+import ProfileChangeRequests from './pages/admin/ProfileChangeRequests';
 import Clubs from './pages/Clubs';
 import InternshipAdmin from './internship/InternshipAdmin';
 
@@ -55,6 +56,7 @@ import StudentClubs from './pages/student/StudentClubs';
 import FeeManagement from './pages/student/FeeManagement';
 import Transport from './pages/student/Transport';
 import InternshipStudent from './internship/InternshipStudent';
+import MyProfileRequests from './pages/student/MyProfileRequests';
 
 
 // Faculty Pages (v2.0)
@@ -180,6 +182,7 @@ function App() {
           <Route path="students" element={<Students />} />
           <Route path="students/add" element={<AddStudent />} />
           <Route path="students/self-registration" element={<Submissions />} />
+          <Route path="students/profile-change-requests" element={<ProfileChangeRequests />} />
           <Route path="promotions" element={<StudentPromotions />} />
           <Route path="college-transfer" element={<CollegeTransfer />} />
           <Route path="courses" element={<Settings />} />
@@ -236,6 +239,7 @@ function App() {
           <Route path="transport" element={<Transport />} />
           <Route path="internship" element={<InternshipStudent />} />
           <Route path="feedback" element={<StudentFeedback />} />
+          <Route path="profile-requests" element={<MyProfileRequests />} />
 
         </Route>
 

@@ -236,6 +236,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
         { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
         { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' },
+        { icon: RiFolderLine, activeIcon: RiFolderFill, label: 'My Requests', path: '/student/profile-requests' },
     ].filter(item => {
         if (item.label === 'Internship' && !hasInternship) return false;
 

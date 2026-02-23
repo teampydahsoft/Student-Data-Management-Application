@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
+import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import { serviceService } from '../../services/serviceService';
@@ -47,6 +48,7 @@ const Dashboard = () => {
     const [showEventModal, setShowEventModal] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [showBirthday, setShowBirthday] = useState(false);
+    const [showVerifyProfile, setShowVerifyProfile] = useState(false);
 
     // Is today the student's birthday? (for theme and welcome styling)
     const isBirthday = useMemo(() => {
@@ -59,6 +61,20 @@ const Dashboard = () => {
         if (isNaN(dob.getTime())) return false;
         return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
     }, [studentData, user]);
+
+    // Check if profile is verified
+    const isProfileVerified = useMemo(() => {
+        if (!studentData) return true; // Default true while loading to prevent flashes
+        let parsedData = {};
+        if (studentData.student_data) {
+            if (typeof studentData.student_data === 'string') {
+                try { parsedData = JSON.parse(studentData.student_data); } catch (e) { }
+            } else {
+                parsedData = studentData.student_data;
+            }
+        }
+        return !!parsedData.profile_verified;
+    }, [studentData]);
 
     // Initial Data Fetch
     useEffect(() => {
@@ -87,8 +103,21 @@ const Dashboard = () => {
                 }
             };
             checkBirthday();
+
+            // Auto popup verify profile
+            if (!isProfileVerified) {
+                const sessionKey = `verify_profile_shown`;
+                if (!sessionStorage.getItem(sessionKey)) {
+                    // Small delay to let the page render properly before popping up
+                    const timer = setTimeout(() => {
+                        setShowVerifyProfile(true);
+                        sessionStorage.setItem(sessionKey, 'true');
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+            }
         }
-    }, [studentData]);
+    }, [studentData, isProfileVerified]);
 
     // Initial Data Fetch
     useEffect(() => {
@@ -677,14 +706,30 @@ const Dashboard = () => {
                 </div>
             )}
 
+            {/* Verify Profile Dialog */}
+            <VerifyProfileDialog
+                isOpen={showVerifyProfile}
+                onClose={() => setShowVerifyProfile(false)}
+                studentData={displayData}
+            />
+
             {/* Welcome Header - birthday theme when it's the student's birthday */}
-            <div className={`flex flex-col gap-1 rounded-xl p-4 -mx-1 ${isBirthday ? 'bg-gradient-to-r from-amber-100/80 to-orange-100/60 border border-amber-200/60' : ''}`}>
-                <h1 className={`text-xl lg:text-3xl font-bold heading-font ${isBirthday ? 'text-amber-900' : 'text-gray-900'}`}>
-                    {isBirthday ? '🎂 ' : ''}Welcome back, {displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}{isBirthday ? ' — Happy Birthday!' : ' 👋'}
-                </h1>
-                <p className={`text-xs lg:text-base ${isBirthday ? 'text-amber-800/90' : 'text-gray-500'}`}>
-                    {displayData?.course || user?.course} | {displayData?.branch || user?.branch} | Year {displayData?.current_year || user?.current_year}
-                </p>
+            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-xl p-4 -mx-1 ${isBirthday ? 'bg-gradient-to-r from-amber-100/80 to-orange-100/60 border border-amber-200/60' : ''}`}>
+                <div className="flex flex-col gap-1">
+                    <h1 className={`text-xl lg:text-3xl font-bold heading-font ${isBirthday ? 'text-amber-900' : 'text-gray-900'}`}>
+                        {isBirthday ? '🎂 ' : ''}Welcome back, {displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}{isBirthday ? ' — Happy Birthday!' : ' 👋'}
+                    </h1>
+                    <p className={`text-xs lg:text-base ${isBirthday ? 'text-amber-800/90' : 'text-gray-500'}`}>
+                        {displayData?.course || user?.course} | {displayData?.branch || user?.branch} | Year {displayData?.current_year || user?.current_year}
+                    </p>
+                </div>
+                <button
+                    onClick={() => setShowVerifyProfile(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors shrink-0"
+                >
+                    <User size={16} />
+                    Verify Profile
+                </button>
             </div>
 
             {/* Top Stats Row: Attendance & Registration */}

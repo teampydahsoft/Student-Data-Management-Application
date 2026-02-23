@@ -84,6 +84,12 @@ const NAV_ITEMS = [
         icon: UserPlus,
         permission: FRONTEND_MODULES.SUBMISSIONS,
       },
+      {
+        path: "/students/profile-change-requests",
+        label: "Profile Requests",
+        icon: ClipboardList,
+        permission: FRONTEND_MODULES.STUDENTS,
+      },
     ],
   },
   {
