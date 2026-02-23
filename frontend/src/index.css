@@ -299,6 +299,32 @@ code {
     .mobile-optimized * {
         max-width: 100%;
     }
+
+    /* Responsive Table Container */
+    .responsive-table-container {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 1rem;
+        border-radius: 0.5rem;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .responsive-table {
+        min-width: 600px;
+        /* Force minimum width for horizontal scroll */
+        width: 100%;
+    }
+
+    /* Better scrolling experience */
+    .responsive-table-container::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .responsive-table-container::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+    }
 }
 
 /* Improve form spacing on mobile */
@@ -731,3 +757,40 @@ nav:hover::-webkit-scrollbar-thumb {
     pointer-events: none;
     z-index: 0;
 }
+/* Modal Responsiveness Improvements */
+@media (max-width: 640px) {
+    .modal-full-mobile {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+    
+    .modal-content-scroll {
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        padding-bottom: 2rem;
+    }
+}
+
+/* Grid adjustments for mobile */
+.responsive-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+@media (min-width: 640px) {
+    .responsive-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .responsive-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+

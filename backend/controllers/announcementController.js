@@ -38,10 +38,37 @@ exports.createAnnouncement = async (req, res) => {
             imageUrl = `data:${mimeType};base64,${base64Image}`;
         }
 
+        // Calculate audience count first
+        let countQuery = 'SELECT COUNT(*) as count FROM students WHERE student_status = "Regular"';
+        const queryParams = [];
+
+        const parseParam = (val) => {
+            if (!val) return null;
+            if (Array.isArray(val)) return val.length ? val : null;
+            try { const parsed = JSON.parse(val); return parsed.length ? parsed : null; } catch (e) { return null; }
+        };
+
+        const colleges = parseParam(target_college);
+        const batches = parseParam(target_batch);
+        const courses = parseParam(target_course);
+        const branches = parseParam(target_branch);
+        const years = parseParam(target_year);
+        const semesters = parseParam(target_semester);
+
+        if (colleges) { countQuery += ' AND college IN (?)'; queryParams.push(colleges); }
+        if (batches) { countQuery += ' AND batch IN (?)'; queryParams.push(batches); }
+        if (courses) { countQuery += ' AND course IN (?)'; queryParams.push(courses); }
+        if (branches) { countQuery += ' AND branch IN (?)'; queryParams.push(branches); }
+        if (years) { countQuery += ' AND current_year IN (?)'; queryParams.push(years); }
+        if (semesters) { countQuery += ' AND current_semester IN (?)'; queryParams.push(semesters); }
+
+        const [countRow] = await masterPool.query(countQuery, queryParams);
+        const audienceCount = countRow[0].count;
+
         const [result] = await masterPool.query(
             `INSERT INTO announcements 
-            (title, content, image_url, target_college, target_batch, target_course, target_branch, target_year, target_semester, created_by) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (title, content, image_url, target_college, target_batch, target_course, target_branch, target_year, target_semester, created_by, audience_count) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 title,
                 content,
@@ -52,37 +79,27 @@ exports.createAnnouncement = async (req, res) => {
                 target_branch || null,
                 target_year || null,
                 target_semester || null,
-                createdBy
+                createdBy,
+                audienceCount
             ]
         );
 
         // Trigger Push Notifications (Background)
         (async () => {
             try {
-                let query = 'SELECT id FROM students WHERE student_status = "Regular"';
-                const params = [];
+                if (audienceCount === 0) return;
 
-                const parseParam = (val) => {
-                    if (!val) return null;
-                    if (Array.isArray(val)) return val.length ? val : null;
-                    try { const parsed = JSON.parse(val); return parsed.length ? parsed : null; } catch (e) { return null; }
-                };
+                // For large lists, we skip the memory-heavy id fetching if we can,
+                // but since sendBatchNotification needs IDs, we fetch them efficiently.
+                let idQuery = 'SELECT id FROM students WHERE student_status = "Regular"';
+                if (colleges) idQuery += ' AND college IN (?)';
+                if (batches) idQuery += ' AND batch IN (?)';
+                if (courses) idQuery += ' AND course IN (?)';
+                if (branches) idQuery += ' AND branch IN (?)';
+                if (years) idQuery += ' AND current_year IN (?)';
+                if (semesters) idQuery += ' AND current_semester IN (?)';
 
-                const colleges = parseParam(target_college);
-                const batches = parseParam(target_batch);
-                const courses = parseParam(target_course);
-                const branches = parseParam(target_branch);
-                const years = parseParam(target_year);
-                const semesters = parseParam(target_semester);
-
-                if (colleges) { query += ' AND college IN (?)'; params.push(colleges); }
-                if (batches) { query += ' AND batch IN (?)'; params.push(batches); }
-                if (courses) { query += ' AND course IN (?)'; params.push(courses); }
-                if (branches) { query += ' AND branch IN (?)'; params.push(branches); }
-                if (years) { query += ' AND current_year IN (?)'; params.push(years); }
-                if (semesters) { query += ' AND current_semester IN (?)'; params.push(semesters); }
-
-                const [students] = await masterPool.query(query, params);
+                const [students] = await masterPool.query(idQuery, queryParams);
                 const userIds = students.map(s => s.id);
 
                 if (userIds.length > 0) {
@@ -101,7 +118,7 @@ exports.createAnnouncement = async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Announcement created successfully',
-            data: { id: result.insertId, title, imageUrl }
+            data: { id: result.insertId, title, imageUrl, audience_count: audienceCount }
         });
 
     } catch (error) {
@@ -281,11 +298,32 @@ exports.updateAnnouncement = async (req, res) => {
             imageUrl = `data:${mimeType};base64,${base64Image}`;
         }
 
-        const ensureJson = (val) => {
+        // Calculate audience count
+        let countQuery = 'SELECT COUNT(*) as count FROM students WHERE student_status = "Regular"';
+        const queryParams = [];
+
+        const parseParam = (val) => {
             if (!val) return null;
-            if (typeof val === 'string') return val; // Already stringified
-            return JSON.stringify(val); // Array -> String
+            if (Array.isArray(val)) return val.length ? val : null;
+            try { const parsed = JSON.parse(val); return parsed.length ? parsed : null; } catch (e) { return null; }
         };
+
+        const colleges = parseParam(target_college);
+        const batches = parseParam(target_batch);
+        const courses = parseParam(target_course);
+        const branches = parseParam(target_branch);
+        const years = parseParam(target_year);
+        const semesters = parseParam(target_semester);
+
+        if (colleges) { countQuery += ' AND college IN (?)'; queryParams.push(colleges); }
+        if (batches) { countQuery += ' AND batch IN (?)'; queryParams.push(batches); }
+        if (courses) { countQuery += ' AND course IN (?)'; queryParams.push(courses); }
+        if (branches) { countQuery += ' AND branch IN (?)'; queryParams.push(branches); }
+        if (years) { countQuery += ' AND current_year IN (?)'; queryParams.push(years); }
+        if (semesters) { countQuery += ' AND current_semester IN (?)'; queryParams.push(semesters); }
+
+        const [countRow] = await masterPool.query(countQuery, queryParams);
+        const audienceCount = countRow[0].count;
 
         await masterPool.query(
             `UPDATE announcements SET 
@@ -297,7 +335,8 @@ exports.updateAnnouncement = async (req, res) => {
                 target_course = ?, 
                 target_branch = ?, 
                 target_year = ?, 
-                target_semester = ? 
+                target_semester = ?,
+                audience_count = ?
             WHERE id = ?`,
             [
                 title,
@@ -309,11 +348,12 @@ exports.updateAnnouncement = async (req, res) => {
                 target_branch || null,
                 target_year || null,
                 target_semester || null,
+                audienceCount,
                 id
             ]
         );
 
-        res.json({ success: true, message: 'Announcement updated' });
+        res.json({ success: true, message: 'Announcement updated', audience_count: audienceCount });
 
     } catch (error) {
         console.error('Update announcement error:', error);

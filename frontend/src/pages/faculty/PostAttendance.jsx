@@ -28,17 +28,17 @@ export default function PostAttendance() {
   useEffect(() => {
     api.get('/colleges').then((r) => {
       if (r.data.success && r.data.data?.length) setColleges(r.data.data);
-    }).catch(() => {});
+    }).catch(() => { });
     api.get('/attendance/filters').then((r) => {
       if (r.data.success && r.data.data) {
         const d = r.data.data;
         setFilters({
-          batches: d.batches || [],
-          courses: d.courses || [],
-          branches: d.branches || [],
+          batches: [...new Set(d.batches || [])],
+          courses: [...new Set(d.courses || [])],
+          branches: [...new Set(d.branches || [])],
         });
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   useEffect(() => {

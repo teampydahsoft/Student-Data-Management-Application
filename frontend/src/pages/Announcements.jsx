@@ -44,7 +44,10 @@ const Announcements = () => {
 
     // UI States
     const [loading, setLoading] = useState(false);
+    const [fetchingFeed, setFetchingFeed] = useState(true);
     const [editId, setEditId] = useState(null);
+    const [audienceCount, setAudienceCount] = useState(null);
+    const [fetchingCount, setFetchingCount] = useState(false);
 
     // Initial Form State
     const initialFormState = {
@@ -80,24 +83,30 @@ const Announcements = () => {
     }, [activeTab]);
 
     const fetchAnnouncements = async () => {
+        setFetchingFeed(true);
         try {
             const response = await api.get('/announcements/admin');
             if (response.data.success) setAnnouncements(response.data.data || []);
         } catch (error) { toast.error('Failed to load announcements'); }
+        finally { setFetchingFeed(false); }
     };
 
     const fetchPolls = async () => {
+        setFetchingFeed(true);
         try {
             const response = await api.get('/polls/admin');
             if (response.data.success) setPolls(response.data.data || []);
         } catch (error) { toast.error('Failed to load polls'); }
+        finally { setFetchingFeed(false); }
     };
 
     const fetchSmsTemplates = async () => {
+        setFetchingFeed(true);
         try {
             const response = await api.get('/sms-templates');
             if (response.data.success) setSmsTemplates(response.data.data || []);
         } catch (error) { console.error('Failed to load templates'); }
+        finally { setFetchingFeed(false); }
     };
 
     const handleFileChange = (e) => {
@@ -184,25 +193,44 @@ const Announcements = () => {
         setFormData(initialFormState);
     };
 
-    // SMS Variable Logic for Template Creation
+    // Fetch audience count when targets change
     useEffect(() => {
-        if (isTemplateModalOpen && formData.template_content) {
-            const matches = formData.template_content.match(/\{#var#\}/g) || [];
-            const count = matches.length;
+        if (!isCreateModalOpen && !isTemplateModalOpen) return;
 
-            if (formData.variable_mappings.length !== count) {
-                const newMappings = [...formData.variable_mappings];
-                if (count > newMappings.length) {
-                    for (let i = newMappings.length; i < count; i++) {
-                        newMappings.push({ type: 'static', value: '' }); // Default placeholder
-                    }
-                } else {
-                    newMappings.length = count;
+        const timer = setTimeout(async () => {
+            setFetchingCount(true);
+            try {
+                const response = await api.post('/announcements/count', {
+                    target_college: formData.target_college,
+                    target_batch: formData.target_batch,
+                    target_course: formData.target_course,
+                    target_branch: formData.target_branch,
+                    target_year: formData.target_year,
+                    target_semester: formData.target_semester
+                });
+                if (response.data.success) {
+                    setAudienceCount(response.data.count);
                 }
-                setFormData(prev => ({ ...prev, variable_mappings: newMappings }));
+            } catch (error) {
+                console.error('Failed to fetch audience count');
+            } finally {
+                setFetchingCount(false);
             }
-        }
-    }, [formData.template_content, isTemplateModalOpen]);
+        }, 500); // Debounce
+
+        return () => clearTimeout(timer);
+    }, [
+        formData.target_college,
+        formData.target_batch,
+        formData.target_course,
+        formData.target_branch,
+        formData.target_year,
+        formData.target_semester,
+        isCreateModalOpen,
+        isTemplateModalOpen
+    ]);
+
+    // SMS Variable Logic for Template Creation
 
     // Handle Template Selection for Broadcast
     const handleTemplateSelect = (e) => {
@@ -429,51 +457,87 @@ const Announcements = () => {
         { label: 'Current Date', value: 'current_date' }
     ];
 
+
+
+    const AnnouncementSkeleton = () => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="bg-white rounded-xl border p-4 animate-pulse">
+                    <div className="flex justify-between items-start mb-3">
+                        <div className="h-5 bg-gray-200 rounded w-2/3"></div>
+                        <div className="flex gap-1">
+                            <div className="w-8 h-8 bg-gray-100 rounded"></div>
+                            <div className="w-8 h-8 bg-gray-100 rounded"></div>
+                        </div>
+                    </div>
+                    <div className="h-32 bg-gray-100 rounded-lg mb-3"></div>
+                    <div className="space-y-2">
+                        <div className="h-4 bg-gray-50 rounded w-full"></div>
+                        <div className="h-4 bg-gray-50 rounded w-5/6"></div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
+    const PollSkeleton = () => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map(i => (
+                <div key={i} className="bg-white rounded-xl border p-6 animate-pulse">
+                    <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                    <div className="space-y-3 mb-6">
+                        <div className="h-10 bg-gray-50 rounded"></div>
+                        <div className="h-10 bg-gray-50 rounded"></div>
+                    </div>
+                    <div className="h-12 bg-gray-50 rounded-b-xl -mx-6 -mb-6"></div>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
-        <div className="min-h-screen bg-gray-50/50 space-y-6 animate-fade-in relative">
+        <div className="min-h-screen bg-transparent space-y-6 animate-fade-in relative">
             {/* Tabs & Actions */}
-            <div className="flex justify-between items-center border-b border-gray-200 bg-white px-4 rounded-t-xl shadow-sm overflow-x-auto">
-                <div className="flex whitespace-nowrap">
-                    <button
-                        onClick={() => { setActiveTab('announcements'); fetchAnnouncements(); }}
-                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'announcements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <Megaphone size={16} /> Announcements
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('polls'); fetchPolls(); }}
-                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'polls' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <BarChart2 size={16} /> Polls
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('sms'); fetchSmsTemplates(); }}
-                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'sms' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <Smartphone size={16} /> SMS
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('calendar'); }}
-                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'calendar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <CalendarIcon size={16} /> Event Calendar
-                    </button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 bg-white/80 backdrop-blur-md px-6 py-2 rounded-t-2xl shadow-sm overflow-hidden sticky top-0 z-30">
+                <div className="flex overflow-x-auto scrollbar-hide w-full sm:w-auto -mx-2 sm:mx-0">
+                    <div className="flex bg-gray-100/50 p-1 rounded-xl">
+                        {[
+                            { id: 'announcements', label: 'Announcements', icon: Megaphone },
+                            { id: 'polls', label: 'Polls', icon: BarChart2 },
+                            { id: 'sms', label: 'SMS', icon: Smartphone },
+                            { id: 'calendar', label: 'Events', icon: CalendarIcon }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => { setActiveTab(tab.id); }}
+                                className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id
+                                    ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                                    }`}
+                            >
+                                <tab.icon size={16} />
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {activeTab !== 'calendar' && activeTab !== 'sms' && (
                     <button
                         onClick={() => openCreateModal(activeTab)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-semibold flex items-center gap-2 text-sm shadow hover:shadow-md transition-all my-2"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold flex items-center gap-2 text-sm shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform transition-all hover:-translate-y-0.5"
                     >
-                        <Plus size={16} />
+                        <Plus size={18} strokeWidth={3} />
                         Create New
                     </button>
                 )}
             </div>
 
             {/* Content Area */}
-            <div className="bg-white rounded-b-xl shadow-sm border border-gray-200 border-t-0 p-6 min-h-[400px]">
-                {loading && (
+            <div className="bg-white rounded-b-2xl shadow-sm border border-gray-200 border-t-0 p-6 min-h-[400px]">
+                {fetchingFeed && activeTab === 'announcements' && <AnnouncementSkeleton />}
+                {fetchingFeed && activeTab === 'polls' && <PollSkeleton />}
+                {fetchingFeed && (activeTab === 'sms' || activeTab === 'calendar') && (
                     <div className="flex justify-center py-10">
                         <Loader2 className="animate-spin text-blue-600" />
                     </div>
@@ -683,54 +747,60 @@ const Announcements = () => {
                     )
                 }
 
-                {
-                    activeTab === 'polls' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {polls.map(poll => (
-                                <div key={poll.id} className={`bg-white rounded-xl shadow-sm border p-6 group hover:shadow-md transition-all ${!poll.is_active ? 'opacity-75' : ''}`}>
-                                    <div className="flex justify-between items-start mb-4">
+                {/* Polls list */}
+                {activeTab === 'polls' && !loading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {polls.map(poll => (
+                            <div key={poll.id} className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-6 group hover:shadow-md transition-all ${!poll.is_active ? 'opacity-75' : ''}`}>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex-1">
                                         <h4 className="font-bold text-gray-900 text-lg line-clamp-2">{poll.question}</h4>
-                                        <div className="flex gap-1">
-                                            <button onClick={() => toggleStatus(poll.id, poll.is_active, 'polls')} className="p-1.5 hover:bg-gray-100 rounded text-gray-500">
-                                                {poll.is_active ? <Eye size={16} /> : <EyeOff size={16} />}
-                                            </button>
-                                            <button onClick={() => openEditModal(poll, 'polls')} className="p-1.5 hover:bg-blue-50 text-blue-500 rounded"><Pencil size={16} /></button>
-                                            <button onClick={() => handleDelete(poll.id, 'polls')} className="p-1.5 hover:bg-red-50 text-red-500 rounded"><Trash2 size={16} /></button>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">
+                                                {poll.audience_count || poll.stats?.assigned || 0} Students
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="mb-4 space-y-2">
-                                        {(poll.options || []).map((opt, i) => {
-                                            const count = poll.vote_counts?.[i] || 0;
-                                            const total = poll.stats?.votes || 1;
-                                            const percent = Math.round((count / total) * 100);
-                                            return (
-                                                <div key={i} className="text-sm">
-                                                    <div className="flex justify-between mb-1">
-                                                        <span>{opt}</span>
-                                                        <span className="text-gray-500">{count} votes ({percent}%)</span>
-                                                    </div>
-                                                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${percent}%` }}></div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="pt-4 border-t flex items-center justify-between text-xs text-gray-500 bg-gray-50 -mx-6 -mb-6 p-4 rounded-b-xl">
-                                        <div className="flex gap-4">
-                                            <span title="Assigned Students">👥 Assigned: {poll.stats?.assigned || 0}</span>
-                                            <span title="Total Votes">📊 Votes: {poll.stats?.votes || 0}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Clock size={12} />
-                                            {poll.end_time ? `Ends: ${new Date(poll.end_time).toLocaleDateString()}` : 'No deadline'}
-                                        </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => toggleStatus(poll.id, poll.is_active, 'polls')} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
+                                            {poll.is_active ? <Eye size={16} /> : <EyeOff size={16} />}
+                                        </button>
+                                        <button onClick={() => openEditModal(poll, 'polls')} className="p-1.5 hover:bg-blue-50 text-blue-500 rounded-lg"><Pencil size={16} /></button>
+                                        <button onClick={() => handleDelete(poll.id, 'polls')} className="p-1.5 hover:bg-red-50 text-red-500 rounded-lg"><Trash2 size={16} /></button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    )
-                }
+                                <div className="mb-4 space-y-3">
+                                    {(poll.options || []).map((opt, i) => {
+                                        const count = poll.vote_counts?.[i] || 0;
+                                        const total = poll.stats?.votes || 1;
+                                        const percent = Math.round((count / total) * 100);
+                                        return (
+                                            <div key={i} className="text-sm">
+                                                <div className="flex justify-between mb-1.5">
+                                                    <span className="font-medium text-gray-700">{opt}</span>
+                                                    <span className="text-gray-400 font-bold text-[10px]">{count} votes ({percent}%)</span>
+                                                </div>
+                                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden border border-gray-100">
+                                                    <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="pt-4 border-t border-gray-50 flex items-center justify-between text-[10px] text-gray-500 mt-6 pt-4">
+                                    <div className="flex gap-4">
+                                        <span className="flex items-center gap-1 font-semibold" title="Assigned Students"><Users size={12} /> {poll.stats?.assigned || 0}</span>
+                                        <span className="flex items-center gap-1 font-semibold" title="Total Votes"><BarChart2 size={12} /> {poll.stats?.votes || 0}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg">
+                                        <Clock size={12} className="text-amber-500" />
+                                        {poll.end_time ? `Deadline: ${new Date(poll.end_time).toLocaleDateString()}` : 'No deadline'}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {
                     activeTab === 'calendar' && (
@@ -742,147 +812,167 @@ const Announcements = () => {
             </div >
 
             {/* General Modal (Announcements/Polls) */}
-            {
-                isCreateModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-8 overflow-hidden animate-scale-in">
-                            <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-                                <h2 className="text-xl font-bold flex items-center gap-2">
-                                    {editId ? <Pencil className="text-blue-600" size={24} /> : <PlusCircle className="text-blue-600" size={24} />}
-                                    {editId ? 'Edit Item' : (activeTab === 'announcements' ? 'New Announcement' : 'New Poll')}
-                                </h2>
-                                <button onClick={handleCancel} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl my-8 overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b flex justify-between items-center bg-white z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                                    {editId ? <Pencil size={24} /> : <PlusCircle size={24} />}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">
+                                        {editId ? 'Edit Item' : (activeTab === 'announcements' ? 'New Announcement' : 'New Poll')}
+                                    </h2>
+                                    <p className="text-xs text-gray-500">Configure your broadcast targets and content</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                {/* Live Audience Indicator */}
+                                <div className="hidden md:flex flex-col items-end px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estimated Reach</span>
+                                    <div className="flex items-center gap-2">
+                                        {fetchingCount ? (
+                                            <Loader2 size={12} className="animate-spin text-blue-500" />
+                                        ) : (
+                                            <Users size={12} className="text-blue-500" />
+                                        )}
+                                        <span className="text-sm font-black text-gray-900">{audienceCount ?? '...'} Students</span>
+                                    </div>
+                                </div>
+                                <button onClick={handleCancel} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors">
                                     <X size={24} />
                                 </button>
                             </div>
-                            <div className="p-6 max-h-[80vh] overflow-y-auto">
-                                <form onSubmit={activeTab === 'announcements' ? handleSubmitAnnouncement : handleSubmitPoll} className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-4">
-                                            {activeTab === 'announcements' ? (
-                                                <>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Enter title"
-                                                            value={formData.title}
-                                                            onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                                                        <textarea
-                                                            className="w-full p-2 border border-gray-300 rounded-lg h-32 focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Enter details..."
-                                                            value={formData.content}
-                                                            onChange={e => setFormData({ ...formData, content: e.target.value })}
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Image (Optional)</label>
-                                                        {formData.existing_image_url && !formData.image && (
-                                                            <div className="mb-2 h-20 w-32 relative group">
-                                                                <img src={formData.existing_image_url} alt="Current" className="h-full w-full object-cover rounded border" />
-                                                                <button type="button" onClick={() => setFormData({ ...formData, existing_image_url: null })} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"><X size={12} /></button>
-                                                            </div>
-                                                        )}
-                                                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50 transition-colors relative">
-                                                            <input type="file" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                                                            <div className="flex flex-col items-center gap-2 text-gray-500">
-                                                                {formData.previewUrl ? (
-                                                                    <div className="relative w-full h-48 mb-2">
-                                                                        <img src={formData.previewUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
-                                                                        <div className="text-xs mt-1 text-blue-600 font-semibold">Click to change</div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <>
-                                                                        <ImageIcon size={24} />
-                                                                        <span className="text-sm">{formData.image ? formData.image.name : 'Click to update image'}</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto bg-gray-50/30">
+                            <form onSubmit={activeTab === 'announcements' ? handleSubmitAnnouncement : handleSubmitPoll} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                        {activeTab === 'announcements' ? (
+                                            <>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Enter title"
+                                                        value={formData.title}
+                                                        onChange={e => setFormData({ ...formData, title: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                                                    <textarea
+                                                        className="w-full p-2 border border-gray-300 rounded-lg h-32 focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Enter details..."
+                                                        value={formData.content}
+                                                        onChange={e => setFormData({ ...formData, content: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Image (Optional)</label>
+                                                    {formData.existing_image_url && !formData.image && (
+                                                        <div className="mb-2 h-20 w-32 relative group">
+                                                            <img src={formData.existing_image_url} alt="Current" className="h-full w-full object-cover rounded border" />
+                                                            <button type="button" onClick={() => setFormData({ ...formData, existing_image_url: null })} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"><X size={12} /></button>
                                                         </div>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Poll Question</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                                            placeholder="Ask something..."
-                                                            value={formData.question}
-                                                            onChange={e => setFormData({ ...formData, question: e.target.value })}
-                                                        />
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-700 mb-1">Start Time</label>
-                                                            <input
-                                                                type="datetime-local"
-                                                                className="w-full p-2 border rounded-lg text-sm"
-                                                                value={formData.start_time || ''}
-                                                                onChange={e => setFormData({ ...formData, start_time: e.target.value })}
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-700 mb-1">End Time</label>
-                                                            <input
-                                                                type="datetime-local"
-                                                                className="w-full p-2 border rounded-lg text-sm"
-                                                                value={formData.end_time || ''}
-                                                                onChange={e => setFormData({ ...formData, end_time: e.target.value })}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Options</label>
-                                                        <div className="space-y-2">
-                                                            {formData.options.map((opt, idx) => (
-                                                                <div key={idx} className="flex gap-2">
-                                                                    <input
-                                                                        type="text"
-                                                                        className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                                                        placeholder={`Option ${idx + 1}`}
-                                                                        value={opt}
-                                                                        onChange={e => updateOption(idx, e.target.value)}
-                                                                    />
-                                                                    {formData.options.length > 2 && (
-                                                                        <button type="button" onClick={() => removeOption(idx)} className="text-red-500 hover:bg-red-50 p-2 rounded"><MinusCircle size={20} /></button>
-                                                                    )}
+                                                    )}
+                                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50 transition-colors relative">
+                                                        <input type="file" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
+                                                        <div className="flex flex-col items-center gap-2 text-gray-500">
+                                                            {formData.previewUrl ? (
+                                                                <div className="relative w-full h-48 mb-2">
+                                                                    <img src={formData.previewUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
+                                                                    <div className="text-xs mt-1 text-blue-600 font-semibold">Click to change</div>
                                                                 </div>
-                                                            ))}
-                                                            {formData.options.length < 6 && (
-                                                                <button type="button" onClick={addOption} className="text-blue-600 text-sm font-semibold flex items-center gap-1 mt-2">
-                                                                    <PlusCircle size={16} /> Add Option
-                                                                </button>
+                                                            ) : (
+                                                                <>
+                                                                    <ImageIcon size={24} />
+                                                                    <span className="text-sm">{formData.image ? formData.image.name : 'Click to update image'}</span>
+                                                                </>
                                                             )}
                                                         </div>
                                                     </div>
-                                                </>
-                                            )}
-                                        </div>
-                                        <TargetSelector formData={formData} setFormData={setFormData} />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Poll Question</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Ask something..."
+                                                        value={formData.question}
+                                                        onChange={e => setFormData({ ...formData, question: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Start Time</label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="w-full p-2 border rounded-lg text-sm"
+                                                            value={formData.start_time || ''}
+                                                            onChange={e => setFormData({ ...formData, start_time: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-gray-700 mb-1">End Time</label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="w-full p-2 border rounded-lg text-sm"
+                                                            value={formData.end_time || ''}
+                                                            onChange={e => setFormData({ ...formData, end_time: e.target.value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Options</label>
+                                                    <div className="space-y-2">
+                                                        {formData.options.map((opt, idx) => (
+                                                            <div key={idx} className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder={`Option ${idx + 1}`}
+                                                                    value={opt}
+                                                                    onChange={e => updateOption(idx, e.target.value)}
+                                                                />
+                                                                {formData.options.length > 2 && (
+                                                                    <button type="button" onClick={() => removeOption(idx)} className="text-red-500 hover:bg-red-50 p-2 rounded"><MinusCircle size={20} /></button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                        {formData.options.length < 6 && (
+                                                            <button type="button" onClick={addOption} className="text-blue-600 text-sm font-semibold flex items-center gap-1 mt-2">
+                                                                <PlusCircle size={16} /> Add Option
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                    <div className="flex justify-end pt-4 border-t gap-3">
-                                        <button type="button" onClick={handleCancel} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Cancel</button>
-                                        <button
-                                            type="submit"
-                                            disabled={loading}
-                                            className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-70"
-                                        >
-                                            {loading ? <Loader2 className="animate-spin" /> : <Send size={18} />}
-                                            {editId ? 'Update' : (activeTab === 'announcements' ? 'Post' : 'Create Poll')}
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
+                                    <TargetSelector formData={formData} setFormData={setFormData} />
+                                </div>
+                                <div className="flex justify-end pt-4 border-t gap-3">
+                                    <button type="button" onClick={handleCancel} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Cancel</button>
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-70"
+                                    >
+                                        {loading ? <Loader2 className="animate-spin" /> : <Send size={18} />}
+                                        {loading ? (formData.image ? 'Uploading post...' : 'Submitting...') : (editId ? 'Update' : (activeTab === 'announcements' ? 'Post' : 'Create Poll'))}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                )
+                </div>
+            )
             }
 
             {/* SMS Template Modal */}

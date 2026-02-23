@@ -76,10 +76,10 @@ const CollegeTransfer = () => {
                 setRawMetadata({
                     colleges: colRes.data.success ? colRes.data.data.map(c => ({ label: c.name, value: c.name, id: c.id })) : [],
                     batches: batchRes.data.success ? batchRes.data.data.map(b => ({ label: b.name, value: b.name, id: b.id })) : [],
-                    courses: courRes.data.success ? courRes.data.data.map(c => ({ 
-                        label: c.name, 
-                        value: c.name, 
-                        id: c.id, 
+                    courses: courRes.data.success ? courRes.data.data.map(c => ({
+                        label: c.name,
+                        value: c.name,
+                        id: c.id,
                         collegeId: c.collegeId || c.college_id,
                         level: c.level
                     })) : [],
@@ -159,19 +159,19 @@ const CollegeTransfer = () => {
     // --- Derived Options for Target ---
     const targetOptions = useMemo(() => {
         // Get selected college for filtering
-        const selectedCollege = targetDetails.college 
+        const selectedCollege = targetDetails.college
             ? rawMetadata.colleges.find(c => c.value === targetDetails.college)
             : null;
 
         // Filter Courses based on College (from coursesWithBranches)
-        let courses = coursesWithBranches.map(c => ({ 
-            label: c.name, 
-            value: c.name, 
-            id: c.id, 
+        let courses = coursesWithBranches.map(c => ({
+            label: c.name,
+            value: c.name,
+            id: c.id,
             collegeId: c.collegeId || c.college_id,
             level: c.level
         }));
-        
+
         if (selectedCollege) {
             courses = courses.filter(c => c.collegeId == selectedCollege.id);
         }
@@ -195,7 +195,7 @@ const CollegeTransfer = () => {
                     const matchesCourse = !targetDetails.course || course.name === targetDetails.course;
                     const matchesCollege = !targetDetails.college || course.collegeId == selectedCollege?.id;
                     const isActive = branch.isActive !== false; // Include if active or if property doesn't exist
-                    
+
                     if (matchesCourse && matchesCollege && isActive) {
                         allBranches.push({
                             label: branch.name,
@@ -360,7 +360,7 @@ const CollegeTransfer = () => {
             const response = await api.get(`/students?${params.toString()}`);
             const allStudents = response.data?.data || [];
             const selectedStudents = allStudents.filter(s => selectedAdmissionNumbers.has(s.admission_number));
-            
+
             setTransferPlan(selectedStudents);
             setConfirmationOpen(true);
         } catch (error) {
@@ -646,8 +646,8 @@ const CollegeTransfer = () => {
                                     <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{transferPlan.length} Selected</span>
                                 </h4>
                                 <div className="border rounded-lg max-h-48 overflow-y-auto bg-gray-50/50">
-                                    {transferPlan.map((s, idx) => (
-                                        <div key={idx} className="p-3 border-b last:border-0 text-sm flex justify-between items-center px-4 hover:bg-white transition-colors">
+                                    {transferPlan.map((s) => (
+                                        <div key={s.admission_number || s.id} className="p-3 border-b last:border-0 text-sm flex justify-between items-center px-4 hover:bg-white transition-colors">
                                             <span className="font-medium text-gray-800">{s.student_name}</span>
                                             <span className="text-gray-500 font-mono text-xs">{s.admission_number}</span>
                                         </div>

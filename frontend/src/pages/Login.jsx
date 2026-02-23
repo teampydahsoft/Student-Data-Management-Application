@@ -182,9 +182,9 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 login-stars-optimized animate-fade-in">
-      {/* Main Card Container */}
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex min-h-[600px] animate-fade-in-up">
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-2 sm:p-4 login-stars-optimized animate-fade-in overflow-x-hidden">
+      {/* Main Card Container - Responsive width */}
+      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[500px] sm:min-h-[600px] animate-fade-in-up">
 
         {/* Left Side - Blue Panel (Hidden on mobile) */}
         <div className="hidden lg:flex lg:w-1/2 bg-primary text-white flex-col justify-between p-12 relative overflow-hidden">
@@ -233,7 +233,7 @@ const Login = () => {
         </div>
 
         {/* Right Side - Login Form */}
-        <div className="w-full lg:w-1/2 p-4 sm:p-12 flex flex-col justify-center bg-white relative">
+        <div className="w-full lg:w-1/2 p-6 sm:p-8 lg:p-12 flex flex-col justify-center bg-white relative">
           {/* SSO error banner */}
           {ssoError && (
             <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -258,11 +258,11 @@ const Login = () => {
               </div>
             </div>
 
-            <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            <div className="text-center mb-6 sm:mb-8">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-tight">
                 Welcome Back
               </h2>
-              <p className="text-gray-500 text-sm">
+              <p className="text-gray-500 text-xs sm:text-sm">
                 Sign in to your account to continue
               </p>
             </div>

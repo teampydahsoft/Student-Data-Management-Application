@@ -162,25 +162,29 @@ exports.sendBatchNotification = async (userIds, payload) => {
 
         if (subscriptions.length === 0) return { success: true, sent: 0 };
 
-        const notifications = subscriptions.map(sub => {
-            const pushSubscription = {
-                endpoint: sub.endpoint,
-                keys: {
-                    auth: sub.keys_auth,
-                    p256dh: sub.keys_p256dh
-                }
-            };
-            return webpush.sendNotification(pushSubscription, JSON.stringify(payload))
-                .catch(err => {
-                    if (err.statusCode === 410 || err.statusCode === 404) {
-                        // Expired
+        let sentCount = 0;
+        const chunkSize = 100;
+        for (let i = 0; i < subscriptions.length; i += chunkSize) {
+            const chunk = subscriptions.slice(i, i + chunkSize);
+            await Promise.all(chunk.map(sub => {
+                const pushSubscription = {
+                    endpoint: sub.endpoint,
+                    keys: {
+                        auth: sub.keys_auth,
+                        p256dh: sub.keys_p256dh
                     }
-                    // console.error('Push error:', err);
-                });
-        });
+                };
+                return webpush.sendNotification(pushSubscription, JSON.stringify(payload))
+                    .then(() => { sentCount++; })
+                    .catch(err => {
+                        if (err.statusCode === 410 || err.statusCode === 404) {
+                            // Expired
+                        }
+                    });
+            }));
+        }
 
-        await Promise.all(notifications);
-        return { success: true, sent: notifications.length };
+        return { success: true, sent: sentCount };
 
     } catch (error) {
         console.error('Batch push error:', error);

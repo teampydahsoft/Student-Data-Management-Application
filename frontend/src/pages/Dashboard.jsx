@@ -140,7 +140,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 bg-gradient-to-br from-gray-50 via-white to-blue-50/30 min-h-screen">
+    <div className="space-y-4 sm:space-y-6 bg-gradient-to-br from-gray-50 via-white to-blue-50/30">
       {/* Header */}
       <div className="mb-4 sm:mb-6 lg:mb-8">
         <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">

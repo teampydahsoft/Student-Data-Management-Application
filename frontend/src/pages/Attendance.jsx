@@ -14,6 +14,7 @@ import {
   BarChart3,
   History as HistoryIcon,
   Download,
+  FileText,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
@@ -875,11 +876,11 @@ const Attendance = () => {
       if (filtersResponse.data?.success) {
         const data = filtersResponse.data.data || {};
         const nextOptions = {
-          batches: data.batches || [],
-          courses: data.courses || [],
-          branches: data.branches || [],
-          years: data.years || [],
-          semesters: data.semesters || []
+          batches: [...new Set(data.batches || [])],
+          courses: [...new Set(data.courses || [])],
+          branches: [...new Set(data.branches || [])],
+          years: [...new Set(data.years || [])],
+          semesters: [...new Set(data.semesters || [])]
         };
         setFilterOptions(nextOptions);
 
@@ -1012,12 +1013,12 @@ const Attendance = () => {
       const semesters = [...new Set(groupedData.map(item => item.semester || item.currentSemester).filter(Boolean))].sort();
 
       setDayEndFilterOptions({
-        colleges,
-        batches,
-        courses,
-        branches,
-        years,
-        semesters,
+        colleges: [...new Set(colleges)],
+        batches: [...new Set(batches)],
+        courses: [...new Set(courses)],
+        branches: [...new Set(branches)],
+        years: [...new Set(years)],
+        semesters: [...new Set(semesters)],
         allData: groupedData // Store all data for cascading filters
       });
       setDayEndReportOpen(true);
@@ -2819,339 +2820,282 @@ const Attendance = () => {
       </section>
 
       {/* Day End Report Modal */}
-      {
-        dayEndReportOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setDayEndReportOpen(false);
-              }
-            }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div className="bg-white w-full max-w-[95vw] max-h-[90vh] rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
-              {/* Sticky Header */}
-              <div className="px-5 py-4 flex items-start justify-between border-b border-gray-200 shrink-0 bg-white sticky top-0 z-10">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Day End Report</h3>
-                  <p className="text-xs text-gray-500">{dayEndReportData?.date || attendanceDate}</p>
-
-                  {/* Filter Toggles */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs font-medium text-gray-500">Show:</span>
-                    <div className="inline-flex rounded-md shadow-sm" role="group">
-                      <button
-                        type="button"
-                        onClick={() => setDayEndPreviewFilter('all')}
-                        className={`px-3 py-1 text-xs font-medium rounded-l-md ${dayEndPreviewFilter === 'all'
-                          ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                          : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-                          }`}
-                      >
-                        All
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDayEndPreviewFilter('marked')}
-                        className={`px-3 py-1 text-xs font-medium ${dayEndPreviewFilter === 'marked'
-                          ? 'bg-green-100 text-green-700 border border-green-300'
-                          : 'bg-white text-gray-700 hover:bg-gray-50 border-t border-b border-gray-300'
-                          }`}
-                      >
-                        Marked
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDayEndPreviewFilter('unmarked')}
-                        className={`px-3 py-1 text-xs font-medium rounded-r-md ${dayEndPreviewFilter === 'unmarked'
-                          ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                          : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-                          }`}
-                      >
-                        Unmarked
-                      </button>
-                    </div>
-                  </div>
+      {dayEndReportOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl my-8 overflow-hidden animate-scale-in border border-gray-100 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-6 border-b flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-inner">
+                  <FileText size={24} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setDayEndReportOpen(false)}
-                    className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
-                  >
-                    <X size={16} />
-                  </button>
+                <div>
+                  <h2 className="text-xl font-black text-gray-900 tracking-tight">Day End Abstract Report</h2>
+                  <p className="text-xs text-gray-500 font-medium">{dayEndReportData?.date || attendanceDate}</p>
                 </div>
               </div>
+              <div className="flex items-center gap-4">
+                <div className="hidden md:flex items-center bg-gray-100 p-1 rounded-xl">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'marked', label: 'Marked' },
+                    { id: 'unmarked', label: 'Unmarked' }
+                  ].map(btn => (
+                    <button
+                      key={btn.id}
+                      onClick={() => setDayEndPreviewFilter(btn.id)}
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${dayEndPreviewFilter === btn.id
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setDayEndReportOpen(false)}
+                  className="p-2.5 hover:bg-red-50 rounded-xl text-gray-400 hover:text-red-500 transition-all active:scale-95"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
 
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="p-5">
-                  {/* Sticky Stats Section */}
-                  <div
-                    ref={dayEndStatsRef}
-                    className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-200 -mx-5 px-5"
-                  >
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3 mb-4">
-                      <StatPill label="Total Students" value={filteredStats.totalStudents} color="gray" />
-                      <StatPill label="Marked Today" value={filteredStats.markedToday} color="green" />
-                      <StatPill label="Absent Today" value={filteredStats.absentToday} color="red" />
-                      <StatPill label="Present Today" value={filteredStats.presentToday} color="blue" />
-                      <StatPill
-                        label={filteredStats.holidayReason ? `Holiday: ${filteredStats.holidayReason.length > 20 ? filteredStats.holidayReason.substring(0, 20) + '...' : filteredStats.holidayReason}` : 'No Class Work Today'}
-                        value={filteredStats.holidayToday}
-                        color="green"
-                        title={filteredStats.holidayReason}
-                      />
-                      <StatPill label="Unmarked Today" value={filteredStats.unmarkedToday} color="amber" />
+            <div className="flex-1 overflow-y-auto bg-gray-50/30 p-4 sm:p-6">
+              <div className="max-w-6xl mx-auto space-y-6">
+                {/* Mobile Filter Toggles */}
+                <div className="flex md:hidden items-center bg-white p-1 rounded-2xl border border-gray-200 shadow-sm">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'marked', label: 'Marked' },
+                    { id: 'unmarked', label: 'Unmarked' }
+                  ].map(btn => (
+                    <button
+                      key={btn.id}
+                      onClick={() => setDayEndPreviewFilter(btn.id)}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${dayEndPreviewFilter === btn.id
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                        : 'text-gray-500 hover:bg-gray-50'
+                        }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sticky Stats Section */}
+                <div className="sticky top-0 z-20 bg-gray-50/30 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2 pb-4 backdrop-blur-sm">
+                  <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm text-center lg:text-left">
+                      <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5 sm:mb-1">Total</p>
+                      <h3 className="text-sm sm:text-xl font-black text-gray-900">{filteredStats.totalStudents}</h3>
                     </div>
-                    {/* Table Header - Replaces Filters Section */}
-                    <div className="overflow-x-auto -mx-5 px-5">
-                      <table className="w-full border-collapse table-fixed">
-                        <colgroup>
-                          <col style={{ width: '180px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '120px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '60px' }} />
-                          <col style={{ width: '60px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '80px' }} />
-                          <col style={{ width: '150px' }} />
-                          <col style={{ width: '100px' }} />
-                        </colgroup>
-                        <thead className="bg-gray-50 sticky" style={{ position: 'sticky', top: `${statsSectionHeight}px`, zIndex: 20 }}>
-                          <tr>
-                            <th className="px-2 py-2 text-left align-top">
-                              <select
-                                value={dayEndFilters.college}
-                                onChange={(e) => {
-                                  setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }));
-                                }}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs truncate"
-                              >
-                                <option value="">COLLEGE</option>
-                                {dayEndFilterOptions.colleges.map(opt => (
-                                  <option key={opt} value={opt} title={opt} className="truncate">{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-2 py-2 text-left align-top">
-                              <select
-                                value={dayEndFilters.batch}
-                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value }))}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                              >
-                                <option value="">BATCH</option>
-                                {dayEndFilterOptions.batches.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-2 py-2 text-left align-top">
-                              <select
-                                value={dayEndFilters.course}
-                                onChange={(e) => {
-                                  setDayEndFilters(prev => ({ ...prev, course: e.target.value, branch: '' }));
-                                }}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                              >
-                                <option value="">COURSE</option>
-                                {filteredCourses.map(opt => (
-                                  <option key={opt} value={opt} title={opt} className="truncate">{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-2 py-2 text-left align-top">
-                              <select
-                                value={dayEndFilters.branch}
-                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, branch: e.target.value }))}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
-                              >
-                                <option value="">BRANCH</option>
-                                {filteredBranches.map(opt => (
-                                  <option key={opt} value={opt} title={opt} className="truncate">{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-1 py-2 text-center align-top">
-                              <select
-                                value={dayEndFilters.year}
-                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, year: e.target.value }))}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
-                              >
-                                <option value="">YEAR</option>
-                                {dayEndFilterOptions.years.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-1 py-2 text-center align-top">
-                              <select
-                                value={dayEndFilters.semester}
-                                onChange={(e) => setDayEndFilters(prev => ({ ...prev, semester: e.target.value }))}
-                                className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
-                              >
-                                <option value="">SEM</option>
-                                {dayEndFilterOptions.semesters.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Students</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Absent</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Marked</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Percentage %</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Pending</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">No Class Work</th>
-                            <th className="px-2 py-2 text-right align-top text-xs font-semibold">Time Stamp</th>
-                          </tr>
-                        </thead>
-                      </table>
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm text-center lg:text-left">
+                      <p className="text-[9px] sm:text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-0.5 sm:mb-1">Marked</p>
+                      <h3 className="text-sm sm:text-xl font-black text-emerald-600">{filteredStats.markedToday}</h3>
+                    </div>
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm text-center lg:text-left">
+                      <p className="text-[9px] sm:text-[10px] font-black text-rose-500 uppercase tracking-widest mb-0.5 sm:mb-1">Absent</p>
+                      <h3 className="text-sm sm:text-xl font-black text-rose-600">{filteredStats.absentToday}</h3>
+                    </div>
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm text-center lg:text-left">
+                      <p className="text-[9px] sm:text-[10px] font-black text-blue-500 uppercase tracking-widest mb-0.5 sm:mb-1">Present</p>
+                      <h3 className="text-sm sm:text-xl font-black text-blue-600">{filteredStats.presentToday}</h3>
+                    </div>
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm overflow-hidden text-center lg:text-left" title={filteredStats.holidayReason}>
+                      <p className="text-[9px] sm:text-[10px] font-black text-amber-500 uppercase tracking-widest mb-0.5 sm:mb-1 truncate">No Class</p>
+                      <h3 className="text-sm sm:text-xl font-black text-amber-600">{filteredStats.holidayToday}</h3>
+                    </div>
+                    <div className="bg-white p-2 sm:p-4 rounded-xl sm:rounded-3xl border border-gray-100 shadow-sm text-center lg:text-left">
+                      <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5 sm:mb-1">Pending</p>
+                      <h3 className="text-sm sm:text-xl font-black text-gray-600">{filteredStats.unmarkedToday || 0}</h3>
                     </div>
                   </div>
-                  <>
-                    {dayEndGroupedDisplay.length > 0 ? (
-                      <div className="-mx-5">
-                        <div className="overflow-x-auto px-5">
-                          <table className="w-full divide-y divide-gray-200 border-collapse table-fixed">
-                            <colgroup>
-                              <col style={{ width: '180px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '120px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '60px' }} />
-                              <col style={{ width: '60px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '80px' }} />
-                              <col style={{ width: '150px' }} />
-                              <col style={{ width: '100px' }} />
-                            </colgroup>
-                            <tbody className="divide-y divide-gray-100">
-                              {dayEndGroupedDisplay.map((row, idx) => (
-                                <tr key={`${row.college || 'N/A'}-${idx}`} className="bg-white hover:bg-gray-50">
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.college || ''}>
-                                    {row.college || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.batch || ''}>
-                                    {row.batch || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.course || ''}>
-                                    {row.course || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-gray-800 text-sm truncate" title={row.branch || ''}>
-                                    {row.branch || '—'}
-                                  </td>
-                                  <td className="px-1 py-2 text-center text-gray-800 text-sm">
-                                    {row.year || '—'}
-                                  </td>
-                                  <td className="px-1 py-2 text-center text-gray-800 text-sm">
-                                    {row.semester || '—'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-semibold text-gray-900 text-sm">
-                                    {row.totalStudents ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-red-700 font-semibold text-sm">
-                                    {row.absentToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
-                                    {row.markedToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-blue-700 font-semibold text-sm">
-                                    {row.totalStudents > 0
-                                      ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%'
-                                      : '0.0%'
-                                    }
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-amber-700 font-semibold text-sm">
-                                    {row.pendingToday ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-green-700 font-semibold text-sm">
-                                    <div className="flex flex-col items-end">
-                                      <span>{row.holidayToday ?? 0}</span>
-                                      {row.holidayReasons && (
-                                        <span className="text-xs text-gray-600 font-normal truncate max-w-full" title={row.holidayReasons}>
-                                          {row.holidayReasons.length > 20 ? `${row.holidayReasons.substring(0, 20)}...` : row.holidayReasons}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-gray-600 text-xs">
-                                    {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                </div>
+
+                {/* Mobile View: Cards */}
+                <div className="md:hidden space-y-4">
+                  {dayEndGroupedDisplay.map((row, idx) => (
+                    <div key={idx} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden p-6 relative">
+                      <div className="absolute top-0 right-0 p-4">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                          {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
+                        </span>
+                      </div>
+                      <div className="mb-4">
+                        <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">{row.batch || '—'} BATCH</div>
+                        <h4 className="text-lg font-black text-gray-900 leading-tight mb-1">{row.course || '—'}</h4>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-tight">{row.branch || '—'}</p>
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">YEAR {row.year} • SEM {row.semester}</p>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 mb-4 bg-gray-50 rounded-2xl p-4">
+                        <div className="text-center">
+                          <div className="text-[10px] font-black text-gray-400 uppercase mb-1">Ttl</div>
+                          <div className="text-xs font-black text-gray-900">{row.totalStudents || 0}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-[10px] font-black text-emerald-500 uppercase mb-1">P</div>
+                          <div className="text-xs font-black text-emerald-600">{row.presentToday || 0}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-[10px] font-black text-rose-500 uppercase mb-1">A</div>
+                          <div className="text-xs font-black text-rose-600">{row.absentToday || 0}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-[10px] font-black text-amber-500 uppercase mb-1">N.C</div>
+                          <div className="text-xs font-black text-amber-600">{row.holidayToday || 0}</div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        No records found matching the current filters
-                      </div>
-                    )}
-                  </>
-                  {/* Fixed Download Buttons at Bottom */}
-                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between mt-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleDayEndDownload('pdf')}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
-                      >
-                        <Download size={14} />
-                        PDF
-                      </button>
-                      <button
-                        onClick={() => handleDayEndDownload('xlsx')}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
-                      >
-                        <Download size={14} />
-                        Excel
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleSendDayEndReports}
-                        disabled={sendingReports}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed text-xs"
-                      >
-                        {sendingReports ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" />
-                            Sending
-                          </>
-                        ) : (
-                          <>
-                            <Mail size={14} />
-                            Send Reports
-                          </>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="text-[9px] font-medium text-gray-400">
+                          Updated: {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                        </div>
+                        {row.holidayReasons && (
+                          <div className="text-[9px] font-bold text-amber-600 italic truncate max-w-[150px]">
+                            {row.holidayReasons}
+                          </div>
                         )}
-                      </button>
-                      <button
-                        onClick={() => setDayEndReportOpen(false)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs"
-                      >
-                        Close
-                      </button>
+                      </div>
                     </div>
+                  ))}
+                  {dayEndGroupedDisplay.length === 0 && (
+                    <div className="bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-100">
+                      <p className="text-gray-400 font-bold">No records found for this view</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop View: Table */}
+                <div className="hidden md:block bg-white rounded-[2.5rem] border border-gray-200 shadow-2xl overflow-hidden">
+                  <div className="overflow-x-auto min-h-[400px]">
+                    <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+                      <thead>
+                        <tr className="bg-gray-900 text-white">
+                          <th className="px-6 py-5 w-[180px] text-[10px] font-black uppercase tracking-widest">
+                            <select
+                              value={dayEndFilters.college}
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-black"
+                            >
+                              <option value="" className="text-gray-900">COLLEGE</option>
+                              {dayEndFilterOptions.colleges.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                            </select>
+                          </th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest">
+                            <select
+                              value={dayEndFilters.batch}
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-black"
+                            >
+                              <option value="" className="text-gray-900">BATCH</option>
+                              {dayEndFilterOptions.batches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                            </select>
+                          </th>
+                          <th className="px-6 py-5 w-[150px] text-[10px] font-black uppercase tracking-widest text-center">Branch & Sem</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Students</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Absent</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Present</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-center">Status %</th>
+                          <th className="px-6 py-5 w-[150px] text-[10px] font-black uppercase tracking-widest text-right">No Class Work</th>
+                          <th className="px-6 py-5 w-[120px] text-[10px] font-black uppercase tracking-widest text-right">Updated At</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {dayEndGroupedDisplay.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50/30 transition-colors group">
+                            <td className="px-6 py-4 text-xs font-bold text-gray-700 truncate" title={row.college}>{row.college || '—'}</td>
+                            <td className="px-6 py-4 text-xs font-black text-blue-600">{row.batch || '—'}</td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="text-[10px] font-black text-gray-900 uppercase truncate" title={row.branch}>{row.branch || '—'}</div>
+                              <div className="text-[10px] font-bold text-gray-400">Year {row.year} • Sem {row.semester}</div>
+                            </td>
+                            <td className="px-6 py-4 text-right font-black text-gray-900">{row.totalStudents ?? 0}</td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="bg-rose-50 text-rose-700 px-2.5 py-1 rounded-xl font-black text-[10px]">
+                                {row.absentToday ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-xl font-black text-[10px]">
+                                {row.presentToday ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col items-center gap-1.5">
+                                <span className={`text-[10px] font-black ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
+                                </span>
+                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                                  <div
+                                    className={`h-full transition-all duration-1000 ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                    style={{ width: `${row.totalStudents > 0 ? (row.presentToday / row.totalStudents * 100) : 0}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex flex-col items-end">
+                                <span className="font-black text-amber-600 text-xs">{row.holidayToday ?? 0}</span>
+                                {row.holidayReasons && <span className="text-[9px] font-bold text-gray-400 truncate max-w-[120px] uppercase tracking-tighter" title={row.holidayReasons}>{row.holidayReasons}</span>}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 tabular-nums">
+                              {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
             </div>
+
+            <div className="p-6 border-t bg-white flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <button
+                  onClick={() => handleDayEndDownload('xlsx')}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95"
+                >
+                  <Download size={18} />
+                  Excel
+                </button>
+                <button
+                  onClick={() => handleDayEndDownload('pdf')}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95"
+                >
+                  <FileText size={18} />
+                  PDF
+                </button>
+              </div>
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button
+                  onClick={handleSendDayEndReports}
+                  disabled={sendingReports}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform transition-all hover:-translate-y-0.5 disabled:opacity-50 active:scale-90"
+                >
+                  {sendingReports ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />}
+                  <span>Broadcast to Admin</span>
+                </button>
+                <button
+                  onClick={() => setDayEndReportOpen(false)}
+                  className="hidden sm:block px-6 py-3 border border-gray-200 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 transition-all active:scale-95"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* Holiday Reason Modal */}
       {
         holidayReasonModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-6">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 flex items-center justify-between border-b border-gray-200">
                 <div>
@@ -3211,7 +3155,7 @@ const Attendance = () => {
       {/* Delete Confirmation Modal */}
       {
         deleteConfirmModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-6">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 flex items-center justify-between border-b border-gray-200">
                 <div>
@@ -4076,7 +4020,7 @@ const Attendance = () => {
       {/* SMS Dispatch Summary Modal */}
       {
         smsModalOpen && smsResults.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
               {/* Modal Header */}
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -4268,7 +4212,7 @@ const Attendance = () => {
       {/* Holiday Alert Modal - Shows for both Public and Institute Holidays */}
       {
         showHolidayAlert && (nonWorkingDayDetails.isNonWorkingDay || customHolidayForDate || publicHolidayMatches.length > 0 || selectedDateIsSunday) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
               <div className="flex items-start gap-4">
                 <div className="rounded-full bg-amber-100 p-3 flex-shrink-0">
@@ -4379,7 +4323,7 @@ const Attendance = () => {
       {/* Attendance Report Modal */}
       {
         showReportModal && attendanceReport && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 px-4">
             <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl border border-gray-200 max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">Attendance Report</h2>

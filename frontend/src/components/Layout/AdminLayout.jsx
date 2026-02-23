@@ -52,6 +52,8 @@ import {
   FRONTEND_MODULES,
   FRONTEND_TO_BACKEND_MAP,
   hasPermission,
+  ROLE_LABELS,
+  USER_ROLES,
 } from "../../constants/rbac";
 import toast from "react-hot-toast";
 
@@ -64,19 +66,6 @@ const NAV_ITEMS = [
     label: "Dashboard",
     permission: FRONTEND_MODULES.DASHBOARD,
   },
-  {
-    path: "/announcements",
-    icon: Megaphone,
-    label: "Announcements",
-    permission: FRONTEND_MODULES.ANNOUNCEMENTS,
-  },
-  {
-    path: "/clubs",
-    icon: Users,
-    label: "Clubs",
-    permission: FRONTEND_MODULES.ANNOUNCEMENTS,
-  }, // Reusing announcement permission for now, or use a new one if available.
-
   {
     path: "/students",
     icon: Users,
@@ -98,12 +87,6 @@ const NAV_ITEMS = [
     ],
   },
   {
-    path: "/promotions",
-    icon: TrendingUp,
-    label: "Promotions",
-    permission: FRONTEND_MODULES.PROMOTIONS,
-  },
-  {
     path: "/attendance",
     icon: CalendarCheck,
     label: "Attendance",
@@ -116,54 +99,20 @@ const NAV_ITEMS = [
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view'
       },
-      {
+      // Hourly Attendance hidden as requested
+      /* {
         path: "/attendance-monitoring",
         label: "Hourly Attendance",
         icon: Clock,
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view_hourly'
-      },
+      }, */
       {
         path: "/internship-management",
         label: "Internship Attendance",
         icon: Briefcase,
         permission: FRONTEND_MODULES.ATTENDANCE,
         action: 'view_internship'
-      }
-    ]
-  },
-
-
-  {
-    path: "/courses",
-    icon: Settings,
-    label: "Settings",
-    permission: FRONTEND_MODULES.COURSES,
-  },
-
-  {
-    path: "/users",
-    icon: ShieldCheck,
-    label: "User Management",
-    permission: FRONTEND_MODULES.USERS,
-  },
-  {
-    path: "/faculty-management",
-    icon: GraduationCap,
-    label: "Faculty Members",
-    permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
-    subItems: [
-      {
-        path: "/faculty-management",
-        label: "Faculty List",
-        icon: UserSquare,
-        permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
-      },
-      {
-        path: "/feedback-forms",
-        label: "Feed Back",
-        icon: MessageSquare,
-        permission: FRONTEND_MODULES.FACULTY_MANAGEMENT,
       }
     ]
   },
@@ -204,6 +153,24 @@ const NAV_ITEMS = [
     ],
   },
   {
+    path: "/users",
+    icon: ShieldCheck,
+    label: "User Management",
+    permission: FRONTEND_MODULES.USERS,
+  },
+  {
+    path: "/announcements",
+    icon: Megaphone,
+    label: "Announcements",
+    permission: FRONTEND_MODULES.ANNOUNCEMENTS,
+  },
+  {
+    path: "/clubs",
+    icon: Users,
+    label: "Clubs",
+    permission: FRONTEND_MODULES.ANNOUNCEMENTS,
+  }, // Reusing announcement permission for now, or use a new one if available.
+  {
     path: "/services",
     icon: Briefcase,
     label: "Services",
@@ -223,6 +190,12 @@ const NAV_ITEMS = [
       },
     ],
   },
+  {
+    path: "/courses",
+    icon: Settings,
+    label: "Settings",
+    permission: FRONTEND_MODULES.COURSES,
+  },
 ];
 
 const AdminLayout = () => {
@@ -233,6 +206,7 @@ const AdminLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState(new Set()); // Collapsed by default
   const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
 
   const handleLogout = () => {
     logout();
@@ -403,32 +377,21 @@ const AdminLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 flex overflow-hidden">
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm sticky top-0 z-30">
-        <h1 className="text-lg sm:text-xl font-bold text-gray-900 heading-font">
-          Admin Panel
-        </h1>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2.5 rounded-lg hover:bg-blue-100 active:bg-blue-200 text-gray-700 hover:text-blue-700 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-          aria-label="Toggle menu"
-        >
-          {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
+    <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 relative">
+      {/* 1. Global Sidebars & Overlays (Stacking Context Fix) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[90] lg:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-      {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 z-40 h-screen premium-stars-sidebar border-r border-white/10
-          transition-[width,transform] duration-300 ease-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-          lg:translate-x-0
-          ${sidebarCollapsed ? "w-16" : "w-56"}
-          flex flex-col
+          hidden lg:flex flex-col bg-[#11180F] border-r border-white/10 transition-all duration-300 ease-in-out z-40
+          ${sidebarCollapsed ? "w-20" : "w-64"}
+          premium-stars-sidebar
         `}
-        style={{ willChange: "width, transform" }}
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo and Close Button */}
@@ -442,12 +405,17 @@ const AdminLayout = () => {
                 </div>
               )}
               {!sidebarCollapsed && (
-                <span className="text-xl font-bold tracking-wider !text-white heading-font">
-                  PYDAH
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold tracking-wider !text-white heading-font">
+                    PYDAH
+                  </span>
+                  <span className="text-[10px] text-gray-300 font-medium uppercase tracking-tight">
+                    {user?.role ? (ROLE_LABELS[user.role] || user.role.replace('_', ' ')) : "ADMIN"}
+                  </span>
+                </div>
               )}
             </div>
-            {/* Toggle button for mobile and desktop */}
+            {/* Toggle button for sidebar */}
             <button
               onClick={() => {
                 if (window.innerWidth < 1024) {
@@ -470,9 +438,7 @@ const AdminLayout = () => {
           {/* Navigation */}
           <nav
             className={`flex-1 space-y-1 transition-[padding] duration-300 ease-out overflow-y-auto overflow-x-hidden premium-sidebar-nav ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
-            style={{
-              scrollBehavior: "smooth",
-            }}
+            style={{ scrollBehavior: "smooth" }}
           >
             {filteredNavItems.map((item) => {
               const Icon = item.icon;
@@ -481,112 +447,40 @@ const AdminLayout = () => {
               const isActive = isRouteActive(item.path);
 
               if (hasSubItems && !sidebarCollapsed) {
-                // Auto-expand if any sub-item is active
-                const shouldAutoExpand = item.subItems.some(
-                  (subItem) => location.pathname === subItem.path,
-                );
+                const shouldAutoExpand = item.subItems.some(subItem => location.pathname === subItem.path);
                 const isActuallyExpanded = isExpanded || shouldAutoExpand;
 
                 return (
                   <div key={item.path} className="space-y-1">
                     <button
                       onClick={() => {
-                        // Close workspace dropdown when opening other menus
                         setWorkspaceDropdownOpen(false);
                         toggleSubmenu(item.path);
-                        setSidebarOpen(false);
                       }}
-                      className={`
-                        w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation premium-sidebar-link
-                        gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px]
-                        ${isActive && !isActuallyExpanded
-                          ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
-                          : isActuallyExpanded
-                            ? "bg-white/5 text-white font-medium"
-                            : "text-gray-100/90 hover:bg-white/10 hover:text-white"
-                        }
-                      `}
-                      aria-label={
-                        isActuallyExpanded ? "Collapse menu" : "Expand menu"
-                      }
+                      className={`w-full flex items-center justify-between rounded-lg transition-all duration-200 gap-3 px-3 py-2.5 min-h-[44px]
+                        ${isActive && !isActuallyExpanded ? "bg-[#4a5d3f] text-white font-semibold shadow-md active" : isActuallyExpanded ? "bg-white/5 text-white font-medium" : "text-gray-100/90 hover:bg-white/10 hover:text-white"}`}
                     >
                       <div className="flex items-center gap-2 flex-1">
                         <Icon size={18} className="flex-shrink-0" />
-                        <span className="whitespace-nowrap font-medium text-xs">
-                          {item.label}
-                        </span>
+                        <span className="whitespace-nowrap font-medium text-xs">{item.label}</span>
                       </div>
-                      {isActuallyExpanded ? (
-                        <ChevronUp
-                          size={18}
-                          className="flex-shrink-0 transition-transform duration-200"
-                        />
-                      ) : (
-                        <ChevronDown
-                          size={18}
-                          className="flex-shrink-0 transition-transform duration-200"
-                        />
-                      )}
+                      {isActuallyExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                     </button>
                     {isActuallyExpanded && (
                       <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-[#4a5d3f] bg-gradient-to-r from-white/5 to-transparent rounded-r-md">
-                        {item.subItems.map((subItem, index) => {
-                          const isSubActive =
-                            location.pathname === subItem.path;
-
-                          if (subItem.isExternal) {
-                            const SubIcon = subItem.icon || LayoutDashboard;
-                            return (
-                              <a
-                                key={subItem.path}
-                                href={subItem.isTicketApp ? getTicketAppUrl(subItem.path) : subItem.path}
-                                className={`
-                                    flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
-                                    gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
-                                    text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1
-                                  `}
-                              >
-                                <SubIcon size={14} className={`flex-shrink-0 ${isSubActive ? "text-white" : "text-gray-400"}`} />
-                                <span className="whitespace-nowrap">
-                                  {subItem.label}
-                                </span>
-                              </a>
-                            );
-                          }
-
+                        {item.subItems.map((subItem) => {
+                          const isSubActive = location.pathname === subItem.path;
                           const SubIcon = subItem.icon || LayoutDashboard;
                           return (
                             <Link
                               key={subItem.path}
                               to={subItem.path}
-                              onClick={() => {
-                                setSidebarOpen(false);
-                                // Keep expanded when clicking sub-items
-                                if (!expandedItems.has(item.path)) {
-                                  setExpandedItems(
-                                    (prev) => new Set([...prev, item.path]),
-                                  );
-                                }
-                              }}
-                              className={`
-                                flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
-                                gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
-                                ${isSubActive
-                                  ? "bg-[#4a5d3f] text-white font-semibold shadow-lg transform scale-[1.02] active"
-                                  : "text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1"
-                                }
-                              `}
+                              onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                              className={`flex items-center rounded-md transition-all duration-200 gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
+                                ${isSubActive ? "bg-[#4a5d3f] text-white font-semibold shadow-lg scale-[1.02] active" : "text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1"}`}
                             >
-                              <SubIcon
-                                size={14}
-                                className={`flex-shrink-0 ${isSubActive ? "text-white" : "text-gray-400"}`}
-                              />
-                              <span className="whitespace-nowrap">
-                                {subItem.label}
-                              </span>
-                              {isSubActive && (
-                                <div className="absolute right-2 w-1 h-1 bg-white rounded-full"></div>
-                              )}
+                              <SubIcon size={14} className={isSubActive ? "text-white" : "text-gray-400"} />
+                              <span className="whitespace-nowrap">{subItem.label}</span>
                             </Link>
                           );
                         })}
@@ -596,225 +490,232 @@ const AdminLayout = () => {
                 );
               }
 
-              // Handle collapsed sidebar - show as simple link for items with sub-items
-              if (hasSubItems && sidebarCollapsed) {
-                // If on a sub-route, show parent as active
-                const hasActiveSubItem = item.subItems?.some(
-                  (subItem) => location.pathname === subItem.path,
-                );
-                const isActiveState = isActive || hasActiveSubItem;
-
-                if (item.isExternal) {
-                  return (
-                    <a
-                      key={item.path}
-                      href={item.isTicketApp ? getTicketAppUrl(item.subItems ? (item.subItems[0]?.path || item.path) : item.path) : (item.subItems ? (item.subItems[0]?.path || item.path) : item.path)}
-                      className={`
-                          flex items-center justify-center rounded-md transition-colors premium-sidebar-link
-                          px-2 py-3
-                          text-gray-100/90 hover:bg-white/10 hover:text-white
-                        `}
-                      title={item.label}
-                    >
-                      <Icon size={20} className="flex-shrink-0" />
-                    </a>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.subItems[0]?.path || item.path}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`
-                      flex items-center justify-center rounded-md transition-colors premium-sidebar-link
-                      px-2 py-3
-                      ${isActiveState
-                        ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
-                        : "text-gray-100/90 hover:bg-white/10 hover:text-white"
-                      }
-                    `}
-                    title={item.label}
-                  >
-                    <Icon size={20} className="flex-shrink-0" />
-                  </Link>
-                );
-              }
-
-              if (item.isExternal) {
-                return (
-                  <a
-                    key={item.path}
-                    href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
-                    className={`
-                        flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
-                        ${sidebarCollapsed ? "justify-center px-1.5 py-2.5" : "gap-2 px-2.5 py-1.5"}
-                        min-h-[36px]
-                        text-gray-100/90 hover:bg-white/10 hover:text-white
-                      `}
-                    title={sidebarCollapsed ? item.label : ""}
-                  >
-                    <Icon size={18} className="flex-shrink-0" />
-                    <span
-                      className={`
-                          transition-opacity duration-300 ease-out whitespace-nowrap overflow-hidden text-xs
-                          ${sidebarCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto"}
-                        `}
-                    >
-                      {item.label}
-                    </span>
-                  </a>
-                );
-              }
-
               return (
                 <Link
                   key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`
-                    flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
-                    ${sidebarCollapsed ? "justify-center px-1.5 py-2.5" : "gap-2 px-2.5 py-1.5"}
-                    min-h-[36px]
-                    ${isActive
-                      ? "bg-[#4a5d3f] text-white font-semibold shadow-md active"
-                      : "text-gray-100/90 hover:bg-white/10 hover:text-white"
-                    }
-                  `}
+                  to={item.subItems?.[0]?.path || item.path}
+                  onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  className={`flex items-center rounded-md transition-all duration-200 
+                    ${sidebarCollapsed ? "justify-center px-1.5 py-3" : "gap-2 px-2.5 py-2"}
+                    ${isActive ? "bg-[#4a5d3f] text-white font-semibold shadow-md active" : "text-gray-100/90 hover:bg-white/10 hover:text-white"}`}
                   title={sidebarCollapsed ? item.label : ""}
                 >
                   <Icon size={18} className="flex-shrink-0" />
-                  <span
-                    className={`
-                      transition-opacity duration-300 ease-out whitespace-nowrap overflow-hidden text-xs
-                      ${sidebarCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto"}
-                    `}
-                  >
-                    {item.label}
-                  </span>
+                  {!sidebarCollapsed && <span className="text-xs">{item.label}</span>}
                 </Link>
               );
             })}
           </nav>
 
-          {/* Workspace Dropdown - only show when user has access to at least one workspace item (e.g. Ticket Management) */}
-          {hasWorkspaceAccess && (
-            <div className={`border-t border-white/10 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}>
+          {/* Footer of Sidebar */}
+          <div className={`border-t border-white/10 ${sidebarCollapsed ? "p-2" : "p-4"} space-y-4`}>
+            {hasWorkspaceAccess && (
               <div className="space-y-1">
                 <button
-                  onClick={() => {
-                    // Close all other expanded items when opening workspace
-                    setExpandedItems(new Set());
-                    setWorkspaceDropdownOpen(!workspaceDropdownOpen);
-                    setSidebarOpen(false);
-                  }}
-                  className={`
-                    w-full flex items-center justify-between rounded-lg transition-all duration-200 touch-manipulation premium-sidebar-link
-                    gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px]
-                    ${workspaceDropdownOpen
-                      ? "bg-white/5 text-white font-medium"
-                      : "text-gray-100/90 hover:bg-white/10 hover:text-white"
-                    }
-                  `}
-                  aria-label={workspaceDropdownOpen ? "Collapse workspace menu" : "Expand workspace menu"}
+                  onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
+                  className={`w-full flex items-center justify-between rounded-lg transition-all duration-200 gap-3 px-3 py-2.5 min-h-[44px]
+                    ${workspaceDropdownOpen ? "bg-white/5 text-white font-medium shadow-sm" : "text-gray-100/90 hover:bg-white/10 hover:text-white"}`}
                 >
-                  <div className={`flex items-center gap-2 flex-1 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+                  <div className="flex items-center gap-2 flex-1">
                     <FolderTree size={18} className="flex-shrink-0" />
-                    {!sidebarCollapsed && (
-                      <span className="whitespace-nowrap font-medium text-xs">
-                        Workspace
-                      </span>
-                    )}
+                    {!sidebarCollapsed && <span className="text-xs font-medium">Workspace</span>}
                   </div>
-                  {!sidebarCollapsed && (
-                    workspaceDropdownOpen ? (
-                      <ChevronUp
-                        size={18}
-                        className="flex-shrink-0 transition-transform duration-200"
-                      />
-                    ) : (
-                      <ChevronDown
-                        size={18}
-                        className="flex-shrink-0 transition-transform duration-200"
-                      />
-                    )
-                  )}
+                  {!sidebarCollapsed && (workspaceDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
                 </button>
+
                 {workspaceDropdownOpen && !sidebarCollapsed && (
-                  <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-blue-300 bg-gradient-to-r from-blue-50/50 to-transparent rounded-r-md">
-                    <a
-                      href={getTicketAppUrl("/dashboard")}
-                      className="flex items-center rounded-md transition-all duration-200 touch-manipulation premium-sidebar-link
-                        gap-2 px-2 py-1.5 text-[11px] font-medium relative min-h-[36px]
-                        text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#4a5d3f]"></div>
-                      <span className="whitespace-nowrap">
-                        Maintenance Management
-                      </span>
-                    </a>
+                  <div className="ml-2 space-y-0.5 pl-6 py-2 border-l-2 border-indigo-500/50 bg-gradient-to-r from-white/5 to-transparent rounded-r-md">
+                    {/* Maintenance Management Link */}
+                    {(isFullAccessRole(user?.role) || (user?.permissions && hasModuleAccess(user.permissions, FRONTEND_MODULES.TICKETS)) || (Array.isArray(user?.modules) && user.modules.includes(FRONTEND_MODULES.TICKETS))) && (
+                      <a
+                        href={getTicketAppUrl('/tickets')}
+                        className="flex items-center rounded-md transition-all duration-200 gap-2 px-2 py-1.5 text-[11px] font-medium text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1 min-h-[32px]"
+                      >
+                        <Ticket size={14} className="text-gray-400" />
+                        <span>Maintenance Management</span>
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* User Info & Logout */}
-          <div
-            className={`border-t border-white/10 transition-[padding] duration-300 ease-out ${sidebarCollapsed ? "p-2" : "p-3 sm:p-4"}`}
-          >
-            <div className={`flex ${sidebarCollapsed ? "flex-col items-center" : "items-center justify-between"} gap-2`}>
-              <Link
-                to="/profile"
-                onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                className={`flex items-center gap-3 flex-1 min-w-0 group ${sidebarCollapsed ? "justify-center" : ""}`}
-                title={sidebarCollapsed ? "Profile" : ""}
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center flex-shrink-0 group-hover:ring-2 group-hover:ring-white/20 transition-all">
-                  <span className="text-white font-semibold text-sm">
-                    {user?.username?.charAt(0).toUpperCase()}
-                  </span>
+            )}
+            <div className={`flex items-center ${sidebarCollapsed ? "flex-col gap-3" : "justify-between"}`}>
+              <Link to="/profile" onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }} className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                  <span className="text-white text-xs font-bold">{user?.username?.charAt(0).toUpperCase()}</span>
                 </div>
-                {!sidebarCollapsed && (
-                  <span className="text-sm font-medium text-white truncate group-hover:text-blue-200 transition-colors">
-                    {user?.name || user?.username || "User"}
-                  </span>
-                )}
+                {!sidebarCollapsed && <span className="text-sm text-white truncate">{user?.name || user?.username}</span>}
               </Link>
-
-              <button
-                onClick={handleLogout}
-                className={`
-                  flex items-center justify-center rounded-md bg-white/5 text-gray-100 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200 
-                  ${sidebarCollapsed ? "w-10 h-10 mt-1" : "p-2"}
-                `}
-                title="Logout"
-              >
-                <LogOut size={sidebarCollapsed ? 20 : 18} />
+              <button onClick={handleLogout} className="p-2 rounded-lg hover:bg-red-500/10 text-gray-100 hover:text-red-400">
+                <LogOut size={18} />
               </button>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content */}
-      <main
-        className="flex-1 h-screen overflow-hidden flex flex-col relative z-0 premium-stars-content"
-      >
-        <div className="flex-1 overflow-x-hidden overflow-y-auto p-2 sm:p-2 lg:p-3 flex flex-col">
+      {/* 2. Main Content Area */}
+      <main className={`flex-1 h-screen overflow-y-auto overflow-x-hidden relative z-10 transition-all duration-300 pb-20 lg:pb-0`}>
+        <div className="p-4 lg:p-8 bg-gray-50/20 min-h-full">
           <Outlet />
         </div>
       </main>
+
+      {/* 3. Mobile Navigation Bar (Docked at Bottom) */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-2xl border-t border-gray-100/50 z-[80] pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.08)] rounded-t-[2.5rem] transition-all duration-500">
+        <div className="flex items-center justify-around h-20 px-4">
+          {filteredNavItems.slice(0, 4).map((item) => {
+            const Icon = item.icon;
+            const isActive = isRouteActive(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3 transition-all duration-300
+                  ${isActive ? "text-[#4a5d3f] -translate-y-1" : "text-gray-400"}`}
+              >
+                <div className={`relative p-2 rounded-2xl transition-all duration-300 ${isActive ? "bg-[#4a5d3f]/10 shadow-sm" : "hover:bg-gray-50"}`}>
+                  <Icon size={24} strokeWidth={isActive ? 2.5 : 1.5} />
+                  {isActive && (
+                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4a5d3f] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#4a5d3f]"></span>
+                    </span>
+                  )}
+                </div>
+                <span className={`text-[10px] font-black tracking-tighter uppercase transition-colors ${isActive ? "text-[#4a5d3f]" : "text-gray-400"}`}>
+                  {item.label === "User Management" ? "Users" : item.label}
+                </span>
+              </Link>
+            );
+          })}
+
+          <button
+            onClick={() => setMoreMenuOpen(true)}
+            className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3 transition-all duration-300
+              ${moreMenuOpen ? "text-[#4a5d3f] -translate-y-1" : "text-gray-400"}`}
+          >
+            <div className={`p-2 rounded-2xl transition-all duration-300 ${moreMenuOpen ? "bg-[#4a5d3f]/10 shadow-sm" : "hover:bg-gray-50"}`}>
+              <Menu size={24} strokeWidth={moreMenuOpen ? 2.5 : 1.5} />
+            </div>
+            <span className={`text-[10px] font-black tracking-tighter uppercase ${moreMenuOpen ? "text-[#4a5d3f]" : "text-gray-400"}`}>Menu</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Mobile "More Menu" Drawer */}
+      {moreMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-[100] flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setMoreMenuOpen(false)}
+          />
+
+          {/* Drawer */}
+          <div className="relative bg-white/95 backdrop-blur-2xl rounded-t-[3rem] p-8 shadow-2xl animate-fade-in-up max-h-[85vh] overflow-y-auto pb-safe border-t border-white/20">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8 opacity-50" />
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-2xl font-black text-gray-900 tracking-tight heading-font">Admin Menu</h3>
+                <p className="text-xs text-gray-500 font-medium">Quick access to all modules</p>
+              </div>
+              <button
+                onClick={() => setMoreMenuOpen(false)}
+                className="p-3 bg-gray-100 hover:bg-red-50 hover:text-red-500 rounded-2xl transition-all active:scale-90"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-10">
+              {filteredNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = isRouteActive(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMoreMenuOpen(false)}
+                    className={`flex flex-col items-center gap-3 p-4 rounded-3xl transition-all duration-300 border
+                      ${isActive
+                        ? "bg-[#4a5d3f] text-white border-[#4a5d3f] shadow-xl shadow-[#4a5d3f]/20 -translate-y-1"
+                        : "bg-white text-gray-600 border-gray-100 hover:border-gray-200 active:scale-95"}`}
+                  >
+                    <div className={`p-3 rounded-2xl transition-all ${isActive ? "bg-white/20 shadow-inner" : "bg-gray-50 text-gray-400"}`}>
+                      <Icon size={24} strokeWidth={isActive ? 2.5 : 1.5} />
+                    </div>
+                    <span className="text-[10px] font-black text-center line-clamp-1 leading-tight tracking-tight uppercase px-1">
+                      {item.label === "User Management" ? "Users" : item.label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <div className="space-y-4 pt-6 border-t border-gray-100">
+              {/* Workspace Links in Mobile Menu */}
+              {hasWorkspaceAccess && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Workspaces</p>
+                    <div className="h-px bg-gray-100 flex-1 ml-4" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {(isFullAccessRole(user?.role) || (user?.permissions && hasModuleAccess(user.permissions, FRONTEND_MODULES.TICKETS)) || (Array.isArray(user?.modules) && user.modules.includes(FRONTEND_MODULES.TICKETS))) && (
+                      <a
+                        href={getTicketAppUrl('/tickets')}
+                        className="group flex items-center justify-between p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-700 font-bold active:scale-[0.98] transition-all shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-white shadow-sm group-hover:scale-110 transition-transform">
+                            <Ticket size={20} className="text-indigo-600" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm">Maintenance Management</span>
+                            <span className="text-[10px] text-indigo-500/70 font-medium">External Application</span>
+                          </div>
+                        </div>
+                        <ChevronRight size={18} className="text-indigo-300" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-gray-50/80 border border-gray-100 shadow-inner">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg ring-4 ring-white">
+                  {user?.username?.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gray-900 leading-tight">{user?.name || user?.username}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                    {user?.role ? (ROLE_LABELS[user.role] || user.role.replace('_', ' ')) : "ADMIN"}
+                  </p>
+                </div>
+                <Link
+                  to="/profile"
+                  onClick={() => setMoreMenuOpen(false)}
+                  className="p-2.5 bg-white rounded-xl text-gray-400 hover:text-gray-600 shadow-sm border border-gray-100"
+                >
+                  <Settings size={18} />
+                </Link>
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="w-full h-14 flex items-center justify-center gap-2 rounded-2xl bg-rose-50 text-rose-600 font-bold border border-rose-100 active:bg-rose-100 transition-colors shadow-sm"
+              >
+                <LogOut size={20} strokeWidth={2.5} />
+                <span className="tracking-tight">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 export default AdminLayout;

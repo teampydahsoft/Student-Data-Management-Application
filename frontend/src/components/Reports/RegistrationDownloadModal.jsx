@@ -128,7 +128,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('college', e.target.value)}
                                 >
                                     <option value="">All Colleges</option>
-                                    {(filterOptions.colleges || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.colleges || [])].map(opt => <option key={`reg-col-${opt}`} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             {/* Batch */}
@@ -140,7 +140,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('batch', e.target.value)}
                                 >
                                     <option value="">All Batches</option>
-                                    {(filterOptions.batches || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.batches || [])].map(opt => <option key={`reg-batch-${opt}`} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             {/* Program */}
@@ -152,7 +152,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('course', e.target.value)}
                                 >
                                     <option value="">All Programs</option>
-                                    {(filterOptions.courses || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.courses || [])].map(opt => <option key={`reg-course-${opt}`} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             {/* Branch */}
@@ -164,7 +164,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('branch', e.target.value)}
                                 >
                                     <option value="">All Branches</option>
-                                    {(filterOptions.branches || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.branches || [])].map(opt => <option key={`reg-branch-${opt}`} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             {/* Year */}
@@ -256,7 +256,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                             if (idx >= 5) return null;
 
                                             return (
-                                                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                                <tr key={`${row.batch}-${row.course}-${row.branch}-${row.current_year}-${row.current_semester}-${idx}`} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-4 py-3 text-gray-900">{row.batch || '-'}</td>
                                                     <td className="px-4 py-3 text-gray-900 font-medium">{row.course || '-'}</td>
                                                     <td className="px-4 py-3 text-gray-700">{row.branch || '-'}</td>

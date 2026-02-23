@@ -337,7 +337,7 @@ const AddStudent = () => {
     if (!selectedCourse || !selectedCourseName) {
       return [];
     }
-    
+
     // Get branches from the selected course only
     // The backend already filters branches by course_id, so selectedCourse.branches
     // should only contain branches for this specific course
@@ -1280,14 +1280,14 @@ const AddStudent = () => {
                   >
                     <option value="">Select Course</option>
                     {quickFilterCourses.length > 0
-                      ? quickFilterCourses.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))
-                      : availableCourses.map((course) => (
-                          <option key={course.name} value={course.name}>
-                            {course.name}
-                          </option>
-                        ))}
+                      ? [...new Set(quickFilterCourses)].map((name) => (
+                        <option key={`qf-course-${name}`} value={name}>{name}</option>
+                      ))
+                      : [...new Map(availableCourses.map(c => [c.name, c])).values()].map((course) => (
+                        <option key={`course-${course.id || course.name}`} value={course.name}>
+                          {course.name}
+                        </option>
+                      ))}
                   </select>
                 ) : (
                   <input
@@ -1320,14 +1320,14 @@ const AddStudent = () => {
                   >
                     <option value="">Select Branch</option>
                     {quickFilterBranches.length > 0
-                      ? quickFilterBranches.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))
-                      : branchOptions.map((branch) => (
-                          <option key={branch.name} value={branch.name}>
-                            {branch.name}
-                          </option>
-                        ))}
+                      ? [...new Set(quickFilterBranches)].map((name) => (
+                        <option key={`qf-branch-${name}`} value={name}>{name}</option>
+                      ))
+                      : [...new Map(branchOptions.map(b => [b.name, b])).values()].map((branch) => (
+                        <option key={`branch-${branch.id || branch.name}`} value={branch.name}>
+                          {branch.name}
+                        </option>
+                      ))}
                   </select>
                 ) : (
                   <input

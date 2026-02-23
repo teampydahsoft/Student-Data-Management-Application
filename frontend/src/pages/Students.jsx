@@ -23,7 +23,12 @@ import {
   Book,
   Calendar,
   History,
-  MessageSquare
+  MessageSquare,
+  User,
+  AlertTriangle,
+  Mail,
+  CreditCard,
+  Loader2
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -102,6 +107,83 @@ const maskMobileNumber = (mobile) => {
   const maskedPart = 'x'.repeat(mobileStr.length - 3);
   return maskedPart + lastThree;
 };
+
+// Helper component for sidebar details
+const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', options = [], onChange }) => (
+  <div className="flex flex-col gap-1.5">
+    <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+      {icon}
+      <span>{label}</span>
+    </div>
+    {editable ? (
+      type === 'select' ? (
+        <select
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans"
+        >
+          <option value="">Select {label}</option>
+          {options.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans placeholder-gray-300"
+          placeholder={`Enter ${label.toLowerCase()}`}
+        />
+      )
+    ) : (
+      <div className="text-sm font-bold text-gray-900">{value || '-'}</div>
+    )}
+  </div>
+);
+
+// Helper components for Details tab
+const SummaryPill = ({ label, value, icon, color }) => {
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    indigo: 'bg-indigo-50 text-indigo-600',
+    green: 'bg-green-50 text-green-600',
+    violet: 'bg-violet-50 text-violet-600',
+    orange: 'bg-orange-50 text-orange-600',
+    amber: 'bg-amber-50 text-amber-600',
+  };
+
+  return (
+    <div className={`flex flex-col gap-2 p-4 rounded-2xl ${colorClasses[color] || 'bg-gray-50 text-gray-600'}`}>
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-[10px] font-black uppercase tracking-widest opacity-80">{label}</span>
+      </div>
+      <div className="text-sm font-bold truncate">
+        {value || '-'}
+      </div>
+    </div>
+  );
+};
+
+const SectionHeader = ({ title, sub }) => (
+  <div className="flex flex-col gap-1 border-b border-gray-100 pb-4 mb-6">
+    <h4 className="text-lg font-black text-gray-900 tracking-tight">{title}</h4>
+    {sub && <p className="text-xs font-bold text-gray-500">{sub}</p>}
+  </div>
+);
+
+const DetailTile = ({ label, value, icon }) => (
+  <div className="flex gap-4 p-4 rounded-2xl border border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm transition-all">
+    <div className="w-10 h-10 shrink-0 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+      {icon}
+    </div>
+    <div className="flex flex-col justify-center min-w-0">
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
+      <p className="text-sm font-bold text-gray-900 truncate">{value || '-'}</p>
+    </div>
+  </div>
+);
 
 const Students = () => {
   const location = useLocation();
@@ -971,12 +1053,12 @@ const Students = () => {
       if (response.data?.success) {
         const data = response.data.data || {};
         setQuickFilterOptions({
-          batches: data.batches || [],
-          colleges: data.colleges || [],
-          courses: data.courses || [],
-          branches: data.branches || [],
-          years: data.years || [],
-          semesters: data.semesters || []
+          batches: [...new Set(data.batches || [])],
+          colleges: [...new Set(data.colleges || [])],
+          courses: [...new Set(data.courses || [])],
+          branches: [...new Set(data.branches || [])],
+          years: [...new Set(data.years || [])],
+          semesters: [...new Set(data.semesters || [])]
         });
       }
       return true;
@@ -2648,9 +2730,9 @@ const Students = () => {
                 </div>
               </div>
             )}
-            {/* Desktop Table View */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full" style={{ tableLayout: 'auto' }}>
+            {/* Desktop Table View - Responsive Container */}
+            <div className="hidden lg:block responsive-table-container">
+              <table className="w-full responsive-table" style={{ tableLayout: 'auto' }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="py-1 px-1.5 text-xs font-semibold text-gray-700 text-center w-10 sticky left-0 bg-gray-50 z-20 border-r border-gray-200">
@@ -3124,7 +3206,7 @@ const Students = () => {
 
       {showModal && selectedStudent && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto"
           onClick={(e) => {
             // Close modal when clicking on backdrop
             if (e.target === e.currentTarget) {
@@ -3138,1040 +3220,1090 @@ const Students = () => {
           }}
         >
           <div
-            className="bg-gray-50 rounded-lg sm:rounded-xl shadow-2xl max-w-7xl w-full max-h-[95vh] sm:h-[95vh] flex flex-col overflow-hidden"
+            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Student Details</h3>
-                <p className="text-xs sm:text-sm text-gray-500 mt-1">View and manage student information</p>
+            <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 py-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-inner">
+                  <User size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Student Profile</h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">
+                    {editMode ? 'Editing Mode' : 'Identification & Records'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {!editMode && (
-                  <>
-                    {/* View Password button removed */}
-                    {/* View Password button removed */}
-                    {canEditStudents && !isCashier && (
-                      <>
-                        <button
-                          onClick={handleResetPassword}
-                          disabled={resettingPassword}
-                          className="flex items-center gap-2 bg-orange-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-orange-700 active:bg-orange-800 transition-colors touch-manipulation min-h-[44px] text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Reset Password"
-                        >
-                          <RefreshCw size={16} className={`sm:w-[18px] sm:h-[18px] ${resettingPassword ? 'animate-spin' : ''}`} />
-                          <span className="hidden sm:inline">Reset Password</span>
-                          <span className="sm:hidden">Reset</span>
-                        </button>
-                        <button onClick={handleEdit} className="flex items-center gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors touch-manipulation min-h-[44px] text-sm sm:text-base">
-                          <Edit size={16} className="sm:w-[18px] sm:h-[18px]" />
-                          <span className="hidden sm:inline">Edit</span>
-                          <span className="sm:hidden">Edit</span>
-                        </button>
-                      </>
-                    )}
-                  </>
+              <div className="flex items-center gap-3">
+                {!editMode && canEditStudents && !isCashier && (
+                  <button
+                    onClick={handleEdit}
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs transition-all shadow-lg shadow-indigo-200 active:scale-95"
+                  >
+                    <Edit size={16} />
+                    <span className="hidden sm:inline">Edit Profile</span>
+                  </button>
                 )}
-                <button onClick={() => {
-                  setShowModal(false);
-                  setActiveStudentTab('details');
-                  setViewingPassword(false);
-                  setStudentPassword(null);
-                }} className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center">
-                  <X size={20} />
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    setActiveStudentTab('details');
+                  }}
+                  className="p-2.5 hover:bg-red-50 rounded-2xl text-gray-400 hover:text-red-500 transition-all active:scale-95"
+                >
+                  <X size={24} />
                 </button>
               </div>
             </div>
 
-            {/* Password Display Modal */}
+            {/* Password Display Modal - (Keep as is, it's already a centered modal) */}
             {viewingPassword && studentPassword && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <Key size={24} className="text-green-600" />
-                      Student Login Credentials
-                    </h3>
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 animate-fade-in">
+                <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 border border-gray-100">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
+                        <Key size={20} />
+                      </div>
+                      <h3 className="text-lg font-black text-gray-900 tracking-tight">Credentials</h3>
+                    </div>
                     <button
                       onClick={() => {
                         setViewingPassword(false);
                         setStudentPassword(null);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="p-2 hover:bg-gray-100 rounded-xl transition-all"
                     >
                       <X size={20} />
                     </button>
                   </div>
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 font-mono text-lg">
-                        {studentPassword.username}
-                      </div>
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Username</label>
+                      <p className="font-mono text-lg font-bold text-gray-900 break-all">{studentPassword.username}</p>
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 font-mono text-lg">
-                        {studentPassword.password}
-                      </div>
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Password</label>
+                      <p className="font-mono text-lg font-bold text-indigo-600 break-all">{studentPassword.password}</p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Password format: First 4 letters of name + last 4 digits of mobile number
-                    </p>
+                    <div className="flex items-start gap-2 text-[10px] text-gray-400 font-bold bg-blue-50/50 p-3 rounded-xl border border-blue-50">
+                      <AlertTriangle size={14} className="shrink-0 text-blue-500" />
+                      <p>FORMAT: FIRST 4 LETTERS OF NAME + LAST 4 DIGITS OF MOBILE</p>
+                    </div>
                   </div>
-                  <div className="mt-6 flex justify-end">
+                  <div className="mt-8">
                     <button
                       onClick={() => {
                         setViewingPassword(false);
                         setStudentPassword(null);
                       }}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                      className="w-full py-3 bg-gray-900 text-white rounded-2xl font-black text-xs hover:bg-gray-800 transition-all active:scale-95 shadow-lg shadow-gray-200"
                     >
-                      Close
+                      Dismiss
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Main Content - Two Column Layout */}
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col lg:flex-row">
-              {/* Left Sidebar - Student Photo & Key Info (scrollable to prevent overlap) */}
-              <div className="w-full lg:w-80 lg:min-w-[20rem] bg-white border-b lg:border-b-0 lg:border-r border-gray-200 p-4 sm:p-6 flex-shrink-0 flex flex-col min-h-0 overflow-y-auto">
-                <div className="space-y-5 flex-shrink-0">
-                  {/* Student Photo */}
-                  {canViewField('student_photo') && (
-                    <div className="flex flex-col items-center">
-                      <div className="relative">
-                        <div className={`w-32 h-32 sm:w-40 sm:h-40 rounded-xl bg-gray-100 border-2 border-gray-200 overflow-hidden flex items-center justify-center shadow-sm relative ${editMode && !photoUploading ? 'cursor-pointer hover:border-blue-400 active:border-blue-500 transition-colors' : ''} ${photoUploading ? 'cursor-wait opacity-75' : ''}`}>
+            {/* Main Content Layout */}
+            <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row">
+              {/* Left Sidebar - Key Identity */}
+              <div className="w-full lg:w-[320px] bg-white border-b lg:border-b-0 lg:border-r border-gray-100 p-4 lg:p-6 flex-shrink-0 flex flex-col lg:overflow-y-auto">
+                <div className="space-y-4 lg:space-y-6">
+                  {/* Photo & Basic Info */}
+                  <div className="flex flex-row lg:flex-col items-center gap-4 lg:gap-6">
+                    {canViewField('student_photo') && (
+                      <div className="relative shrink-0">
+                        <div className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-36 lg:h-36 rounded-2xl lg:rounded-[2.5rem] bg-gray-50 border-2 border-gray-100 overflow-hidden flex items-center justify-center shadow-inner relative ${editMode && !photoUploading ? 'cursor-pointer hover:border-indigo-400 p-1' : ''}`}>
                           {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
                             <img
-                              key={editData.student_photo}
                               src={getStaticFileUrlDirect(editData.student_photo)}
-                              alt="Student Photo"
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                const fallback = e.target.parentElement?.querySelector('.photo-fallback');
-                                if (fallback) fallback.style.display = 'flex';
-                              }}
+                              alt="Profile"
+                              className="w-full h-full object-cover rounded-xl lg:rounded-[2.2rem]"
                             />
-                          ) : null}
-                          <div className={`w-full h-full flex items-center justify-center photo-fallback ${editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? 'hidden' : ''}`}>
-                            <div className="text-center">
-                              <UserCog size={48} className="mx-auto text-gray-400 mb-1" />
-                              <span className="text-xs text-gray-500">No Photo</span>
-                            </div>
-                          </div>
-                          {editMode && !photoUploading && (
-                            <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 flex items-center justify-center transition-all">
-                              <div className="text-white text-xs font-medium opacity-0 hover:opacity-100">
-                                Click to Upload
-                              </div>
+                          ) : (
+                            <div className="flex flex-col items-center text-gray-300">
+                              <User size={32} className="lg:w-12 lg:h-12" strokeWidth={1.5} />
+                              <span className="text-[8px] lg:text-[10px] font-black uppercase mt-0.5 lg:mt-1">No Photo</span>
                             </div>
                           )}
+
+                          {editMode && (
+                            <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-black text-white uppercase tracking-widest backdrop-blur-sm">
+                              Change
+                            </div>
+                          )}
+
                           {photoUploading && (
-                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 rounded-lg">
-                              <div className="bg-white rounded-lg p-4 flex flex-col items-center gap-2">
-                                <LoadingAnimation width={32} height={32} showMessage={false} />
-                                <span className="text-sm text-gray-700 font-medium">Uploading photo...</span>
-                              </div>
+                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+                              <Loader2 className="animate-spin text-indigo-600 w-6 h-6 lg:w-8 lg:h-8" />
                             </div>
                           )}
                         </div>
                         {editMode && (
-                          <>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                  // Validate file type
-                                  if (!file.type.startsWith('image/')) {
-                                    toast.error('Please select a valid image file');
-                                    return;
-                                  }
-
-                                  // Validate file size (5MB limit)
-                                  if (file.size > 5 * 1024 * 1024) {
-                                    toast.error('File size should be less than 5MB');
-                                    return;
-                                  }
-
-                                  setPhotoUploading(true);
-                                  try {
-                                    const formData = new FormData();
-                                    formData.append('photo', file);
-                                    formData.append('admissionNumber', selectedStudent.admission_number);
-
-                                    const uploadResponse = await api.post('/students/upload-photo', formData, {
-                                      headers: {
-                                        'Content-Type': 'multipart/form-data',
-                                      },
-                                    });
-
-                                    if (uploadResponse.data.success) {
-                                      // Use the base64 data URL returned from backend for immediate display
-                                      updateEditField('student_photo', uploadResponse.data.data.photo_url);
-                                      toast.success('Photo uploaded successfully');
-                                    } else {
-                                      toast.error('Failed to upload photo');
-                                    }
-                                  } catch (error) {
-                                    console.error('Photo upload error:', error);
-                                    toast.error('Failed to upload photo');
-                                  } finally {
-                                    setPhotoUploading(false);
-                                  }
-                                }
-                              }}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              id="student-photo-upload"
-                              disabled={photoUploading}
-                            />
-                            {photoUploading && (
-                              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 rounded-lg">
-                                <div className="bg-white rounded-lg p-4 flex flex-col items-center gap-2">
-                                  <LoadingAnimation width={32} height={32} showMessage={false} />
-                                  <span className="text-sm text-gray-700 font-medium">Uploading photo...</span>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {editMode && (
-                        <label htmlFor="student-photo-upload" className="mt-2 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
-                          Click photo to upload
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Key Identity Info - spaced to avoid overlapping */}
-                  <div className="space-y-4">
-                    {canViewField('student_name') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Student Name
-                        </label>
-                        {editMode ? (
                           <input
-                            type="text"
-                            value={editData.student_name ?? editData['Student Name'] ?? ''}
-                            onChange={(e) => updateEditField('student_name', e.target.value)}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                            type="file"
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                if (file.size > 5 * 1024 * 1024) return toast.error('Max 5MB allowed');
+                                setPhotoUploading(true);
+                                try {
+                                  const formData = new FormData();
+                                  formData.append('photo', file);
+                                  formData.append('admissionNumber', selectedStudent.admission_number);
+                                  const res = await api.post('/students/upload-photo', formData);
+                                  if (res.data.success) {
+                                    updateEditField('student_photo', res.data.data.photo_url);
+                                    toast.success('Uploaded');
+                                  }
+                                } catch (err) { toast.error('Failed'); }
+                                finally { setPhotoUploading(false); }
+                              }
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
                           />
-                        ) : (
-                          <p className="text-sm font-bold text-gray-900">
-                            {editData.student_name || editData['Student Name'] || selectedStudent?.student_name || '-'}
-                          </p>
                         )}
                       </div>
                     )}
-                    {canViewField('pin_no') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Roll Number
-                        </label>
-                        {editingRollNumber ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={tempRollNumber}
-                              onChange={(e) => setTempRollNumber(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !savingPinNumber) {
-                                  e.preventDefault();
-                                  handleSaveRollNumber();
-                                }
-                              }}
-                              placeholder="Enter PIN number"
-                              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                              disabled={savingPinNumber}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleSaveRollNumber}
-                              disabled={savingPinNumber}
-                              className="px-2 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                            >
-                              {savingPinNumber ? (
-                                <>
-                                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                  Saving...
-                                </>
-                              ) : (
-                                'Save'
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingRollNumber(false);
-                                setTempRollNumber(selectedStudent.pin_no || '');
-                              }}
-                              disabled={savingPinNumber}
-                              className="px-2 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            {selectedStudent.pin_no ? (
-                              <span className="inline-flex items-center px-2 py-1 rounded-lg bg-green-100 text-green-800 text-sm font-semibold">
-                                {selectedStudent.pin_no}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs italic">Not assigned</span>
-                            )}
-                            {!editMode && canUpdatePin && (
-                              <button
-                                onClick={() => setEditingRollNumber(true)}
-                                className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                title="Edit PIN Number"
-                              >
-                                <Edit size={14} />
-                              </button>
-                            )}
-                          </div>
-                        )}
+
+                    <div className="flex-1 lg:text-center min-w-0">
+                      <p className="text-[9px] lg:text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-0.5 lg:mb-1">Student PIN</p>
+                      <h4 className="text-base lg:text-lg font-black text-gray-900 leading-tight truncate">
+                        {editData.pin_no || selectedStudent?.pin_no || 'NOT ASSIGNED'}
+                      </h4>
+                      <div className="mt-1 lg:mt-2 flex lg:justify-center">
+                        <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">
+                          {editData.stud_type || selectedStudent?.stud_type || 'Regular'}
+                        </span>
                       </div>
-                    )}
-                    {/* Order: College, Batch, Program, Branch (all dropdowns in edit mode) */}
-                    {canViewField('college') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          College
-                        </label>
-                        {editMode ? (
-                          <select
-                            value={editData.college ?? editData.College ?? selectedStudent?.college ?? ''}
-                            onChange={(e) => updateEditField('college', e.target.value)}
-                            disabled={collegesLoading}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <option value="">Select College</option>
-                            {colleges.filter(c => c.isActive !== false).map((college) => (
-                              <option key={college.id} value={college.name}>{college.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-700">
-                            {editData.college ?? editData.College ?? selectedStudent?.college ?? '-'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {canViewField('batch') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Batch
-                        </label>
-                        {editMode ? (
-                          <select
-                            value={editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? ''}
-                            onChange={(e) => updateEditField('batch', e.target.value)}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                          >
-                            <option value="">Select Batch</option>
-                            {(quickFilterOptions.batches || []).map((batch) => (
-                              <option key={batch} value={batch}>{batch}</option>
-                            ))}
-                            {(() => {
-                              const currentBatch = editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? '';
-                              return currentBatch && !(quickFilterOptions.batches || []).includes(currentBatch) ? (
-                                <option value={currentBatch}>{currentBatch}</option>
-                              ) : null;
-                            })()}
-                          </select>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-700">
-                            {editData.batch ?? editData.Batch ?? selectedStudent?.batch ?? '-'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {canViewField('course') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Program
-                        </label>
-                        {editMode ? (
-                          <select
-                            value={editData.course ?? selectedStudent.course ?? ''}
-                            onChange={(e) => updateEditField('course', e.target.value)}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                          >
-                            <option value="">Select Program</option>
-                            {(quickFilterOptions.courses || []).map((course) => (
-                              <option key={course} value={course}>{course}</option>
-                            ))}
-                            {(() => {
-                              const currentCourse = editData.course ?? selectedStudent?.course ?? '';
-                              return currentCourse && !(quickFilterOptions.courses || []).includes(currentCourse) ? (
-                                <option value={currentCourse}>{currentCourse}</option>
-                              ) : null;
-                            })()}
-                          </select>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-700">
-                            {editData.course ?? selectedStudent.course ?? '-'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {canViewField('branch') && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Branch
-                        </label>
-                        {editMode ? (
-                          <select
-                            value={editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? ''}
-                            onChange={(e) => updateEditField('branch', e.target.value)}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                          >
-                            <option value="">Select Branch</option>
-                            {(quickFilterOptions.branches || []).map((branch) => (
-                              <option key={branch} value={branch}>{branch}</option>
-                            ))}
-                            {(() => {
-                              const currentBranch = editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? '';
-                              return currentBranch && !(quickFilterOptions.branches || []).includes(currentBranch) ? (
-                                <option value={currentBranch}>{currentBranch}</option>
-                              ) : null;
-                            })()}
-                          </select>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-700">
-                            {editData.branch ?? editData.Branch ?? selectedStudent?.branch ?? '-'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {(canViewField('current_year') || canViewField('current_semester')) && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Current Year & Semester
-                        </label>
-                        {editMode ? (
-                          <div className="grid grid-cols-2 gap-2 min-w-0">
-                            {canViewField('current_year') && (
-                              <select
-                                value={editData.current_year ?? editData['Current Academic Year'] ?? selectedStudent.current_year ?? '1'}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setEditData((prev) =>
-                                    syncStageFields(
-                                      {
-                                        ...prev,
-                                        current_year: value,
-                                        'Current Academic Year': value
-                                      },
-                                      value,
-                                      prev.current_semester || prev['Current Semester'] || selectedStudent.current_semester || '1'
-                                    )
-                                  );
-                                }}
-                                className="w-full px-2 sm:px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                              >
-                                <option value="1">Year 1</option>
-                                <option value="2">Year 2</option>
-                                <option value="3">Year 3</option>
-                                <option value="4">Year 4</option>
-                              </select>
-                            )}
-                            {canViewField('current_semester') && (
-                              <select
-                                value={editData.current_semester ?? editData['Current Semester'] ?? selectedStudent.current_semester ?? '1'}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setEditData((prev) =>
-                                    syncStageFields(
-                                      {
-                                        ...prev,
-                                        current_semester: value,
-                                        'Current Semester': value
-                                      },
-                                      prev.current_year || prev['Current Academic Year'] || selectedStudent.current_year || '1',
-                                      value
-                                    )
-                                  );
-                                }}
-                                className="w-full px-2 sm:px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                              >
-                                <option value="1">Sem 1</option>
-                                <option value="2">Sem 2</option>
-                              </select>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm font-semibold text-indigo-700">
-                            {canViewField('current_year') && (
-                              <span>Year {selectedStudent.current_year || selectedStudent.student_data?.current_year || '-'}</span>
-                            )}
-                            {canViewField('current_year') && canViewField('current_semester') && <span> • </span>}
-                            {canViewField('current_semester') && (
-                              <span>Semester {selectedStudent.current_semester || selectedStudent.student_data?.current_semester || '-'}</span>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {/* Student Type: show whenever Batch is shown so key identity (Batch + Type) is always visible in edit and view */}
-                    {(canViewField('stud_type') || canViewField('batch')) && (
-                      <div className="min-w-0">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          Student Type
-                        </label>
-                        {editMode ? (
-                          <select
-                            value={editData.stud_type ?? editData.StudType ?? ''}
-                            onChange={(e) => updateEditField('stud_type', e.target.value)}
-                            disabled={!canEditField('stud_type')}
-                            className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-50 disabled:cursor-not-allowed"
-                          >
-                            <option value="">Select Student Type</option>
-                            <option value="MANG">MANG</option>
-                            <option value="CONV">CONV</option>
-                            <option value="SPOT">SPOT</option>
-                          </select>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-700">
-                            {editData.stud_type || editData.StudType || selectedStudent?.stud_type || '-'}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    </div>
                   </div>
 
-                  {/* Digital Student ID Card - same as student profile */}
-                  {canViewField('student_photo') && (
-                    <div className="pt-4 border-t border-gray-100">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Digital Student Card</p>
-                      <DigitalStudentCard
-                        student={editData}
-                        getStudentData={(key, fallback) => {
-                          if (!editData?.student_data) return fallback;
-                          const dataKeys = Object.keys(editData.student_data);
-                          const foundKey = dataKeys.find((k) => k.toLowerCase() === key.toLowerCase());
-                          const val = foundKey ? editData.student_data[foundKey] : undefined;
-                          return val !== undefined && val !== null && val !== '' ? val : fallback;
-                        }}
-                      />
-                    </div>
+                  {/* Sidebar Details Group */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 lg:gap-4 bg-gray-50/50 rounded-2xl lg:rounded-[2rem] p-4 lg:p-5 border border-gray-100">
+                    <SidebarDetailItem
+                      label="Full Name"
+                      value={editData.student_name || selectedStudent?.student_name}
+                      icon={<User size={14} />}
+                      editable={editMode}
+                      onChange={(val) => updateEditField('student_name', val)}
+                    />
+                    <SidebarDetailItem
+                      label="Batch"
+                      value={editData.batch || selectedStudent?.batch}
+                      icon={<Calendar size={14} />}
+                      editable={editMode}
+                      type="select"
+                      options={quickFilterOptions.batches}
+                      onChange={(val) => updateEditField('batch', val)}
+                    />
+                    <SidebarDetailItem
+                      label="Program"
+                      value={editData.course || selectedStudent?.course}
+                      icon={<Book size={14} />}
+                      editable={editMode}
+                      type="select"
+                      options={quickFilterOptions.courses}
+                      onChange={(val) => updateEditField('course', val)}
+                    />
+                  </div>
+
+                  {!editMode && !isCashier && (
+                    <button
+                      onClick={handleResetPassword}
+                      className="w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-100 text-orange-600 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest hover:bg-orange-50 transition-all active:scale-95"
+                    >
+                      <RefreshCw size={14} className={resettingPassword ? 'animate-spin' : ''} />
+                      {resettingPassword ? 'Processing...' : 'Reset Password'}
+                    </button>
                   )}
                 </div>
               </div>
 
               {/* Right Side - All Student Data */}
-              <div className={`flex-1 p-3 sm:p-4 lg:p-6 min-w-0 flex flex-col ${activeStudentTab === 'history' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg mb-6 shrink-0">
-                  <button
-                    onClick={() => setActiveStudentTab('details')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'details' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    <Book size={16} /> Details
-                  </button>
-                  {canViewField('registration_status') && (
+              <div className={`flex-1 min-w-0 flex flex-col relative ${activeStudentTab === 'history' ? 'lg:overflow-hidden' : 'lg:overflow-y-auto'}`}>
+                {/* Sticky Tabs Container */}
+                <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 py-3 sm:px-4 lg:px-6 lg:py-4 shrink-0 shadow-sm">
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mb-1">
                     <button
-                      onClick={() => setActiveStudentTab('registration')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'registration' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setActiveStudentTab('details')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'details' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
                     >
-                      <CheckCircle size={16} /> Registration
+                      <Book size={16} /> <span className="whitespace-nowrap">Details</span>
                     </button>
-                  )}
-                  {canViewAttendance && (
+                    {canViewField('registration_status') && (
+                      <button
+                        onClick={() => setActiveStudentTab('registration')}
+                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'registration' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                      >
+                        <CheckCircle size={16} /> <span className="whitespace-nowrap">Registration</span>
+                      </button>
+                    )}
+                    {canViewAttendance && (
+                      <button
+                        onClick={() => setActiveStudentTab('attendance')}
+                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'attendance' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                      >
+                        <Calendar size={16} /> <span className="whitespace-nowrap">Attendance</span>
+                      </button>
+                    )}
+                    {canViewSms && (
+                      <button
+                        onClick={() => setActiveStudentTab('sms_tracking')}
+                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'sms_tracking' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                      >
+                        <MessageSquare size={16} /> <span className="whitespace-nowrap">SMS</span>
+                      </button>
+                    )}
                     <button
-                      onClick={() => setActiveStudentTab('attendance')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'attendance' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setActiveStudentTab('history')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
                     >
-                      <Calendar size={16} /> Attendance
+                      <History size={16} /> <span className="whitespace-nowrap">History</span>
                     </button>
-                  )}
-                  {canViewSms && (
-                    <button
-                      onClick={() => setActiveStudentTab('sms_tracking')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'sms_tracking' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      <MessageSquare size={16} /> SMS
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setActiveStudentTab('history')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${activeStudentTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    <History size={16} /> History
-                  </button>
+                  </div>
                 </div>
 
-                {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
-                  const studentData = selectedStudent.student_data || {};
+                <div className={`p-3 sm:p-4 lg:p-6 ${activeStudentTab === 'history' ? 'flex-1 overflow-hidden flex flex-col' : ''}`}>
 
-                  const isStudentVerified = studentData.is_student_mobile_verified === true;
-                  const isParentVerified = studentData.is_parent_mobile_verified === true;
-                  const isVerificationComplete = isStudentVerified && isParentVerified;
+                  {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
+                    const studentData = selectedStudent.student_data || {};
 
-                  const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
-                  const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
+                    const isStudentVerified = studentData.is_student_mobile_verified === true;
+                    const isParentVerified = studentData.is_parent_mobile_verified === true;
+                    const isVerificationComplete = isStudentVerified && isParentVerified;
 
-                  const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
-                  const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));
+                    const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
+                    const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
 
-                  const currentYear = selectedStudent.current_year || studentData.current_year;
-                  const currentSem = selectedStudent.current_semester || studentData.current_semester;
-                  const isPromotionActive = !!currentYear;
+                    const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
+                    const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));
 
-                  const scholarStatus = selectedStudent.scholar_status || studentData.scholar_status || 'Pending';
+                    const currentYear = selectedStudent.current_year || studentData.current_year;
+                    const currentSem = selectedStudent.current_semester || studentData.current_semester;
+                    const isPromotionActive = !!currentYear;
 
-                  const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete;
+                    const scholarStatus = selectedStudent.scholar_status || studentData.scholar_status || 'Pending';
 
-                  const StatusBadge = ({ completed, text }) => (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completed ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
-                      {completed ? 'Completed' : text || 'Pending'}
-                    </span>
-                  );
+                    const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete;
 
-                  return (
-                    <div className="space-y-6">
-                      <div className={`rounded-xl p-6 border ${isRegistrationComplete ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-lg font-bold text-gray-900">Registration Status</h3>
-                            <p className="text-sm text-gray-500 mt-1">
-                              Overall registration completion based on all stages
-                            </p>
-                          </div>
-                          <div className={`px-4 py-2 rounded-lg font-bold text-lg flex items-center gap-2 ${isRegistrationComplete ? 'bg-green-200 text-green-800' : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                            {isRegistrationComplete ? (
-                              <><CheckCircle size={24} /> Completed</>
-                            ) : (
-                              <><LoadingAnimation width={20} height={20} showMessage={false} variant="inline" /> Pending</>
-                            )}
+                    const StatusBadge = ({ completed, text }) => (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completed ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                        {completed ? 'Completed' : text || 'Pending'}
+                      </span>
+                    );
+
+                    return (
+                      <div className="space-y-6">
+                        <div className={`rounded-xl p-6 border ${isRegistrationComplete ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="text-lg font-bold text-gray-900">Registration Status</h3>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Overall registration completion based on all stages
+                              </p>
+                            </div>
+                            <div className={`px-4 py-2 rounded-lg font-bold text-lg flex items-center gap-2 ${isRegistrationComplete ? 'bg-green-200 text-green-800' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                              {isRegistrationComplete ? (
+                                <><CheckCircle size={24} /> Completed</>
+                              ) : (
+                                <><LoadingAnimation width={20} height={20} showMessage={false} variant="inline" /> Pending</>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide px-1">
-                        Registration Stages
-                      </h4>
+                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide px-1">
+                          Registration Stages
+                        </h4>
 
-                      <div className="grid grid-cols-1 gap-4">
-                        <div
-                          className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
-                          onDoubleClick={() => canViewField('registration_status') && setShowVerificationModal(true)}
-                          title="Double-click to manually verify"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                              <MessageSquare size={20} />
-                            </div>
-                            <div>
-                              <h5 className="font-semibold text-gray-900">1. Mobile Verification</h5>
-                              <div className="flex flex-col gap-1 mt-1">
-                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <span className={isStudentVerified ? 'text-green-600' : 'text-red-500'}>
-                                    {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                    Student Mobile
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <span className={isParentVerified ? 'text-green-600' : 'text-red-500'}>
-                                    {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                    Parent Mobile
-                                  </span>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div
+                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+                            onDoubleClick={() => canViewField('registration_status') && setShowVerificationModal(true)}
+                            title="Double-click to manually verify"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <MessageSquare size={20} />
+                              </div>
+                              <div>
+                                <h5 className="font-semibold text-gray-900">1. Mobile Verification</h5>
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <span className={isStudentVerified ? 'text-green-600' : 'text-red-500'}>
+                                      {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                      Student Mobile
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <span className={isParentVerified ? 'text-green-600' : 'text-red-500'}>
+                                      {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                      Parent Mobile
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
+                            <StatusBadge completed={isVerificationComplete} />
                           </div>
-                          <StatusBadge completed={isVerificationComplete} />
-                        </div>
 
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                              <FileText size={20} />
+                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <FileText size={20} />
+                              </div>
+                              <div>
+                                <h5 className="font-semibold text-gray-900">2. Certificate Status</h5>
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Current Status: <span className="font-medium text-gray-900 capitalize">{certStatus || 'Pending'}</span>
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h5 className="font-semibold text-gray-900">2. Certificate Status</h5>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Current Status: <span className="font-medium text-gray-900 capitalize">{certStatus || 'Pending'}</span>
-                              </p>
-                            </div>
+                            <StatusBadge completed={isCertComplete} text={certStatus} />
                           </div>
-                          <StatusBadge completed={isCertComplete} text={certStatus} />
-                        </div>
 
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                              <span className="font-bold text-lg px-1">₹</span>
+                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <span className="font-bold text-lg px-1">₹</span>
+                              </div>
+                              <div>
+                                <h5 className="font-semibold text-gray-900">3. Fee Payment</h5>
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Current Status: <span className="font-medium text-gray-900 capitalize">{feeStatus || 'Pending'}</span>
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h5 className="font-semibold text-gray-900">3. Fee Payment</h5>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Current Status: <span className="font-medium text-gray-900 capitalize">{feeStatus || 'Pending'}</span>
-                              </p>
-                            </div>
+                            <StatusBadge completed={isFeeComplete} text={feeStatus} />
                           </div>
-                          <StatusBadge completed={isFeeComplete} text={feeStatus} />
-                        </div>
 
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-1 p-2 rounded-full ${isPromotionActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                              <TrendingUp size={20} />
+                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-1 p-2 rounded-full ${isPromotionActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <TrendingUp size={20} />
+                              </div>
+                              <div>
+                                <h5 className="font-semibold text-gray-900">4. Promotion Status</h5>
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Current Academic Stage
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h5 className="font-semibold text-gray-900">4. Promotion Status</h5>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Current Academic Stage
-                              </p>
+                            <div className="ml-auto flex items-center">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                Year {currentYear || '-'} • Sem {currentSem || '-'}
+                              </span>
                             </div>
                           </div>
-                          <div className="ml-auto flex items-center">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                              Year {currentYear || '-'} • Sem {currentSem || '-'}
-                            </span>
-                          </div>
-                        </div>
 
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <div className="mt-1 p-2 rounded-full bg-purple-100 text-purple-600">
-                              <Book size={20} />
+                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1 p-2 rounded-full bg-purple-100 text-purple-600">
+                                <Book size={20} />
+                              </div>
+                              <div>
+                                <h5 className="font-semibold text-gray-900">5. Scholarship Status</h5>
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Applicability
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h5 className="font-semibold text-gray-900">5. Scholarship Status</h5>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Applicability
-                              </p>
+                            <div className="ml-auto flex items-center">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
+                                {scholarStatus}
+                              </span>
                             </div>
                           </div>
-                          <div className="ml-auto flex items-center">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
-                              {scholarStatus}
-                            </span>
-                          </div>
-                        </div>
 
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
-                {activeStudentTab === 'attendance' && (
-                  <StudentAttendanceTab student={selectedStudent} />
-                )}
+                  {activeStudentTab === 'attendance' && (
+                    <StudentAttendanceTab student={selectedStudent} />
+                  )}
 
-                {activeStudentTab === 'sms_tracking' && (
-                  <StudentSmsTab student={selectedStudent} />
-                )}
+                  {activeStudentTab === 'sms_tracking' && (
+                    <StudentSmsTab student={selectedStudent} />
+                  )}
 
-                {activeStudentTab === 'history' && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden">
-                    {/* Sub-tabs for History */}
-                    <div className="flex items-center justify-between border-b border-gray-100 p-3 bg-gray-50/50">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setHistorySubTab('remarks')}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'remarks'
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-                            : 'text-gray-500 hover:bg-white hover:text-blue-600'
-                            }`}
-                        >
-                          <MessageSquare size={14} />
-                          Remarks
-                        </button>
-                        <button
-                          onClick={() => setHistorySubTab('audit')}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'audit'
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-                            : 'text-gray-500 hover:bg-white hover:text-blue-600'
-                            }`}
-                        >
-                          <History size={14} />
-                          Edit History
-                        </button>
+                  {activeStudentTab === 'history' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden">
+                      {/* Sub-tabs for History */}
+                      <div className="flex items-center justify-between border-b border-gray-100 p-3 bg-gray-50/50">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setHistorySubTab('remarks')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'remarks'
+                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                              : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                              }`}
+                          >
+                            <MessageSquare size={14} />
+                            Remarks
+                          </button>
+                          <button
+                            onClick={() => setHistorySubTab('audit')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'audit'
+                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                              : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                              }`}
+                          >
+                            <History size={14} />
+                            Edit History
+                          </button>
+                        </div>
+                        <div className="hidden sm:block text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">
+                          Student Logs
+                        </div>
                       </div>
-                      <div className="hidden sm:block text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">
-                        Student Logs
-                      </div>
-                    </div>
 
-                    {/* Content */}
-                    <div className="flex-1 overflow-hidden">
-                      {historySubTab === 'remarks' ? (
-                        <StudentRemarksContent
-                          student={selectedStudent}
-                          canAddRemarks={canAddRemarks}
-                          canManageRemarks={canManageRemarks}
-                        />
-                      ) : (
-                        <StudentHistoryLogs student={selectedStudent} />
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-
-                    {/* Column 1 */}
-                    <div className="space-y-4">
-                      {/* Admission Number */}
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <Users size={16} className="text-blue-600" />
-                          Admission Details
-                        </h4>
-                        {canViewField('admission_number') && (
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                              Admission Number
-                            </label>
-                            <p className="text-base font-bold text-gray-900">{selectedStudent.admission_number}</p>
-                          </div>
+                      {/* Content */}
+                      <div className="flex-1 overflow-hidden">
+                        {historySubTab === 'remarks' ? (
+                          <StudentRemarksContent
+                            student={selectedStudent}
+                            canAddRemarks={canAddRemarks}
+                            canManageRemarks={canManageRemarks}
+                          />
+                        ) : (
+                          <StudentHistoryLogs student={selectedStudent} />
                         )}
-                        <div className="mt-3">
-                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Completion Progress
-                          </label>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-base font-bold ${profileCompletion.percentage >= 80 ? 'text-green-600' :
-                                profileCompletion.percentage >= 50 ? 'text-blue-600' :
-                                  'text-gray-600'
-                                }`}>
-                                {profileCompletion.percentage}%
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                ({profileCompletion.filledCount}/{profileCompletion.totalCount} fields)
-                              </span>
-                              {editMode && (
-                                <button
-                                  onClick={() => {
-                                    // Recalculate on demand
-                                    const parsedStudentData = typeof editData === 'string'
-                                      ? JSON.parse(editData || '{}')
-                                      : editData;
-                                    const completion = calculateProfileCompletion(selectedStudent, parsedStudentData);
-                                    setProfileCompletion(completion);
-                                    toast.success('Completion progress refreshed');
-                                  }}
-                                  className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                  title="Refresh completion progress"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                  </svg>
-                                </button>
-                              )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+
+                      {/* Column 1 */}
+                      <div className="space-y-4">
+                        {/* Admission Number */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Users size={16} className="text-blue-600" />
+                            Admission Details
+                          </h4>
+                          {canViewField('admission_number') && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                Admission Number
+                              </label>
+                              <p className="text-base font-bold text-gray-900">{selectedStudent.admission_number}</p>
                             </div>
-                            {/* Progress Bar */}
-                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-300 ${profileCompletion.percentage >= 80 ? 'bg-green-500' :
-                                  profileCompletion.percentage >= 50 ? 'bg-blue-500' :
-                                    'bg-gray-400'
-                                  }`}
-                                style={{ width: `${profileCompletion.percentage}%` }}
-                              />
+                          )}
+                          <div className="mt-3">
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Completion Progress
+                            </label>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-base font-bold ${profileCompletion.percentage >= 80 ? 'text-green-600' :
+                                  profileCompletion.percentage >= 50 ? 'text-blue-600' :
+                                    'text-gray-600'
+                                  }`}>
+                                  {profileCompletion.percentage}%
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  ({profileCompletion.filledCount}/{profileCompletion.totalCount} fields)
+                                </span>
+                                {editMode && (
+                                  <button
+                                    onClick={() => {
+                                      // Recalculate on demand
+                                      const parsedStudentData = typeof editData === 'string'
+                                        ? JSON.parse(editData || '{}')
+                                        : editData;
+                                      const completion = calculateProfileCompletion(selectedStudent, parsedStudentData);
+                                      setProfileCompletion(completion);
+                                      toast.success('Completion progress refreshed');
+                                    }}
+                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="Refresh completion progress"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                              {/* Progress Bar */}
+                              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${profileCompletion.percentage >= 80 ? 'bg-green-500' :
+                                    profileCompletion.percentage >= 50 ? 'bg-blue-500' :
+                                      'bg-gray-400'
+                                    }`}
+                                  style={{ width: `${profileCompletion.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Parent Information */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Users size={16} className="text-orange-600" />
+                            Parent Information
+                          </h4>
+                          <div className="space-y-3">
+                            {canViewField('parent_mobile1') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Parent Mobile 1
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="tel"
+                                    value={editData.parent_mobile1 ?? editData['Parent Mobile Number 1'] ?? ''}
+                                    onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
+                                    placeholder="Enter parent mobile 1"
+                                    maxLength={10}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {maskMobileNumber(editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('parent_mobile2') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Parent Mobile 2
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="tel"
+                                    value={editData.parent_mobile2 ?? editData['Parent Mobile Number 2'] ?? ''}
+                                    onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
+                                    placeholder="Enter parent mobile 2"
+                                    maxLength={10}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {maskMobileNumber(editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Address Details */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Users size={16} className="text-green-600" />
+                            Address Details
+                          </h4>
+                          <div className="space-y-3">
+                            {canViewField('student_address') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Full Address
+                                </label>
+                                {editMode ? (
+                                  <textarea
+                                    value={editData.student_address ?? editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] ?? ''}
+                                    onChange={(e) => updateEditField('student_address', e.target.value)}
+                                    placeholder="Enter student address"
+                                    rows="3"
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.student_address || editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-3">
+                              {canViewField('city_village') && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    City/Village
+                                  </label>
+                                  {editMode ? (
+                                    <input
+                                      type="text"
+                                      value={editData.city_village ?? editData['City/Village'] ?? ''}
+                                      onChange={(e) => updateEditField('city_village', e.target.value)}
+                                      placeholder="Enter city/village"
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {editData.city_village || editData['City/Village'] || '-'}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {canViewField('mandal_name') && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    Mandal
+                                  </label>
+                                  {editMode ? (
+                                    <input
+                                      type="text"
+                                      value={editData.mandal_name ?? editData['Mandal Name'] ?? ''}
+                                      onChange={(e) => updateEditField('mandal_name', e.target.value)}
+                                      placeholder="Enter mandal name"
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {editData.mandal_name || editData['Mandal Name'] || '-'}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {canViewField('district') && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    District
+                                  </label>
+                                  {editMode ? (
+                                    <input
+                                      type="text"
+                                      value={editData.district ?? editData.District ?? ''}
+                                      onChange={(e) => updateEditField('district', e.target.value)}
+                                      placeholder="Enter district"
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {editData.district || editData.District || selectedStudent?.district || '-'}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {canViewField('caste') && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    Caste
+                                  </label>
+                                  {editMode ? (
+                                    <input
+                                      type="text"
+                                      value={editData.caste ?? editData.Caste ?? ''}
+                                      onChange={(e) => updateEditField('caste', e.target.value)}
+                                      placeholder="Enter caste"
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {editData.caste || editData.Caste || selectedStudent?.caste || '-'}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {canViewField('gender') && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    Gender
+                                  </label>
+                                  {editMode ? (
+                                    <select
+                                      value={editData.gender ?? editData['M/F'] ?? ''}
+                                      onChange={(e) => updateEditField('gender', e.target.value)}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    >
+                                      <option value="">Select Gender</option>
+                                      <option value="M">Male</option>
+                                      <option value="F">Female</option>
+                                      <option value="Other">Other</option>
+                                    </select>
+                                  ) : (
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {editData.gender || editData['M/F'] || selectedStudent?.gender || '-'}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Parent Information */}
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <Users size={16} className="text-orange-600" />
-                          Parent Information
-                        </h4>
-                        <div className="space-y-3">
-                          {canViewField('parent_mobile1') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Parent Mobile 1
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="tel"
-                                  value={editData.parent_mobile1 ?? editData['Parent Mobile Number 1'] ?? ''}
-                                  onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
-                                  placeholder="Enter parent mobile 1"
-                                  maxLength={10}
-                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {maskMobileNumber(editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('parent_mobile2') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Parent Mobile 2
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="tel"
-                                  value={editData.parent_mobile2 ?? editData['Parent Mobile Number 2'] ?? ''}
-                                  onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
-                                  placeholder="Enter parent mobile 2"
-                                  maxLength={10}
-                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {maskMobileNumber(editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')}
-                                </p>
-                              )}
-                            </div>
-                          )}
+                      {/* Column 2 */}
+                      <div className="space-y-4">
+                        {/* Student Information */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Users size={16} className="text-blue-600" />
+                            Student Information
+                          </h4>
+                          <div className="space-y-3">
+                            {canViewField('student_mobile') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Mobile Number
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="tel"
+                                    value={editData.student_mobile ?? editData['Student Mobile Number'] ?? ''}
+                                    onChange={(e) => updateEditField('student_mobile', e.target.value)}
+                                    placeholder="Enter mobile number"
+                                    maxLength={10}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {maskMobileNumber(editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('father_name') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Father Name
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    value={editData.father_name ?? editData['Father Name'] ?? ''}
+                                    onChange={(e) => updateEditField('father_name', e.target.value)}
+                                    placeholder="Enter father name"
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.father_name || editData['Father Name'] || selectedStudent?.father_name || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('dob') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Date of Birth
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="date"
+                                    value={(editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']) ?
+                                      (editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
+                                    onChange={(e) => updateEditField('dob', e.target.value)}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {formatDate(editData.dob || editData['DOB (Date of Birth - DD-MM-YYYY)'] || selectedStudent?.dob)}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('adhar_no') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Aadhar Number
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    value={editData.adhar_no ?? editData['ADHAR No'] ?? ''}
+                                    onChange={(e) => updateEditField('adhar_no', e.target.value)}
+                                    placeholder="Enter Aadhar number"
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.adhar_no || editData['ADHAR No'] || selectedStudent?.adhar_no || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {/* APAAR ID */}
+                            {canViewField('apaar_id') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  APAAR ID
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    value={editData.apaar_id ?? editData['APAAR ID'] ?? editData['apaar id'] ?? ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                                      updateEditField('apaar_id', val);
+                                    }}
+                                    placeholder="Enter 12-digit APAAR ID"
+                                    maxLength={12}
+                                    inputMode="numeric"
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.apaar_id || editData['APAAR ID'] || editData['apaar id'] || selectedStudent?.apaar_id || selectedStudent?.student_data?.apaar_id || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('admission_date') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Admission Date
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="date"
+                                    value={(editData.admission_date ?? editData['Admission Date']) ?
+                                      (editData.admission_date ?? editData['Admission Date']).split('T')[0] : ''}
+                                    onChange={(e) => updateEditField('admission_date', e.target.value)}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {formatDate(editData.admission_date || editData['Admission Date'])}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Address Details */}
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <Users size={16} className="text-green-600" />
-                          Address Details
-                        </h4>
-                        <div className="space-y-3">
-                          {canViewField('student_address') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Full Address
-                              </label>
-                              {editMode ? (
-                                <textarea
-                                  value={editData.student_address ?? editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] ?? ''}
-                                  onChange={(e) => updateEditField('student_address', e.target.value)}
-                                  placeholder="Enter student address"
-                                  rows="3"
-                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.student_address || editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-3">
-                            {canViewField('city_village') && (
+                        {/* Administrative Information */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <UserCog size={16} className="text-purple-600" />
+                            Administrative Information
+                          </h4>
+                          <div className="space-y-3">
+
+                            {canViewField('student_status') && (
                               <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  City/Village
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="text"
-                                    value={editData.city_village ?? editData['City/Village'] ?? ''}
-                                    onChange={(e) => updateEditField('city_village', e.target.value)}
-                                    placeholder="Enter city/village"
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {editData.city_village || editData['City/Village'] || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('mandal_name') && (
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  Mandal
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="text"
-                                    value={editData.mandal_name ?? editData['Mandal Name'] ?? ''}
-                                    onChange={(e) => updateEditField('mandal_name', e.target.value)}
-                                    placeholder="Enter mandal name"
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {editData.mandal_name || editData['Mandal Name'] || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('district') && (
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  District
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="text"
-                                    value={editData.district ?? editData.District ?? ''}
-                                    onChange={(e) => updateEditField('district', e.target.value)}
-                                    placeholder="Enter district"
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {editData.district || editData.District || selectedStudent?.district || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('caste') && (
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  Caste
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="text"
-                                    value={editData.caste ?? editData.Caste ?? ''}
-                                    onChange={(e) => updateEditField('caste', e.target.value)}
-                                    placeholder="Enter caste"
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {editData.caste || editData.Caste || selectedStudent?.caste || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('gender') && (
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  Gender
+                                  Student Status
                                 </label>
                                 {editMode ? (
                                   <select
-                                    value={editData.gender ?? editData['M/F'] ?? ''}
-                                    onChange={(e) => updateEditField('gender', e.target.value)}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    value={editData.student_status ?? editData['Student Status'] ?? selectedStudent?.student_status ?? ''}
+                                    onChange={(e) => updateEditField('student_status', e.target.value)}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
                                   >
-                                    <option value="">Select Gender</option>
-                                    <option value="M">Male</option>
-                                    <option value="F">Female</option>
-                                    <option value="Other">Other</option>
+                                    {!editData.student_status && !editData['Student Status'] && !selectedStudent?.student_status && (
+                                      <option value="">Select Status</option>
+                                    )}
+                                    {STUDENT_STATUS_OPTIONS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {status}
+                                      </option>
+                                    ))}
                                   </select>
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
-                                    {editData.gender || editData['M/F'] || selectedStudent?.gender || '-'}
+                                    {editData.student_status || editData['Student Status'] || selectedStudent?.student_status || '-'}
                                   </p>
                                 )}
+                              </div>
+                            )}
+                            {canViewField('scholar_status') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Scholar Status
+                                </label>
+                                {editMode ? (
+                                  <select
+                                    value={editData.scholar_status ?? editData['Scholar Status'] ?? selectedStudent?.scholar_status ?? ''}
+                                    onChange={(e) => updateEditField('scholar_status', e.target.value)}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                  >
+                                    {!editData.scholar_status && !editData['Scholar Status'] && !selectedStudent?.scholar_status && (
+                                      <option value="">Select Scholar Status</option>
+                                    )}
+                                    {scholarStatusOptions.map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.scholar_status || editData['Scholar Status'] || selectedStudent?.scholar_status || 'Pending'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('fee_status') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Fee Status
+                                </label>
+                                {editMode ? (
+                                  <select
+                                    value={editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || ''}
+                                    onChange={(e) => {
+                                      const newStatus = e.target.value;
+                                      setEditFeeStatus(newStatus);
+                                      // Clear permit fields if not permitted
+                                      if (newStatus !== 'permitted') {
+                                        setPermitEndingDate('');
+                                        setPermitRemarks('');
+                                      }
+                                    }}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                  >
+                                    {!editFeeStatus && !editData.fee_status && !editData['Fee Status'] && !selectedStudent?.fee_status && (
+                                      <option value="">Select Fee Status</option>
+                                    )}
+                                    {FEE_STATUS_OPTIONS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {status}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || '-'}
+                                  </p>
+                                )}
+                                {/* Permit Fields - Show when fee status is 'permitted' */}
+                                {(editFeeStatus === 'permitted' || editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && editMode && (
+                                  <div className="mt-4 space-y-3 pt-3 border-t border-gray-200">
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                        Permit Ending Date <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={permitEndingDate}
+                                        onChange={(e) => setPermitEndingDate(e.target.value)}
+                                        className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                        required
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                        Permit Remarks <span className="text-red-500">*</span>
+                                      </label>
+                                      <textarea
+                                        value={permitRemarks}
+                                        onChange={(e) => setPermitRemarks(e.target.value)}
+                                        rows="3"
+                                        className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm"
+                                        placeholder="Enter remarks for the permit"
+                                        required
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Show permit info in view mode */}
+                                {(editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && !editMode && (
+                                  <div className="mt-4 space-y-2 pt-3 border-t border-gray-200">
+                                    {permitEndingDate && (
+                                      <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                          Permit Ending Date
+                                        </label>
+                                        <p className="text-sm text-gray-900 font-medium">
+                                          {permitEndingDate || selectedStudent?.permit_ending_date || '-'}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {permitRemarks && (
+                                      <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                          Permit Remarks
+                                        </label>
+                                        <p className="text-sm text-gray-900 font-medium">
+                                          {permitRemarks || selectedStudent?.permit_remarks || '-'}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('registration_status') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Registration Status
+                                </label>
+                                {editMode ? (
+                                  <select
+                                    value={editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || ''}
+                                    onChange={(e) => setEditRegistrationStatus(e.target.value)}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                  >
+                                    {!editRegistrationStatus && !editData.registration_status && !editData['Registration Status'] && !selectedStudent?.registration_status && (
+                                      <option value="">Select Registration Status</option>
+                                    )}
+                                    {REGISTRATION_STATUS_OPTIONS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {status}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('previous_college') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Previous College
+                                </label>
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    value={editData.previous_college ?? ''}
+                                    onChange={(e) => updateEditField('previous_college', e.target.value)}
+                                    placeholder="Enter previous college"
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.previous_college || selectedStudent?.previous_college || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {canViewField('certificates_status') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Certificate Status
+                                </label>
+                                <p className="text-sm text-gray-900 font-medium">
+                                  {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1 italic">
+                                  (Auto-updated based on certificate information)
+                                </p>
+                              </div>
+                            )}
+                            {canViewField('remarks') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Latest Remark
+                                </label>
+                                <div className="flex items-start gap-2">
+                                  <p className="text-sm text-gray-900 font-medium flex-1">
+                                    {editData.remarks || editData.Remarks || selectedStudent?.remarks || '-'}
+                                  </p>
+                                  <button
+                                    onClick={() => setShowRemarksHistoryModal(true)}
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 shrink-0"
+                                  >
+                                    <History size={14} />
+                                    View History
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -4179,555 +4311,183 @@ const Students = () => {
                       </div>
                     </div>
 
-                    {/* Column 2 */}
-                    <div className="space-y-4">
-                      {/* Student Information */}
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <Users size={16} className="text-blue-600" />
-                          Student Information
-                        </h4>
-                        <div className="space-y-3">
-                          {canViewField('student_mobile') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Mobile Number
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="tel"
-                                  value={editData.student_mobile ?? editData['Student Mobile Number'] ?? ''}
-                                  onChange={(e) => updateEditField('student_mobile', e.target.value)}
-                                  placeholder="Enter mobile number"
-                                  maxLength={10}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {maskMobileNumber(editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('father_name') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Father Name
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="text"
-                                  value={editData.father_name ?? editData['Father Name'] ?? ''}
-                                  onChange={(e) => updateEditField('father_name', e.target.value)}
-                                  placeholder="Enter father name"
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.father_name || editData['Father Name'] || selectedStudent?.father_name || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('dob') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Date of Birth
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="date"
-                                  value={(editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']) ?
-                                    (editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
-                                  onChange={(e) => updateEditField('dob', e.target.value)}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {formatDate(editData.dob || editData['DOB (Date of Birth - DD-MM-YYYY)'] || selectedStudent?.dob)}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('adhar_no') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Aadhar Number
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="text"
-                                  value={editData.adhar_no ?? editData['ADHAR No'] ?? ''}
-                                  onChange={(e) => updateEditField('adhar_no', e.target.value)}
-                                  placeholder="Enter Aadhar number"
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.adhar_no || editData['ADHAR No'] || selectedStudent?.adhar_no || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {/* APAAR ID */}
-                          {canViewField('apaar_id') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                APAAR ID
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="text"
-                                  value={editData.apaar_id ?? editData['APAAR ID'] ?? editData['apaar id'] ?? ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(/\D/g, '').slice(0, 12);
-                                    updateEditField('apaar_id', val);
-                                  }}
-                                  placeholder="Enter 12-digit APAAR ID"
-                                  maxLength={12}
-                                  inputMode="numeric"
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.apaar_id || editData['APAAR ID'] || editData['apaar id'] || selectedStudent?.apaar_id || selectedStudent?.student_data?.apaar_id || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('admission_date') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Admission Date
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="date"
-                                  value={(editData.admission_date ?? editData['Admission Date']) ?
-                                    (editData.admission_date ?? editData['Admission Date']).split('T')[0] : ''}
-                                  onChange={(e) => updateEditField('admission_date', e.target.value)}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {formatDate(editData.admission_date || editData['Admission Date'])}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                    {/* Certificate Information Section */}
+                    {canViewField('certificates_status') && (() => {
+                      // Determine course type from student data
+                      const courseType = getCourseType(editData.course || selectedStudent?.course || '');
 
-                      {/* Administrative Information */}
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <UserCog size={16} className="text-purple-600" />
-                          Administrative Information
-                        </h4>
-                        <div className="space-y-3">
+                      if (!courseType) return null;
 
-                          {canViewField('student_status') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Student Status
-                              </label>
-                              {editMode ? (
-                                <select
-                                  value={editData.student_status ?? editData['Student Status'] ?? selectedStudent?.student_status ?? ''}
-                                  onChange={(e) => updateEditField('student_status', e.target.value)}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
-                                >
-                                  {!editData.student_status && !editData['Student Status'] && !selectedStudent?.student_status && (
-                                    <option value="">Select Status</option>
-                                  )}
-                                  {STUDENT_STATUS_OPTIONS.map((status) => (
-                                    <option key={status} value={status}>
-                                      {status}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.student_status || editData['Student Status'] || selectedStudent?.student_status || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('scholar_status') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Scholar Status
-                              </label>
-                              {editMode ? (
-                                <select
-                                  value={editData.scholar_status ?? editData['Scholar Status'] ?? selectedStudent?.scholar_status ?? ''}
-                                  onChange={(e) => updateEditField('scholar_status', e.target.value)}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
-                                >
-                                  {!editData.scholar_status && !editData['Scholar Status'] && !selectedStudent?.scholar_status && (
-                                    <option value="">Select Scholar Status</option>
-                                  )}
-                                  {scholarStatusOptions.map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.scholar_status || editData['Scholar Status'] || selectedStudent?.scholar_status || 'Pending'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('fee_status') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Fee Status
-                              </label>
-                              {editMode ? (
-                                <select
-                                  value={editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || ''}
-                                  onChange={(e) => {
-                                    const newStatus = e.target.value;
-                                    setEditFeeStatus(newStatus);
-                                    // Clear permit fields if not permitted
-                                    if (newStatus !== 'permitted') {
-                                      setPermitEndingDate('');
-                                      setPermitRemarks('');
-                                    }
-                                  }}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
-                                >
-                                  {!editFeeStatus && !editData.fee_status && !editData['Fee Status'] && !selectedStudent?.fee_status && (
-                                    <option value="">Select Fee Status</option>
-                                  )}
-                                  {FEE_STATUS_OPTIONS.map((status) => (
-                                    <option key={status} value={status}>
-                                      {status}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || '-'}
-                                </p>
-                              )}
-                              {/* Permit Fields - Show when fee status is 'permitted' */}
-                              {(editFeeStatus === 'permitted' || editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && editMode && (
-                                <div className="mt-4 space-y-3 pt-3 border-t border-gray-200">
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                      Permit Ending Date <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={permitEndingDate}
-                                      onChange={(e) => setPermitEndingDate(e.target.value)}
-                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                      required
-                                    />
+                      const certificates = getCertificatesForCourse(courseType);
+                      const overallStatus = editData.certificates_status || selectedStudent?.certificates_status || null;
+
+                      return (
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mt-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                            Certificate Information
+                          </h4>
+                          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                            <h5 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                              <FileText size={14} className="text-gray-600" />
+                              {editMode ? 'Edit Certificate Status' : 'Certificate Status'}
+                            </h5>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {certificates.map((cert) => {
+                                const isPresent = isCertificatePresent(cert.key);
+                                const displayStatus = getCertificateStatusDisplay(cert.key, overallStatus);
+                                const isYes = displayStatus === 'Yes';
+
+                                return (
+                                  <div
+                                    key={cert.key}
+                                    className={`flex items-center justify-between p-2.5 bg-white rounded border ${isYes ? 'border-green-200 bg-green-50' : 'border-gray-200'
+                                      } transition-colors`}
+                                  >
+                                    <span className="text-xs text-gray-700 flex-1 pr-2">{cert.label}</span>
+
+                                    {editMode ? (
+                                      <select
+                                        value={getCertificateStatusDisplay(cert.key) === 'No' ? '' : getCertificateStatusDisplay(cert.key)}
+                                        onChange={(e) => updateCertificateStatus(cert.key, e.target.value)}
+                                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white"
+                                      >
+                                        <option value="">No</option>
+                                        {(() => {
+                                          const type = courseType.toLowerCase();
+                                          const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
+                                          const options = configCert?.options || [];
+                                          if (options.length > 0) {
+                                            return options.map((opt, idx) => (
+                                              <option key={idx} value={opt}>{opt}</option>
+                                            ));
+                                          }
+                                          return <option value="Yes">Yes</option>;
+                                        })()}
+                                      </select>
+                                    ) : (
+                                      <span className={`text-xs font-medium px-2 py-1 rounded ${isPresent
+                                        ? 'text-green-700 bg-green-100'
+                                        : 'text-red-700 bg-red-100'
+                                        }`}>
+                                        {displayStatus}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                      Permit Remarks <span className="text-red-500">*</span>
-                                    </label>
-                                    <textarea
-                                      value={permitRemarks}
-                                      onChange={(e) => setPermitRemarks(e.target.value)}
-                                      rows="3"
-                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm"
-                                      placeholder="Enter remarks for the permit"
-                                      required
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                              {/* Show permit info in view mode */}
-                              {(editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && !editMode && (
-                                <div className="mt-4 space-y-2 pt-3 border-t border-gray-200">
-                                  {permitEndingDate && (
-                                    <div>
-                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                        Permit Ending Date
-                                      </label>
-                                      <p className="text-sm text-gray-900 font-medium">
-                                        {permitEndingDate || selectedStudent?.permit_ending_date || '-'}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {permitRemarks && (
-                                    <div>
-                                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                        Permit Remarks
-                                      </label>
-                                      <p className="text-sm text-gray-900 font-medium">
-                                        {permitRemarks || selectedStudent?.permit_remarks || '-'}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                );
+                              })}
                             </div>
-                          )}
-                          {canViewField('registration_status') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Registration Status
-                              </label>
-                              {editMode ? (
-                                <select
-                                  value={editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || ''}
-                                  onChange={(e) => setEditRegistrationStatus(e.target.value)}
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
-                                >
-                                  {!editRegistrationStatus && !editData.registration_status && !editData['Registration Status'] && !selectedStudent?.registration_status && (
-                                    <option value="">Select Registration Status</option>
-                                  )}
-                                  {REGISTRATION_STATUS_OPTIONS.map((status) => (
-                                    <option key={status} value={status}>
-                                      {status}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('previous_college') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Previous College
-                              </label>
-                              {editMode ? (
-                                <input
-                                  type="text"
-                                  value={editData.previous_college ?? ''}
-                                  onChange={(e) => updateEditField('previous_college', e.target.value)}
-                                  placeholder="Enter previous college"
-                                  className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                />
-                              ) : (
-                                <p className="text-sm text-gray-900 font-medium">
-                                  {editData.previous_college || selectedStudent?.previous_college || '-'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {canViewField('certificates_status') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Certificate Status
-                              </label>
-                              <p className="text-sm text-gray-900 font-medium">
-                                {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1 italic">
-                                (Auto-updated based on certificate information)
-                              </p>
-                            </div>
-                          )}
-                          {canViewField('remarks') && (
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                Latest Remark
-                              </label>
-                              <div className="flex items-start gap-2">
-                                <p className="text-sm text-gray-900 font-medium flex-1">
-                                  {editData.remarks || editData.Remarks || selectedStudent?.remarks || '-'}
-                                </p>
-                                <button
-                                  onClick={() => setShowRemarksHistoryModal(true)}
-                                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 shrink-0"
-                                >
-                                  <History size={14} />
-                                  View History
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
+                      );
+                    })()}
 
-                  {/* Certificate Information Section */}
-                  {canViewField('certificates_status') && (() => {
-                    // Determine course type from student data
-                    const courseType = getCourseType(editData.course || selectedStudent?.course || '');
+                    {/* Dynamic Additional Registration Fields - auto-synced from Settings registration form */}
+                    {(() => {
+                      // Keys already rendered as hardcoded fields - skip these
+                      const HARDCODED_KEYS = new Set([
+                        'batch', 'college', 'course', 'branch', 'current_year', 'current_semester',
+                        'student_name', 'father_name', 'gender', 'dob', 'student_mobile',
+                        'parent_mobile1', 'parent_mobile2', 'parent_mobile_1', 'parent_mobile_2',
+                        'adhar_no', 'aadhar_no', 'aadhaar_no', 'caste', 'stud_type', 'studtype',
+                        'student_address', 'city_village', 'mandal_name', 'district',
+                        'previous_college', 'certificates_status', 'remarks', 'pin_no',
+                        'admission_date', 'student_status', 'scholar_status', 'fee_status',
+                        'registration_status', 'student_photo', 'apaar_id',
+                        'admission_number', 'created_at', 'updated_at', 'id',
+                        // verification flags stored internally
+                        'is_student_mobile_verified', 'is_parent_mobile_verified'
+                      ]);
 
-                    if (!courseType) return null;
+                      // Collect all enabled form fields from active forms, excluding hardcoded ones
+                      const extraFields = [];
+                      const seenKeys = new Set();
 
-                    const certificates = getCertificatesForCourse(courseType);
-                    const overallStatus = editData.certificates_status || selectedStudent?.certificates_status || null;
+                      forms.forEach(form => {
+                        if (!form.is_active) return;
+                        const formFields = Array.isArray(form.form_fields) ? form.form_fields : [];
+                        formFields.forEach(field => {
+                          if (field.isEnabled === false) return;
+                          const key = (field.key || '').toLowerCase().trim();
+                          if (!key || HARDCODED_KEYS.has(key) || seenKeys.has(key)) return;
+                          // Also skip keys that start with 'field_' (auto-generated temp keys)
+                          if (key.startsWith('field_') && !editData[field.key] && !editData[field.label]) return;
+                          seenKeys.add(key);
+                          extraFields.push(field);
+                        });
+                      });
 
-                    return (
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mt-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
-                          Certificate Information
-                        </h4>
-                        <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-                          <h5 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                            <FileText size={14} className="text-gray-600" />
-                            {editMode ? 'Edit Certificate Status' : 'Certificate Status'}
-                          </h5>
+                      if (extraFields.length === 0) return null;
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {certificates.map((cert) => {
-                              const isPresent = isCertificatePresent(cert.key);
-                              const displayStatus = getCertificateStatusDisplay(cert.key, overallStatus);
-                              const isYes = displayStatus === 'Yes';
+                      return (
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
+                            Additional Registration Fields
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {extraFields.map((field) => {
+                              const fieldKey = field.key || field.label;
+                              const labelKey = field.label;
+                              const value = editData[fieldKey] ?? editData[labelKey] ?? '';
+                              const isSelectType = field.type === 'select' || field.type === 'radio';
+                              const options = Array.isArray(field.options) ? field.options : [];
 
                               return (
-                                <div
-                                  key={cert.key}
-                                  className={`flex items-center justify-between p-2.5 bg-white rounded border ${isYes ? 'border-green-200 bg-green-50' : 'border-gray-200'
-                                    } transition-colors`}
-                                >
-                                  <span className="text-xs text-gray-700 flex-1 pr-2">{cert.label}</span>
-
+                                <div key={fieldKey}>
+                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    {field.label}
+                                    {field.required && <span className="text-red-500 ml-1">*</span>}
+                                  </label>
                                   {editMode ? (
-                                    <select
-                                      value={getCertificateStatusDisplay(cert.key) === 'No' ? '' : getCertificateStatusDisplay(cert.key)}
-                                      onChange={(e) => updateCertificateStatus(cert.key, e.target.value)}
-                                      className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white"
-                                    >
-                                      <option value="">No</option>
-                                      {(() => {
-                                        const type = courseType.toLowerCase();
-                                        const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
-                                        const options = configCert?.options || [];
-                                        if (options.length > 0) {
-                                          return options.map((opt, idx) => (
-                                            <option key={idx} value={opt}>{opt}</option>
-                                          ));
-                                        }
-                                        return <option value="Yes">Yes</option>;
-                                      })()}
-                                    </select>
+                                    isSelectType ? (
+                                      <select
+                                        value={value}
+                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                        className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                      >
+                                        <option value="">Select {field.label}</option>
+                                        {options.map((opt, i) => (
+                                          <option key={i} value={opt}>{opt}</option>
+                                        ))}
+                                      </select>
+                                    ) : field.type === 'textarea' ? (
+                                      <textarea
+                                        value={value}
+                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                        placeholder={field.placeholder || `Enter ${field.label}`}
+                                        rows={3}
+                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                                      />
+                                    ) : (
+                                      <input
+                                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                        value={value}
+                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
+                                        placeholder={field.placeholder || `Enter ${field.label}`}
+                                        className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                      />
+                                    )
                                   ) : (
-                                    <span className={`text-xs font-medium px-2 py-1 rounded ${isPresent
-                                      ? 'text-green-700 bg-green-100'
-                                      : 'text-red-700 bg-red-100'
-                                      }`}>
-                                      {displayStatus}
-                                    </span>
+                                    <p className="text-sm text-gray-900 font-medium">
+                                      {value || '-'}
+                                    </p>
                                   )}
                                 </div>
                               );
                             })}
                           </div>
                         </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Dynamic Additional Registration Fields - auto-synced from Settings registration form */}
-                  {(() => {
-                    // Keys already rendered as hardcoded fields - skip these
-                    const HARDCODED_KEYS = new Set([
-                      'batch', 'college', 'course', 'branch', 'current_year', 'current_semester',
-                      'student_name', 'father_name', 'gender', 'dob', 'student_mobile',
-                      'parent_mobile1', 'parent_mobile2', 'parent_mobile_1', 'parent_mobile_2',
-                      'adhar_no', 'aadhar_no', 'aadhaar_no', 'caste', 'stud_type', 'studtype',
-                      'student_address', 'city_village', 'mandal_name', 'district',
-                      'previous_college', 'certificates_status', 'remarks', 'pin_no',
-                      'admission_date', 'student_status', 'scholar_status', 'fee_status',
-                      'registration_status', 'student_photo', 'apaar_id',
-                      'admission_number', 'created_at', 'updated_at', 'id',
-                      // verification flags stored internally
-                      'is_student_mobile_verified', 'is_parent_mobile_verified'
-                    ]);
-
-                    // Collect all enabled form fields from active forms, excluding hardcoded ones
-                    const extraFields = [];
-                    const seenKeys = new Set();
-
-                    forms.forEach(form => {
-                      if (!form.is_active) return;
-                      const formFields = Array.isArray(form.form_fields) ? form.form_fields : [];
-                      formFields.forEach(field => {
-                        if (field.isEnabled === false) return;
-                        const key = (field.key || '').toLowerCase().trim();
-                        if (!key || HARDCODED_KEYS.has(key) || seenKeys.has(key)) return;
-                        // Also skip keys that start with 'field_' (auto-generated temp keys)
-                        if (key.startsWith('field_') && !editData[field.key] && !editData[field.label]) return;
-                        seenKeys.add(key);
-                        extraFields.push(field);
-                      });
-                    });
-
-                    if (extraFields.length === 0) return null;
-
-                    return (
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
-                          Additional Registration Fields
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {extraFields.map((field) => {
-                            const fieldKey = field.key || field.label;
-                            const labelKey = field.label;
-                            const value = editData[fieldKey] ?? editData[labelKey] ?? '';
-                            const isSelectType = field.type === 'select' || field.type === 'radio';
-                            const options = Array.isArray(field.options) ? field.options : [];
-
-                            return (
-                              <div key={fieldKey}>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  {field.label}
-                                  {field.required && <span className="text-red-500 ml-1">*</span>}
-                                </label>
-                                {editMode ? (
-                                  isSelectType ? (
-                                    <select
-                                      value={value}
-                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
-                                    >
-                                      <option value="">Select {field.label}</option>
-                                      {options.map((opt, i) => (
-                                        <option key={i} value={opt}>{opt}</option>
-                                      ))}
-                                    </select>
-                                  ) : field.type === 'textarea' ? (
-                                    <textarea
-                                      value={value}
-                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                      placeholder={field.placeholder || `Enter ${field.label}`}
-                                      rows={3}
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
-                                    />
-                                  ) : (
-                                    <input
-                                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                      value={value}
-                                      onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                      placeholder={field.placeholder || `Enter ${field.label}`}
-                                      className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
-                                    />
-                                  )
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {value || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex-shrink-0">
+            < div className="sticky bottom-0 bg-white border-t border-gray-200 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex-shrink-0" >
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                 {editMode ? (
                   <>
@@ -4791,10 +4551,11 @@ const Students = () => {
                   </>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </div >
+          </div >
+        </div >
+      )
+      }
 
       <BulkRollNumberModal
         isOpen={showBulkRollNumber}
@@ -4813,93 +4574,95 @@ const Students = () => {
       />
 
       {/* Permit Modal */}
-      {showPermitModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Permit Information</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Permit Ending Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={permitEndingDate}
-                  onChange={(e) => setPermitEndingDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                  required
-                />
+      {
+        showPermitModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Permit Information</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Permit Ending Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={permitEndingDate}
+                    onChange={(e) => setPermitEndingDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Remarks
+                  </label>
+                  <textarea
+                    value={permitRemarks}
+                    onChange={(e) => setPermitRemarks(e.target.value)}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    placeholder="Enter remarks for the permit"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Remarks
-                </label>
-                <textarea
-                  value={permitRemarks}
-                  onChange={(e) => setPermitRemarks(e.target.value)}
-                  rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                  placeholder="Enter remarks for the permit"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowPermitModal(false);
-                  setPendingFeeStatusChange(null);
-                  setPendingPermitAdmissionNumber(null);
-                  setPermitEndingDate('');
-                  setPermitRemarks('');
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!permitEndingDate) {
-                    toast.error('Please enter permit ending date');
-                    return;
-                  }
-                  if (!permitRemarks || !permitRemarks.trim()) {
-                    toast.error('Please enter permit remarks');
-                    return;
-                  }
-
-                  // If this is from inline editing, save directly using the stored admission number
-                  if (pendingFeeStatusChange === 'permitted' && pendingPermitAdmissionNumber) {
-                    try {
-                      await api.put(`/students/${pendingPermitAdmissionNumber}/fee-status`, {
-                        fee_status: 'permitted',
-                        permit_ending_date: permitEndingDate,
-                        permit_remarks: permitRemarks
-                      });
-                      toast.success('Fee status updated successfully');
-                      invalidateStudents();
-                    } catch (error) {
-                      toast.error(error.response?.data?.message || 'Failed to update fee status');
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowPermitModal(false);
+                    setPendingFeeStatusChange(null);
+                    setPendingPermitAdmissionNumber(null);
+                    setPermitEndingDate('');
+                    setPermitRemarks('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!permitEndingDate) {
+                      toast.error('Please enter permit ending date');
+                      return;
                     }
-                    setEditingCell(null);
-                    setCellEditValue('');
-                  } else {
-                    // Otherwise, this is from full student edit modal – just set status,
-                    // handleSaveEdit will call the fee-status endpoint with permit data.
-                    setEditFeeStatus('permitted');
-                  }
+                    if (!permitRemarks || !permitRemarks.trim()) {
+                      toast.error('Please enter permit remarks');
+                      return;
+                    }
 
-                  setShowPermitModal(false);
-                  setPendingFeeStatusChange(null);
-                  setPendingPermitAdmissionNumber(null);
-                }}
-                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                Confirm
-              </button>
+                    // If this is from inline editing, save directly using the stored admission number
+                    if (pendingFeeStatusChange === 'permitted' && pendingPermitAdmissionNumber) {
+                      try {
+                        await api.put(`/students/${pendingPermitAdmissionNumber}/fee-status`, {
+                          fee_status: 'permitted',
+                          permit_ending_date: permitEndingDate,
+                          permit_remarks: permitRemarks
+                        });
+                        toast.success('Fee status updated successfully');
+                        invalidateStudents();
+                      } catch (error) {
+                        toast.error(error.response?.data?.message || 'Failed to update fee status');
+                      }
+                      setEditingCell(null);
+                      setCellEditValue('');
+                    } else {
+                      // Otherwise, this is from full student edit modal – just set status,
+                      // handleSaveEdit will call the fee-status endpoint with permit data.
+                      setEditFeeStatus('permitted');
+                    }
+
+                    setShowPermitModal(false);
+                    setPendingFeeStatusChange(null);
+                    setPendingPermitAdmissionNumber(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Confirm
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <ManualRollNumberModal
         isOpen={showManualRollNumber}
@@ -4936,57 +4699,59 @@ const Students = () => {
       />
 
       {/* Bulk Password Results Modal */}
-      {bulkPasswordState.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <Key size={24} className="text-teal-600" />
-              Bulk Password Operations
-            </h3>
+      {
+        bulkPasswordState.isOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Key size={24} className="text-teal-600" />
+                Bulk Password Operations
+              </h3>
 
-            {bulkPasswordState.processing ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Processing password resets and sending SMS...</p>
-                <p className="text-xs text-gray-400 mt-2">Please do not close this window.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <div className="text-2xl font-bold text-gray-900">{bulkPasswordState.summary?.total}</div>
-                    <div className="text-xs text-gray-500">Total</div>
+              {bulkPasswordState.processing ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Processing password resets and sending SMS...</p>
+                  <p className="text-xs text-gray-400 mt-2">Please do not close this window.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="text-2xl font-bold text-gray-900">{bulkPasswordState.summary?.total}</div>
+                      <div className="text-xs text-gray-500">Total</div>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">{bulkPasswordState.summary?.success}</div>
+                      <div className="text-xs text-green-600">Success</div>
+                    </div>
+                    <div className="bg-red-50 p-3 rounded-lg">
+                      <div className="text-2xl font-bold text-red-600">{bulkPasswordState.summary?.failed}</div>
+                      <div className="text-xs text-red-600">Failed</div>
+                    </div>
                   </div>
-                  <div className="bg-green-50 p-3 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">{bulkPasswordState.summary?.success}</div>
-                    <div className="text-xs text-green-600">Success</div>
-                  </div>
-                  <div className="bg-red-50 p-3 rounded-lg">
-                    <div className="text-2xl font-bold text-red-600">{bulkPasswordState.summary?.failed}</div>
-                    <div className="text-xs text-red-600">Failed</div>
+
+                  <div className="flex flex-col gap-3 mt-6">
+                    <button
+                      onClick={downloadBulkPasswordReport}
+                      className="flex items-center justify-center gap-2 w-full py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-medium transition-colors"
+                    >
+                      <FileSpreadsheet size={18} />
+                      Download Detailed Report
+                    </button>
+                    <button
+                      onClick={() => setBulkPasswordState(prev => ({ ...prev, isOpen: false }))}
+                      className="w-full py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-3 mt-6">
-                  <button
-                    onClick={downloadBulkPasswordReport}
-                    className="flex items-center justify-center gap-2 w-full py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-medium transition-colors"
-                  >
-                    <FileSpreadsheet size={18} />
-                    Download Detailed Report
-                  </button>
-                  <button
-                    onClick={() => setBulkPasswordState(prev => ({ ...prev, isOpen: false }))}
-                    className="w-full py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <StudentRemarksModal
         isOpen={showRemarksHistoryModal}
@@ -5002,7 +4767,7 @@ const Students = () => {
         student={selectedStudent}
         onVerificationComplete={handleVerificationComplete}
       />
-    </div>
+    </div >
   );
 };
 
