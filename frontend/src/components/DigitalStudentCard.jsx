@@ -175,13 +175,14 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
             </div>
 
             {/* Right: QR Code */}
-            <div className="bg-white p-1 rounded-xl border border-gray-100 shadow-sm flex-shrink-0 mr-1">
+            <div className="bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm flex-shrink-0 mr-1 flex items-center justify-center relative overflow-hidden">
               <QRCodeSVG
-                value={`Name: ${name} | PIN: ${pinNumber} | College: ${college} | Program: ${program}-${branch} | Batch: ${batch}`}
-                size={96}
+                value={`BEGIN:VCARD\nVERSION:3.0\nN:${name}\nFN:${name}\nORG:${college}\nTITLE:Student - ${program} ${branch}\nNOTE:PIN: ${pinNumber} | Batch: ${batch}\nTEL;TYPE=CELL:${studentMobile}\nADR:;;${fullAddress};;;;\nEND:VCARD`}
+                size={86}
                 level="M"
-                includeMargin={false}
+                includeMargin={true}
                 fgColor="#1f2937"
+                style={{ borderRadius: '0.25rem' }}
               />
             </div>
           </div>
