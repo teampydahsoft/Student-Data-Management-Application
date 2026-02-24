@@ -124,15 +124,67 @@ exports.updateRequestStatus = async (req, res) => {
                 'mandal_name', 'district', 'caste', 'gender', 'blood_group'
             ];
 
+            // Mapping dictionary from common form keys/JSON keys -> Database columns
+            const keyMappingsToDB = {
+                'aadhar_no': 'adhar_no',
+                'adhar': 'adhar_no',
+                'gender': 'gender',
+                'sex': 'gender',
+                'date of birth': 'dob',
+                'dob': 'dob',
+                'caste': 'caste',
+                'category': 'caste',
+                'blood_group': 'blood_group',
+                'student_name': 'student_name',
+                'father_name': 'father_name',
+                'student_mobile': 'student_mobile',
+                'student_address': 'student_address',
+                'city_village': 'city_village',
+                'mandal_name': 'mandal_name',
+                'district': 'district',
+                'parent_mobile1': 'parent_mobile1',
+                'parent_mobile2': 'parent_mobile2'
+            };
+
             const updates = [];
             const updateValues = [];
 
-            // Collect updates for main students table columns
+            // Normalize changes object first to redirect standard fields to DB columns
+            let normalizedChanges = { ...changes };
+            let jsonOnlyChanges = {};
+
+            // Sort changes into main DB columns vs JSON columns
             for (const [key, value] of Object.entries(changes)) {
+                // Try case insensitive match against the mapping dictionary
+                let matchedDBCol = null;
+                const lowerKey = String(key).toLowerCase();
+
                 if (validStudentColumns.includes(key)) {
-                    updates.push(`${key} = ?`);
-                    updateValues.push(value);
+                    matchedDBCol = key;
+                } else {
+                    for (const [mapKey, dbCol] of Object.entries(keyMappingsToDB)) {
+                        if (lowerKey === mapKey || lowerKey.includes(mapKey)) {
+                            matchedDBCol = dbCol;
+                            break;
+                        }
+                    }
                 }
+
+                if (matchedDBCol && validStudentColumns.includes(matchedDBCol)) {
+                    // For dates, format correctly if it's a date string
+                    let formattedValue = value;
+                    if (matchedDBCol === 'dob' && value && value.includes('T')) {
+                        formattedValue = value.split('T')[0];
+                    }
+                    if (!updates.includes(`${matchedDBCol} = ?`)) { // Prevent duplicate DB updates
+                        updates.push(`${matchedDBCol} = ?`);
+                        updateValues.push(formattedValue);
+                    }
+                }
+
+                // Keep it in jsonOnlyChanges as well so the verbatim form JSON record matches 
+                // what the student actually typed into the UI
+                jsonOnlyChanges[key] = value;
             }
 
             if (updates.length > 0) {
@@ -154,7 +206,7 @@ exports.updateRequestStatus = async (req, res) => {
                 if (!stData) stData = {};
 
                 let dataChanged = false;
-                for (const [key, value] of Object.entries(changes)) {
+                for (const [key, value] of Object.entries(jsonOnlyChanges)) {
                     stData[key] = value;
                     dataChanged = true;
                 }

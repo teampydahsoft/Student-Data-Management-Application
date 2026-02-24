@@ -301,6 +301,15 @@ const Profile = () => {
                                     {displayData.stud_type || getStudentData('StudType') || 'Student'}
                                 </span>
                             </div>
+
+                            {/* NEW: Display Academic Snapshot below the badges */}
+                            <div className="mt-4 flex flex-col md:flex-row md:items-center gap-1 md:gap-3 text-xs md:text-sm text-gray-600 font-medium bg-gray-50/80 p-3 rounded-xl border border-gray-100/50 w-full md:w-max">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap"><Book size={14} className="text-indigo-500" /> {displayData.college || getStudentData('College') || '—'}</div>
+                                <span className="hidden md:inline text-gray-300">•</span>
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">{displayData.course || getStudentData('Program') || '—'}</div>
+                                <span className="hidden md:inline text-gray-300">•</span>
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">Year {displayData.current_year || getStudentData('Year') || '—'} <span>/</span> Sem {displayData.current_semester || getStudentData('Semister') || '—'}</div>
+                            </div>
                         </div>
 
                         {/* Digital ID Card button + Change Password */}
@@ -397,6 +406,33 @@ const Profile = () => {
                         <InfoItem label="Mandal" value={displayData.mandal_name || getStudentData('Mandal')} />
                         <InfoItem label="District" value={displayData.district || getStudentData('District')} />
                     </div>
+                </div>
+            </div>
+
+            {/* Added: Embedded Digital ID Card tab area on mobile or extra info block */}
+            <div className="bg-gradient-to-br from-indigo-50/50 to-white rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07)] border border-indigo-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 mb-8 w-full max-w-full overflow-hidden">
+                <div className="flex-1 space-y-3 text-center md:text-left">
+                    <div className="inline-flex items-center justify-center p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0 mx-auto md:mx-0">
+                        <CreditCard size={24} />
+                    </div>
+                    <h3 className="text-xl font-bold tracking-tight text-gray-900">Your Digital ID Card</h3>
+                    <p className="text-sm text-gray-600 max-w-lg">
+                        This digital ID card displays your verified profile information and can be used on campus. Save the PDF formatted version offline for faster access.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={async () => await handleDownloadIdCardPDF()}
+                        disabled={idCardPdfLoading}
+                        className="mt-2 w-full md:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-md hover:shadow-indigo-500/30 flex items-center justify-center gap-2"
+                    >
+                        <Download size={16} />
+                        {idCardPdfLoading ? 'Downloading…' : 'Download ID PDF'}
+                    </button>
+                </div>
+
+                {/* Visual Card Representation */}
+                <div className="w-full md:w-auto shrink-0 flex justify-center scale-95 md:scale-100 transform origin-right">
+                    <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
                 </div>
             </div>
 

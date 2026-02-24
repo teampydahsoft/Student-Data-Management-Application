@@ -116,6 +116,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         const coreFields = [
                             { key: 'gender', label: 'Gender', type: 'select', options: ['M', 'F', 'Other'], required: true },
                             { key: 'course', label: 'Course / Program', type: 'text', required: true },
+                            { key: 'batch', label: 'Batch', type: 'text', required: true },
                             { key: 'current_year', label: 'Current Year', type: 'text', required: true },
                             { key: 'current_semester', label: 'Current Semester', type: 'text', required: true }
                         ];
@@ -428,12 +429,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/40 backdrop-blur-md animate-fade-in custom-scrollbar overflow-y-auto">
-            <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col relative my-auto border border-white/20 overflow-hidden"
+        <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-6 bg-black/40 backdrop-blur-md animate-fade-in custom-scrollbar overflow-y-auto">
+            <div className="bg-white sm:rounded-[24px] rounded-none shadow-2xl w-full h-[100dvh] sm:h-auto sm:max-h-[85vh] max-w-5xl flex flex-col relative my-auto sm:border border-white/20 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}>
 
                 {/* Header Section */}
-                <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-900 px-8 py-6 shrink-0 relative overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-900 px-4 sm:px-8 py-4 sm:py-6 shrink-0 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
                     <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/20 rounded-full blur-2xl translate-y-1/2 -translate-x-1/4"></div>
 
@@ -457,7 +458,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 </div>
 
                 {/* Status Banners */}
-                <div className="px-8 pt-6 pb-2 shrink-0 bg-gray-50/50">
+                <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2 shrink-0 bg-gray-50/50">
                     {pendingRequest ? (
                         <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex gap-4 shadow-sm items-start">
                             <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
@@ -477,8 +478,11 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                             </div>
                             <div>
                                 <h4 className="font-bold text-amber-900 text-sm">Action Required</h4>
-                                <p className="text-sm text-amber-800/80 mt-1 font-medium leading-relaxed">
+                                <p className="text-sm text-amber-800/80 mt-1 font-medium leading-relaxed hidden sm:block">
                                     Please carefully check if these fields match your records. If they are correct, click "Verified, No Changes Needed". If you edit them, you can submit a change request.
+                                </p>
+                                <p className="text-xs text-amber-800/80 mt-1 font-medium leading-relaxed sm:hidden">
+                                    Check if fields match your records. Edit if needed, or click "Verified".
                                 </p>
                             </div>
                         </div>
@@ -527,25 +531,37 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                     </div>
 
                     {/* Mobile Tabs */}
-                    <div className="md:hidden flex overflow-x-auto p-4 border-b border-gray-100 bg-gray-50/50 gap-2 shrink-0 no-scrollbar items-center">
-                        {availableTabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap transition-all ${activeTab === tab.id
-                                    ? 'bg-indigo-600 text-white shadow-md'
-                                    : 'bg-white text-gray-600 border border-gray-200'
-                                    }`}
-                            >
-                                <tab.icon size={14} />
-                                {tab.label}
-                            </button>
-                        ))}
+                    <div className="md:hidden flex flex-col border-b border-gray-100 bg-gray-50/50 shrink-0">
+                        {/* Progress Steps Indicator */}
+                        <div className="px-4 pt-4 pb-4">
+                            <div className="flex items-center justify-between relative">
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 rounded-full"></div>
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${(availableTabs.findIndex(t => t.id === activeTab) / (availableTabs.length - 1)) * 100}%` }}></div>
+                                {availableTabs.map((tab, idx) => {
+                                    const isActive = tab.id === activeTab;
+                                    const isPast = availableTabs.findIndex(t => t.id === activeTab) > idx;
+                                    return (
+                                        <div
+                                            key={`step-${tab.id}`}
+                                            className="relative z-10 bg-gray-50/50 px-1 cursor-pointer"
+                                            onClick={() => setActiveTab(tab.id)}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${isActive ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-110' : isPast ? 'bg-indigo-100 border-indigo-500 text-indigo-700' : 'bg-white border-gray-300 text-gray-400'}`}>
+                                                {isPast ? <Check size={12} /> : (idx + 1)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="text-center mt-3">
+                                <span className="text-xs font-bold text-indigo-900">{availableTabs.find(t => t.id === activeTab)?.label}</span>
+                                <span className="text-[10px] text-gray-500 ml-1">Step {availableTabs.findIndex(t => t.id === activeTab) + 1} of {availableTabs.length}</span>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Form Area */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 bg-white relative">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 md:p-8 bg-white relative pb-32 sm:pb-8">
                         {loadingConfig ? (
                             <div className="animate-pulse space-y-6">
                                 <div className="h-6 w-1/3 bg-gray-200 rounded"></div>
@@ -569,6 +585,33 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                                                 </div>
                                             ))}
                                         </div>
+
+                                        {/* Mobile Navigation Buttons (Next / Prev) */}
+                                        <div className="md:hidden flex items-center justify-between pt-6 pb-2 border-t border-gray-100 mt-6 md:mt-0 md:border-t-0 md:pt-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const currentIndex = availableTabs.findIndex(t => t.id === activeTab);
+                                                    if (currentIndex > 0) setActiveTab(availableTabs[currentIndex - 1].id);
+                                                    document.querySelector('.custom-scrollbar').scrollTo({ top: 0, behavior: 'smooth' });
+                                                }}
+                                                className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${availableTabs.findIndex(t => t.id === activeTab) === 0 ? 'invisible' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                            >
+                                                Previous
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const currentIndex = availableTabs.findIndex(t => t.id === activeTab);
+                                                    if (currentIndex < availableTabs.length - 1) setActiveTab(availableTabs[currentIndex + 1].id);
+                                                    document.querySelector('.custom-scrollbar').scrollTo({ top: 0, behavior: 'smooth' });
+                                                }}
+                                                className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all bg-indigo-600 text-white shadow-md hover:bg-indigo-700 hover:shadow-lg flex items-center gap-2 ${availableTabs.findIndex(t => t.id === activeTab) === availableTabs.length - 1 ? 'hidden' : 'flex'}`}
+                                            >
+                                                Next Step <ChevronRight size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </form>
@@ -576,8 +619,8 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                     </div>
                 </div>
 
-                {/* Footer Footer */}
-                <div className="p-4 sm:p-6 border-t border-gray-100 shrink-0 bg-white flex flex-col sm:flex-row items-center justify-between rounded-b-[24px] gap-4">
+                {/* Footer */}
+                <div className="p-4 sm:p-6 border-t border-gray-100 shrink-0 bg-white flex flex-col sm:flex-row items-center justify-between sm:rounded-b-[24px] gap-4 mb-20 sm:mb-0">
                     <p className="text-xs font-semibold text-gray-400 hidden lg:block">Secure Profile Verification</p>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
 

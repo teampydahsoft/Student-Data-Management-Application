@@ -3220,7 +3220,7 @@ const Students = () => {
           }}
         >
           <div
-            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
+            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -3373,9 +3373,19 @@ const Students = () => {
 
                     <div className="flex-1 lg:text-center min-w-0">
                       <p className="text-[9px] lg:text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-0.5 lg:mb-1">Student PIN</p>
-                      <h4 className="text-base lg:text-lg font-black text-gray-900 leading-tight truncate">
-                        {editData.pin_no || selectedStudent?.pin_no || 'NOT ASSIGNED'}
-                      </h4>
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editData.pin_no || ''}
+                          onChange={(e) => updateEditField('pin_no', e.target.value)}
+                          placeholder="Enter PIN"
+                          className="w-full text-center text-base lg:text-lg font-black text-gray-900 border-b-2 border-indigo-200 focus:border-indigo-500 outline-none bg-transparent placeholder-gray-300"
+                        />
+                      ) : (
+                        <h4 className="text-base lg:text-lg font-black text-gray-900 leading-tight truncate">
+                          {editData.pin_no || selectedStudent?.pin_no || 'NOT ASSIGNED'}
+                        </h4>
+                      )}
                       <div className="mt-1 lg:mt-2 flex lg:justify-center">
                         <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">
                           {editData.stud_type || selectedStudent?.stud_type || 'Regular'}
@@ -3403,6 +3413,13 @@ const Students = () => {
                       onChange={(val) => updateEditField('batch', val)}
                     />
                     <SidebarDetailItem
+                      label="College"
+                      value={editData.college || selectedStudent?.college}
+                      icon={<Book size={14} />}
+                      editable={editMode}
+                      onChange={(val) => updateEditField('college', val)}
+                    />
+                    <SidebarDetailItem
                       label="Program"
                       value={editData.course || selectedStudent?.course}
                       icon={<Book size={14} />}
@@ -3411,6 +3428,22 @@ const Students = () => {
                       options={quickFilterOptions.courses}
                       onChange={(val) => updateEditField('course', val)}
                     />
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <SidebarDetailItem
+                        label="Year"
+                        value={editData.current_year || selectedStudent?.current_year}
+                        icon={<Calendar size={14} />}
+                        editable={editMode}
+                        onChange={(val) => updateEditField('current_year', val)}
+                      />
+                      <SidebarDetailItem
+                        label="Semester"
+                        value={editData.current_semester || selectedStudent?.current_semester}
+                        icon={<Calendar size={14} />}
+                        editable={editMode}
+                        onChange={(val) => updateEditField('current_semester', val)}
+                      />
+                    </div>
                   </div>
 
                   {!editMode && !isCashier && (
@@ -3465,6 +3498,12 @@ const Students = () => {
                       className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
                     >
                       <History size={16} /> <span className="whitespace-nowrap">History</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveStudentTab('id_card')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'id_card' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                    >
+                      <CreditCard size={16} /> <span className="whitespace-nowrap">ID Card</span>
                     </button>
                   </div>
                 </div>
@@ -3678,6 +3717,40 @@ const Students = () => {
                         ) : (
                           <StudentHistoryLogs student={selectedStudent} />
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeStudentTab === 'id_card' && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                      <div className="max-w-2xl mx-auto flex flex-col items-center">
+                        <div className="text-center mb-8">
+                          <div className="hidden">
+                            <div className="inline-flex items-center justify-center p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4">
+                              <CreditCard size={28} />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900 mb-2">Digital Student ID Card</h3>
+                            <p className="text-gray-500 max-w-md mx-auto">
+                              Verified student identification details including a dynamic QR code for instant scan verification.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="transform origin-top sm:scale-100 scale-95 shadow-2xl rounded-[1.5rem] bg-indigo-50/20 p-2 sm:p-4 border border-indigo-100/50 relative">
+                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-transparent to-blue-50/50 rounded-[1.5rem] pointer-events-none"></div>
+                          <div className="relative z-10">
+                            <DigitalStudentCard
+                              student={selectedStudent}
+                              getStudentData={(key) => {
+                                if (!selectedStudent || !selectedStudent.student_data) return '';
+                                const dataKeys = Object.keys(selectedStudent.student_data);
+                                const foundKey = dataKeys.find(k => k.toLowerCase() === key.toLowerCase());
+                                const val = foundKey ? selectedStudent.student_data[foundKey] : undefined;
+                                return val !== undefined && val !== null && val !== '' ? val : '';
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
