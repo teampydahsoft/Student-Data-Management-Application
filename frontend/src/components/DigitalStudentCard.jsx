@@ -97,20 +97,20 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         </svg>
       </div>
 
-      <div className="flex-1 flex flex-col relative z-10 w-full pt-5 pb-10">
+      <div className="flex-1 flex flex-col relative z-10 w-full pt-12 pb-10">
         {/* Logo at Top Center */}
-        <div className="w-full flex justify-center mb-5">
-          <div className="bg-white/90 backdrop-blur-md p-2 rounded-xl shadow-sm h-[76px] inline-flex items-center justify-center border border-white/50 relative z-20">
+        <div className="w-full flex justify-center mb-6">
+          <div className="bg-white/90 backdrop-blur-md p-2 rounded-xl shadow-sm h-[90px] inline-flex items-center justify-center border border-white/50 relative z-20">
             <img src="/logo.png" alt="College Logo" className="h-full w-auto object-contain" />
           </div>
         </div>
 
         <div className="px-6 flex flex-col flex-1">
           {/* Top Split Area: Photo on Left, Details on Right */}
-          <div className="flex flex-row items-center w-full gap-5">
+          <div className="flex flex-row items-start w-full gap-5">
             {/* Left: Photo */}
-            <div className="flex flex-col items-center">
-              <div className="w-28 h-28 rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex-shrink-0 flex items-center justify-center relative z-10 mb-2">
+            <div className="flex flex-col items-center mt-6">
+              <div className="w-[124px] h-[160px] rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex-shrink-0 flex items-center justify-center relative z-10">
                 {photoUrl ? (
                   <img
                     src={photoUrl}
@@ -127,45 +127,53 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
                   <User className="w-12 h-12 text-gray-300" />
                 </div>
               </div>
-              <span className="inline-block px-3 py-1 rounded-md bg-[#b91c1c] text-white text-[10px] sm:text-[11px] font-bold tracking-wide shadow-sm text-center min-w-[100px] truncate">
-                {program} {branch && branch !== '—' ? `- ${branch}` : ''}
-              </span>
             </div>
 
             {/* Right: Primary Info */}
-            <div className="flex flex-col space-y-2.5 flex-1 min-w-0">
-              <div className="flex items-center text-[11px] sm:text-xs">
-                <span className="font-bold text-gray-500 w-[56px] tracking-wide uppercase shrink-0">PIN</span>
-                <span className="font-bold text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="font-bold text-gray-800 flex-1 truncate">{pinNumber}</span>
+            <div className="flex flex-col space-y-2 flex-1 min-w-0 pt-0.5 w-full mt-6">
+              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
+                <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 break-words capitalize leading-snug" title={name}>{name.toLowerCase()}</span>
               </div>
-              <div className="flex items-center text-[11px] sm:text-xs">
-                <span className="font-bold text-gray-500 w-[56px] tracking-wide uppercase shrink-0">BATCH</span>
-                <span className="font-bold text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="font-bold text-gray-800 flex-1 truncate">{batch}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PROGRAM</span>
+                <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 break-words leading-snug" title={program}>{program}</span>
               </div>
-              <div className="flex items-center text-[11px] sm:text-xs">
-                <span className="font-bold text-gray-500 w-[56px] tracking-wide uppercase shrink-0">STUDENT</span>
-                <span className="font-bold text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="font-bold text-gray-800 flex-1 truncate">{studentMobile}</span>
+              {branch && branch !== '—' && (
+                <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                  <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BRANCH</span>
+                  <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
+                  <span className="flex-1 break-words leading-snug" title={branch}>{branch}</span>
+                </div>
+              )}
+
+              <div className="flex items-center text-[10px] sm:text-[11px] font-bold text-[#1e293b] pt-1">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0">PIN</span>
+                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
+                <span className="flex-1 truncate">{pinNumber}</span>
               </div>
-              <div className="flex items-center text-[11px] sm:text-xs">
-                <span className="font-bold text-gray-500 w-[56px] tracking-wide uppercase shrink-0">PARENT</span>
-                <span className="font-bold text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="font-bold text-gray-800 flex-1 truncate">{parentMobile}</span>
+              <div className="flex items-center text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0">BATCH</span>
+                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
+                <span className="flex-1 truncate">{batch}</span>
+              </div>
+              <div className="flex items-center text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0">STUDENT</span>
+                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
+                <span className="flex-1 truncate">{studentMobile}</span>
+              </div>
+              <div className="flex items-center text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
+                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0">PARENT</span>
+                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
+                <span className="flex-1 truncate">{parentMobile}</span>
               </div>
             </div>
           </div>
 
-          {/* Student Name */}
-          <div className="w-full text-left mt-5 mb-1 pl-1">
-            <h1 className="text-xl sm:text-[22px] font-bold text-[#1e293b] leading-tight capitalize" title={name}>
-              {name.toLowerCase()}
-            </h1>
-          </div>
-
           {/* Bottom Section: Address & QR Code */}
-          <div className="w-full flex items-start justify-between mt-auto pt-3 border-t border-gray-200 border-dashed gap-3">
+          <div className="w-full flex items-start justify-between mt-6 pt-3 border-t border-gray-200 border-dashed gap-3">
             {/* Left: Address */}
             <div className="flex flex-col text-[10px] sm:text-[11px] flex-1 min-w-0 pr-1 pl-1">
               <span className="font-bold text-gray-400 tracking-wider uppercase mb-0.5">ADDRESS</span>
