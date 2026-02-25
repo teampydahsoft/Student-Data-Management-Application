@@ -15,10 +15,10 @@ router.patch('/:id/read', notificationController.markAsRead);
 // Mark all as read
 router.patch('/read-all', notificationController.markAllAsRead);
 
-// Delete notification
-router.delete('/:id', notificationController.deleteNotification);
-
 // Clear all notifications
 router.delete('/clear-all', notificationController.clearAllNotifications);
+
+// Delete notification
+router.delete('/:id', notificationController.deleteNotification);
 
 module.exports = router;

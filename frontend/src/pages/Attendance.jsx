@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CalendarCheck,
   CalendarDays,
@@ -2820,9 +2821,9 @@ const Attendance = () => {
       </section>
 
       {/* Day End Report Modal */}
-      {dayEndReportOpen && (
+      {dayEndReportOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl my-8 overflow-hidden animate-scale-in border border-gray-100 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[95%] my-8 overflow-hidden animate-scale-in border border-gray-100 flex flex-col max-h-[90vh]">
             {/* Header */}
             <div className="p-6 border-b flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
               <div className="flex items-center gap-4">
@@ -2863,7 +2864,7 @@ const Attendance = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto bg-gray-50/30 p-4 sm:p-6">
-              <div className="max-w-6xl mx-auto space-y-6">
+              <div className="w-full mx-auto space-y-6">
                 {/* Mobile Filter Toggles */}
                 <div className="flex md:hidden items-center bg-white p-1 rounded-2xl border border-gray-200 shadow-sm">
                   {[
@@ -3090,7 +3091,7 @@ const Attendance = () => {
             </div>
           </div>
         </div>
-      )}
+        , document.body)}
 
       {/* Holiday Reason Modal */}
       {
