@@ -20,7 +20,7 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
         const loadBatches = async () => {
             try {
                 setBatchesLoading(true);
-                const response = await api.get('/students/batches');
+                const response = await api.get('/announcements/batches');
                 if (response.data.success) {
                     setBatches(response.data.data || []);
                     // Set the current batch as fromBatch
