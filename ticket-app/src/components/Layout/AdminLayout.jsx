@@ -208,7 +208,7 @@ const AdminLayout = () => {
             {/* Inject CSS for Media Queries */}
             <style>{`
                 @media (max-width: 1024px) {
-                    .desktop-sidebar { width: 270px; z-index: 50; }
+                    .desktop-sidebar { width: 270px; z-index: 60 !important; }
                     .main-content { margin-left: 0 !important; padding-top: 84px !important; }
                     .mobile-header { display: flex !important; }
                 }
