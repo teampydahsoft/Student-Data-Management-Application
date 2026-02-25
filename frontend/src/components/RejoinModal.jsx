@@ -131,9 +131,11 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
                         <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
                         <div>
                             <p className="text-sm font-semibold text-amber-900">Important Information</p>
-                            <p className="text-xs text-amber-700 mt-1">
+                            <p className="text-xs text-amber-700 mt-1 truncate whitespace-normal">
                                 The student will be moved to the selected batch and their status will be changed to "Regular (Rejoined)".
-                                This action will be recorded in the student's history.
+                            </p>
+                            <p className="text-xs text-amber-700 mt-1 truncate whitespace-normal font-medium">
+                                * The student's current year and semester will automatically be updated to match the target batch.
                             </p>
                         </div>
                     </div>

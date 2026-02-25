@@ -6260,6 +6260,32 @@ exports.rejoinStudent = async (req, res) => {
       }
     }
 
+    // Determine target batch's current year and semester
+    let newYear = student.current_year;
+    let newSemester = student.current_semester;
+
+    try {
+      const [targetBatchInfo] = await masterPool.query(
+        `SELECT current_year, current_semester 
+         FROM students 
+         WHERE batch = ? AND course = ? AND branch = ? AND student_status = 'Regular' 
+         AND current_year IS NOT NULL AND current_semester IS NOT NULL
+         LIMIT 1`,
+        [toBatch, student.course, student.branch]
+      );
+
+      if (targetBatchInfo.length > 0) {
+        newYear = targetBatchInfo[0].current_year;
+        newSemester = targetBatchInfo[0].current_semester;
+
+        // Also update studentData with the new year and semester
+        studentData['Current Year'] = newYear;
+        studentData['Current Semester'] = newSemester;
+      }
+    } catch (batchErr) {
+      console.error('Failed to get target batch year/semester info:', batchErr);
+    }
+
     // Update student with new batch and rejoined status
     const updatedStudentData = {
       ...studentData,
@@ -6298,11 +6324,15 @@ exports.rejoinStudent = async (req, res) => {
       `UPDATE students 
        SET batch = ?, 
            student_status = ?, 
+           current_year = ?,
+           current_semester = ?,
            student_data = ?
        WHERE admission_number = ?`,
       [
         toBatch,
         'Regular',
+        newYear,
+        newSemester,
         JSON.stringify(updatedStudentData),
         admissionNumber
       ]
@@ -6318,8 +6348,8 @@ exports.rejoinStudent = async (req, res) => {
           admissionNumber,
           rejoinRemarkStr,
           category,
-          student.current_year || 1,
-          student.current_semester || 1,
+          newYear || 1,
+          newSemester || 1,
           authorId,
           authorName
         ]
@@ -6343,7 +6373,9 @@ exports.rejoinStudent = async (req, res) => {
             toBatch,
             remarks,
             previousStatus: student.student_status,
-            newStatus: 'Regular (Rejoined)'
+            newStatus: 'Regular (Rejoined)',
+            newYear,
+            newSemester
           }),
           authorId
         ]
@@ -6364,7 +6396,9 @@ exports.rejoinStudent = async (req, res) => {
         toBatch,
         remarks,
         previousStatus: student.student_status,
-        newStatus: 'Regular (Rejoined)'
+        newStatus: 'Regular (Rejoined)',
+        newYear,
+        newSemester
       }
     });
 
