@@ -23,7 +23,6 @@ router.get(
 
 router.get(
     '/stats',
-    verifyRole(USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.COLLEGE_PRINCIPAL, USER_ROLES.COLLEGE_AO),
     ticketController.getTicketStats
 );
 

@@ -191,7 +191,7 @@ exports.createEmployee = async (req, res) => {
                 `INSERT INTO ticket_employees 
                 (rbac_user_id, role, custom_role_id, role_name, assigned_categories, assigned_subcategories, permissions) 
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [rbac_user_id, role || 'staff', custom_role_id || null, roleName, categoriesJson, subcategoriesJson, permissionsJson]
+                [rbac_user_id, 'staff', custom_role_id || null, roleName, categoriesJson, subcategoriesJson, permissionsJson]
             );
 
             // Sync role to rbac_users if it's a legacy role
@@ -232,7 +232,7 @@ exports.createEmployee = async (req, res) => {
                 `INSERT INTO ticket_employees 
                 (role, custom_role_id, role_name, name, email, username, password_hash, phone, permissions) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [role || 'worker', custom_role_id || null, roleName, name, email || null, username, hashedPassword, phone, permissionsJson]
+                ['worker', custom_role_id || null, roleName, name, email || null, username, hashedPassword, phone, permissionsJson]
             );
         }
 
@@ -305,9 +305,9 @@ exports.updateEmployee = async (req, res) => {
 
         const [result] = await masterPool.query(
             `UPDATE ticket_employees 
-             SET role = ?, custom_role_id = ?, role_name = ?, assigned_categories = ?, assigned_subcategories = ?, updated_at = NOW() 
+             SET custom_role_id = ?, role_name = ?, assigned_categories = ?, assigned_subcategories = ?, updated_at = NOW() 
              WHERE id = ?`,
-            [role || roleName, custom_role_id || null, roleName, categoriesJson, subcategoriesJson, id]
+            [custom_role_id || null, roleName || role, categoriesJson, subcategoriesJson, id]
         );
 
         if (result.affectedRows === 0) {
