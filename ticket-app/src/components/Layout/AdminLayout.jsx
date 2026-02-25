@@ -33,6 +33,8 @@ const AdminLayout = () => {
         navigate('/login');
     };
 
+    const hasPortalAccess = !user?.is_worker;
+
     // --- Navigation Configuration ---
     const navItems = [
         {
@@ -71,12 +73,12 @@ const AdminLayout = () => {
             path: '/roles',
             permission: FRONTEND_MODULES.USERS
         },
-        {
+        ...(hasPortalAccess ? [{
             icon: ArrowLeftCircle,
             label: 'Back to Portal',
             path: '/',
             isExternal: true
-        },
+        }] : []),
     ];
 
     // --- Inline Styles & Media Queries (Matching StudentLayout) ---
@@ -308,50 +310,52 @@ const AdminLayout = () => {
                     })}
 
                     {/* Workspace Dropdown */}
-                    <div style={{ marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                        <button
-                            onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
-                            style={{
-                                ...styles.navItem(false),
-                                width: '100%',
-                                justifyContent: 'space-between',
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#4B5563'
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <FolderTree size={20} />
-                                <span>Workspace</span>
-                            </div>
-                            {workspaceDropdownOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                        </button>
+                    {hasPortalAccess && (
+                        <div style={{ marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                            <button
+                                onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
+                                style={{
+                                    ...styles.navItem(false),
+                                    width: '100%',
+                                    justifyContent: 'space-between',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#4B5563'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <FolderTree size={20} />
+                                    <span>Workspace</span>
+                                </div>
+                                {workspaceDropdownOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            </button>
 
-                        {workspaceDropdownOpen && (
-                            <div style={{ paddingLeft: '24px', marginTop: '4px' }}>
-                                <a
-                                    href={`${MAIN_APP_URL}/auth-callback?token=${token}&role=${user?.role || 'admin'}&from=ticket_app`}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px',
-                                        padding: '10px 16px',
-                                        borderRadius: '10px',
-                                        fontSize: '13px',
-                                        fontWeight: '500',
-                                        textDecoration: 'none',
-                                        color: '#4B5563',
-                                        transition: 'all 0.2s'
-                                    }}
-                                    className="hover:bg-blue-50 hover:text-blue-700"
-                                >
-                                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3B82F6' }} />
-                                    <span>Student Database</span>
-                                </a>
-                            </div>
-                        )}
-                    </div>
+                            {workspaceDropdownOpen && (
+                                <div style={{ paddingLeft: '24px', marginTop: '4px' }}>
+                                    <a
+                                        href={`${MAIN_APP_URL}/auth-callback?token=${token}&role=${user?.role || 'admin'}&from=ticket_app`}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '10px 16px',
+                                            borderRadius: '10px',
+                                            fontSize: '13px',
+                                            fontWeight: '500',
+                                            textDecoration: 'none',
+                                            color: '#4B5563',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        className="hover:bg-blue-50 hover:text-blue-700"
+                                    >
+                                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3B82F6' }} />
+                                        <span>Student Database</span>
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </nav>
 
                 {/* User Info */}
