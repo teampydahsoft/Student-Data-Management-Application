@@ -803,7 +803,7 @@ const Attendance = () => {
             </header>
 
             {/* ── Tabs ── */}
-            <div className="flex items-center gap-1.5 bg-gray-100/80 p-1.5 rounded-2xl w-fit">
+            <div className="flex items-center gap-1 sm:gap-1.5 bg-gray-100/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl w-full sm:w-fit">
                 {TABS.map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -811,12 +811,12 @@ const Attendance = () => {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${isActive
+                            className={`flex flex-1 sm:flex-none justify-center items-center gap-1.5 sm:gap-2 px-2 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${isActive
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-800 hover:bg-white/50'
                                 }`}
                         >
-                            <Icon size={15} />
+                            <Icon size={14} className="sm:w-[15px] sm:h-[15px]" />
                             {tab.label}
                         </button>
                     );

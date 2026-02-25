@@ -299,20 +299,12 @@ const Dashboard = () => {
             todayStatus = 'holiday';
         }
 
-        // Filter for Current Month Only
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-
+        // Process entire semester
         series.forEach(day => {
-            const dayDate = new Date(day.date);
-            if (!isNaN(dayDate.getTime()) &&
-                dayDate.getMonth() === currentMonth &&
-                dayDate.getFullYear() === currentYear) {
-                if (!day.isHoliday) {
-                    activeDays++;
-                    if (day.status === 'present') present++;
-                    else if (day.status === 'absent') absent++;
-                }
+            if (!day.isHoliday) {
+                activeDays++;
+                if (day.status === 'present') present++;
+                else if (day.status === 'absent') absent++;
             }
         });
 
@@ -794,60 +786,29 @@ const Dashboard = () => {
                     <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
                         <div className="flex justify-between items-start mb-2 lg:mb-4">
                             <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Summary</h3>
-                            <Link to="/student/attendance" className="hidden lg:block text-xs text-blue-600 hover:underline font-medium">View Details</Link>
+                            <Link to="/student/attendance" className="text-[10px] lg:text-xs text-blue-600 hover:underline font-medium">View Details</Link>
                         </div>
-                        {attendanceHistory?.weekly && attendanceHistory?.monthly ? (
-                            <div className="space-y-2">
+                        {attendanceHistory?.semester ? (
+                            <div className="space-y-2 mt-2">
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">This Week</p>
-                                        <p className="text-lg lg:text-2xl font-bold text-indigo-700">
-                                            {calcPct(
-                                                attendanceHistory.weekly.totals?.present || 0,
-                                                attendanceHistory.weekly.totals?.absent || 0
-                                            ).toFixed(1)}%
+                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Semester</p>
+                                        <p className="text-2xl lg:text-4xl font-bold text-indigo-700 mt-1">
+                                            {attendanceStats?.percentage || '0.0'}%
                                         </p>
                                     </div>
-                                    <div className="text-right text-[10px] text-gray-500">
+                                    <div className="text-right text-xs lg:text-sm text-gray-500">
                                         <div>
-                                            <span className="font-semibold text-green-600">
-                                                {attendanceHistory.weekly.totals?.present || 0}
+                                            <span className="font-bold text-green-600">
+                                                {attendanceStats?.present || 0}
                                             </span>{' '}
-                                            P
+                                            Present
                                         </div>
-                                        <div>
-                                            <span className="font-semibold text-red-500">
-                                                {attendanceHistory.weekly.totals?.absent || 0}
+                                        <div className="mt-1">
+                                            <span className="font-bold text-red-500">
+                                                {attendanceStats?.absent || 0}
                                             </span>{' '}
-                                            A
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="h-px bg-gray-100 my-1" />
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">This Month</p>
-                                        <p className="text-lg lg:text-2xl font-bold text-indigo-700">
-                                            {attendanceHistory.monthly?.totals
-                                                ? calcPct(
-                                                    attendanceHistory.monthly.totals.present || 0,
-                                                    attendanceHistory.monthly.totals.absent || 0
-                                                ).toFixed(1)
-                                                : attendanceStats?.percentage || '0.0'}%
-                                        </p>
-                                    </div>
-                                    <div className="text-right text-[10px] text-gray-500">
-                                        <div>
-                                            <span className="font-semibold text-green-600">
-                                                {attendanceHistory.monthly.totals?.present || 0}
-                                            </span>{' '}
-                                            P
-                                        </div>
-                                        <div>
-                                            <span className="font-semibold text-red-500">
-                                                {attendanceHistory.monthly.totals?.absent || 0}
-                                            </span>{' '}
-                                            A
+                                            Absent
                                         </div>
                                     </div>
                                 </div>
