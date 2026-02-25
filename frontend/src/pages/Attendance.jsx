@@ -343,6 +343,49 @@ const Attendance = () => {
     return courses;
   }, [dayEndFilterOptions.allData, dayEndFilters.college]);
 
+  const filteredDayEndBatches = useMemo(() => {
+    if (!dayEndFilterOptions.allData || dayEndFilterOptions.allData.length === 0) {
+      return dayEndFilterOptions.batches || [];
+    }
+    let data = dayEndFilterOptions.allData;
+    if (dayEndFilters.college) data = data.filter(item => item.college === dayEndFilters.college);
+    return [...new Set(data.map(item => item.batch).filter(Boolean))].sort();
+  }, [dayEndFilterOptions.allData, dayEndFilters.college]);
+
+  const filteredDayEndBranches = useMemo(() => {
+    if (!dayEndFilterOptions.allData || dayEndFilterOptions.allData.length === 0) {
+      return dayEndFilterOptions.branches || [];
+    }
+    let data = dayEndFilterOptions.allData;
+    if (dayEndFilters.college) data = data.filter(item => item.college === dayEndFilters.college);
+    if (dayEndFilters.batch) data = data.filter(item => item.batch === dayEndFilters.batch);
+    if (dayEndFilters.course) data = data.filter(item => item.course === dayEndFilters.course);
+    return [...new Set(data.map(item => item.branch).filter(Boolean))].sort();
+  }, [dayEndFilterOptions.allData, dayEndFilters.college, dayEndFilters.batch, dayEndFilters.course]);
+
+  const filteredDayEndYears = useMemo(() => {
+    if (!dayEndFilterOptions.allData || dayEndFilterOptions.allData.length === 0) {
+      return dayEndFilterOptions.years || [];
+    }
+    let data = dayEndFilterOptions.allData;
+    if (dayEndFilters.college) data = data.filter(item => item.college === dayEndFilters.college);
+    if (dayEndFilters.batch) data = data.filter(item => item.batch === dayEndFilters.batch);
+    if (dayEndFilters.branch) data = data.filter(item => item.branch === dayEndFilters.branch);
+    return [...new Set(data.map(item => item.year || item.currentYear).filter(Boolean))].sort((a, b) => a - b);
+  }, [dayEndFilterOptions.allData, dayEndFilters.college, dayEndFilters.batch, dayEndFilters.branch]);
+
+  const filteredDayEndSemesters = useMemo(() => {
+    if (!dayEndFilterOptions.allData || dayEndFilterOptions.allData.length === 0) {
+      return dayEndFilterOptions.semesters || [];
+    }
+    let data = dayEndFilterOptions.allData;
+    if (dayEndFilters.college) data = data.filter(item => item.college === dayEndFilters.college);
+    if (dayEndFilters.batch) data = data.filter(item => item.batch === dayEndFilters.batch);
+    if (dayEndFilters.branch) data = data.filter(item => item.branch === dayEndFilters.branch);
+    if (dayEndFilters.year) data = data.filter(item => String(item.year || item.currentYear) === String(dayEndFilters.year));
+    return [...new Set(data.map(item => item.semester || item.currentSemester).filter(Boolean))].sort((a, b) => a - b);
+  }, [dayEndFilterOptions.allData, dayEndFilters.college, dayEndFilters.batch, dayEndFilters.branch, dayEndFilters.year]);
+
   const dayEndGroupedDisplay = useMemo(() => {
     let rows = Array.isArray(dayEndGrouped) ? [...dayEndGrouped] : [];
     rows = rows.filter((row) => {
@@ -2972,61 +3015,89 @@ const Attendance = () => {
                 {/* Desktop View: Table */}
                 <div className="hidden md:block bg-white rounded-[2.5rem] border border-gray-200 shadow-2xl overflow-hidden">
                   <div className="overflow-x-auto min-h-[400px]">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+                    <table className="w-full text-left border-collapse table-fixed min-w-[1350px]">
                       <thead>
                         <tr className="bg-gray-900 text-white">
-                          <th className="px-6 py-5 w-[180px] text-[10px] font-black uppercase tracking-widest">
+                          <th className="px-6 py-5 w-[180px] text-[10px] font-bold uppercase tracking-widest">
                             <select
                               value={dayEndFilters.college}
                               onChange={(e) => setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }))}
-                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-black"
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold"
                             >
                               <option value="" className="text-gray-900">COLLEGE</option>
                               {dayEndFilterOptions.colleges.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
                             </select>
                           </th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest">
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest">
                             <select
                               value={dayEndFilters.batch}
-                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value }))}
-                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-black"
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value, branch: '', year: '', semester: '' }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0"
                             >
                               <option value="" className="text-gray-900">BATCH</option>
-                              {dayEndFilterOptions.batches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {filteredDayEndBatches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
                             </select>
                           </th>
-                          <th className="px-6 py-5 w-[150px] text-[10px] font-black uppercase tracking-widest text-center">Branch & Sem</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Students</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Absent</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-right">Present</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-black uppercase tracking-widest text-center">Status %</th>
-                          <th className="px-6 py-5 w-[150px] text-[10px] font-black uppercase tracking-widest text-right">No Class Work</th>
-                          <th className="px-6 py-5 w-[120px] text-[10px] font-black uppercase tracking-widest text-right">Updated At</th>
+                          <th className="px-6 py-5 w-[140px] text-[10px] font-bold uppercase tracking-widest text-left">
+                            <select
+                              value={dayEndFilters.branch}
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, branch: e.target.value, year: '', semester: '' }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0"
+                            >
+                              <option value="" className="text-gray-900">BRANCH</option>
+                              {filteredDayEndBranches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                            </select>
+                          </th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">
+                            <select
+                              value={dayEndFilters.year}
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, year: e.target.value, semester: '' }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0 text-center"
+                            >
+                              <option value="" className="text-gray-900">YEAR</option>
+                              {filteredDayEndYears.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                            </select>
+                          </th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">
+                            <select
+                              value={dayEndFilters.semester}
+                              onChange={(e) => setDayEndFilters(prev => ({ ...prev, semester: e.target.value }))}
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0 text-center"
+                            >
+                              <option value="" className="text-gray-900">SEM</option>
+                              {filteredDayEndSemesters.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                            </select>
+                          </th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Students</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Absent</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Present</th>
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">Status %</th>
+                          <th className="px-6 py-5 w-[150px] text-[10px] font-bold uppercase tracking-widest text-right">No Class Work</th>
+                          <th className="px-6 py-5 w-[120px] text-[10px] font-bold uppercase tracking-widest text-right">Updated At</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {dayEndGroupedDisplay.map((row, idx) => (
                           <tr key={idx} className="hover:bg-blue-50/30 transition-colors group">
-                            <td className="px-6 py-4 text-xs font-bold text-gray-700 truncate" title={row.college}>{row.college || '—'}</td>
-                            <td className="px-6 py-4 text-xs font-black text-blue-600">{row.batch || '—'}</td>
-                            <td className="px-6 py-4 text-center">
-                              <div className="text-[10px] font-black text-gray-900 uppercase truncate" title={row.branch}>{row.branch || '—'}</div>
-                              <div className="text-[10px] font-bold text-gray-400">Year {row.year} • Sem {row.semester}</div>
-                            </td>
-                            <td className="px-6 py-4 text-right font-black text-gray-900">{row.totalStudents ?? 0}</td>
+                            <td className="px-6 py-4 text-[11px] font-medium text-gray-800 truncate" title={row.college}>{row.college || '—'}</td>
+                            <td className="px-6 py-4 text-[11px] font-bold text-blue-700">{row.batch || '—'}</td>
+                            <td className="px-6 py-4 text-[11px] font-bold text-gray-800 uppercase truncate" title={row.branch}>{row.branch || '—'}</td>
+                            <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.year || '—'}</td>
+                            <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.semester || '—'}</td>
+                            <td className="px-6 py-4 text-right text-xs font-bold text-gray-900">{row.totalStudents ?? 0}</td>
                             <td className="px-6 py-4 text-right">
-                              <span className="bg-rose-50 text-rose-700 px-2.5 py-1 rounded-xl font-black text-[10px]">
+                              <span className="bg-rose-50 text-rose-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
                                 {row.absentToday ?? 0}
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-xl font-black text-[10px]">
+                              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
                                 {row.presentToday ?? 0}
                               </span>
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex flex-col items-center gap-1.5">
-                                <span className={`text-[10px] font-black ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                <span className={`text-[11px] font-bold ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-700' : 'text-rose-700'}`}>
                                   {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
                                 </span>
                                 <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shadow-inner">
@@ -3039,11 +3110,11 @@ const Attendance = () => {
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex flex-col items-end">
-                                <span className="font-black text-amber-600 text-xs">{row.holidayToday ?? 0}</span>
-                                {row.holidayReasons && <span className="text-[9px] font-bold text-gray-400 truncate max-w-[120px] uppercase tracking-tighter" title={row.holidayReasons}>{row.holidayReasons}</span>}
+                                <span className="font-bold text-amber-600 text-[11px]">{row.holidayToday ?? 0}</span>
+                                {row.holidayReasons && <span className="text-[10px] font-medium text-gray-500 truncate max-w-[120px]" title={row.holidayReasons}>{row.holidayReasons}</span>}
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 tabular-nums">
+                            <td className="px-6 py-4 text-right text-[11px] font-medium text-gray-500 tabular-nums">
                               {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
                             </td>
                           </tr>
