@@ -57,7 +57,7 @@ import {
 } from "../../constants/rbac";
 import toast from "react-hot-toast";
 
-const TICKET_APP_URL = import.meta.env.VITE_TICKET_APP_URL || 'http://localhost:5174';
+const TICKET_APP_URL = import.meta.env.VITE_TICKET_APP_URL || 'https://pydahsdms-tickets.vercel.app';
 
 const NAV_ITEMS = [
   {

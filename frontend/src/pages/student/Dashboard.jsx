@@ -22,8 +22,9 @@ const Dashboard = () => {
 
     // Ticket App SSO URL
     const ticketAppUrl = useMemo(() => {
-        if (!token) return 'http://localhost:5174/student';
-        return `http://localhost:5174/auth-callback?token=${token}&role=student&from=portal`;
+        const baseUrl = import.meta.env.VITE_TICKET_APP_URL || 'https://pydahsdms-tickets.vercel.app';
+        if (!token) return `${baseUrl}/student`;
+        return `${baseUrl}/auth-callback?token=${token}&role=student&from=portal`;
     }, [token]);
     const [loading, setLoading] = useState(true);
 
