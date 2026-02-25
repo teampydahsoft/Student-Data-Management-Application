@@ -161,6 +161,9 @@ const TaskManagement = () => {
         return matchesStatus && matchesCategory && matchesSearch;
     });
 
+    const managersList = employeesData?.filter(u => u.legacy_role !== 'worker' && u.role !== 'worker') || [];
+    const workersList = employeesData?.filter(u => u.legacy_role === 'worker' || u.role === 'worker') || [];
+
     // Handlers
     const handleAssign = () => {
         if (assignForm.assigned_to.length === 0) return toast.error('Select at least one user');
@@ -360,7 +363,7 @@ const TaskManagement = () => {
                                     <span>Managers</span>
                                     <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-bold transition-colors ${assignTab === 'managers' ? 'bg-primary/10 text-primary-dark' : 'bg-gray-300/50 text-gray-600'
                                         }`}>
-                                        {employeesData?.filter(u => u.role === 'staff').length || 0}
+                                        {managersList.length}
                                     </span>
                                 </button>
                                 <button
@@ -373,7 +376,7 @@ const TaskManagement = () => {
                                     <span>Workers</span>
                                     <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-bold transition-colors ${assignTab === 'workers' ? 'bg-primary/10 text-primary-dark' : 'bg-gray-300/50 text-gray-600'
                                         }`}>
-                                        {employeesData?.filter(u => u.role === 'worker').length || 0}
+                                        {workersList.length}
                                     </span>
                                 </button>
                             </div>
@@ -381,46 +384,54 @@ const TaskManagement = () => {
                             <div className="max-h-[350px] overflow-y-auto px-1 custom-scrollbar">
                                 {assignTab === 'managers' && (
                                     <div className="space-y-2 animate-fade-in">
-                                        {employeesData?.filter(u => u.role === 'staff').length > 0 ? (
-                                            employeesData.filter(u => u.role === 'staff').map((user) => (
-                                                <label key={user.rbac_user_id} className={`group flex items-start p-3.5 rounded-xl cursor-pointer transition-all border-2 ${assignForm.assigned_to.includes(user.rbac_user_id)
-                                                    ? 'bg-primary/5 border-primary shadow-sm'
-                                                    : 'bg-white hover:bg-gray-50 border-transparent hover:border-gray-200 shadow-sm'
-                                                    }`}>
-                                                    <div className="mt-1 relative">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={assignForm.assigned_to.includes(user.rbac_user_id)}
-                                                            onChange={() => {
-                                                                const newAssigned = assignForm.assigned_to.includes(user.rbac_user_id)
-                                                                    ? assignForm.assigned_to.filter(id => id !== user.rbac_user_id)
-                                                                    : [...assignForm.assigned_to, user.rbac_user_id];
-                                                                setAssignForm({ ...assignForm, assigned_to: newAssigned });
-                                                            }}
-                                                            className="peer appearance-none w-5 h-5 rounded-md border-2 border-gray-300 checked:bg-primary checked:border-primary focus:ring-4 focus:ring-primary/20 transition-all cursor-pointer"
-                                                        />
-                                                        <CheckCircle className="w-3.5 h-3.5 text-white absolute top-[5px] left-[5px] opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100" strokeWidth={3} />
-                                                    </div>
+                                        {managersList.length > 0 ? (
+                                            managersList.map((user) => {
+                                                const userId = user.rbac_user_id || user.id;
+                                                return (
+                                                    <label key={user.id} className={`group flex items-start p-3.5 rounded-xl cursor-pointer transition-all border-2 ${assignForm.assigned_to.includes(userId)
+                                                        ? 'bg-blue-50 border-blue-500 shadow-sm'
+                                                        : 'bg-white hover:bg-gray-50 border-transparent hover:border-gray-200 shadow-sm'
+                                                        }`}>
+                                                        <div className="mt-1 relative">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={assignForm.assigned_to.includes(userId)}
+                                                                onChange={() => {
+                                                                    const newAssigned = assignForm.assigned_to.includes(userId)
+                                                                        ? assignForm.assigned_to.filter(id => id !== userId)
+                                                                        : [...assignForm.assigned_to, userId];
+                                                                    setAssignForm({ ...assignForm, assigned_to: newAssigned });
+                                                                }}
+                                                                className="peer appearance-none w-5 h-5 rounded-md border-2 border-gray-300 checked:bg-blue-600 checked:border-blue-600 focus:ring-4 focus:ring-blue-600/20 transition-all cursor-pointer"
+                                                            />
+                                                            <CheckCircle className="w-3.5 h-3.5 text-white absolute top-[5px] left-[5px] opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100" strokeWidth={3} />
+                                                        </div>
 
-                                                    <div className="ml-4 flex-1 min-w-0">
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <span className={`font-semibold text-sm ${assignForm.assigned_to.includes(user.rbac_user_id) ? 'text-gray-900' : 'text-gray-700'}`}>
-                                                                {user.name}
-                                                            </span>
-                                                            <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${user.active_tickets_count > 0
-                                                                ? 'bg-orange-100 text-orange-700'
-                                                                : 'bg-green-100 text-green-700'
-                                                                }`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full ${user.active_tickets_count > 0 ? 'bg-orange-500' : 'bg-green-500'}`}></span>
-                                                                {user.active_tickets_count || 0} active
-                                                            </span>
+                                                        <div className="ml-4 flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className={`font-semibold text-sm ${assignForm.assigned_to.includes(userId) ? 'text-gray-900' : 'text-gray-700'}`}>
+                                                                    {user.name}
+                                                                </span>
+                                                                <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${user.active_tickets_count > 0
+                                                                    ? 'bg-orange-100 text-orange-700'
+                                                                    : 'bg-green-100 text-green-700'
+                                                                    }`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${user.active_tickets_count > 0 ? 'bg-orange-500' : 'bg-green-500'}`}></span>
+                                                                    {user.active_tickets_count || 0} active
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between w-full">
+                                                                <div className="flex items-center text-xs text-blue-700 font-medium">
+                                                                    <span className="truncate">@{user.username}</span>
+                                                                </div>
+                                                                <div className="text-[10px] px-2 py-0.5 text-blue-800 bg-blue-100 rounded-lg">
+                                                                    {user.role_display_name || user.role}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center text-xs text-primary-dark font-medium">
-                                                            <span className="truncate">@{user.username}</span>
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            ))
+                                                    </label>
+                                                )
+                                            })
                                         ) : (
                                             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                                                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -434,46 +445,54 @@ const TaskManagement = () => {
 
                                 {assignTab === 'workers' && (
                                     <div className="space-y-2 animate-fade-in">
-                                        {employeesData?.filter(u => u.role === 'worker').length > 0 ? (
-                                            employeesData.filter(u => u.role === 'worker').map((user) => (
-                                                <label key={user.rbac_user_id} className={`group flex items-start p-3.5 rounded-xl cursor-pointer transition-all border-2 ${assignForm.assigned_to.includes(user.rbac_user_id)
-                                                    ? 'bg-primary/5 border-primary shadow-sm'
-                                                    : 'bg-white hover:bg-gray-50 border-transparent hover:border-gray-200 shadow-sm'
-                                                    }`}>
-                                                    <div className="mt-1 relative">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={assignForm.assigned_to.includes(user.rbac_user_id)}
-                                                            onChange={() => {
-                                                                const newAssigned = assignForm.assigned_to.includes(user.rbac_user_id)
-                                                                    ? assignForm.assigned_to.filter(id => id !== user.rbac_user_id)
-                                                                    : [...assignForm.assigned_to, user.rbac_user_id];
-                                                                setAssignForm({ ...assignForm, assigned_to: newAssigned });
-                                                            }}
-                                                            className="peer appearance-none w-5 h-5 rounded-md border-2 border-gray-300 checked:bg-primary checked:border-primary focus:ring-4 focus:ring-primary/20 transition-all cursor-pointer"
-                                                        />
-                                                        <CheckCircle className="w-3.5 h-3.5 text-white absolute top-[5px] left-[5px] opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100" strokeWidth={3} />
-                                                    </div>
+                                        {workersList.length > 0 ? (
+                                            workersList.map((user) => {
+                                                const userId = user.rbac_user_id || user.id;
+                                                return (
+                                                    <label key={user.id} className={`group flex items-start p-3.5 rounded-xl cursor-pointer transition-all border-2 ${assignForm.assigned_to.includes(userId)
+                                                        ? 'bg-blue-50 border-blue-500 shadow-sm'
+                                                        : 'bg-white hover:bg-gray-50 border-transparent hover:border-gray-200 shadow-sm'
+                                                        }`}>
+                                                        <div className="mt-1 relative">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={assignForm.assigned_to.includes(userId)}
+                                                                onChange={() => {
+                                                                    const newAssigned = assignForm.assigned_to.includes(userId)
+                                                                        ? assignForm.assigned_to.filter(id => id !== userId)
+                                                                        : [...assignForm.assigned_to, userId];
+                                                                    setAssignForm({ ...assignForm, assigned_to: newAssigned });
+                                                                }}
+                                                                className="peer appearance-none w-5 h-5 rounded-md border-2 border-gray-300 checked:bg-blue-600 checked:border-blue-600 focus:ring-4 focus:ring-blue-600/20 transition-all cursor-pointer"
+                                                            />
+                                                            <CheckCircle className="w-3.5 h-3.5 text-white absolute top-[5px] left-[5px] opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100" strokeWidth={3} />
+                                                        </div>
 
-                                                    <div className="ml-4 flex-1 min-w-0">
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <span className={`font-semibold text-sm ${assignForm.assigned_to.includes(user.rbac_user_id) ? 'text-gray-900' : 'text-gray-700'}`}>
-                                                                {user.name}
-                                                            </span>
-                                                            <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${user.active_tickets_count > 0
-                                                                ? 'bg-orange-100 text-orange-700'
-                                                                : 'bg-green-100 text-green-700'
-                                                                }`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full ${user.active_tickets_count > 0 ? 'bg-orange-500' : 'bg-green-500'}`}></span>
-                                                                {user.active_tickets_count || 0} active
-                                                            </span>
+                                                        <div className="ml-4 flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className={`font-semibold text-sm ${assignForm.assigned_to.includes(userId) ? 'text-gray-900' : 'text-gray-700'}`}>
+                                                                    {user.name}
+                                                                </span>
+                                                                <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${user.active_tickets_count > 0
+                                                                    ? 'bg-orange-100 text-orange-700'
+                                                                    : 'bg-green-100 text-green-700'
+                                                                    }`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${user.active_tickets_count > 0 ? 'bg-orange-500' : 'bg-green-500'}`}></span>
+                                                                    {user.active_tickets_count || 0} active
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between w-full">
+                                                                <div className="flex items-center text-xs text-blue-700 font-medium">
+                                                                    <span className="truncate">@{user.username}</span>
+                                                                </div>
+                                                                <div className="text-[10px] px-2 py-0.5 text-blue-800 bg-blue-100 rounded-lg">
+                                                                    {user.role_display_name || user.role}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center text-xs text-primary-dark font-medium">
-                                                            <span className="truncate">@{user.username}</span>
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            ))
+                                                    </label>
+                                                )
+                                            })
                                         ) : (
                                             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                                                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -486,9 +505,9 @@ const TaskManagement = () => {
                                 )}
                             </div>
                         </div>
-                        <div className="modal-footer p-5 border-t border-gray-100 bg-white rounded-b-2xl">
-                            <button onClick={() => setShowAssignModal(false)} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-colors">Cancel</button>
-                            <button onClick={handleAssign} disabled={assignMutation.isPending} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary-dark shadow-lg shadow-primary/30 disabled:opacity-70 disabled:shadow-none transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                        <div className="modal-footer p-5 border-t border-gray-100 bg-white rounded-b-2xl flex items-center justify-end gap-3">
+                            <button onClick={() => setShowAssignModal(false)} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 transition-colors">Cancel</button>
+                            <button onClick={handleAssign} disabled={assignMutation.isPending} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/30 disabled:opacity-70 disabled:shadow-none transition-all transform hover:scale-[1.02] active:scale-[0.98]">
                                 {assignMutation.isPending ? 'Assigning...' : 'Assign Selected'}
                             </button>
                         </div>
