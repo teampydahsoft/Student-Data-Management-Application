@@ -3018,31 +3018,31 @@ const Attendance = () => {
                     <table className="w-full text-left border-collapse table-fixed min-w-[1350px]">
                       <thead>
                         <tr className="bg-gray-900 text-white">
-                          <th className="px-6 py-5 w-[180px] text-[10px] font-bold uppercase tracking-widest">
+                          <th className="px-6 py-5 w-[240px] text-[10px] font-bold uppercase tracking-widest">
                             <select
                               value={dayEndFilters.college}
                               onChange={(e) => setDayEndFilters(prev => ({ ...prev, college: e.target.value, course: '', branch: '' }))}
-                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold"
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-[200px] text-ellipsis overflow-hidden text-[10px] font-bold"
                             >
                               <option value="" className="text-gray-900">COLLEGE</option>
                               {dayEndFilterOptions.colleges.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
                             </select>
                           </th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest">
+                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-left">
                             <select
                               value={dayEndFilters.batch}
                               onChange={(e) => setDayEndFilters(prev => ({ ...prev, batch: e.target.value, branch: '', year: '', semester: '' }))}
-                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0"
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-[80px] text-ellipsis overflow-hidden text-[10px] font-bold p-0"
                             >
                               <option value="" className="text-gray-900">BATCH</option>
                               {filteredDayEndBatches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
                             </select>
                           </th>
-                          <th className="px-6 py-5 w-[140px] text-[10px] font-bold uppercase tracking-widest text-left">
+                          <th className="px-6 py-5 w-[180px] text-[10px] font-bold uppercase tracking-widest text-left">
                             <select
                               value={dayEndFilters.branch}
                               onChange={(e) => setDayEndFilters(prev => ({ ...prev, branch: e.target.value, year: '', semester: '' }))}
-                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0"
+                              className="bg-transparent border-none focus:ring-0 cursor-pointer w-[140px] text-ellipsis overflow-hidden text-[10px] font-bold p-0"
                             >
                               <option value="" className="text-gray-900">BRANCH</option>
                               {filteredDayEndBranches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
