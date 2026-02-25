@@ -20,7 +20,7 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
         const loadBatches = async () => {
             try {
                 setBatchesLoading(true);
-                const response = await api.get('/academic-years/active');
+                const response = await api.get('/students/batches');
                 if (response.data.success) {
                     setBatches(response.data.data || []);
                     // Set the current batch as fromBatch
@@ -169,9 +169,9 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
                                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                             >
                                 <option value="">Select Batch to Rejoin</option>
-                                {batches.map((batch) => (
-                                    <option key={batch.id} value={batch.yearLabel}>
-                                        {batch.yearLabel}
+                                {batches.map((batch, idx) => (
+                                    <option key={batch.id || idx} value={batch.name}>
+                                        {batch.name}
                                     </option>
                                 ))}
                             </select>

@@ -7630,3 +7630,14 @@ exports.bulkTransferStudents = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error during transfer' });
   }
 };
+
+exports.getBatches = async (req, res) => {
+  try {
+    const [rows] = await masterPool.query('SELECT DISTINCT batch FROM students WHERE batch IS NOT NULL AND batch != "" ORDER BY batch DESC');
+    const batches = rows.map(r => ({ name: String(r.batch), yearLabel: String(r.batch) }));
+    res.json({ success: true, data: batches });
+  } catch (error) {
+    console.error('Get batches error:', error);
+    res.status(500).json({ success: false, data: [] });
+  }
+};

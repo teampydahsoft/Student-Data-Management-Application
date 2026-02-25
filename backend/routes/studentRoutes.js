@@ -75,6 +75,14 @@ router.get(
 );
 
 router.get(
+  '/batches',
+  authMiddleware,
+  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  attachUserScope,
+  studentController.getBatches
+);
+
+router.get(
   '/batch-status',
   authMiddleware,
   verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
