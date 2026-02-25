@@ -58,7 +58,7 @@ exports.addRemark = async (req, res) => {
 
         // Get student's current year and semester
         const [studentRows] = await masterPool.query(
-            'SELECT current_year, current_semester FROM students WHERE admission_number = ?',
+            'SELECT current_year, current_semester, remarks FROM students WHERE admission_number = ?',
             [admission_number]
         );
 
@@ -70,6 +70,24 @@ exports.addRemark = async (req, res) => {
         }
 
         const student = studentRows[0];
+        const legacyRemark = student.remarks;
+
+        // Preserve legacy remark if it exists and hasn't been saved to student_remarks yet
+        if (legacyRemark && legacyRemark.trim() !== '') {
+            const [existingLegacy] = await masterPool.query(
+                'SELECT id FROM student_remarks WHERE admission_number = ? AND remark = ?',
+                [admission_number, legacyRemark]
+            );
+            if (existingLegacy.length === 0) {
+                // Save legacy remark into history permanently before overwriting
+                await masterPool.query(
+                    `INSERT INTO student_remarks 
+                     (admission_number, remark, remark_category, created_by_name, created_at) 
+                     VALUES (?, ?, 'Initial', 'System', DATE_SUB(NOW(), INTERVAL 1 SECOND))`
+                    , [admission_number, legacyRemark]
+                );
+            }
+        }
 
         // Get user info from request (populated by auth middleware)
         const createdBy = req.user.id;

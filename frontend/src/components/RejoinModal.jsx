@@ -99,9 +99,9 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-screen">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 shrink-0">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-white/20 rounded-lg">
@@ -125,7 +125,7 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
                 </div>
 
                 {/* Content */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 120px)' }}>
                     {/* Info Banner */}
                     <div className="bg-amber-50 border-l-4 border-amber-400 rounded-lg px-4 py-3 flex items-start gap-3">
                         <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
@@ -222,7 +222,7 @@ const RejoinModal = ({ isOpen, onClose, student, onRejoinComplete }) => {
                     )}
 
                     {/* Footer Actions */}
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-gray-200 shrink-0 mt-4 pb-2">
                         <button
                             type="button"
                             onClick={handleClose}

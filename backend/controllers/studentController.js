@@ -6272,22 +6272,61 @@ exports.rejoinStudent = async (req, res) => {
       rejoin_remarks: remarks
     };
 
+    // Ensure student data has the remarks logged
+    // Get the actor for remarks logging
+    const actor = req.user || req.admin;
+    const authorName = actor?.username || actor?.name || 'System';
+    const authorId = actor?.id || null;
+
+    const getCategory = (role) => {
+      switch (role) {
+        case 'college_principal': return 'Principal';
+        case 'college_ao': return 'AO';
+        case 'branch_hod': return 'HOD';
+        case 'cashier': return 'Accountant';
+        case 'super_admin':
+        case 'admin': return 'Admin';
+        default: return 'Other';
+      }
+    };
+    const category = getCategory(actor?.role || 'admin');
+
+    const rejoinRemarkStr = `[Rejoin] Rejoined from ${fromBatch} to ${toBatch} on ${new Date().toISOString().split('T')[0]}. ${remarks}`;
+
     // Update the student record
     await masterPool.query(
       `UPDATE students 
        SET batch = ?, 
            student_status = ?, 
-           student_data = ?,
-           remarks = CONCAT(COALESCE(remarks, ''), '\\n[Rejoin] ', ?)
+           student_data = ?
        WHERE admission_number = ?`,
       [
         toBatch,
         'Regular',
         JSON.stringify(updatedStudentData),
-        `Rejoined from ${fromBatch} to ${toBatch} on ${new Date().toISOString().split('T')[0]}. ${remarks}`,
         admissionNumber
       ]
     );
+
+    // Record the remark in student_remarks table
+    try {
+      await masterPool.query(
+        `INSERT INTO student_remarks 
+             (admission_number, remark, remark_category, student_year, student_semester, created_by, created_by_name) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          admissionNumber,
+          rejoinRemarkStr,
+          category,
+          student.current_year || 1,
+          student.current_semester || 1,
+          authorId,
+          authorName
+        ]
+      );
+    } catch (remarkErr) {
+      console.error('Failed to sync rejoin remark to student_remarks:', remarkErr.message);
+    }
 
     // Record in student history
     try {
@@ -6306,7 +6345,7 @@ exports.rejoinStudent = async (req, res) => {
             previousStatus: student.student_status,
             newStatus: 'Regular (Rejoined)'
           }),
-          adminId
+          authorId
         ]
       );
     } catch (historyError) {
@@ -6319,7 +6358,7 @@ exports.rejoinStudent = async (req, res) => {
       actionType: 'REJOIN',
       entityType: 'STUDENT',
       entityId: admissionNumber,
-      actor: req.user || req.admin,
+      actor: actor,
       details: {
         fromBatch,
         toBatch,

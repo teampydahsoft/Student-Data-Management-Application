@@ -248,7 +248,7 @@ const StudentRemarksContent = ({ student, canAddRemarks = false, canManageRemark
                                                     </div>
 
                                                     <div className="pl-0">
-                                                        <p className="text-gray-800 text-[15px] leading-relaxed whitespace-pre-wrap font-medium">
+                                                        <p className="text-gray-800 text-[15px] leading-relaxed whitespace-pre-wrap font-medium break-words">
                                                             {remark.remark}
                                                         </p>
                                                         <div className="mt-4 flex items-center justify-between">
