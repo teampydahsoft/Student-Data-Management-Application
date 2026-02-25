@@ -47,10 +47,15 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    // If not allowed, check if they are trying to access a legacy route or simple mismatch
-    // For now, just send to unauthorized or home
-    return <Navigate to="/unauthorized" replace />;
+  if (allowedRoles) {
+    if (allowedRoles.includes('student') && user?.role !== 'student') {
+      // Must be student
+      return <Navigate to="/unauthorized" replace />;
+    }
+    if (!allowedRoles.includes('student') && user?.role === 'student') {
+      // Must not be student
+      return <Navigate to="/unauthorized" replace />;
+    }
   }
 
   // Optional: Check granular permissions if provided
@@ -114,7 +119,7 @@ const App = () => {
         <Route
           path="/*"
           element={
-            <ProtectedRoute allowedRoles={adminLayoutRoles}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <AdminLayout />
             </ProtectedRoute>
           }
@@ -126,6 +131,19 @@ const App = () => {
           <Route path="sub-admins" element={<SubAdminCreation />} />
           <Route path="roles" element={<RoleManagement />} />
           <Route path="tickets" element={<Navigate to="/task-management" replace />} />
+          <Route path="unauthorized" element={
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-800">
+              <h1 className="text-4xl font-bold mb-4">403</h1>
+              <h2 className="text-2xl font-semibold mb-2">Unauthorized Access</h2>
+              <p className="mb-6 text-gray-500">You do not have permission to view this page.</p>
+              <button
+                onClick={() => window.location.href = '/login'}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Return to Login
+              </button>
+            </div>
+          } />
         </Route>
 
         {/* Student Routes */}

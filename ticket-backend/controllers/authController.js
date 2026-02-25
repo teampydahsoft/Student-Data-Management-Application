@@ -130,7 +130,25 @@ exports.verifyToken = async (req, res) => {
             }
         }
 
-        // 2. Check RBAC Users
+        // 2. Check explicitly for standalone worker
+        if (authUser.is_worker) {
+            const [employees] = await masterPool.query(
+                'SELECT id, name, username, email, role, is_active FROM ticket_employees WHERE id = ? LIMIT 1',
+                [authUser.id]
+            );
+
+            if (employees && employees.length > 0) {
+                if (!employees[0].is_active) {
+                    return res.status(403).json({ success: false, message: 'Worker account deactivated' });
+                }
+                return res.status(200).json({
+                    success: true,
+                    user: buildTicketEmployeeResponse(employees[0])
+                });
+            }
+        }
+
+        // 3. Check RBAC Users
         const [rbacRows] = await masterPool.query(
             'SELECT id, name, username, email, role, permissions, college_id, course_id, branch_id, is_active FROM rbac_users WHERE id = ? LIMIT 1',
             [authUser.id]
@@ -159,19 +177,6 @@ exports.verifyToken = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 user: buildRBACUserResponse(rbacUser)
-            });
-        }
-
-        // 3. Check Ticket Employees
-        const [employees] = await masterPool.query(
-            'SELECT id, name, username, email, role FROM ticket_employees WHERE id = ? LIMIT 1',
-            [authUser.id]
-        );
-
-        if (employees && employees.length > 0) {
-            return res.status(200).json({
-                success: true,
-                user: buildTicketEmployeeResponse(employees[0])
             });
         }
 
