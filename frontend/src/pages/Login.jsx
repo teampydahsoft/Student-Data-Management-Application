@@ -186,8 +186,8 @@ const Login = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-x-hidden relative login-stars-optimized">
       {/* Home Button - Mobile Only (Desktop has it in the left panel) */}
       <button
-        onClick={() => navigate('/')}
-        className="lg:hidden absolute top-6 left-6 z-50 flex items-center justify-center w-11 h-11 bg-white rounded-xl text-primary shadow-lg border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90"
+        onClick={() => navigate('/', { replace: true })}
+        className="lg:hidden absolute top-6 left-6 z-[100] flex items-center justify-center w-11 h-11 bg-white rounded-xl text-primary shadow-lg border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90 cursor-pointer"
         title="Go to Home"
       >
         <Home size={22} />
@@ -202,13 +202,17 @@ const Login = () => {
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent pointer-events-none" />
 
           {/* Top Content: Home Button replaces Users icon */}
-          <div className="absolute top-12 left-12 z-10">
+          <div className="absolute top-12 left-12 z-[50]">
             <button
-              onClick={() => navigate('/')}
-              className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center mb-8 cursor-pointer hover:bg-white/20 hover:scale-105 active:scale-95 transition-all group"
+              onClick={() => navigate('/', { replace: true })}
+              className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center mb-8 cursor-pointer hover:bg-white/20 hover:scale-110 active:scale-95 transition-all group relative overflow-visible"
               title="Return Home"
             >
               <Home size={22} className="text-white group-hover:rotate-[-10deg] transition-transform" />
+              {/* Tooltip hint on hover */}
+              <span className="absolute -bottom-10 left-0 bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                Go to Landing
+              </span>
             </button>
           </div>
 
