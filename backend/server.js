@@ -98,6 +98,11 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Diagnostic check - Public Test
+app.get("/api/public-test", (req, res) => {
+  res.json({ success: true, message: "Public route is accessible" });
+});
+
 // DB health endpoint
 app.get("/health/db", async (req, res) => {
   const { masterPool, stagingPool } = require("./config/database");
