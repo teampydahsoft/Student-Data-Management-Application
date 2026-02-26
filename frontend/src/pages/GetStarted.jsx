@@ -22,15 +22,25 @@ const GetStarted = () => {
     const [showcaseStudents, setShowcaseStudents] = useState([]);
     const [showcaseLoading, setShowcaseLoading] = useState(true);
 
+    const FALLBACK_STUDENTS = [
+        { student_name: "John Doe", student_photo: "/avatars/avatar-1.png" },
+        { student_name: "Jane Smith", student_photo: "/avatars/avatar-2.png" },
+        { student_name: "Alex Johnson", student_photo: "/avatars/avatar-3.png" },
+        { student_name: "Sarah Williams", student_photo: "/avatars/avatar-4.png" }
+    ];
+
     useEffect(() => {
         const fetchShowcase = async () => {
             try {
                 const response = await axios.get(`${API_URL}/students/student-showcase`);
-                if (response.data.success) {
+                if (response.data.success && response.data.data.length > 0) {
                     setShowcaseStudents(response.data.data);
+                } else {
+                    setShowcaseStudents(FALLBACK_STUDENTS);
                 }
             } catch (error) {
-                console.error('Error fetching showcase:', error);
+                console.error('Error fetching showcase, using fallbacks:', error);
+                setShowcaseStudents(FALLBACK_STUDENTS);
             } finally {
                 setShowcaseLoading(false);
             }
