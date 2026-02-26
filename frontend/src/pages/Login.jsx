@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { LogIn, Loader2, Eye, EyeOff, Users, Home } from 'lucide-react';
+import { LogIn, Loader2, Eye, EyeOff, Users, Home, ArrowLeft } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import api, { CRM_BACKEND_URL, CRM_FRONTEND_URL } from '../config/api';
@@ -182,60 +183,35 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-2 sm:p-4 login-stars-optimized animate-fade-in overflow-x-hidden relative">
-      {/* Home Button - Fixed Top Left (Icon Only) */}
-      <button
-        onClick={() => navigate('/')}
-        className="absolute top-6 left-6 z-50 flex items-center justify-center w-12 h-12 bg-white rounded-2xl text-primary shadow-xl border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90 group"
-        title="Go to Home"
-      >
-        <Home size={24} className="group-hover:scale-110 transition-transform" />
-      </button>
-      {/* Main Card Container - Responsive width */}
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[500px] sm:min-h-[600px] animate-fade-in-up">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-x-hidden relative login-stars-optimized">
+      {/* Main Card Container */}
+      <div className="w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[800px] animate-fade-in-up border border-gray-100">
 
-        {/* Left Side - Blue Panel (Hidden on mobile) */}
-        <div className="hidden lg:flex lg:w-1/2 bg-primary text-white flex-col justify-between p-12 relative overflow-hidden">
-          {/* Background Pattern/Accents */}
-          <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-            <div className="absolute -top-24 -left-24 w-96 h-96 bg-white rounded-full blur-3xl" />
-            <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-white rounded-full blur-3xl" />
+        {/* Left Side - Animation Panel */}
+        <div className="hidden lg:flex lg:w-1/2 bg-[#1a2e1d] text-white flex-col justify-center p-12 relative overflow-hidden">
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent pointer-events-none" />
+
+          {/* Top Content: Home Button replaces Users icon */}
+          <div className="absolute top-12 left-12 z-10">
+            <button
+              onClick={() => navigate('/')}
+              className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center mb-8 cursor-pointer hover:bg-white/20 hover:scale-105 active:scale-95 transition-all group"
+              title="Return Home"
+            >
+              <Home size={22} className="text-white group-hover:rotate-[-10deg] transition-transform" />
+            </button>
           </div>
 
-          {/* Top Content */}
-          <div className="relative z-10">
-            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center mb-8 cursor-pointer hover:bg-white/30 transition-all">
-              <Users size={20} className="text-white" />
-            </div>
-            <h2 className="text-4xl font-bold mb-4">Student<br />Management</h2>
-            <p className="text-accent text-lg opacity-90">
-              Access your academic dashboard, results, and campus updates in one place.
-            </p>
-          </div>
-
-          {/* Center Illustration Placeholder */}
-          <div className="relative z-10 flex-1 flex items-center justify-center my-8">
-            <div className="relative w-64 h-64 flex items-center justify-center">
-              <div className="absolute inset-0 bg-white/5 backdrop-blur-md rounded-full border border-white/20 shadow-2xl animate-pulse-subtle scale-110" />
-              <img
-                src="/logo.png"
-                alt="Illustration"
-                className="relative w-48 h-48 object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-transform duration-500 hover:scale-110"
-                onError={(e) => e.target.style.display = 'none'}
+          {/* Center Illustration: Lottie Animation */}
+          <div className="relative z-10 flex-1 flex items-center justify-center p-4">
+            <div className="w-full h-full max-w-[1200px] max-h-[850px] transform transition-transform duration-700 hover:scale-[1.02]">
+              <DotLottieReact
+                src="https://lottie.host/17e18e77-e03b-482f-9c53-dddbb979c260/Y5u2X2eTNf.lottie"
+                loop
+                autoplay
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
-            </div>
-          </div>
-
-          {/* Bottom Content */}
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shadow-lg">
-                <Users size={18} className="text-primary-dark" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-accent uppercase tracking-wider">Connect With Us</p>
-                <p className="text-sm font-semibold">Campus Connect</p>
-              </div>
             </div>
           </div>
         </div>
@@ -256,23 +232,23 @@ const Login = () => {
           )}
 
           <div className="max-w-sm mx-auto w-full">
-            <div className="lg:hidden mb-8 flex justify-center">
-              <div className="p-3 bg-primary/5 rounded-2xl border border-primary/10 shadow-sm">
+            {/* Branding Logo - Always on top for right side */}
+            <div className="mb-10 flex flex-col items-center">
+              <div className="p-4 bg-primary/5 rounded-3xl border border-primary/10 shadow-sm mb-4 group hover:bg-primary/10 transition-colors">
                 <img
                   src="/logo.png"
                   alt="Logo"
-                  className="h-14 w-auto object-contain"
+                  className="h-16 w-auto object-contain transition-transform duration-500 group-hover:scale-110"
                 />
               </div>
-            </div>
-
-            <div className="text-center mb-6 sm:mb-8 relative">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-tight">
-                Welcome Back
-              </h2>
-              <p className="text-gray-500 text-xs sm:text-sm">
-                Sign in to your account to continue
-              </p>
+              <div className="text-center">
+                <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 leading-tight">
+                  Welcome Back
+                </h2>
+                <p className="text-gray-500 text-xs sm:text-sm font-medium">
+                  Signin to access your portal
+                </p>
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">

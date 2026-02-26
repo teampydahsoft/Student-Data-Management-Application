@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -35,7 +35,11 @@ const GetStarted = () => {
                 setShowcaseLoading(false);
             }
         };
+
         fetchShowcase();
+
+        const interval = setInterval(fetchShowcase, 8000); // Update every 8 seconds
+        return () => clearInterval(interval);
     }, []);
 
     const containerVariants = {
@@ -155,32 +159,47 @@ const GetStarted = () => {
                             variants={itemVariants}
                             className="mt-12 flex items-center gap-6"
                         >
-                            <div className="flex -space-x-4">
-                                {showcaseLoading ? (
-                                    Array.from({ length: 4 }).map((_, i) => (
-                                        <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 animate-pulse" />
-                                    ))
-                                ) : showcaseStudents.length > 0 ? (
-                                    showcaseStudents.slice(0, 4).map((student, i) => (
-                                        <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm group/student relative">
-                                            <img
-                                                src={student.student_photo}
-                                                alt={student.student_name}
-                                                className="w-full h-full object-cover"
+                            <div className="flex -space-x-4 min-h-[48px]">
+                                <AnimatePresence mode="popLayout">
+                                    {showcaseLoading ? (
+                                        Array.from({ length: 4 }).map((_, i) => (
+                                            <motion.div
+                                                key={`skeleton-${i}`}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 animate-pulse shrink-0"
                                             />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center">
-                                                <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{student.student_name.split(' ')[0]}</span>
+                                        ))
+                                    ) : showcaseStudents.length > 0 ? (
+                                        showcaseStudents.slice(0, 4).map((student, i) => (
+                                            <motion.div
+                                                key={student.student_photo}
+                                                initial={{ opacity: 0, x: 20, scale: 0.8 }}
+                                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                                exit={{ opacity: 0, x: -20, scale: 0.8 }}
+                                                transition={{ duration: 0.5, delay: i * 0.1 }}
+                                                className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm group/student relative shrink-0"
+                                            >
+                                                <img
+                                                    src={student.student_photo}
+                                                    alt={student.student_name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{student.student_name.split(' ')[0]}</span>
+                                                </div>
+                                            </motion.div>
+                                        ))
+                                    ) : (
+                                        [1, 2, 3, 4].map(i => (
+                                            <div key={i} className={`w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm shrink-0`}>
+                                                <img src={`https://i.pravatar.cc/150?u=${i}`} alt="user" />
                                             </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    [1, 2, 3, 4].map(i => (
-                                        <div key={i} className={`w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm`}>
-                                            <img src={`https://i.pravatar.cc/150?u=${i}`} alt="user" />
-                                        </div>
-                                    ))
-                                )}
-                                <div className="w-12 h-12 rounded-full border-4 border-white bg-accent flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                                        ))
+                                    )}
+                                </AnimatePresence>
+                                <div className="w-12 h-12 rounded-full border-4 border-white bg-accent flex items-center justify-center text-white text-xs font-bold shadow-sm z-10 shrink-0">
                                     +1k
                                 </div>
                             </div>
