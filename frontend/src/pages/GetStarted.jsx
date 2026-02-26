@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 import {
     GraduationCap,
     ArrowRight,
@@ -17,6 +19,24 @@ import {
 
 const GetStarted = () => {
     const navigate = useNavigate();
+    const [showcaseStudents, setShowcaseStudents] = useState([]);
+    const [showcaseLoading, setShowcaseLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchShowcase = async () => {
+            try {
+                const response = await axios.get(`${API_URL}/students/student-showcase`);
+                if (response.data.success) {
+                    setShowcaseStudents(response.data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching showcase:', error);
+            } finally {
+                setShowcaseLoading(false);
+            }
+        };
+        fetchShowcase();
+    }, []);
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -136,17 +156,36 @@ const GetStarted = () => {
                             className="mt-12 flex items-center gap-6"
                         >
                             <div className="flex -space-x-4">
-                                {[1, 2, 3, 4].map(i => (
-                                    <div key={i} className={`w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm`}>
-                                        <img src={`https://i.pravatar.cc/150?u=${i}`} alt="user" />
-                                    </div>
-                                ))}
+                                {showcaseLoading ? (
+                                    Array.from({ length: 4 }).map((_, i) => (
+                                        <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 animate-pulse" />
+                                    ))
+                                ) : showcaseStudents.length > 0 ? (
+                                    showcaseStudents.slice(0, 4).map((student, i) => (
+                                        <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm group/student relative">
+                                            <img
+                                                src={student.student_photo}
+                                                alt={student.student_name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center">
+                                                <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{student.student_name.split(' ')[0]}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    [1, 2, 3, 4].map(i => (
+                                        <div key={i} className={`w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm`}>
+                                            <img src={`https://i.pravatar.cc/150?u=${i}`} alt="user" />
+                                        </div>
+                                    ))
+                                )}
                                 <div className="w-12 h-12 rounded-full border-4 border-white bg-accent flex items-center justify-center text-white text-xs font-bold shadow-sm">
                                     +1k
                                 </div>
                             </div>
                             <p className="text-sm text-text-secondary font-medium italic">
-                                Trusted by 1000+ students across various branches
+                                Trusted by {showcaseLoading ? '...' : '1000+'} students across various branches
                             </p>
                         </motion.div>
                     </motion.div>

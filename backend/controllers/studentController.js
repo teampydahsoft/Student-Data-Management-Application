@@ -133,6 +133,31 @@ exports.uploadStudentPhoto = async (req, res) => {
   }
 };
 
+// Fetch a small selection of random student photos for the "Get Started" showcase
+exports.getStudentShowcase = async (req, res) => {
+  try {
+    // Fetch 5 random students who have photos
+    const [rows] = await masterPool.query(
+      `SELECT student_name, student_photo 
+       FROM students 
+       WHERE student_photo IS NOT NULL AND student_photo != '' 
+       ORDER BY RAND() 
+       LIMIT 5`
+    );
+
+    res.json({
+      success: true,
+      data: rows
+    });
+  } catch (error) {
+    console.error('Error fetching student showcase:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch student showcase'
+    });
+  }
+};
+
 // Helper to ensure previous college exists in the lookup table
 const ensurePreviousCollegeExists = async (collegeName) => {
   if (!collegeName || !String(collegeName).trim()) return;

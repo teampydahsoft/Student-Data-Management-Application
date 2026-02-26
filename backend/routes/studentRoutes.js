@@ -22,6 +22,7 @@ const documentUpload = multer({
 // Public student login
 router.post('/login', studentController.login);
 router.post('/forgot-password', studentController.forgotPassword); // Public forgot password
+router.get('/student-showcase', studentController.getStudentShowcase); // Public showcase for landing page
 
 // Protected Change Password Route (Student)
 router.post(
