@@ -239,6 +239,7 @@ app.use("/api/*", (req, res) => {
       "GET /api/submissions",
       "POST /api/submissions/generate-admission-series",
       "GET /api/students",
+      "GET /api/students/student-showcase",
       "GET /api/students/stats",
       "GET /api/students/dashboard-stats",
     ],
