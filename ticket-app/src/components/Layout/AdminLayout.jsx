@@ -199,6 +199,34 @@ const AdminLayout = () => {
             color: 'white',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         },
+        mobileBottomBar: {
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+            borderTop: '1px solid rgba(226, 232, 240, 0.8)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 50,
+            paddingBottom: 'env(safe-area-inset-bottom, 20px)',
+            justifyContent: 'space-around',
+            paddingTop: '8px',
+            height: 'auto',
+            boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.05)',
+        },
+        mobileNavItem: (isActive) => ({
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+            padding: '8px',
+            textDecoration: 'none',
+            color: isActive ? '#2563EB' : '#9CA3AF',
+            fontSize: '10px',
+            fontWeight: '600',
+        }),
         backdrop: {
             position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 48,
             backdropFilter: 'blur(2px)',
@@ -213,10 +241,12 @@ const AdminLayout = () => {
                     .desktop-sidebar { width: 270px; z-index: 60 !important; }
                     .main-content { margin-left: 0 !important; padding-top: 84px !important; }
                     .mobile-header { display: flex !important; }
+                    .mobile-bottom-bar { display: flex !important; }
                 }
                 @media (min-width: 1025px) {
                     .desktop-sidebar { display: flex !important; }
                     .mobile-header { display: none !important; }
+                    .mobile-bottom-bar { display: none !important; }
                 }
             `}</style>
 
@@ -384,6 +414,35 @@ const AdminLayout = () => {
             <main style={styles.mainContent} className="main-content">
                 <Outlet />
             </main>
+
+            {/* Mobile Bottom Bar */}
+            <div style={styles.mobileBottomBar} className="mobile-bottom-bar">
+                {navItems.slice(0, 4).map((item, index) => {
+                    if (item.isExternal) {
+                        return (
+                            <a
+                                key={index}
+                                href={item.path === '/' ? MAIN_APP_URL : `${MAIN_APP_URL}${item.path}`}
+                                style={styles.mobileNavItem(false)}
+                            >
+                                <item.icon size={24} />
+                                <span>{item.label}</span>
+                            </a>
+                        );
+                    }
+
+                    return (
+                        <NavLink
+                            key={index}
+                            to={item.path}
+                            style={({ isActive }) => styles.mobileNavItem(isActive)}
+                        >
+                            <item.icon size={24} />
+                            <span>{item.label === 'Task Management' ? 'Tickets' : item.label === 'Configuration' ? 'Settings' : item.label}</span>
+                        </NavLink>
+                    );
+                })}
+            </div>
         </div>
     );
 };

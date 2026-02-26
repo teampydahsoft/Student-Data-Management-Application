@@ -179,23 +179,6 @@ const StudentLayout = ({ children }) => {
             gap: '12px',
             cursor: 'pointer',
         },
-        mobileHeader: {
-            display: 'none',
-            height: '64px',
-            background: 'linear-gradient(135deg, #2563EB, #4F46E5)',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 16px',
-            position: 'fixed',
-            top: 0, left: 0, right: 0,
-            zIndex: 45,
-            color: 'white',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-        },
-        backdrop: {
-            position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 48,
-            backdropFilter: 'blur(2px)',
-        }
     };
 
     return (
@@ -204,14 +187,12 @@ const StudentLayout = ({ children }) => {
             <style>{`
                 /* Desktop Sidebar */
                 @media (max-width: 1024px) {
-                    .desktop-sidebar { width: 270px; z-index: 60 !important; }
-                    .main-content { margin-left: 0 !important; padding-top: 84px !important; }
-                    .mobile-header { display: flex !important; }
+                    .desktop-sidebar { display: none !important; }
+                    .main-content { margin-left: 0 !important; padding-top: 24px !important; padding-bottom: 80px !important; }
                     .mobile-bottom-bar { display: flex !important; }
                 }
                 @media (min-width: 1025px) {
                     .desktop-sidebar { display: flex !important; }
-                    .mobile-header { display: none !important; }
                     .mobile-bottom-bar { display: none !important; }
                 }
             `}</style>
@@ -226,44 +207,6 @@ const StudentLayout = ({ children }) => {
                 backgroundImage: `radial-gradient(#CBD5E1 1.5px, transparent 1.5px)`,
                 backgroundSize: '24px 24px'
             }} />
-
-            {/* Default Sidebar Toggle (Mobile Header area or similar can go here, but using simple float button) */}
-            {/* Mobile Sidebar Backdrop */}
-            {desktopSidebarOpen && (
-                <div
-                    className="lg:hidden"
-                    style={styles.backdrop}
-                    onClick={() => setDesktopSidebarOpen(false)}
-                />
-            )}
-
-            {/* Mobile Header (Blue Theme) */}
-            <header style={styles.mobileHeader} className="mobile-header">
-                <button
-                    onClick={() => setDesktopSidebarOpen(true)}
-                    className="p-2 -ml-2 text-white/90 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                >
-                    <RiMenuLine size={24} />
-                </button>
-
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                        <span className="font-bold text-white">T</span>
-                    </div>
-                    <span className="font-bold text-lg tracking-wide text-white">Ticket Support</span>
-                </div>
-
-                <div
-                    onClick={() => window.location.href = `${MAIN_APP_URL}/student/profile`}
-                    className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center overflow-hidden border-2 border-white/20 cursor-pointer hover:border-white/50 transition-colors"
-                >
-                    {user?.student_photo ? (
-                        <img src={user.student_photo} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                        <RiUser3Fill size={18} className="text-white" />
-                    )}
-                </div>
-            </header>
 
             {/* Desktop Sidebar */}
             <aside style={styles.sidebar} className="desktop-sidebar shadow-xl">
