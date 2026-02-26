@@ -184,8 +184,17 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-x-hidden relative login-stars-optimized">
+      {/* Home Button - Mobile Only (Desktop has it in the left panel) */}
+      <button
+        onClick={() => navigate('/')}
+        className="lg:hidden absolute top-6 left-6 z-50 flex items-center justify-center w-11 h-11 bg-white rounded-xl text-primary shadow-lg border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90"
+        title="Go to Home"
+      >
+        <Home size={22} />
+      </button>
+
       {/* Main Card Container */}
-      <div className="w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[800px] animate-fade-in-up border border-gray-100">
+      <div className="w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row lg:min-h-[800px] animate-fade-in-up border border-gray-100">
 
         {/* Left Side - Animation Panel */}
         <div className="hidden lg:flex lg:w-1/2 bg-[#1a2e1d] text-white flex-col justify-center p-12 relative overflow-hidden">
