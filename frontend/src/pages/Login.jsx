@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { LogIn, Loader2, Eye, EyeOff, Users } from 'lucide-react';
+import { LogIn, Loader2, Eye, EyeOff, Users, Home } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import api, { CRM_BACKEND_URL, CRM_FRONTEND_URL } from '../config/api';
@@ -182,7 +182,15 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-2 sm:p-4 login-stars-optimized animate-fade-in overflow-x-hidden">
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-2 sm:p-4 login-stars-optimized animate-fade-in overflow-x-hidden relative">
+      {/* Home Button - Fixed Top Left (Icon Only) */}
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-6 left-6 z-50 flex items-center justify-center w-12 h-12 bg-white rounded-2xl text-primary shadow-xl border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90 group"
+        title="Go to Home"
+      >
+        <Home size={24} className="group-hover:scale-110 transition-transform" />
+      </button>
       {/* Main Card Container - Responsive width */}
       <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[500px] sm:min-h-[600px] animate-fade-in-up">
 
@@ -258,7 +266,7 @@ const Login = () => {
               </div>
             </div>
 
-            <div className="text-center mb-6 sm:mb-8">
+            <div className="text-center mb-6 sm:mb-8 relative">
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-tight">
                 Welcome Back
               </h2>

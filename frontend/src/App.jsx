@@ -17,6 +17,7 @@ import AddStudent from './pages/AddStudent';
 import Settings from './pages/Settings';
 import PublicForm from './pages/PublicForm';
 import Attendance from './pages/Attendance';
+import GetStarted from './pages/GetStarted';
 
 import UserManagement from './pages/UserManagement';
 import StudentFieldPermissions from './pages/StudentFieldPermissions';
@@ -107,7 +108,7 @@ const ProtectedFacultyRoute = ({ children }) => {
 import { registerServiceWorker, subscribeUser } from './services/pushService';
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, userType } = useAuthStore();
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -166,9 +167,15 @@ function App() {
         <Route
           path="/"
           element={
-            <ProtectedRoute>
-              <AdminLayout />
-            </ProtectedRoute>
+            isAuthenticated ? (
+              userType === 'student' ? (
+                <Navigate to="/student/dashboard" replace />
+              ) : (
+                <AdminLayout />
+              )
+            ) : (
+              <GetStarted />
+            )
           }
         >
           <Route index element={<Dashboard />} />
