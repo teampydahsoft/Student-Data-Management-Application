@@ -136,14 +136,25 @@ exports.uploadStudentPhoto = async (req, res) => {
 // Fetch a small selection of random student photos for the "Get Started" showcase
 exports.getStudentShowcase = async (req, res) => {
   try {
-    // Fetch 5 random students who have photos
-    const [rows] = await masterPool.query(
-      `SELECT student_name, student_photo 
-       FROM students 
-       WHERE student_photo IS NOT NULL AND student_photo != '' 
-       ORDER BY RAND() 
-       LIMIT 5`
+    // Optimized query: get total count first, then pick 5 random entries
+    // This is much faster than ORDER BY RAND() on large tables
+    const [countResult] = await masterPool.query(
+      'SELECT COUNT(*) as total FROM students WHERE student_photo IS NOT NULL AND student_photo != ""'
     );
+    const total = countResult[0].total;
+
+    let rows = [];
+    if (total > 0) {
+      const offset = Math.floor(Math.random() * Math.max(0, total - 5));
+      [rows] = await masterPool.query({
+        sql: `SELECT student_name, student_photo 
+              FROM students 
+              WHERE student_photo IS NOT NULL AND student_photo != '' 
+              LIMIT 5 OFFSET ?`,
+        values: [offset],
+        timeout: 3000
+      });
+    }
 
     res.json({
       success: true,

@@ -17,30 +17,62 @@ import {
     Award
 } from 'lucide-react';
 
+const FALLBACK_STUDENTS = [
+    { student_name: "Rahul Sharma", student_photo: "https://i.pravatar.cc/150?u=rahul" },
+    { student_name: "Priya Varma", student_photo: "https://i.pravatar.cc/150?u=priya" },
+    { student_name: "Anil Kumar", student_photo: "https://i.pravatar.cc/150?u=anil" },
+    { student_name: "Sowmya Reddy", student_photo: "https://i.pravatar.cc/150?u=sowmya" }
+];
+
 const GetStarted = () => {
     const navigate = useNavigate();
-    const [showcaseStudents, setShowcaseStudents] = useState([]);
+    const [showcaseStudents, setShowcaseStudents] = useState(FALLBACK_STUDENTS);
     const [showcaseLoading, setShowcaseLoading] = useState(true);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-    const FALLBACK_STUDENTS = [
-        { student_name: "John Doe", student_photo: "/avatars/avatar-1.png" },
-        { student_name: "Jane Smith", student_photo: "/avatars/avatar-2.png" },
-        { student_name: "Alex Johnson", student_photo: "/avatars/avatar-3.png" },
-        { student_name: "Sarah Williams", student_photo: "/avatars/avatar-4.png" }
-    ];
+    // Monitoring browser online/offline status
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    const getInitials = (name) => {
+        if (!name) return 'S';
+        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    };
+
+    const getAvatarColor = (index) => {
+        const colors = [
+            '#3B82F6', // blue-500
+            '#8B5CF6', // purple-500
+            '#10B981', // emerald-500
+            '#F59E0B', // orange-500
+            '#EF4444', // rose-500
+            '#6366F1'  // indigo-500
+        ];
+        return colors[index % colors.length];
+    };
 
     useEffect(() => {
         const fetchShowcase = async () => {
             try {
-                const response = await axios.get(`${API_URL}/students/student-showcase`);
-                if (response.data.success && response.data.data.length > 0) {
+                console.log('📡 Fetching showcase from:', `${API_URL}/students/student-showcase`);
+
+                const response = await axios.get(`${API_URL}/students/student-showcase`, {
+                    timeout: 4000
+                });
+
+                if (response.data.success && response.data.data && response.data.data.length > 0) {
                     setShowcaseStudents(response.data.data);
-                } else {
-                    setShowcaseStudents(FALLBACK_STUDENTS);
                 }
             } catch (error) {
-                console.error('Error fetching showcase, using fallbacks:', error);
-                setShowcaseStudents(FALLBACK_STUDENTS);
+                console.warn('⚠️ Showcase fetch failed:', error.message);
             } finally {
                 setShowcaseLoading(false);
             }
@@ -48,7 +80,7 @@ const GetStarted = () => {
 
         fetchShowcase();
 
-        const interval = setInterval(fetchShowcase, 8000); // Update every 8 seconds
+        const interval = setInterval(fetchShowcase, 12000);
         return () => clearInterval(interval);
     }, []);
 
@@ -96,6 +128,14 @@ const GetStarted = () => {
 
     return (
         <div className="min-h-screen bg-secondary font-body selection:bg-accent/30">
+            {/* Online Status Toast (Subtle) */}
+            {!isOnline && (
+                <div className="fixed bottom-4 left-4 z-[100] bg-red-500 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 animate-bounce">
+                    <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                    Offline Mode
+                </div>
+            )}
+
             {/* Navigation */}
             <nav className="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-md border-b border-border-light px-6 py-4 flex justify-between items-center">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
@@ -170,7 +210,7 @@ const GetStarted = () => {
                             className="mt-12 flex items-center gap-6"
                         >
                             <div className="flex -space-x-4 min-h-[48px]">
-                                <AnimatePresence mode="popLayout">
+                                <AnimatePresence mode="popLayout" initial={false}>
                                     {showcaseLoading ? (
                                         Array.from({ length: 4 }).map((_, i) => (
                                             <motion.div
@@ -181,31 +221,33 @@ const GetStarted = () => {
                                                 className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 animate-pulse shrink-0"
                                             />
                                         ))
-                                    ) : showcaseStudents.length > 0 ? (
+                                    ) : (
                                         showcaseStudents.slice(0, 4).map((student, i) => (
                                             <motion.div
-                                                key={student.student_photo}
+                                                key={student.student_photo + i}
+                                                layout
                                                 initial={{ opacity: 0, x: 20, scale: 0.8 }}
                                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                                 exit={{ opacity: 0, x: -20, scale: 0.8 }}
                                                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                                                className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm group/student relative shrink-0"
+                                                style={{ backgroundColor: getAvatarColor(i) }}
+                                                className="w-12 h-12 rounded-full border-4 border-white flex items-center justify-center overflow-hidden shadow-sm group/student relative shrink-0 text-white font-black text-xs"
                                             >
-                                                <img
-                                                    src={student.student_photo}
-                                                    alt={student.student_name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{student.student_name.split(' ')[0]}</span>
+                                                {student.student_photo && !student.student_photo.includes('data:') && (
+                                                    <img
+                                                        src={student.student_photo}
+                                                        alt={student.student_name}
+                                                        className="w-full h-full object-cover absolute inset-0 z-0"
+                                                        onError={(e) => {
+                                                            e.target.style.display = 'none';
+                                                        }}
+                                                    />
+                                                )}
+                                                <span className="relative z-10 drop-shadow-md">{getInitials(student.student_name)}</span>
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center z-20">
+                                                    <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{(student.student_name || 'Student').split(' ')[0]}</span>
                                                 </div>
                                             </motion.div>
-                                        ))
-                                    ) : (
-                                        [1, 2, 3, 4].map(i => (
-                                            <div key={i} className={`w-12 h-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-sm shrink-0`}>
-                                                <img src={`https://i.pravatar.cc/150?u=${i}`} alt="user" />
-                                            </div>
                                         ))
                                     )}
                                 </AnimatePresence>

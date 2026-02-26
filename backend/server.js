@@ -107,31 +107,32 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Diagnostic check - Public Test
-app.get("/api/public-test", (req, res) => {
-  res.json({ success: true, message: "Public route is accessible" });
-});
-
-// Diagnostic check - Public Test
-app.get("/api/public-test", (req, res) => {
-  res.json({ success: true, message: "Public route is accessible" });
-});
-
 // DB health endpoint
 app.get("/health/db", async (req, res) => {
   const { masterPool, stagingPool } = require("./config/database");
+  const status = { master: "pending", staging: "pending" };
+
   try {
-    // master MySQL pool check
     const m = await masterPool.getConnection();
     m.release();
+    status.master = "ok";
+  } catch (e) {
+    status.master = `error: ${e.message}`;
+  }
 
-    // MySQL staging pool check
+  try {
     const s = await stagingPool.getConnection();
     s.release();
-    res.json({ success: true, master: "ok", staging: "ok" });
+    status.staging = "ok";
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    status.staging = `error: ${e.message}`;
   }
+
+  const isHealthy = status.master === "ok";
+  res.status(isHealthy ? 200 : 500).json({
+    success: isHealthy,
+    ...status
+  });
 });
 
 // API routes
