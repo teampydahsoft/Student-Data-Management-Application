@@ -168,6 +168,8 @@ exports.getStudentAnnouncements = async (req, res) => {
     try {
         const { admission_number, admissionNumber } = req.user;
         const studentAdmNum = admission_number || admissionNumber;
+        const limit = parseInt(req.query.limit, 10) || 5;
+        const offset = parseInt(req.query.offset, 10) || 0;
         // Debug log removed
 
         const [studentRows] = await masterPool.query(
@@ -186,7 +188,7 @@ exports.getStudentAnnouncements = async (req, res) => {
         // DB stores 'Regular' (Title Case)
         if (!student.student_status || student.student_status !== 'Regular') {
             // console.log(`Student ${studentAdmNum} status is '${student.student_status}', not 'Regular'. returning empty.`);
-            return res.json({ success: true, data: [] });
+            return res.json({ success: true, data: [], hasMore: false });
         }
 
         // Match Logic:
@@ -203,6 +205,7 @@ exports.getStudentAnnouncements = async (req, res) => {
             AND (target_year IS NULL OR JSON_CONTAINS(target_year, JSON_QUOTE(?)))
             AND (target_semester IS NULL OR JSON_CONTAINS(target_semester, JSON_QUOTE(?)))
             ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
         `;
 
         const params = [
@@ -211,14 +214,17 @@ exports.getStudentAnnouncements = async (req, res) => {
             student.course || '',
             student.branch || '',
             String(student.current_year || ''),
-            String(student.current_semester || '')
+            String(student.current_semester || ''),
+            limit,
+            offset
         ];
 
         const [rows] = await masterPool.query(query, params);
 
         res.json({
             success: true,
-            data: rows
+            data: rows,
+            hasMore: rows.length === limit
         });
 
     } catch (error) {

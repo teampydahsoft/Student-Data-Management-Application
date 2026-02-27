@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Megaphone, Calendar, BarChart2, CheckCircle, Clock, AlertCircle, X } from 'lucide-react';
+import { Loader2, Megaphone, Calendar, BarChart2, CheckCircle, Clock, AlertCircle, X, RefreshCw } from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
@@ -13,25 +13,69 @@ const StudentAnnouncements = () => {
     const [polls, setPolls] = useState([]);
     const [votingId, setVotingId] = useState(null);
 
+    // Pagination & Caching states
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [isFetchingMore, setIsFetchingMore] = useState(false);
+    const [dataFetched, setDataFetched] = useState({ announcements: false, polls: false });
+
     useEffect(() => {
-        fetchData();
+        if (activeTab === 'announcements' && !dataFetched.announcements) {
+            fetchAnnouncements();
+        } else if (activeTab === 'polls' && !dataFetched.polls) {
+            fetchPolls();
+        }
     }, [activeTab]);
 
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchAnnouncements = async (isRefresh = false, loadMore = false) => {
+        if (!loadMore) setLoading(true);
+        else setIsFetchingMore(true);
+
         try {
-            if (activeTab === 'announcements') {
-                const response = await api.get('/announcements/student');
-                if (response.data.success) setAnnouncements(response.data.data || []);
-            } else {
-                const response = await api.get('/polls/student');
-                if (response.data.success) setPolls(response.data.data || []);
+            const currentOffset = isRefresh ? 0 : (loadMore ? offset : 0);
+            const response = await api.get(`/announcements/student?limit=5&offset=${currentOffset}`);
+            if (response.data.success) {
+                const newData = response.data.data || [];
+                if (isRefresh || (!loadMore)) {
+                    setAnnouncements(newData);
+                    setOffset(5);
+                } else {
+                    setAnnouncements(prev => [...prev, ...newData]);
+                    setOffset(prev => prev + 5);
+                }
+                setHasMore(response.data.hasMore);
+                setDataFetched(prev => ({ ...prev, announcements: true }));
             }
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load content');
+            toast.error('Failed to load announcements');
         } finally {
             setLoading(false);
+            setIsFetchingMore(false);
+        }
+    };
+
+    const fetchPolls = async (isRefresh = false) => {
+        setLoading(true);
+        try {
+            const response = await api.get('/polls/student');
+            if (response.data.success) {
+                setPolls(response.data.data || []);
+                setDataFetched(prev => ({ ...prev, polls: true }));
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to load polls');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRefresh = () => {
+        if (activeTab === 'announcements') {
+            fetchAnnouncements(true);
+        } else {
+            fetchPolls(true);
         }
     };
 
@@ -41,8 +85,7 @@ const StudentAnnouncements = () => {
             const response = await api.post(`/polls/${pollId}/vote`, { option_index: optionIndex });
             if (response.data.success) {
                 toast.success('Vote recorded!');
-                const pollRes = await api.get('/polls/student');
-                if (pollRes.data.success) setPolls(pollRes.data.data || []);
+                fetchPolls(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Vote failed');
@@ -78,18 +121,29 @@ const StudentAnnouncements = () => {
     return (
         <div className="space-y-6 animate-fade-in p-2 md:p-6 bg-gray-50/30 min-h-screen">
             {/* Header / Tabs */}
-            <div className="bg-white rounded-2xl p-1.5 shadow-sm border border-gray-200 inline-flex gap-1 mx-auto md:mx-0">
+            <div className="flex justify-between items-center mb-6">
+                <div className="bg-white rounded-2xl p-1.5 shadow-sm border border-gray-200 inline-flex gap-1 mx-auto md:mx-0">
+                    <button
+                        onClick={() => setActiveTab('announcements')}
+                        className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'announcements' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                    >
+                        <Megaphone size={18} /> Announcements
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('polls')}
+                        className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'polls' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                    >
+                        <BarChart2 size={18} /> Polls
+                    </button>
+                </div>
+
                 <button
-                    onClick={() => setActiveTab('announcements')}
-                    className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'announcements' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                    onClick={handleRefresh}
+                    className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors flex items-center gap-2 font-medium text-sm"
+                    title="Refresh Data"
                 >
-                    <Megaphone size={18} /> Announcements
-                </button>
-                <button
-                    onClick={() => setActiveTab('polls')}
-                    className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'polls' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                    <BarChart2 size={18} /> Polls
+                    <RefreshCw size={18} className={loading && !isFetchingMore ? "animate-spin" : ""} />
+                    <span className="hidden md:inline">Refresh</span>
                 </button>
             </div>
 
@@ -139,6 +193,19 @@ const StudentAnnouncements = () => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* Load More Button */}
+                    {!loading && activeTab === 'announcements' && announcements.length > 0 && hasMore && (
+                        <div className="flex justify-center mt-8 pb-4">
+                            <button
+                                onClick={() => fetchAnnouncements(false, true)}
+                                disabled={isFetchingMore}
+                                className="px-6 py-2.5 bg-white border border-gray-200 shadow-sm text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                            >
+                                {isFetchingMore ? <Loader2 className="animate-spin" size={18} /> : 'Load More Announcements'}
+                            </button>
                         </div>
                     )}
                 </div>

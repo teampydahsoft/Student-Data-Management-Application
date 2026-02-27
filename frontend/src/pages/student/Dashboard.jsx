@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle } from 'lucide-react';
+import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import useAuthStore from '../../store/authStore';
@@ -131,7 +131,7 @@ const Dashboard = () => {
 
                 const [profileRes, announcementsRes, pollsRes, attendanceRes, servicesRes, eventsRes, clubsRes, hourlyRes, contentRes, marksRes, timetableRes, periodSlotsRes, layoutRes] = await Promise.allSettled([
                     api.get(`/students/${user.admission_number}`),
-                    api.get('/announcements/student'),
+                    api.get('/announcements/student?limit=5'),
                     api.get('/polls/student'),
                     api.get('/attendance/student', { params: { _t: Date.now() } }),
                     serviceService.getRequests(),
@@ -324,6 +324,33 @@ const Dashboard = () => {
         const marked = (present || 0) + (absent || 0);
         if (!marked) return 0;
         return (present / marked) * 100;
+    };
+
+    const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+    const refreshFeed = async () => {
+        if (!user?.admission_number || isRefreshingFeed) return;
+        setIsRefreshingFeed(true);
+        try {
+            const [announcementsRes, pollsRes] = await Promise.allSettled([
+                api.get('/announcements/student?limit=5'),
+                api.get('/polls/student')
+            ]);
+
+            if (announcementsRes.status === 'fulfilled' && announcementsRes.value.data.success) {
+                const sortedAnnouncements = [...announcementsRes.value.data.data].sort((a, b) =>
+                    new Date(b.created_at) - new Date(a.created_at)
+                );
+                setAnnouncements(sortedAnnouncements);
+            }
+            if (pollsRes.status === 'fulfilled' && pollsRes.value.data.success) {
+                setPolls(pollsRes.value.data.data);
+            }
+        } catch (error) {
+            console.error('Error refreshing feed:', error);
+            toast.error('Failed to refresh feed');
+        } finally {
+            setIsRefreshingFeed(false);
+        }
     };
 
 
@@ -1127,6 +1154,14 @@ const Dashboard = () => {
                                     </div>
                                     Recent Updates & Polls
                                 </h3>
+                                <button
+                                    onClick={refreshFeed}
+                                    disabled={isRefreshingFeed}
+                                    className="p-1.5 hover:bg-gray-100 text-gray-500 rounded-lg transition-colors flex items-center justify-center shrink-0"
+                                    title="Refresh Feed"
+                                >
+                                    <RefreshCw size={16} className={isRefreshingFeed ? "animate-spin" : ""} />
+                                </button>
                             </div>
 
                             <div className="space-y-3 flex-1">
