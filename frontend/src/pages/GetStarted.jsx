@@ -165,10 +165,13 @@ const GetStarted = () => {
                         className="relative"
                     >
                         <div className="absolute inset-0 bg-accent/20 blur-[120px] rounded-full" />
-                        <div className="relative bg-white p-4 rounded-[2.5rem] shadow-2xl border-8 border-primary/5 overflow-hidden group flex items-center justify-center min-h-[400px] bg-gradient-to-br from-primary/5 to-accent/5">
-                            <div className="text-primary/20 transition-transform duration-700 group-hover:scale-110">
-                                <GraduationCap size={160} />
-                            </div>
+                        <div className="relative bg-white p-2 sm:p-4 rounded-[2.5rem] shadow-2xl border-8 border-primary/5 overflow-hidden group flex items-center justify-center min-h-[400px] bg-gradient-to-br from-primary/5 to-accent/5">
+                            <img
+                                src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=1000"
+                                alt="Students"
+                                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-primary/60 via-transparent to-transparent opacity-80" />
                             <div className="absolute top-8 left-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20 animate-float">
                                 <div className="w-10 h-10 bg-success/20 rounded-full flex items-center justify-center">
                                     <CheckCircle className="text-success" size={20} />
