@@ -133,41 +133,7 @@ exports.uploadStudentPhoto = async (req, res) => {
   }
 };
 
-// Fetch a small selection of random student photos for the "Get Started" showcase
-exports.getStudentShowcase = async (req, res) => {
-  try {
-    // Optimized query: get total count first, then pick 5 random entries
-    // This is much faster than ORDER BY RAND() on large tables
-    const [countResult] = await masterPool.query(
-      'SELECT COUNT(*) as total FROM students WHERE student_photo IS NOT NULL AND student_photo != ""'
-    );
-    const total = countResult[0].total;
 
-    let rows = [];
-    if (total > 0) {
-      const offset = Math.floor(Math.random() * Math.max(0, total - 5));
-      [rows] = await masterPool.query({
-        sql: `SELECT student_name, student_photo 
-              FROM students 
-              WHERE student_photo IS NOT NULL AND student_photo != '' 
-              LIMIT 5 OFFSET ?`,
-        values: [offset],
-        timeout: 3000
-      });
-    }
-
-    res.json({
-      success: true,
-      data: rows
-    });
-  } catch (error) {
-    console.error('Error fetching student showcase:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch student showcase'
-    });
-  }
-};
 
 // Helper to ensure previous college exists in the lookup table
 const ensurePreviousCollegeExists = async (collegeName) => {

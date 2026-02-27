@@ -2,9 +2,6 @@ const express = require('express');
 const router = express.Router();
 const studentController = require('../controllers/studentController');
 
-// MUST BE FIRST: Public showcase for landing page
-router.get('/student-showcase', studentController.getStudentShowcase);
-
 const authMiddleware = require('../middleware/auth');
 const { attachUserScope, verifyPermission, allowStudentOwnProfileOrPermission } = require('../middleware/rbac');
 const { MODULES } = require('../constants/rbac');

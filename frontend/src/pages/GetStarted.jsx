@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -17,17 +17,8 @@ import {
     Award
 } from 'lucide-react';
 
-const FALLBACK_STUDENTS = [
-    { student_name: "Rahul Sharma", student_photo: "https://i.pravatar.cc/150?u=rahul" },
-    { student_name: "Priya Varma", student_photo: "https://i.pravatar.cc/150?u=priya" },
-    { student_name: "Anil Kumar", student_photo: "https://i.pravatar.cc/150?u=anil" },
-    { student_name: "Sowmya Reddy", student_photo: "https://i.pravatar.cc/150?u=sowmya" }
-];
-
 const GetStarted = () => {
     const navigate = useNavigate();
-    const [showcaseStudents, setShowcaseStudents] = useState(FALLBACK_STUDENTS);
-    const [showcaseLoading, setShowcaseLoading] = useState(true);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
     // Monitoring browser online/offline status
@@ -42,47 +33,6 @@ const GetStarted = () => {
         };
     }, []);
 
-    const getInitials = (name) => {
-        if (!name) return 'S';
-        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    };
-
-    const getAvatarColor = (index) => {
-        const colors = [
-            '#3B82F6', // blue-500
-            '#8B5CF6', // purple-500
-            '#10B981', // emerald-500
-            '#F59E0B', // orange-500
-            '#EF4444', // rose-500
-            '#6366F1'  // indigo-500
-        ];
-        return colors[index % colors.length];
-    };
-
-    useEffect(() => {
-        const fetchShowcase = async () => {
-            try {
-                console.log('📡 Fetching showcase from:', `${API_URL}/students/student-showcase`);
-
-                const response = await axios.get(`${API_URL}/students/student-showcase`, {
-                    timeout: 4000
-                });
-
-                if (response.data.success && response.data.data && response.data.data.length > 0) {
-                    setShowcaseStudents(response.data.data);
-                }
-            } catch (error) {
-                console.warn('⚠️ Showcase fetch failed:', error.message);
-            } finally {
-                setShowcaseLoading(false);
-            }
-        };
-
-        fetchShowcase();
-
-        const interval = setInterval(fetchShowcase, 12000);
-        return () => clearInterval(interval);
-    }, []);
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -205,60 +155,7 @@ const GetStarted = () => {
                             </button>
                         </motion.div>
 
-                        <motion.div
-                            variants={itemVariants}
-                            className="mt-12 flex items-center gap-6"
-                        >
-                            <div className="flex -space-x-4 min-h-[48px]">
-                                <AnimatePresence mode="popLayout" initial={false}>
-                                    {showcaseLoading ? (
-                                        Array.from({ length: 4 }).map((_, i) => (
-                                            <motion.div
-                                                key={`skeleton-${i}`}
-                                                initial={{ opacity: 0, scale: 0.8 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.8 }}
-                                                className="w-12 h-12 rounded-full border-4 border-white bg-slate-200 animate-pulse shrink-0"
-                                            />
-                                        ))
-                                    ) : (
-                                        showcaseStudents.slice(0, 4).map((student, i) => (
-                                            <motion.div
-                                                key={student.student_photo + i}
-                                                layout
-                                                initial={{ opacity: 0, x: 20, scale: 0.8 }}
-                                                animate={{ opacity: 1, x: 0, scale: 1 }}
-                                                exit={{ opacity: 0, x: -20, scale: 0.8 }}
-                                                transition={{ duration: 0.5, delay: i * 0.1 }}
-                                                style={{ backgroundColor: getAvatarColor(i) }}
-                                                className="w-12 h-12 rounded-full border-4 border-white flex items-center justify-center overflow-hidden shadow-sm group/student relative shrink-0 text-white font-black text-xs"
-                                            >
-                                                {student.student_photo && !student.student_photo.includes('data:') && (
-                                                    <img
-                                                        src={student.student_photo}
-                                                        alt={student.student_name}
-                                                        className="w-full h-full object-cover absolute inset-0 z-0"
-                                                        onError={(e) => {
-                                                            e.target.style.display = 'none';
-                                                        }}
-                                                    />
-                                                )}
-                                                <span className="relative z-10 drop-shadow-md">{getInitials(student.student_name)}</span>
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/student:opacity-100 transition-opacity flex items-center justify-center z-20">
-                                                    <span className="text-[8px] text-white font-bold text-center px-1 leading-tight">{(student.student_name || 'Student').split(' ')[0]}</span>
-                                                </div>
-                                            </motion.div>
-                                        ))
-                                    )}
-                                </AnimatePresence>
-                                <div className="w-12 h-12 rounded-full border-4 border-white bg-accent flex items-center justify-center text-white text-xs font-bold shadow-sm z-10 shrink-0">
-                                    +1k
-                                </div>
-                            </div>
-                            <p className="text-sm text-text-secondary font-medium italic">
-                                Trusted by {showcaseLoading ? '...' : '1000+'} students across various branches
-                            </p>
-                        </motion.div>
+
                     </motion.div>
 
                     <motion.div
@@ -268,15 +165,10 @@ const GetStarted = () => {
                         className="relative"
                     >
                         <div className="absolute inset-0 bg-accent/20 blur-[120px] rounded-full" />
-                        <div className="relative bg-white p-4 rounded-[2.5rem] shadow-2xl border-8 border-primary/5 overflow-hidden group">
-                            <img
-                                src="/hero-get-started.png"
-                                alt="Student Portal"
-                                className="rounded-[1.5rem] w-full h-auto object-cover transition-transform duration-700 group-hover:scale-110"
-                                onError={(e) => {
-                                    e.target.src = "https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=2070&auto=format&fit=crop";
-                                }}
-                            />
+                        <div className="relative bg-white p-4 rounded-[2.5rem] shadow-2xl border-8 border-primary/5 overflow-hidden group flex items-center justify-center min-h-[400px] bg-gradient-to-br from-primary/5 to-accent/5">
+                            <div className="text-primary/20 transition-transform duration-700 group-hover:scale-110">
+                                <GraduationCap size={160} />
+                            </div>
                             <div className="absolute top-8 left-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20 animate-float">
                                 <div className="w-10 h-10 bg-success/20 rounded-full flex items-center justify-center">
                                     <CheckCircle className="text-success" size={20} />
