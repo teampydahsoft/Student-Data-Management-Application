@@ -18,6 +18,7 @@ import {
     RiWallet3Line,
     RiWallet3Fill,
     RiMenuLine,
+    RiMenuFill,
     RiCloseLine,
     RiLogoutBoxRLine,
     RiUser3Line,
@@ -235,8 +236,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiTicketLine, activeIcon: RiTicketFill, label: 'Maintenance', path: '/student/my-tickets', isExternal: true, isTicketApp: true },
         { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
         { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
-        { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' },
-        { icon: RiFolderLine, activeIcon: RiFolderFill, label: 'My Requests', path: '/student/profile-requests' },
+        { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' }
     ].filter(item => {
         if (item.label === 'Internship' && !hasInternship) return false;
 
@@ -267,7 +267,7 @@ const StudentLayout = ({ children }) => {
         <div className={`flex h-screen overflow-hidden transition-colors duration-500 ${isBirthday ? 'bg-gradient-to-br from-amber-50 via-orange-50/70 to-pink-50' : 'bg-[#F8FAFC]'}`}>
             {/* Background Pattern - birthday: festive dots; default: gray dots */}
             <div
-                className="fixed inset-0 z-0 pointer-events-none transition-opacity duration-500"
+                className="fixed inset-0 -z-10 pointer-events-none transition-opacity duration-500"
                 style={isBirthday ? {
                     opacity: 0.5,
                     backgroundImage: `
@@ -311,44 +311,46 @@ const StudentLayout = ({ children }) => {
             {/* Sidebar (HIDDEN on Mobile) */}
             <aside className={`
                 hidden lg:flex
-                fixed inset-y-0 left-0 z-40 w-72 backdrop-blur-xl border-r shadow-[4px_0_24px_-2px_rgba(0,0,0,0.02)] transform transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1)
-                ${isBirthday ? 'bg-white/95 border-amber-200/60' : 'bg-white/90 border-gray-200/60'}
+                fixed inset-y-0 left-0 z-40 w-72 backdrop-blur-xl border-r transform transition-all duration-500 ease-in-out
+                ${isBirthday ? 'bg-white/95 border-amber-200/60 shadow-[4px_0_24px_-2px_rgba(245,158,11,0.05)]' : 'bg-white/95 border-gray-200/60 shadow-[4px_0_24px_-2px_rgba(0,0,0,0.02)]'}
                 ${desktopSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="h-full flex flex-col">
                     {/* Logo Area */}
-                    <div className={`h-20 flex items-center justify-between px-6 border-b ${isBirthday ? 'border-amber-100 bg-gradient-to-r from-amber-50/80 to-orange-50/50' : 'border-gray-100'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-white shadow-lg ${isBirthday ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-amber-200' : 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-200'}`}>
-                                {isBirthday ? <span className="text-base">🎂</span> : <span className="font-bold text-lg">P</span>}
+                    <div className={`h-24 flex items-center justify-between px-6 border-b transition-all duration-300 ${isBirthday ? 'border-amber-100 bg-gradient-to-r from-amber-50/50 to-orange-50/30' : 'border-gray-100/80 bg-white/50'}`}>
+                        <div className="flex items-center gap-3.5 group cursor-pointer" onClick={() => navigate('/student/dashboard')}>
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${isBirthday ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-amber-200' : 'bg-gradient-to-br from-indigo-600 to-blue-600 shadow-indigo-100'}`}>
+                                {isBirthday ? <span className="text-xl">🎂</span> : <span className="font-black text-xl tracking-tighter">S</span>}
                             </div>
-                            <span className="text-lg font-bold text-gray-900 tracking-tight heading-font">
-                                {isBirthday ? 'Happy Birthday!' : 'Student Portal'}
-                            </span>
+                            <div className="flex flex-col justify-center">
+                                <span className="text-lg font-black text-gray-900 tracking-tight leading-none">
+                                    {isBirthday ? 'Happy Day!' : 'Student'}
+                                </span>
+                            </div>
                         </div>
                         <button
                             onClick={() => setDesktopSidebarOpen(false)}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100/80 rounded-xl transition-all active:scale-90"
                         >
-                            <RiMenuLine size={20} />
+                            <RiMenuLine size={18} />
                         </button>
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex-1 px-4 py-8 space-y-1.5 overflow-y-auto custom-scrollbar">
+                    <nav className="flex-1 px-4 py-8 space-y-1 overflow-y-auto no-scrollbar scroll-smooth">
                         {navItems.map((item, index) => (
                             item.isExternal ? (
                                 <a
                                     key={`${item.path}-${index}`}
                                     href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
                                     className={`
-                                      relative flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group
-                                      ${isBirthday ? 'text-gray-600 hover:bg-amber-50 hover:text-amber-700' : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'}
+                                      relative flex items-center gap-3.5 px-4 py-3 rounded-xl text-[13px] font-bold transition-all duration-300 group
+                                      ${isBirthday ? 'text-gray-500 hover:bg-amber-50 hover:text-amber-700' : 'text-gray-500 hover:bg-indigo-50/50 hover:text-indigo-700'}
                                     `}
                                 >
-                                    <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full transition-all duration-300 opacity-0 scale-y-0 ${isBirthday ? 'bg-amber-500' : 'bg-blue-600'}`}></span>
-                                    <item.icon size={20} className={`transition-transform duration-300 group-hover:scale-110`} />
-                                    <span className="tracking-wide">{item.label}</span>
+                                    <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full transition-all duration-300 opacity-0 scale-y-0 ${isBirthday ? 'bg-amber-500' : 'bg-indigo-600'}`}></span>
+                                    <item.icon size={20} className="transition-transform duration-300 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
+                                    <span className="tracking-tight">{item.label}</span>
                                 </a>
                             ) : (
                                 <NavLink
@@ -356,20 +358,22 @@ const StudentLayout = ({ children }) => {
                                     to={item.path}
                                     onClick={(e) => handleNavigation(e, item.path)}
                                     className={({ isActive }) => `
-                                      relative flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group
+                                      relative flex items-center gap-3.5 px-4 py-3 rounded-xl text-[13px] font-bold transition-all duration-300 group
                                       ${isActive
-                                            ? isBirthday ? 'bg-amber-50/80 text-amber-700 shadow-sm' : 'bg-blue-50/80 text-blue-700 shadow-sm'
-                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
+                                            ? isBirthday ? 'bg-amber-100/60 text-amber-700 shadow-sm' : 'bg-indigo-50/80 text-indigo-700 shadow-sm border border-indigo-100/30'
+                                            : 'text-gray-500 hover:bg-gray-50/80 hover:text-gray-900'}
                                     `}
                                 >
                                     {({ isActive }) => {
                                         const Icon = isActive ? item.activeIcon : item.icon;
                                         return (
                                             <>
-                                                <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full transition-all duration-300 ${isBirthday ? 'bg-amber-500' : 'bg-blue-600'} ${isActive ? 'opacity-100' : 'opacity-0 scale-y-0'}`}></span>
-                                                <Icon size={20} className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />
-                                                <span className="tracking-wide">{item.label}</span>
-                                                {isActive && <div className={`ml-auto w-1.5 h-1.5 rounded-full shadow-lg ${isBirthday ? 'bg-amber-500 shadow-amber-400' : 'bg-blue-600 shadow-blue-400'}`}></div>}
+                                                <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full transition-all duration-500 ${isBirthday ? 'bg-amber-500' : 'bg-indigo-600'} ${isActive ? 'opacity-100 translate-x-[-8px]' : 'opacity-0 scale-y-0'}`}></span>
+                                                <Icon size={20} className={`transition-all duration-300 ${isActive ? 'scale-110 opacity-100' : 'opacity-70 group-hover:opacity-100 group-hover:scale-110'}`} />
+                                                <span className="tracking-tight">{item.label}</span>
+                                                {isActive && (
+                                                    <div className={`ml-auto w-1.5 h-1.5 rounded-full animate-pulse transition-all ${isBirthday ? 'bg-amber-500 shadow-lg shadow-amber-400' : 'bg-indigo-600 shadow-lg shadow-indigo-400'}`}></div>
+                                                )}
                                             </>
                                         );
                                     }}
@@ -383,27 +387,27 @@ const StudentLayout = ({ children }) => {
                     {/* User Info Card */}
                     <div
                         onClick={() => navigate('/student/profile')}
-                        className={`mx-4 mb-2 p-4 rounded-xl border shadow-sm relative overflow-hidden group cursor-pointer hover:shadow-md transition-all ${isBirthday ? 'bg-gradient-to-br from-amber-50 to-orange-50/30 border-amber-100' : 'bg-gradient-to-br from-gray-50 to-white border-gray-100'}`}
+                        className={`mx-5 mb-3 p-4 rounded-2xl border relative overflow-hidden group cursor-pointer hover:shadow-xl transition-all duration-500 ${isBirthday ? 'bg-white border-amber-100 shadow-amber-100/20' : 'bg-white border-gray-100 shadow-indigo-100/30'}`}
                     >
-                        {isBirthday && (
-                            <div className="absolute top-1 right-2 text-lg opacity-90">🎂</div>
-                        )}
-                        <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110 ${isBirthday ? 'bg-amber-100' : 'bg-blue-50'}`}></div>
-                        <div className="flex items-center gap-3 relative z-10">
-                            <div className="h-10 w-10 rounded-full ring-2 ring-white shadow-md bg-gray-200 overflow-hidden shrink-0">
-                                {user?.student_photo ? (
-                                    <img src={user.student_photo} alt="Profile" className="h-full w-full object-cover" />
-                                ) : (
-                                    <div className={`h-full w-full flex items-center justify-center ${isBirthday ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
-                                        <RiUser3Fill size={18} />
-                                    </div>
-                                )}
+                        <div className={`absolute top-0 right-0 w-20 h-20 rounded-bl-full -mr-10 -mt-10 transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12 ${isBirthday ? 'bg-amber-50/80' : 'bg-indigo-50/80'}`}></div>
+                        <div className="flex items-center gap-3.5 relative z-10">
+                            <div className="relative shrink-0">
+                                <div className="h-11 w-11 rounded-full ring-2 ring-white shadow-lg bg-gray-100 overflow-hidden relative z-10 transition-transform duration-500 group-hover:scale-105">
+                                    {user?.student_photo ? (
+                                        <img src={user.student_photo} alt="Profile" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className={`h-full w-full flex items-center justify-center ${isBirthday ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                                            <RiUser3Fill size={20} />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white z-20 ${isBirthday ? 'bg-amber-500' : 'bg-green-500'}`}></div>
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm font-bold text-gray-900 truncate">{user?.name || 'Student'}</p>
+                                    <p className="text-[13px] font-black text-gray-900 truncate tracking-tight">{user?.name || 'Student'}</p>
                                 </div>
-                                <p className="text-xs font-medium text-gray-500 truncate">{user?.admission_number}</p>
+                                <p className="text-[11px] font-bold text-gray-400 truncate tracking-wide uppercase">{user?.admission_number}</p>
                             </div>
                         </div>
                     </div>
@@ -423,9 +427,9 @@ const StudentLayout = ({ children }) => {
 
             {/* Main Content */}
             <main className={`
-                flex-1 h-screen overflow-y-auto p-4 lg:p-8 relative z-10 transition-all duration-300 
+                flex-1 h-screen overflow-y-auto p-4 lg:p-8 relative transition-all duration-300 
                 ${desktopSidebarOpen ? 'lg:ml-72' : 'lg:ml-0'}
-                pb-24 lg:pb-8
+                pb-[calc(80px+env(safe-area-inset-bottom))] lg:pb-8
             `}>
                 {/* Birthday banner strip */}
                 {isBirthday && (
@@ -437,7 +441,7 @@ const StudentLayout = ({ children }) => {
                 )}
 
                 {/* Notification Icon */}
-                <div className="fixed bottom-20 lg:bottom-8 right-4 lg:right-8 z-50">
+                <div className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] lg:bottom-8 right-4 lg:right-8 z-[50]">
                     <NotificationIcon />
                 </div>
 
@@ -446,27 +450,24 @@ const StudentLayout = ({ children }) => {
                 </div>
             </main>
 
-            {/* Mobile Bottom Navigation - Docked & Premium */}
-            <div className={`lg:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl border-t shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-3xl z-50 pb-safe ${isBirthday ? 'bg-white/95 border-amber-200/50' : 'bg-white/95 border-gray-200/50'}`}>
-                <div className="flex items-center justify-around px-2 pt-3 pb-2">
+            {/* Mobile Bottom Navigation - Floating Premium Dock */}
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-[55] pointer-events-none pb-[env(safe-area-inset-bottom)]">
+                <div className={`
+                    pointer-events-auto h-[68px] sm:h-[72px] backdrop-blur-3xl border-t shadow-[0_-8px_32px_rgba(0,0,0,0.08)] rounded-t-[1.5rem] sm:rounded-t-[2rem] flex items-center justify-between px-2 sm:px-4
+                    ${isBirthday ? 'bg-white/95 border-amber-200/50' : 'bg-white/95 border-gray-200/50'}
+                `}>
                     {mobilePrimaryItems.map((item) => (
                         item.isExternal ? (
                             <a
                                 key={item.path}
                                 href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
-                                className={`
-                                    flex-1 flex flex-col items-center justify-center gap-1.5 p-1 transition-all duration-300 group
-                                    text-gray-400 hover:text-gray-600
-                                `}
+                                className="flex-1 flex flex-col items-center justify-center gap-1 min-w-[60px] h-full transition-all duration-300 group"
                             >
-                                <div className="relative p-1 transition-all">
-                                    <item.icon
-                                        size={26}
-                                        className={`transition-all duration-300 group-active:scale-90`}
-                                    />
+                                <div className="relative p-1.5 rounded-2xl transition-all duration-300 group-active:scale-95 group-active:bg-gray-100/50">
+                                    <item.icon size={24} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
                                 </div>
-                                <span className={`text-[10px] font-bold tracking-wide leading-none transition-colors duration-300 text-gray-500 font-medium`}>
-                                    {item.label}
+                                <span className="text-[10px] font-bold tracking-wide text-gray-500 leading-none">
+                                    {item.label === 'Dashboard' ? 'Home' : item.label}
                                 </span>
                             </a>
                         ) : (
@@ -475,34 +476,38 @@ const StudentLayout = ({ children }) => {
                                 to={item.path}
                                 onClick={(e) => handleNavigation(e, item.path)}
                                 className={({ isActive }) => `
-                                    flex-1 flex flex-col items-center justify-center gap-1.5 p-1 transition-all duration-300 group
-                                    ${isActive ? (isBirthday ? 'text-amber-600' : 'text-blue-600') : 'text-gray-400 hover:text-gray-600'}
+                                    flex-1 flex flex-col items-center justify-center gap-1 min-w-[60px] h-full transition-all duration-300 ease-out group
+                                    ${isActive ? (isBirthday ? 'text-amber-600' : 'text-indigo-600') : 'text-gray-400'}
                                 `}
                             >
                                 {({ isActive }) => {
+                                    // Use activeIcon (filled) when active, otherwise outlined icon
                                     const Icon = isActive ? item.activeIcon : item.icon;
-                                    const dotClass = isBirthday ? 'bg-amber-400' : 'bg-blue-400';
-                                    const dotClassSolid = isBirthday ? 'bg-amber-500' : 'bg-blue-500';
+                                    const themeColor = isBirthday ? 'bg-amber-500' : 'bg-indigo-600';
+                                    const lightColor = isBirthday ? 'bg-amber-50/80' : 'bg-indigo-50/80';
                                     return (
                                         <>
-                                            <div className="relative p-1 transition-all">
+                                            <div className={`
+                                                relative p-2 rounded-2xl transition-all duration-500 
+                                                ${isActive ? `${lightColor} -translate-y-1` : 'group-active:scale-95 group-active:bg-gray-50'}
+                                            `}>
                                                 <Icon
-                                                    size={26}
-                                                    className={`transition-all duration-300 ${isActive ? 'scale-110 drop-shadow-sm' : 'group-active:scale-90'}`}
+                                                    size={24}
+                                                    className={`transition-all duration-300 ${isActive ? 'scale-110' : 'group-hover:text-gray-600'}`}
                                                 />
                                                 {isActive && (
-                                                    <span className="absolute -top-1 right-0 flex h-2 w-2">
-                                                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotClass}`}></span>
-                                                        <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClassSolid}`}></span>
-                                                    </span>
+                                                    <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${themeColor}`}></span>
                                                 )}
                                             </div>
-                                            <span className={`text-[10px] font-bold tracking-wide truncate w-full text-center leading-none transition-colors duration-300 ${isActive ? (isBirthday ? 'text-amber-600' : 'text-blue-600') : 'text-gray-500 font-medium'}`}>
-                                                {/* Shorten labels for mobile */}
+                                            <span className={`
+                                                text-[10px] font-bold tracking-wide leading-none transition-all duration-300
+                                                ${isActive ? 'opacity-100 font-extrabold' : 'opacity-80 text-gray-500'}
+                                            `}>
                                                 {item.label === 'Fee Management' ? 'Fees' :
                                                     item.label === 'Attendance' ? 'Attend' :
-                                                        item.label === 'Sem Registration' ? 'Register' :
-                                                            item.label}
+                                                        item.label === 'Sem Registration' ? 'Reg.' :
+                                                            item.label === 'Dashboard' ? 'Home' :
+                                                                item.label}
                                             </span>
                                         </>
                                     );
@@ -511,20 +516,16 @@ const StudentLayout = ({ children }) => {
                         )
                     ))}
 
-                    {/* More Button */}
+                    {/* More Menu Indicator */}
                     <button
                         onClick={() => setMoreMenuOpen(true)}
-                        className={`flex-1 flex flex-col items-center justify-center gap-1.5 p-1 transition-all duration-300 group ${moreMenuOpen ? (isBirthday ? 'text-amber-600' : 'text-blue-600') : 'text-gray-400'}`}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 min-w-[60px] h-full transition-all duration-300 group ${moreMenuOpen ? (isBirthday ? 'text-amber-600' : 'text-indigo-600') : 'text-gray-400'}`}
                     >
-                        <div className="relative p-1">
-                            <RiMenuLine
-                                size={26}
-                                className={`transition-all duration-300 ${moreMenuOpen ? 'scale-110 drop-shadow-sm' : 'group-active:scale-90'}`}
-                            />
+                        <div className={`relative p-2 rounded-2xl transition-all duration-300 ${moreMenuOpen ? (isBirthday ? 'bg-amber-50/80 -translate-y-1' : 'bg-indigo-50/80 -translate-y-1') : 'group-active:scale-95'}`}>
+                            {moreMenuOpen ? <RiMenuFill size={24} className="scale-110" /> : <RiMenuLine size={24} className="group-hover:text-gray-600" />}
+                            {moreMenuOpen && <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isBirthday ? 'bg-amber-500' : 'bg-indigo-600'}`}></span>}
                         </div>
-                        <span className={`text-[10px] font-bold tracking-wide leading-none transition-colors duration-300 ${moreMenuOpen ? (isBirthday ? 'text-amber-600' : 'text-blue-600') : 'text-gray-500 font-medium'}`}>
-                            Menu
-                        </span>
+                        <span className={`text-[10px] tracking-wide leading-none transition-all duration-300 ${moreMenuOpen ? 'opacity-100 font-extrabold' : 'opacity-80 font-bold text-gray-500'}`}>Menu</span>
                     </button>
                 </div>
             </div>
@@ -538,32 +539,31 @@ const StudentLayout = ({ children }) => {
                         onClick={() => setMoreMenuOpen(false)}
                     />
 
-                    {/* Drawer Content - with margin for bottom bar */}
-                    <div className={`relative rounded-t-3xl p-6 shadow-2xl animate-fade-in-up pb-32 ${isBirthday ? 'bg-gradient-to-b from-amber-50/90 to-[#F8FAFC]' : 'bg-[#F8FAFC]'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-lg font-bold text-gray-900">{isBirthday ? '🎂 More Menu' : 'More Menu'}</h3>
-                            <button onClick={() => setMoreMenuOpen(false)} className="p-2 bg-white rounded-full text-gray-600 shadow-sm border border-gray-100">
-                                <RiCloseLine size={20} />
+                    {/* Drawer Content - Compact Glassmorphism */}
+                    <div className={`relative rounded-t-[1.5rem] sm:rounded-t-[2rem] p-4 sm:p-5 shadow-[0_-8px_32px_rgba(0,0,0,0.12)] animate-fade-in-up pb-[calc(68px+env(safe-area-inset-bottom))] sm:pb-[calc(72px+env(safe-area-inset-bottom))] border-t backdrop-blur-3xl transition-all duration-500 ${isBirthday ? 'bg-amber-50/85 border-amber-200/50' : 'bg-white/90 border-white/60'}`}>
+                        {/* Grab Handle */}
+                        <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4 opacity-50"></div>
+
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-lg font-black text-gray-900 tracking-tight">{isBirthday ? '🎂 Explore' : 'Explore'}</h3>
+                            <button onClick={() => setMoreMenuOpen(false)} className="p-2 bg-white/50 rounded-xl text-gray-500 shadow-sm border border-gray-200/50 active:scale-95 transition-all hover:bg-white/80">
+                                <RiCloseLine size={18} />
                             </button>
                         </div>
 
-
-
-                        <div className="grid grid-cols-4 gap-2 mb-4">
+                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 sm:gap-3 mb-5">
                             {mobileSecondaryItems.map((item) => (
                                 item.isExternal ? (
                                     <a
                                         key={item.path}
                                         href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
-                                        className={`
-                                            flex flex-col items-center gap-1.5 p-1.5 rounded-2xl transition-all border
-                                            bg-white text-gray-600 border-gray-100 shadow-sm hover:shadow-md active:scale-95
-                                        `}
+                                        className="flex flex-col items-center gap-1.5 p-1 group"
                                     >
-                                        <div className={`p-2 rounded-xl bg-gray-50`}>
-                                            <item.icon size={18} />
+                                        <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-[14px] bg-white/60 border border-white/60 shadow-sm flex items-center justify-center text-gray-500 group-active:scale-90 group-active:bg-gray-100/50 transition-all">
+                                            <item.icon size={20} className="sm:hidden" />
+                                            <item.icon size={22} className="hidden sm:block" />
                                         </div>
-                                        <span className="text-[9px] font-bold text-center line-clamp-1 leading-tight w-full">
+                                        <span className="text-[9px] sm:text-[10px] font-bold text-gray-600 text-center line-clamp-1 w-full px-0.5">
                                             {item.label}
                                         </span>
                                     </a>
@@ -572,23 +572,19 @@ const StudentLayout = ({ children }) => {
                                         key={item.path}
                                         to={item.path}
                                         onClick={(e) => handleNavigation(e, item.path)}
-                                        className={({ isActive }) => `
-                                            flex flex-col items-center gap-1.5 p-1.5 rounded-2xl transition-all border
-                                            ${isActive
-                                                ? isBirthday
-                                                    ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-200'
-                                                    : 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-200'
-                                                : 'bg-white text-gray-600 border-gray-100 shadow-sm hover:shadow-md active:scale-95'}
-                                        `}
+                                        className="flex flex-col items-center gap-1.5 p-1 group"
                                     >
                                         {({ isActive }) => {
                                             const Icon = isActive ? item.activeIcon : item.icon;
                                             return (
                                                 <>
-                                                    <div className={`p-2 rounded-xl ${isActive ? 'bg-white/20' : 'bg-gray-50'}`}>
-                                                        <Icon size={18} />
+                                                    <div className={`h-12 w-12 sm:h-14 sm:w-14 rounded-[14px] border flex items-center justify-center transition-all duration-300 group-active:scale-90 ${isActive
+                                                        ? (isBirthday ? 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-200/50' : 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200/50')
+                                                        : 'bg-white/60 border-white/60 text-gray-500 shadow-sm'}`}>
+                                                        <Icon size={20} className="sm:hidden" />
+                                                        <Icon size={22} className="hidden sm:block" />
                                                     </div>
-                                                    <span className="text-[9px] font-bold text-center line-clamp-1 leading-tight w-full">
+                                                    <span className={`text-[9px] sm:text-[10px] font-bold text-center line-clamp-1 w-full px-0.5 transition-colors ${isActive ? (isBirthday ? 'text-amber-600' : 'text-indigo-600') : 'text-gray-600'}`}>
                                                         {item.label === 'Sem Registration' ? 'Reg.' : item.label}
                                                     </span>
                                                 </>
@@ -600,36 +596,33 @@ const StudentLayout = ({ children }) => {
                         </div>
 
                         {/* Profile & Logout in Drawer */}
-                        <div className="space-y-3">
+                        <div className="flex gap-2 sm:gap-3">
                             <div
                                 onClick={() => {
                                     navigate('/student/profile');
                                     setMoreMenuOpen(false);
                                 }}
-                                className={`flex items-center gap-3 p-4 rounded-2xl border shadow-sm active:bg-gray-50 transition-colors cursor-pointer ${isBirthday ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'}`}
+                                className={`flex-1 flex items-center gap-3 p-3 rounded-2xl border relative overflow-hidden active:scale-95 transition-all cursor-pointer ${isBirthday ? 'bg-white/60 border-amber-200/50' : 'bg-white/60 border-white/60'} shadow-sm`}
                             >
-                                <div className={`h-10 w-10 rounded-full flex items-center justify-center overflow-hidden ${isBirthday ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                                <div className={`h-10 w-10 sm:h-12 sm:w-12 rounded-xl flex items-center justify-center overflow-hidden shrink-0 ${isBirthday ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
                                     {user?.student_photo ? (
                                         <img src={user.student_photo} alt="Profile" className="h-full w-full object-cover" />
                                     ) : (
-                                        <RiUser3Fill size={20} />
+                                        <RiUser3Fill className="w-5 h-5 sm:w-6 sm:h-6" />
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-gray-900 truncate">{user?.name || 'Student'}</p>
-                                    <p className="text-xs text-gray-500">View Profile</p>
-                                </div>
-                                <div className="p-2 bg-gray-50 rounded-lg">
-                                    <RiMore2Fill size={18} className="text-gray-400" />
+                                    <p className="text-[13px] sm:text-sm font-black text-gray-900 truncate tracking-tight">{user?.name || 'Student'}</p>
+                                    <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest">{user?.admission_number}</p>
                                 </div>
                             </div>
 
                             <button
                                 onClick={handleLogout}
-                                className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-600 font-bold border border-red-100 active:bg-red-100 transition-colors"
+                                className="w-[60px] sm:w-[72px] flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-gray-900/90 backdrop-blur-md text-white font-bold text-[9px] sm:text-[10px] tracking-wider uppercase hover:bg-black active:scale-95 transition-all shadow-md shrink-0"
                             >
-                                <RiLogoutBoxRLine size={20} />
-                                Sign Out
+                                <RiLogoutBoxRLine className="w-5 h-5 sm:w-6 sm:h-6" />
+                                <span>Exit</span>
                             </button>
                         </div>
                     </div>

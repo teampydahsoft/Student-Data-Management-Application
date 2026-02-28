@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, AlertCircle, Clock, CheckCircle, User, Users, MapPin, GraduationCap, FileText, ChevronRight, Check, Phone, Lock } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
@@ -503,12 +504,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
                         rows={2}
-                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none resize-none
+                        className={`w-full px-4 py-2.5 border rounded-2xl text-[12px] sm:text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none resize-none
                             ${isReadOnly
                                 ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
                                     ? 'bg-gray-50/50 border-gray-100'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[4px] focus:ring-indigo-500/10 shadow-sm'}`}
                     ></textarea>
                 ) : field.type === 'select' || field.type === 'radio' ? (
                     <select
@@ -516,12 +517,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         value={value}
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
-                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M5%207L10%2012L15%207%22%20stroke%3D%22%236B7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E')] bg-[length:20px_20px] bg-[right_1rem_center] bg-no-repeat
+                        className={`w-full px-4 py-2.5 border rounded-2xl text-[12px] sm:text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M5%207L10%2012L15%207%22%20stroke%3D%22%236B7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E')] bg-[length:16px_16px] bg-[right_1rem_center] bg-no-repeat
                             ${isReadOnly
                                 ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
                                     ? 'bg-gray-50/50 border-gray-100'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[4px] focus:ring-indigo-500/10 shadow-sm'}`}
                     >
                         <option value="">Select an option</option>
                         {(field.options || []).map((opt, i) => (
@@ -535,19 +536,19 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         value={value}
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
-                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none
+                        className={`w-full px-4 py-2.5 border rounded-2xl text-[12px] sm:text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none
                             ${isReadOnly
                                 ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
                                     ? 'bg-gray-50/50 border-gray-100'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[4px] focus:ring-indigo-500/10 shadow-sm'}`}
                     />
                 )}
             </div>
         );
     };
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-6 bg-black/40 backdrop-blur-md animate-fade-in custom-scrollbar overflow-y-auto">
             <div className="bg-white sm:rounded-[24px] rounded-none shadow-2xl w-full h-[100dvh] sm:h-auto sm:max-h-[85vh] max-w-5xl flex flex-col relative my-auto sm:border border-white/20 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}>
@@ -557,10 +558,10 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
                     <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/20 rounded-full blur-2xl translate-y-1/2 -translate-x-1/4"></div>
 
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
-                        <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 relative z-10 pr-8 sm:pr-0">
+                        <div className="flex items-center gap-3 sm:gap-4">
                             <div className="relative group shrink-0">
-                                <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-2xl border-[3px] border-white/20 bg-white shadow-xl overflow-hidden flex items-center justify-center relative">
+                                <div className="h-12 w-12 sm:h-20 sm:w-20 rounded-[14px] sm:rounded-2xl border-2 sm:border-[3px] border-white/20 bg-white shadow-xl overflow-hidden flex items-center justify-center relative">
                                     {studentData?.student_photo ? (
                                         <img
                                             src={studentData.student_photo}
@@ -568,19 +569,19 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                                             className="h-full w-full object-cover"
                                         />
                                     ) : (
-                                        <User size={32} className="text-gray-300" />
+                                        <User className="text-gray-300 w-6 h-6 sm:w-8 sm:h-8" />
                                     )}
                                 </div>
                             </div>
                             <div>
-                                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight heading-font">Profile Verification</h2>
-                                <p className="text-xs sm:text-sm font-medium text-indigo-100 mt-1 flex items-center gap-2">
+                                <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight heading-font">Profile Verification</h2>
+                                <p className="text-[10px] sm:text-sm font-medium text-indigo-100 mt-0.5 sm:mt-1 flex items-center gap-2 leading-snug">
                                     Compare your official records and request changes if needed.
                                 </p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="absolute right-0 top-0 sm:relative p-2 md:p-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-all text-white/70 hover:text-white backdrop-blur group">
-                            <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                        <button onClick={onClose} className="absolute right-0 top-0 sm:relative p-1.5 sm:p-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-all text-white/70 hover:text-white backdrop-blur group active:scale-95">
+                            <X size={18} className="sm:h-5 sm:w-5 group-hover:rotate-90 transition-transform duration-300" />
                         </button>
                     </div>
                 </div>
@@ -732,43 +733,50 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                     </div>
                 </div>
 
-                {/* Footer */}
-                <div className="p-4 sm:p-6 border-t border-gray-100 shrink-0 bg-white flex flex-col sm:flex-row items-center justify-between sm:rounded-b-[24px] gap-4 mb-20 sm:mb-0">
+                {/* Footer - Inline Mobile Buttons */}
+                <div className="p-4 sm:p-6 pb-[40px] sm:pb-6 border-t border-gray-100 shrink-0 bg-white flex flex-col sm:flex-row items-center justify-between sm:rounded-b-[24px] gap-4 mb-20 sm:mb-0 mt-auto">
                     <p className="text-xs font-semibold text-gray-400 hidden lg:block">Secure Profile Verification</p>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
 
-                        {!pendingRequest && !hasChanges() && (
+                    {/* Action Buttons */}
+                    <div className="flex flex-row items-center gap-2 sm:gap-4 w-full sm:w-auto shrink-0">
+                        {/* Verify Button */}
+                        {!pendingRequest && (
                             <button
                                 type="button"
                                 onClick={handleMarkVerified}
-                                disabled={isVerifying || loadingConfig}
-                                className="w-full sm:w-auto px-4 lg:px-6 py-2.5 sm:py-3 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all outline-none flex items-center justify-center gap-2 focus:ring-4 focus:ring-emerald-100"
+                                disabled={hasChanges() || isVerifying || loadingConfig}
+                                className={`flex-1 sm:flex-none px-2 sm:px-8 py-2.5 sm:py-3 text-[11px] sm:text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all outline-none focus:ring-4 active:scale-[0.98] shrink-0 ${!hasChanges() && !loadingConfig && !isVerifying
+                                    ? 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 hover:shadow-md hover:-translate-y-0.5 focus:ring-emerald-500/30'
+                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                    }`}
                             >
-                                <Check size={18} />
-                                <span className="whitespace-nowrap">{isVerifying ? 'Verifying...' : 'Verified, No Changes Needed'}</span>
+                                <Check className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0" />
+                                <span className="whitespace-nowrap truncate">{isVerifying ? 'Verifying...' : 'Verified'}</span>
                             </button>
                         )}
 
+                        {/* Submit Button */}
                         {!pendingRequest ? (
                             <button
                                 type="submit"
                                 form="profile-verify-form"
                                 disabled={!hasChanges() || isSubmitting || loadingConfig}
-                                className={`w-full sm:w-auto px-4 lg:px-8 py-2.5 sm:py-3 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all outline-none focus:ring-4 ${hasChanges() && !isSubmitting
+                                className={`flex-1 sm:flex-none px-2 sm:px-8 py-2.5 sm:py-3 text-[11px] sm:text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all outline-none focus:ring-4 active:scale-[0.98] ${hasChanges() && !isSubmitting
                                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/20 hover:-translate-y-0.5 focus:ring-indigo-500/30'
                                     : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
                                     }`}
                             >
-                                <Save size={18} />
-                                <span className="whitespace-nowrap">{isSubmitting ? 'Submitting...' : 'Submit Request'}</span>
+                                <Save className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0" />
+                                <span className="whitespace-nowrap truncate">{isSubmitting ? 'Sending...' : 'Submit'}</span>
                             </button>
                         ) : (
-                            <div className="w-full sm:w-auto px-4 lg:px-8 py-2.5 sm:py-3 text-sm font-bold rounded-xl flex items-center justify-center gap-2 bg-indigo-50 text-indigo-500 border border-indigo-100 shadow-inner">
-                                <CheckCircle size={18} /> <span className="whitespace-nowrap">Request Pending</span>
+                            <div className="flex-1 sm:flex-none px-2 sm:px-8 py-2.5 sm:py-3 text-[11px] sm:text-sm font-bold rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 bg-indigo-50 text-indigo-500 border border-indigo-100 shadow-inner truncate">
+                                <CheckCircle className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0" /> <span className="whitespace-nowrap">Pending</span>
                             </div>
                         )}
 
-                        <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 lg:px-6 py-2.5 sm:py-3 text-sm font-bold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all outline-none focus:ring-4 focus:ring-gray-100 text-center order-last sm:order-none">
+                        {/* Close Button */}
+                        <button type="button" onClick={onClose} className="px-5 sm:px-6 py-2.5 sm:py-3 text-[11px] sm:text-sm font-bold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all outline-none focus:ring-4 focus:ring-gray-100 text-center active:scale-[0.98] shrink-0">
                             Close
                         </button>
                     </div>
@@ -776,6 +784,8 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };
 
 export default VerifyProfileDialog;

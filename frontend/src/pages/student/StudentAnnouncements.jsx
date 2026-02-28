@@ -119,31 +119,31 @@ const StudentAnnouncements = () => {
     }
 
     return (
-        <div className="space-y-6 animate-fade-in p-2 md:p-6 bg-gray-50/30 min-h-screen">
-            {/* Header / Tabs */}
-            <div className="flex justify-between items-center mb-6">
-                <div className="bg-white rounded-2xl p-1.5 shadow-sm border border-gray-200 inline-flex gap-1 mx-auto md:mx-0">
+        <div className="space-y-6 animate-fade-in p-4 lg:p-8 bg-gray-50/50 min-h-screen">
+            {/* Premium Header / Tabs */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
+                {/* Segmented Control Styling */}
+                <div className="bg-white/60 backdrop-blur-md rounded-[1.25rem] p-1.5 shadow-sm border border-white flex gap-1 w-full sm:w-auto">
                     <button
                         onClick={() => setActiveTab('announcements')}
-                        className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'announcements' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                        className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'announcements' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/50 scale-100' : 'text-gray-500 hover:text-gray-900 hover:bg-white/80 scale-[0.98]'}`}
                     >
                         <Megaphone size={18} /> Announcements
                     </button>
                     <button
                         onClick={() => setActiveTab('polls')}
-                        className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'polls' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+                        className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'polls' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/50 scale-100' : 'text-gray-500 hover:text-gray-900 hover:bg-white/80 scale-[0.98]'}`}
                     >
-                        <BarChart2 size={18} /> Polls
+                        <BarChart2 size={18} /> Campus Polls
                     </button>
                 </div>
 
                 <button
                     onClick={handleRefresh}
-                    className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors flex items-center gap-2 font-medium text-sm"
+                    className="p-3 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white hover:bg-white hover:shadow-md text-gray-500 hover:text-indigo-600 transition-all flex items-center justify-center shrink-0 group active:scale-95"
                     title="Refresh Data"
                 >
-                    <RefreshCw size={18} className={loading && !isFetchingMore ? "animate-spin" : ""} />
-                    <span className="hidden md:inline">Refresh</span>
+                    <RefreshCw size={20} className={`transition-transform duration-500 ${loading && !isFetchingMore ? "animate-spin text-indigo-600" : "group-hover:rotate-180"}`} />
                 </button>
             </div>
 
@@ -151,45 +151,47 @@ const StudentAnnouncements = () => {
             {activeTab === 'announcements' ? (
                 <div>
                     {announcements.length === 0 ? (
-                        <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
-                            <div className="mx-auto w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-blue-400 mb-6">
-                                <Megaphone size={32} />
+                        <div className="text-center py-24 bg-white/60 backdrop-blur-xl rounded-[2rem] shadow-sm border border-white">
+                            <div className="mx-auto w-24 h-24 bg-indigo-50/80 rounded-[2rem] flex items-center justify-center text-indigo-400 mb-6 shadow-inner">
+                                <Megaphone size={40} />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">No Announcements</h3>
-                            <p className="text-gray-500">You're all caught up! Check back later.</p>
+                            <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">No Announcements</h3>
+                            <p className="text-gray-500 font-medium">You're all caught up! Check back later.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
                             {announcements.map((ann) => (
                                 <div
                                     key={ann.id}
                                     onClick={() => setSelectedAnnouncement(ann)}
-                                    className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer"
+                                    className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1.5 transition-all duration-500 group cursor-pointer flex flex-col h-full"
                                 >
                                     {ann.image_url ? (
-                                        <div className="h-52 w-full bg-gray-100 overflow-hidden relative">
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 opacity-60 group-hover:opacity-40 transition-opacity" />
-                                            <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                            <div className="absolute bottom-4 left-4 z-20">
-                                                <span className="bg-blue-600/90 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">
-                                                    {ann.target_college || 'General'}
+                                        <div className="h-56 w-full bg-gray-100 overflow-hidden relative shrink-0">
+                                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-gray-900/20 to-transparent z-10 opacity-80 transition-opacity duration-500" />
+                                            <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
+                                            <div className="absolute bottom-5 left-5 z-20 flex gap-2">
+                                                <span className="bg-indigo-600/90 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-[10px] uppercase font-black tracking-widest shadow-lg">
+                                                    {ann.target_college || 'General Notice'}
                                                 </span>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="h-24 bg-gradient-to-r from-blue-50 to-indigo-50 border-b flex items-center justify-center relative overflow-hidden">
-                                            <div className="absolute -right-4 -top-4 text-blue-100/50">
-                                                <Megaphone size={100} />
+                                        <div className="h-40 bg-gradient-to-br from-indigo-50 via-blue-50 to-white flex items-center justify-center relative overflow-hidden shrink-0">
+                                            <div className="absolute -right-8 -top-8 text-indigo-600/5 group-hover:scale-110 group-hover:rotate-12 transition-all duration-700 ease-out">
+                                                <Megaphone size={140} />
                                             </div>
-                                            <Megaphone className="text-blue-400 relative z-10" size={32} />
+                                            <div className="h-16 w-16 bg-white rounded-[1.5rem] shadow-sm flex items-center justify-center relative z-10 group-hover:scale-110 transition-transform duration-500">
+                                                <Megaphone className="text-indigo-500" size={32} />
+                                            </div>
                                         </div>
                                     )}
-                                    <div className="p-6">
-                                        <div className="flex items-center gap-2 text-xs text-gray-400 font-medium mb-3">
-                                            <Calendar size={14} /> {new Date(ann.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                    <div className="p-6 sm:p-8 flex-1 flex flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-indigo-500 font-bold mb-4">
+                                            <Calendar size={14} className="opacity-70" /> {new Date(ann.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                         </div>
-                                        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors line-clamp-2">{ann.title}</h3>
-                                        <p className="text-gray-600 text-sm line-clamp-4 leading-relaxed">{ann.content}</p>
+                                        <h3 className="text-xl font-black text-gray-900 mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-tight tracking-tight">{ann.title}</h3>
+                                        <p className="text-gray-500 text-sm line-clamp-3 leading-relaxed font-medium mt-auto">{ann.content}</p>
                                     </div>
                                 </div>
                             ))}
@@ -198,13 +200,13 @@ const StudentAnnouncements = () => {
 
                     {/* Load More Button */}
                     {!loading && activeTab === 'announcements' && announcements.length > 0 && hasMore && (
-                        <div className="flex justify-center mt-8 pb-4">
+                        <div className="flex justify-center mt-12 pb-8">
                             <button
                                 onClick={() => fetchAnnouncements(false, true)}
                                 disabled={isFetchingMore}
-                                className="px-6 py-2.5 bg-white border border-gray-200 shadow-sm text-gray-700 font-semibold rounded-xl hover:bg-gray-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                                className="px-8 py-3.5 bg-white/80 backdrop-blur-md border border-white shadow-sm text-gray-600 font-bold tracking-wide rounded-[1.5rem] hover:bg-white hover:text-indigo-600 hover:shadow-md transition-all flex items-center gap-3 group"
                             >
-                                {isFetchingMore ? <Loader2 className="animate-spin" size={18} /> : 'Load More Announcements'}
+                                {isFetchingMore ? <Loader2 className="animate-spin text-indigo-600" size={20} /> : <><RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-500" /> Load More Announcements</>}
                             </button>
                         </div>
                     )}
@@ -212,78 +214,80 @@ const StudentAnnouncements = () => {
             ) : (
                 <div>
                     {polls.length === 0 ? (
-                        <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
-                            <div className="mx-auto w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center text-purple-400 mb-6">
-                                <BarChart2 size={32} />
+                        <div className="text-center py-24 bg-white/60 backdrop-blur-xl rounded-[2rem] shadow-sm border border-white">
+                            <div className="mx-auto w-24 h-24 bg-indigo-50/80 rounded-[2rem] flex items-center justify-center text-indigo-500 mb-6 shadow-inner">
+                                <BarChart2 size={40} />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">No Active Polls</h3>
-                            <p className="text-gray-500">There are no polls available right now.</p>
+                            <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">No Active Polls</h3>
+                            <p className="text-gray-500 font-medium">There are no polls available right now.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
                             {polls.map((poll) => {
                                 const timeLeft = poll.end_time ? new Date(poll.end_time) - new Date() : null;
                                 const isUrgent = timeLeft && timeLeft < 86400000; // Less than 24h
 
                                 return (
-                                    <div key={poll.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 hover:shadow-lg transition-all relative overflow-hidden">
+                                    <div key={poll.id} className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-6 sm:p-8 hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-500 relative flex flex-col h-full group">
                                         {/* Status Badge */}
-                                        <div className="absolute top-0 right-0 p-4">
+                                        <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
                                             {poll.has_voted ? (
-                                                <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                                                    <CheckCircle size={12} /> Voted
+                                                <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-xl text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 shadow-sm border border-green-200/50">
+                                                    <CheckCircle size={14} /> Voted
                                                 </span>
                                             ) : (
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${isUrgent ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                    {isUrgent ? <Clock size={12} /> : <AlertCircle size={12} />}
+                                                <span className={`px-3 py-1.5 rounded-xl text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 shadow-sm border ${isUrgent ? 'bg-rose-50 text-rose-600 border-rose-200/50 animate-pulse' : 'bg-indigo-50 text-indigo-600 border-indigo-200/50'}`}>
+                                                    {isUrgent ? <Clock size={14} /> : <AlertCircle size={14} />}
                                                     {isUrgent ? 'Ending Soon' : 'Active'}
                                                 </span>
                                             )}
                                         </div>
 
-                                        <div className="mb-6 pr-16">
-                                            <h3 className="text-xl font-bold text-gray-900 mb-2 leading-tight">{poll.question}</h3>
-                                            <div className="flex items-center gap-4 text-xs text-gray-400 font-medium">
-                                                <span>Posted {new Date(poll.created_at).toLocaleDateString()}</span>
+                                        <div className="mb-8 pr-20">
+                                            <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-3 leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">{poll.question}</h3>
+                                            <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-gray-400 font-bold">
+                                                <span>{new Date(poll.created_at).toLocaleDateString()}</span>
                                                 {poll.end_time && (
-                                                    <span className="flex items-center gap-1 text-orange-400">
-                                                        <Clock size={12} /> Ends {new Date(poll.end_time).toLocaleDateString()}
+                                                    <span className={`flex items-center gap-1.5 ${isUrgent ? 'text-rose-500' : ''}`}>
+                                                        <Clock size={14} className="opacity-70" /> {new Date(poll.end_time).toLocaleDateString()}
                                                     </span>
                                                 )}
                                             </div>
                                         </div>
 
                                         {poll.has_voted ? (
-                                            <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in bg-gray-50/50 rounded-xl border border-gray-100/50">
-                                                <div className="w-16 h-16 bg-gradient-to-tr from-green-400 to-green-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-200 mb-4 transform hover:scale-105 transition-transform duration-300">
+                                            <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in bg-green-50/50 rounded-3xl border border-green-100 mt-auto">
+                                                <div className="w-16 h-16 bg-white rounded-[1.5rem] flex items-center justify-center text-green-500 shadow-md shadow-green-200/50 mb-4 transform hover:scale-110 hover:rotate-3 transition-all duration-500">
                                                     <CheckCircle size={32} strokeWidth={2.5} />
                                                 </div>
-                                                <h3 className="text-xl font-bold text-gray-800 mb-2">Participated</h3>
-                                                <p className="text-gray-500 font-medium">
-                                                    You have successfully voted in this poll.
+                                                <h3 className="text-lg font-black text-green-800 mb-1 tracking-tight">Vote Confirmed</h3>
+                                                <p className="text-green-600/80 font-semibold text-sm">
+                                                    Your response has been recorded.
                                                 </p>
                                             </div>
                                         ) : (
-                                            <div className="space-y-3">
+                                            <div className="space-y-3 mt-auto">
                                                 {poll.options.map((opt, idx) => (
                                                     <button
                                                         key={idx}
                                                         onClick={() => handleVote(poll.id, idx)}
                                                         disabled={votingId === poll.id}
-                                                        className="w-full text-left p-4 rounded-xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50/50 hover:shadow-md transition-all text-gray-700 font-semibold group relative overflow-hidden active:scale-[0.99]"
+                                                        className="w-full text-left p-4 sm:p-5 rounded-2xl border-2 border-transparent bg-gray-50 hover:border-indigo-500 hover:bg-indigo-50/50 hover:shadow-md transition-all duration-300 text-gray-700 font-bold group relative overflow-hidden active:scale-[0.98]"
                                                     >
                                                         <div className="flex items-center justify-between relative z-10">
-                                                            <span>{opt}</span>
-                                                            <div className="w-5 h-5 rounded-full border-2 border-gray-300 group-hover:border-blue-500 group-hover:bg-blue-500 transition-colors"></div>
+                                                            <span className="pr-4">{opt}</span>
+                                                            <div className="w-5 h-5 rounded-full border-2 border-gray-300 group-hover:border-indigo-600 group-hover:bg-indigo-600 transition-colors shadow-sm shrink-0 flex items-center justify-center">
+                                                                <div className="w-1.5 h-1.5 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                                            </div>
                                                         </div>
                                                         {votingId === poll.id && (
-                                                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-20">
-                                                                <Loader2 className="animate-spin text-blue-600" size={20} />
+                                                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-20">
+                                                                <Loader2 className="animate-spin text-indigo-600" size={24} />
                                                             </div>
                                                         )}
                                                     </button>
                                                 ))}
-                                                <p className="text-xs text-center text-gray-400 mt-4">Select an option to see results</p>
+                                                <p className="text-[11px] font-bold tracking-widest uppercase text-center text-gray-400 mt-6 pt-2">Select an option to cast vote</p>
                                             </div>
                                         )}
                                     </div>
@@ -295,18 +299,18 @@ const StudentAnnouncements = () => {
             )}
             {/* Announcement Details Modal */}
             {selectedAnnouncement && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedAnnouncement(null)}>
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedAnnouncement(null)}>
                     <div
-                        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[95vh] sm:h-[90vh] md:h-auto md:max-h-[90vh] flex flex-col md:flex-row overflow-hidden animate-scale-in"
+                        className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl h-[90vh] sm:h-auto sm:max-h-[85vh] flex flex-col md:flex-row overflow-hidden animate-scale-in border border-white"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Image Section - Left Panel */}
                         {selectedAnnouncement.image_url && (
-                            <div className="md:w-1/2 bg-gray-100 relative shrink-0 h-40 sm:h-48 md:h-auto md:max-h-none flex items-center justify-center overflow-hidden">
+                            <div className="md:w-5/12 bg-gray-50 relative shrink-0 h-48 sm:h-64 md:h-auto md:max-h-none flex items-center justify-center overflow-hidden border-r border-gray-100">
                                 <img
                                     src={selectedAnnouncement.image_url}
                                     alt={selectedAnnouncement.title}
-                                    className="w-full h-full object-contain"
+                                    className="w-full h-full object-cover"
                                 />
                             </div>
                         )}
@@ -314,24 +318,24 @@ const StudentAnnouncements = () => {
                         {/* Content Section - Right Panel */}
                         <div className="flex-1 flex flex-col min-w-0 bg-white relative min-h-0 overflow-hidden">
                             {/* Sticky Header */}
-                            <div className="sticky top-0 right-0 p-4 sm:p-6 bg-white border-b shrink-0 z-20 shadow-sm">
-                                <div className="flex justify-between items-start gap-3">
-                                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 leading-tight flex-1 pr-2">{selectedAnnouncement.title}</h2>
+                            <div className="sticky top-0 right-0 p-5 sm:p-8 bg-white/90 backdrop-blur-md border-b border-gray-100 shrink-0 z-20">
+                                <div className="flex justify-between items-start gap-4">
+                                    <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 leading-tight flex-1 pr-2 tracking-tight">{selectedAnnouncement.title}</h2>
                                     <button
                                         onClick={() => setSelectedAnnouncement(null)}
-                                        className="p-2 hover:bg-gray-100 rounded-full transition-colors shrink-0 flex-shrink-0"
+                                        className="p-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all shrink-0 flex-shrink-0 text-gray-500 hover:text-gray-900 active:scale-95"
                                         aria-label="Close"
                                     >
-                                        <X size={20} className="text-gray-500 sm:w-6 sm:h-6" />
+                                        <X size={20} className="sm:w-5 sm:h-5" />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Scrollable Body */}
                             <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0" style={{ scrollBehavior: 'smooth' }}>
-                                <div className="p-4 sm:p-6">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 font-medium mb-4">
-                                        <Calendar size={14} className="sm:w-4 sm:h-4 shrink-0" />
+                                <div className="p-5 sm:p-8">
+                                    <div className="flex items-center gap-2 text-[11px] sm:text-xs uppercase tracking-widest text-indigo-500 font-bold mb-6">
+                                        <Calendar size={14} className="sm:w-4 sm:h-4 shrink-0 opacity-80" />
                                         <span className="whitespace-nowrap">
                                             {new Date(selectedAnnouncement.created_at).toLocaleDateString(undefined, {
                                                 weekday: 'long',
@@ -344,18 +348,18 @@ const StudentAnnouncements = () => {
                                         </span>
                                     </div>
 
-                                    <div className="prose prose-blue max-w-none mb-6">
-                                        <p className="whitespace-pre-wrap text-gray-700 leading-relaxed text-sm sm:text-base lg:text-lg break-words">
+                                    <div className="prose prose-indigo max-w-none mb-8">
+                                        <p className="whitespace-pre-wrap text-gray-600 leading-relaxed text-[15px] sm:text-base break-words font-medium">
                                             {selectedAnnouncement.content}
                                         </p>
                                     </div>
 
                                     {selectedAnnouncement.target_college && (
-                                        <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t flex flex-wrap gap-2">
-                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Targeted to:</span>
-                                            <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-semibold">{selectedAnnouncement.target_college}</span>
-                                            {selectedAnnouncement.target_course && <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-semibold">{selectedAnnouncement.target_course}</span>}
-                                            {selectedAnnouncement.target_branch && <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-semibold">{selectedAnnouncement.target_branch}</span>}
+                                        <div className="mt-8 pt-6 border-t border-gray-100 flex flex-wrap items-center gap-2 sm:gap-3">
+                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-2">Targeted to:</span>
+                                            <span className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider">{selectedAnnouncement.target_college}</span>
+                                            {selectedAnnouncement.target_course && <span className="bg-gray-50 text-gray-700 px-3 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-gray-100">{selectedAnnouncement.target_course}</span>}
+                                            {selectedAnnouncement.target_branch && <span className="bg-gray-50 text-gray-700 px-3 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-gray-100">{selectedAnnouncement.target_branch}</span>}
                                         </div>
                                     )}
                                 </div>

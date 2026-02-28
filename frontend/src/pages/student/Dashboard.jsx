@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw } from 'lucide-react';
+import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import useAuthStore from '../../store/authStore';
@@ -733,24 +733,84 @@ const Dashboard = () => {
                 studentData={displayData}
             />
 
-            {/* Welcome Header - birthday theme when it's the student's birthday */}
-            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-xl p-4 -mx-1 ${isBirthday ? 'bg-gradient-to-r from-amber-100/80 to-orange-100/60 border border-amber-200/60' : ''}`}>
-                <div className="flex flex-col gap-1">
-                    <h1 className={`text-xl lg:text-3xl font-bold heading-font ${isBirthday ? 'text-amber-900' : 'text-gray-900'}`}>
-                        {isBirthday ? '🎂 ' : ''}Welcome back, {displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}{isBirthday ? ' — Happy Birthday!' : ' 👋'}
-                    </h1>
-                    <p className={`text-xs lg:text-base ${isBirthday ? 'text-amber-800/90' : 'text-gray-500'}`}>
-                        {displayData?.course || user?.course} | {displayData?.branch || user?.branch} | Year {displayData?.current_year || user?.current_year}
-                    </p>
+            {/* Premium Welcome Header (Ultra Compact on Mobile) */}
+            <header className={`relative overflow-hidden rounded-2xl lg:rounded-[2rem] p-4 lg:p-8 transition-all duration-700 max-w-full ${isBirthday ? 'bg-gradient-to-br from-amber-400 via-orange-400 to-pink-500 shadow-xl shadow-amber-200/40 text-white' : (isProfileVerified ? 'bg-white border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 shadow-xl shadow-indigo-100/50 text-white')}`}>
+                {/* Background Decorations */}
+                <div className="absolute top-0 right-0 w-32 lg:w-64 h-32 lg:h-64 bg-white/5 rounded-full -mr-10 lg:-mr-20 -mt-10 lg:-mt-20 blur-xl lg:blur-3xl pointer-events-none"></div>
+                <div className="absolute bottom-0 left-0 w-24 lg:w-32 h-24 lg:h-32 bg-black/5 rounded-full -ml-8 lg:-ml-10 -mb-8 lg:-mb-10 blur-xl lg:blur-2xl pointer-events-none"></div>
+
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-3 lg:gap-8">
+                    {/* Profile Photo with Status Badge */}
+                    <div className="relative group shrink-0 mt-1 lg:mt-0">
+                        <div className={`h-16 w-16 lg:h-24 lg:w-24 rounded-2xl lg:rounded-[2rem] p-1 lg:p-1.5 transition-transform duration-500 group-hover:scale-105 group-hover:rotate-2 ${isBirthday ? 'bg-white/30' : (isProfileVerified ? 'bg-indigo-50' : 'bg-white/20')}`}>
+                            <div className="h-full w-full rounded-xl lg:rounded-[1.6rem] overflow-hidden shadow-inner bg-white/10">
+                                {displayData?.student_photo || user?.student_photo ? (
+                                    <img
+                                        src={displayData?.student_photo || user?.student_photo}
+                                        alt="Profile"
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400">
+                                        <User className="w-8 h-8 lg:w-10 lg:h-10" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {isProfileVerified ? (
+                            <div className="absolute -bottom-1 -right-1 bg-white p-0.5 lg:p-1 rounded-full shadow-lg border border-indigo-50">
+                                <BadgeCheck className="text-indigo-600 w-5 h-5 lg:w-6 lg:h-6" />
+                            </div>
+                        ) : (
+                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-lg lg:rounded-xl shadow-lg border-2 border-white animate-bounce">
+                                <ShieldAlert className="text-white w-3 h-3 lg:w-4 lg:h-4" />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Text Content */}
+                    <div className="flex-1 text-center md:text-left w-full">
+                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-1 lg:gap-2 mb-1">
+                            <h1 className={`text-[22px] leading-6 sm:text-2xl lg:text-4xl font-black tracking-tight ${isBirthday ? 'text-white' : (isProfileVerified ? 'text-gray-900' : 'text-white')}`}>
+                                {isBirthday ? 'Happy Birthday, ' : 'Welcome back, '}{displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}!
+                            </h1>
+                            {isBirthday && <Sparkles className="text-amber-200 animate-pulse hidden sm:block w-5 h-5 lg:w-6 lg:h-6" />}
+                        </div>
+                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-2 lg:gap-x-4 gap-y-0.5 lg:gap-y-1 mb-2 lg:mb-4 opacity-90">
+                            <span className="text-[10px] sm:text-[11px] lg:text-sm font-bold uppercase tracking-wider truncate max-w-full px-2">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
+                        </div>
+
+                        {/* Status / Quick Action Row */}
+                        {!isProfileVerified && (
+                            <div className="inline-flex items-center justify-center gap-1.5 lg:gap-3 p-1 pr-2 lg:pr-4 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg lg:rounded-2xl animate-fade-in mx-auto md:mx-0 max-w-full">
+                                <span className="bg-amber-400 text-white text-[8px] lg:text-[10px] font-black px-1.5 lg:px-2 py-0.5 lg:py-1 rounded-md lg:rounded-xl uppercase tracking-widest sm:ml-1 shadow-sm shrink-0">Critical</span>
+                                <p className="text-[9px] sm:text-xs font-bold tracking-tight text-white/90 truncate">Please verify your profile to fix database errors.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Desktop CTA / Verification Highlight */}
+                    <div className="mt-1 lg:mt-0 w-full md:w-auto">
+                        {isProfileVerified ? (
+                            <div className={`flex flex-row md:flex-col items-center justify-center lg:items-end gap-1.5 lg:gap-2 p-1.5 sm:p-2.5 lg:p-4 rounded-xl lg:rounded-3xl border transform transition-all cursor-default shadow-sm ${isBirthday ? 'bg-white/10 border-white/20 text-white' : 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-100/50 text-emerald-700 shadow-emerald-500/10'}`}>
+                                <div className="flex items-center gap-1 lg:gap-2">
+                                    <BadgeCheck className={`w-3 h-3 sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px] ${isBirthday ? 'text-white' : 'text-emerald-600'}`} />
+                                    <span className={`text-[9px] sm:text-[10px] lg:text-[11px] font-black uppercase tracking-widest ${isBirthday ? '' : 'bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-green-600'}`}>Verified Account</span>
+                                </div>
+                                <p className={`text-[8px] lg:text-[10px] hidden sm:block font-semibold ${isBirthday ? 'opacity-70 text-white' : 'text-emerald-600/70'}`}>Data Synchronized with DB</p>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setShowVerifyProfile(true)}
+                                className={`w-full md:w-auto flex items-center justify-center gap-1.5 lg:gap-3 px-4 lg:px-8 py-2 md:py-2.5 lg:py-3.5 rounded-xl lg:rounded-[1.5rem] font-black text-[10px] sm:text-xs lg:text-sm tracking-wide shadow-lg lg:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:scale-95 group ${isBirthday ? 'bg-white text-orange-600' : 'bg-white text-indigo-700'}`}
+                            >
+                                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px] group-hover:rotate-180 transition-transform duration-700" />
+                                VERIFY PROFILE NOW
+                            </button>
+                        )}
+                    </div>
                 </div>
-                <button
-                    onClick={() => setShowVerifyProfile(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors shrink-0"
-                >
-                    <User size={16} />
-                    Verify Profile
-                </button>
-            </div>
+            </header>
 
             {/* Top Stats Row: Attendance & Registration */}
             <div className={`grid grid-cols-2 md:grid-cols-2 ${isRegistrationCompleted ? 'lg:grid-cols-3' : ''} gap-3 lg:gap-6`}>

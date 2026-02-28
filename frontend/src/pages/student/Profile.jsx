@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import api, { getStaticFileUrlDirect } from '../../config/api';
-import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CreditCard, Download, X } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CreditCard, Download, X, CheckCircle } from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 import DigitalStudentCard from '../../components/DigitalStudentCard';
 import useAuthStore from '../../store/authStore';
+import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import { toast } from 'react-hot-toast';
 
 const Profile = () => {
     const { user } = useAuthStore();
     const [studentData, setStudentData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [showVerifyProfile, setShowVerifyProfile] = useState(false);
 
     // Change Password State
     const [showChangePassModal, setShowChangePassModal] = useState(false);
@@ -312,8 +314,16 @@ const Profile = () => {
                             </div>
                         </div>
 
-                        {/* Digital ID Card button + Change Password */}
+                        {/* Digital ID Card button + Change Password + Verify Profile */}
                         <div className="w-full md:w-auto mt-2 md:mt-0 flex flex-wrap items-center justify-center md:justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowVerifyProfile(true)}
+                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+                            >
+                                <CheckCircle size={18} />
+                                Verify Profile
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setShowIdCardModal(true)}
@@ -520,6 +530,13 @@ const Profile = () => {
                     </div>
                 </div>
             )}
+
+            {/* Verify Profile Dialog */}
+            <VerifyProfileDialog
+                isOpen={showVerifyProfile}
+                onClose={() => setShowVerifyProfile(false)}
+                studentData={displayData}
+            />
         </div>
     );
 };
