@@ -205,6 +205,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
             }
 
             const getVal = (field) => {
+                if (!field) return '';
                 const key = field.key;
                 // Priorities for common variations and normalization
                 const lowerKey = String(key || '').toLowerCase();
@@ -214,15 +215,39 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 const getNested = (searchKey) => {
                     if (!parsedData) return null;
                     const sk = String(searchKey).toLowerCase();
-                    const foundK = Object.keys(parsedData).find(k => k.toLowerCase() === sk);
+                    const skUnderscore = sk.replace(/\s+/g, '_');
+                    const skSpace = sk.replace(/_/g, ' ');
+
+                    const foundK = Object.keys(parsedData).find(k => {
+                        const lk = String(k).toLowerCase();
+                        return lk === sk || lk === skUnderscore || lk === skSpace;
+                    });
                     return foundK ? parsedData[foundK] : null;
                 };
 
                 const mappings = {
                     name: studentData.student_name || getNested('Student Name') || getNested('Name'),
-                    adhar: studentData.adhar_no || getNested('Adhar No') || getNested('Aadhar No') || getNested('Aadhar Number') || getNested('ADHAR No'),
-                    pin: studentData.pin_no || getNested('PIN NO') || getNested('PIN Number') || getNested('Roll No'),
-                    apaar: studentData.apaar_id || getNested('APAAR ID') || getNested('APAAR'),
+                    adhar: studentData.adhar_no || studentData.aadhar_no || getNested('Adhar No') || getNested('Aadhar No') || getNested('Aadhar Number') || getNested('ADHAR No'),
+                    pin: studentData.pin_no || getNested('PIN NO') || getNested('PIN Number') || getNested('Roll No') || getNested('Hall Ticket No') || getNested('Hallticket'),
+                    apaar: (function () {
+                        // 1. Direct columns or top-level properties
+                        let v = studentData.apaar_id || studentData.apaar || studentData.apaar_no || studentData['APAAR ID'] || studentData['apaar_id'];
+                        if (v) return v;
+
+                        // 2. Precise nested lookups (getNested handles space/underscore)
+                        v = getNested('APAAR ID') || getNested('apaar_id') || getNested('APAAR NO') || getNested('APAAR Number') || getNested('APAARID');
+                        if (v) return v;
+
+                        // 3. Fuzzy search in nested keys (any key containing 'apaar' or 'appar')
+                        if (parsedData && typeof parsedData === 'object') {
+                            const foundK = Object.keys(parsedData).find(k => {
+                                const lk = String(k).toLowerCase();
+                                return lk.includes('apaar') || lk.includes('appar');
+                            });
+                            if (foundK) return parsedData[foundK];
+                        }
+                        return '';
+                    })(),
                     gender: (function () {
                         const raw = studentData.gender || getNested('Gender') || getNested('Sex') || getNested('M/F') || '';
                         const s = String(raw).trim().toUpperCase();
@@ -231,10 +256,10 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         if (['OTHER', 'O', 'NON-BINARY'].includes(s)) return 'Other';
                         return '';
                     })(),
-                    course: studentData.course || getNested('Program') || getNested('Program Name') || getNested('Course'),
+                    course: studentData.course || getNested('Program') || getNested('Program Name') || getNested('Course') || getNested('Degree'),
                     year: studentData.current_year || getNested('Year') || getNested('Current Year'),
                     sem: studentData.current_semester || getNested('Semister') || getNested('Semester') || getNested('Current Semester'),
-                    branch: studentData.branch || getNested('Branch') || getNested('Branch Name'),
+                    branch: studentData.branch || getNested('Branch') || getNested('Branch Name') || getNested('Specialization'),
                     caste: studentData.caste || getNested('Caste') || getNested('Category'),
                     father: studentData.father_name || getNested('Father Name') || getNested('Father'),
                     mother: studentData.mother_name || getNested('Mother Name') || getNested('Mother'),
@@ -247,6 +272,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                     city: studentData.city_village || getNested('City') || getNested('City/Village'),
                     mandal: studentData.mandal_name || getNested('Mandal'),
                     district: studentData.district || getNested('District'),
+                    admission: studentData.admission_date || getNested('Admission Date') || getNested('AdmissionDate'),
                     batch: studentData.batch || getNested('Batch') || getNested('Academic Year')
                 };
 
@@ -254,7 +280,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 if (lowerKey === 'student_name' || lowerLabel === 'student name' || lowerLabel === 'name') return mappings.name || '';
                 if (lowerKey === 'adhar_no' || lowerLabel.includes('adhar') || lowerLabel.includes('aadhar')) return mappings.adhar || '';
                 if (lowerKey === 'pin_no' || lowerLabel.includes('pin no') || lowerLabel.includes('roll')) return mappings.pin || '';
-                if (lowerKey === 'apaar_id' || lowerLabel.includes('apaar')) return mappings.apaar || '';
+                if (lowerKey === 'apaar_id' || lowerKey === 'apaar' || lowerKey === 'appar' || lowerLabel.includes('apaar') || lowerLabel.includes('appar')) return mappings.apaar || '';
                 if (lowerKey === 'gender' || lowerLabel.includes('gender') || lowerLabel === 'sex') return mappings.gender || '';
                 if (lowerKey === 'course' || lowerLabel.includes('course') || lowerLabel.includes('program')) return mappings.course || '';
                 if (lowerKey === 'current_year' || lowerLabel.includes('current year') || lowerKey === 'year') return mappings.year || '';
@@ -271,6 +297,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 if (lowerKey === 'city_village' || lowerLabel === 'city' || lowerLabel === 'village') return mappings.city || '';
                 if (lowerKey === 'mandal_name' || lowerLabel === 'mandal') return mappings.mandal || '';
                 if (lowerKey === 'district') return mappings.district || '';
+                if (lowerKey === 'admission_date' || lowerLabel.includes('admission date')) return mappings.admission || '';
                 if (lowerKey === 'batch') return mappings.batch || '';
 
                 if (lowerKey === 'dob' || lowerLabel.includes('date of birth')) {
@@ -293,6 +320,20 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 if (field.type === 'file') return;
                 let val = getVal(field);
                 if (field.type === 'date' && val) val = String(val).substring(0, 10);
+
+                // APAAR Formatting for initial load (XXXX-XXXX-XXXX)
+                const lk = String(field.key || '').toLowerCase();
+                const ll = String(field.label || '').toLowerCase();
+                if ((lk.includes('apaar') || lk.includes('appar') || ll.includes('apaar') || ll.includes('appar')) && val) {
+                    let digits = String(val).replace(/\D/g, '').substring(0, 12);
+                    let formatted = '';
+                    for (let i = 0; i < digits.length; i++) {
+                        if (i > 0 && i % 4 === 0) formatted += '-';
+                        formatted += digits[i];
+                    }
+                    val = formatted;
+                }
+
                 initialData[field.key] = val;
             });
 
@@ -322,14 +363,14 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     const handleChange = (e) => {
         let { name, value } = e.target;
 
-        // APAAR ID Formatting (xxx-xxx-xxx-xxx)
+        // APAAR ID Formatting (xxxx-xxxx-xxxx)
         const lowerName = String(name).toLowerCase();
-        if (lowerName === 'apaar_id' || lowerName.includes('apaar')) {
+        if (lowerName === 'apaar_id' || lowerName.includes('apaar') || lowerName.includes('appar')) {
             let digits = value.replace(/\D/g, '');
             digits = digits.substring(0, 12);
             let formatted = '';
             for (let i = 0; i < digits.length; i++) {
-                if (i > 0 && i % 3 === 0) formatted += '-';
+                if (i > 0 && i % 4 === 0) formatted += '-';
                 formatted += digits[i];
             }
             value = formatted;
@@ -432,8 +473,9 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     }
 
     const renderField = (field) => {
-        const lowerKey = String(field.key).toLowerCase();
-        const lowerLabel = String(field.label).toLowerCase();
+        if (!field) return null;
+        const lowerKey = String(field.key || '').toLowerCase();
+        const lowerLabel = String(field.label || '').toLowerCase();
 
         // Comprehensive check for read only
         const isReadOnly = READ_ONLY_KEYS.includes(lowerKey) ||
