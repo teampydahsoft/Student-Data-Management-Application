@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, AlertCircle, Clock, CheckCircle, User, Users, MapPin, GraduationCap, FileText, ChevronRight, Check } from 'lucide-react';
+import { X, Save, AlertCircle, Clock, CheckCircle, User, Users, MapPin, GraduationCap, FileText, ChevronRight, Check, Phone, Lock } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 
 // Field categorization matching Settings.jsx and PublicForm.jsx
-const BASIC_FIELDS = [
+const PERSONAL_FIELDS = [
     'student_name', 'student name', 'name', 'studentname',
     'father_name', 'father name', 'father', 'fathername',
+    'mother_name', 'mother name', 'mother', 'mothername',
     'gender', 'm/f', 'sex', 'mf',
     'dob', 'date of birth', 'birth date', 'birthday', 'date-month-year', 'date month year',
     'adhar_no', 'adhar number', 'aadhar', 'aadhar no', 'aadhar number', 'adhar', 'aadhar_no', 'aadhar no',
     'pin_no', 'pin number', 'pin', 'pinno',
     'apaar', 'apaar id', 'apaar_id', 'apaar number', 'apaar no', 'apaarid',
-    'mother_name', 'mother name', 'mother', 'mothername',
-    'admission_no', 'admission number', 'admission', 'admissionno'
+    'admission_no', 'admission number', 'admission', 'admissionno',
+    'caste', 'category'
 ];
 const ACADEMIC_FIELDS = [
     'college', 'college name', 'collegename',
@@ -78,9 +79,8 @@ const categorizeField = (field) => {
 
     if (ACADEMIC_FIELDS.some(matches)) return 'academic';
     if (ADDRESS_FIELDS.some(matches)) return 'address';
-    if (BASIC_FIELDS.some(matches)) return 'basic';
+    if (PERSONAL_FIELDS.some(matches)) return 'personal';
     if (CONTACT_FIELDS.some(matches)) return 'contact';
-    if (ADDITIONAL_FIELDS.some(matches)) return 'additional';
 
     return 'other';
 };
@@ -94,7 +94,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
     const [pendingRequest, setPendingRequest] = useState(null);
-    const [activeTab, setActiveTab] = useState('basic');
+    const [activeTab, setActiveTab] = useState('personal');
 
     // Dynamic Form Fields state
     const [formFields, setFormFields] = useState([]);
@@ -109,30 +109,46 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 const res = await api.get('/forms');
                 if (res.data?.success && res.data.data) {
                     const activeForm = res.data.data.find(f => f.is_active);
-                    if (activeForm && activeForm.form_fields) {
-                        let fields = [...activeForm.form_fields];
+                    const rawFields = activeForm.form_fields || [];
 
-                        // Enforce required core fields if missing
-                        const coreFields = [
-                            { key: 'gender', label: 'Gender', type: 'select', options: ['M', 'F', 'Other'], required: true },
-                            { key: 'course', label: 'Course / Program', type: 'text', required: true },
-                            { key: 'batch', label: 'Batch', type: 'text', required: true },
-                            { key: 'current_year', label: 'Current Year', type: 'text', required: true },
-                            { key: 'current_semester', label: 'Current Semester', type: 'text', required: true }
-                        ];
+                    // Enforce and repair core fields
+                    const coreFieldRepairs = {
+                        gender: { type: 'select', options: ['Male', 'Female', 'Other'] },
+                        current_year: { type: 'select', options: ['1', '2', '3', '4'] },
+                        current_semester: { type: 'select', options: ['1', '2'] }
+                    };
 
-                        coreFields.forEach(core => {
-                            const exists = fields.some(f => {
-                                const k = String(f.key || '').toLowerCase();
-                                const l = String(f.label || '').toLowerCase();
-                                const ck = core.key.toLowerCase();
-                                return k === ck || k.includes(ck) || l.includes(ck);
-                            });
-                            if (!exists) fields.push(core);
+                    let correctedFields = rawFields.map(field => {
+                        const k = String(field.key || '').toLowerCase();
+                        if (coreFieldRepairs[k]) {
+                            return { ...field, ...coreFieldRepairs[k] };
+                        }
+                        // If it's a system field that's read-only, ensure it's text type for better display
+                        if (READ_ONLY_KEYS.includes(k) && field.type === 'select' && (!field.options || field.options.length === 0)) {
+                            return { ...field, type: 'text' };
+                        }
+                        return field;
+                    });
+
+                    const coreFields = [
+                        { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'], required: true },
+                        { key: 'course', label: 'Course', type: 'text', required: true },
+                        { key: 'branch', label: 'Branch', type: 'text', required: true },
+                        { key: 'current_year', label: 'Current Year', type: 'select', options: ['1', '2', '3', '4'], required: true },
+                        { key: 'current_semester', label: 'Current Semester', type: 'select', options: ['1', '2'], required: true }
+                    ];
+
+                    coreFields.forEach(core => {
+                        const exists = correctedFields.some(f => {
+                            const k = String(f.key || '').toLowerCase();
+                            const l = String(f.label || '').toLowerCase();
+                            const ck = core.key.toLowerCase();
+                            return k === ck || k.includes(ck) || l.includes(ck);
                         });
+                        if (!exists) correctedFields.push(core);
+                    });
 
-                        setFormFields(fields);
-                    }
+                    setFormFields(correctedFields);
                 }
             } catch (err) {
                 console.error("Failed to fetch active form for verification", err);
@@ -145,7 +161,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
 
     // Group fields
     const groupedFields = useMemo(() => {
-        const groups = { basic: [], academic: [], contact: [], address: [], additional: [], other: [] };
+        const groups = { personal: [], academic: [], contact: [], address: [], other: [] };
         formFields.forEach(field => {
             // Skip file uploads in verify profile module
             if (field.type === 'file') return;
@@ -190,31 +206,52 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
 
             const getVal = (field) => {
                 const key = field.key;
-                if (studentData[key] !== undefined && studentData[key] !== null) return studentData[key];
-                if (parsedData[key] !== undefined && parsedData[key] !== null) return parsedData[key];
+                // Priorities for common variations and normalization
+                const lowerKey = String(key || '').toLowerCase();
+                const lowerLabel = String(field.label || '').toLowerCase();
 
-                // Fallbacks for common variations
-                const lowerKey = String(key).toLowerCase();
-                const lowerLabel = String(field.label).toLowerCase();
-
-                if (lowerKey === 'dob' || lowerLabel.includes('date of birth')) {
-                    const d = studentData.dob || parsedData.dob || parsedData['DOB (Date of Birth - DD-MM-YYYY)'] || '';
-                    return d ? String(d).substring(0, 10) : '';
-                }
-
-                // Mappings
-                const mappings = {
-                    adhar: studentData.adhar_no || parsedData.adhar_no || parsedData.aadhar_no || parsedData['ADHAR No'],
-                    pin: studentData.pin_no || parsedData.pin_no || parsedData.roll_no || parsedData['PIN Number'],
-                    apaar: studentData.apaar_id || parsedData.apaar_id || parsedData.apaar || parsedData['APAAR ID'],
-                    gender: studentData.gender || parsedData.gender || parsedData['Gender'] || parsedData['M/F'],
-                    course: studentData.course || parsedData.course || parsedData['Program Name'],
-                    year: studentData.current_year || parsedData.current_year || parsedData['Current Year'],
-                    sem: studentData.current_semester || parsedData.current_semester || parsedData['Current Semester'],
-                    branch: studentData.branch || parsedData.branch || parsedData['Branch Name'],
-                    caste: studentData.caste || parsedData.caste || parsedData['Caste']
+                // Advanced case-insensitive lookup within student_data
+                const getNested = (searchKey) => {
+                    if (!parsedData) return null;
+                    const sk = String(searchKey).toLowerCase();
+                    const foundK = Object.keys(parsedData).find(k => k.toLowerCase() === sk);
+                    return foundK ? parsedData[foundK] : null;
                 };
 
+                const mappings = {
+                    name: studentData.student_name || getNested('Student Name') || getNested('Name'),
+                    adhar: studentData.adhar_no || getNested('Adhar No') || getNested('Aadhar No') || getNested('Aadhar Number') || getNested('ADHAR No'),
+                    pin: studentData.pin_no || getNested('PIN NO') || getNested('PIN Number') || getNested('Roll No'),
+                    apaar: studentData.apaar_id || getNested('APAAR ID') || getNested('APAAR'),
+                    gender: (function () {
+                        const raw = studentData.gender || getNested('Gender') || getNested('Sex') || getNested('M/F') || '';
+                        const s = String(raw).trim().toUpperCase();
+                        if (['M', 'MALE', 'BOY', '1'].includes(s)) return 'Male';
+                        if (['F', 'FEMALE', 'GIRL', '2'].includes(s)) return 'Female';
+                        if (['OTHER', 'O', 'NON-BINARY'].includes(s)) return 'Other';
+                        return '';
+                    })(),
+                    course: studentData.course || getNested('Program') || getNested('Program Name') || getNested('Course'),
+                    year: studentData.current_year || getNested('Year') || getNested('Current Year'),
+                    sem: studentData.current_semester || getNested('Semister') || getNested('Semester') || getNested('Current Semester'),
+                    branch: studentData.branch || getNested('Branch') || getNested('Branch Name'),
+                    caste: studentData.caste || getNested('Caste') || getNested('Category'),
+                    father: studentData.father_name || getNested('Father Name') || getNested('Father'),
+                    mother: studentData.mother_name || getNested('Mother Name') || getNested('Mother'),
+                    dob: studentData.dob || getNested('DOB') || getNested('Date of Birth'),
+                    mobile: studentData.student_mobile || getNested('Student Mobile number') || getNested('Phone') || getNested('Student Mobile'),
+                    parent1: studentData.parent_mobile1 || getNested('Parent Mobile Number 1') || getNested('Parent Mobile 1'),
+                    parent2: studentData.parent_mobile2 || getNested('Parent Mobile Number 2') || getNested('Parent Mobile 2'),
+                    college: studentData.college || getNested('College') || getNested('College Name'),
+                    address: studentData.student_address || getNested('Student Address') || getNested('Address'),
+                    city: studentData.city_village || getNested('City') || getNested('City/Village'),
+                    mandal: studentData.mandal_name || getNested('Mandal'),
+                    district: studentData.district || getNested('District'),
+                    batch: studentData.batch || getNested('Batch') || getNested('Academic Year')
+                };
+
+                // Exact Match Checks (Highest Priority)
+                if (lowerKey === 'student_name' || lowerLabel === 'student name' || lowerLabel === 'name') return mappings.name || '';
                 if (lowerKey === 'adhar_no' || lowerLabel.includes('adhar') || lowerLabel.includes('aadhar')) return mappings.adhar || '';
                 if (lowerKey === 'pin_no' || lowerLabel.includes('pin no') || lowerLabel.includes('roll')) return mappings.pin || '';
                 if (lowerKey === 'apaar_id' || lowerLabel.includes('apaar')) return mappings.apaar || '';
@@ -222,8 +259,31 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                 if (lowerKey === 'course' || lowerLabel.includes('course') || lowerLabel.includes('program')) return mappings.course || '';
                 if (lowerKey === 'current_year' || lowerLabel.includes('current year') || lowerKey === 'year') return mappings.year || '';
                 if (lowerKey === 'current_semester' || lowerLabel.includes('semester')) return mappings.sem || '';
-                if (lowerKey === 'branch' || lowerLabel.includes('branch') || lowerLabel.includes('specialization')) return mappings.branch || '';
+                if (lowerKey === 'branch' || lowerLabel.includes('branch')) return mappings.branch || '';
                 if (lowerKey === 'caste' || lowerLabel.includes('caste') || lowerLabel.includes('category')) return mappings.caste || '';
+                if (lowerKey === 'father_name' || lowerLabel.includes('father')) return mappings.father || '';
+                if (lowerKey === 'mother_name' || lowerLabel.includes('mother')) return mappings.mother || '';
+                if (lowerKey === 'student_mobile' || lowerLabel.includes('student mobile') || lowerLabel === 'mobile') return mappings.mobile || '';
+                if (lowerKey === 'parent_mobile1' || lowerLabel.includes('parent mobile 1')) return mappings.parent1 || '';
+                if (lowerKey === 'parent_mobile2' || lowerLabel.includes('parent mobile 2')) return mappings.parent2 || '';
+                if (lowerKey === 'college') return mappings.college || '';
+                if (lowerKey === 'student_address' || lowerLabel.includes('address')) return mappings.address || '';
+                if (lowerKey === 'city_village' || lowerLabel === 'city' || lowerLabel === 'village') return mappings.city || '';
+                if (lowerKey === 'mandal_name' || lowerLabel === 'mandal') return mappings.mandal || '';
+                if (lowerKey === 'district') return mappings.district || '';
+                if (lowerKey === 'batch') return mappings.batch || '';
+
+                if (lowerKey === 'dob' || lowerLabel.includes('date of birth')) {
+                    const d = mappings.dob || '';
+                    return d ? String(d).substring(0, 10) : '';
+                }
+
+                // General Fallback (Check flat studentData then parsedData by key/label)
+                if (studentData[key] !== undefined && studentData[key] !== null) return studentData[key];
+                if (parsedData[key] !== undefined && parsedData[key] !== null) return parsedData[key];
+
+                const labelValue = getNested(field.label);
+                if (labelValue !== null && labelValue !== undefined) return labelValue;
 
                 return '';
             };
@@ -288,12 +348,23 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        const changedFields = {};
-        for (const key in formData) {
-            if (formData[key] !== originalData[key]) {
-                changedFields[key] = formData[key];
+        const changedFields = (function () {
+            const changes = {};
+            for (const key in formData) {
+                if (formData[key] !== originalData[key]) {
+                    // Apply gender normalization to changes too
+                    if (key === 'gender') {
+                        const g = String(formData[key]).toUpperCase();
+                        if (g === 'MALE') changes[key] = 'M';
+                        else if (g === 'FEMALE') changes[key] = 'F';
+                        else changes[key] = 'Other';
+                    } else {
+                        changes[key] = formData[key];
+                    }
+                }
             }
-        }
+            return changes;
+        })();
 
         if (Object.keys(changedFields).length === 0) {
             toast.error('No changes detected');
@@ -348,11 +419,10 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     if (!isOpen) return null;
 
     const availableTabs = [
-        { id: 'basic', label: 'Basic Info', icon: User, fields: groupedFields.basic },
-        { id: 'academic', label: 'Academic', icon: GraduationCap, fields: groupedFields.academic },
-        { id: 'contact', label: 'Contact', icon: MapPin, fields: groupedFields.contact },
-        { id: 'address', label: 'Address', icon: MapPin, fields: groupedFields.address },
-        { id: 'additional', label: 'Additional', icon: FileText, fields: groupedFields.additional },
+        { id: 'personal', label: 'Personal Data', icon: User, fields: groupedFields.personal },
+        { id: 'academic', label: 'Academic Info', icon: GraduationCap, fields: groupedFields.academic },
+        { id: 'contact', label: 'Contact Details', icon: Phone, fields: groupedFields.contact },
+        { id: 'address', label: 'Address & Location', icon: MapPin, fields: groupedFields.address },
         { id: 'other', label: 'Other', icon: FileText, fields: groupedFields.other },
     ].filter(tab => tab.fields && tab.fields.length > 0);
 
@@ -372,10 +442,17 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
         const value = formData[field.key] || '';
 
         return (
-            <div className="group mb-4">
-                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 transition-colors group-focus-within:text-indigo-600">
-                    {field.label} {field.required && <span className="text-red-500">*</span>}
-                </label>
+            <div className="group mb-5">
+                <div className="flex items-center justify-between mb-2 px-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em] transition-colors group-focus-within:text-indigo-600">
+                        {field.label} {field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {isReadOnly && (
+                        <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Lock size={10} /> READ ONLY
+                        </span>
+                    )}
+                </div>
 
                 {field.type === 'textarea' ? (
                     <textarea
@@ -384,12 +461,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
                         rows={2}
-                        className={`w-full px-4 py-2.5 border rounded-xl text-sm font-semibold text-gray-900 transition-all duration-200 outline-none resize-none
+                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none resize-none
                             ${isReadOnly
-                                ? 'bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed'
+                                ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
-                                    ? 'bg-gray-50 border-gray-200'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 shadow-sm'}`}
+                                    ? 'bg-gray-50/50 border-gray-100'
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
                     ></textarea>
                 ) : field.type === 'select' || field.type === 'radio' ? (
                     <select
@@ -397,12 +474,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         value={value}
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
-                        className={`w-full px-4 py-2.5 border rounded-xl text-sm font-semibold text-gray-900 transition-all duration-200 outline-none
+                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M5%207L10%2012L15%207%22%20stroke%3D%22%236B7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E')] bg-[length:20px_20px] bg-[right_1rem_center] bg-no-repeat
                             ${isReadOnly
-                                ? 'bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed'
+                                ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
-                                    ? 'bg-gray-50 border-gray-200'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 shadow-sm'}`}
+                                    ? 'bg-gray-50/50 border-gray-100'
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
                     >
                         <option value="">Select an option</option>
                         {(field.options || []).map((opt, i) => (
@@ -416,12 +493,12 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                         value={value}
                         onChange={handleChange}
                         disabled={!!pendingRequest || isReadOnly}
-                        className={`w-full px-4 py-2.5 border rounded-xl text-sm font-semibold text-gray-900 transition-all duration-200 outline-none
+                        className={`w-full px-5 py-3 border rounded-2xl text-[13px] font-bold text-gray-900 transition-all duration-300 outline-none
                             ${isReadOnly
-                                ? 'bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed'
+                                ? 'bg-gray-50/50 border-gray-100 text-gray-400 cursor-not-allowed italic'
                                 : !!pendingRequest
-                                    ? 'bg-gray-50 border-gray-200'
-                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 shadow-sm'}`}
+                                    ? 'bg-gray-50/50 border-gray-100'
+                                    : 'bg-white border-gray-200 hover:border-gray-300 focus:border-indigo-500 focus:ring-[6px] focus:ring-indigo-500/10 shadow-sm'}`}
                     />
                 )}
             </div>
@@ -440,14 +517,23 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center text-white shadow-inner shrink-0">
-                                <FileText size={20} className="sm:hidden" />
-                                <FileText size={24} className="hidden sm:block" />
+                            <div className="relative group shrink-0">
+                                <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-2xl border-[3px] border-white/20 bg-white shadow-xl overflow-hidden flex items-center justify-center relative">
+                                    {studentData?.student_photo ? (
+                                        <img
+                                            src={studentData.student_photo}
+                                            alt={studentData.student_name}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <User size={32} className="text-gray-300" />
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight heading-font">Profile Verification</h2>
-                                <p className="text-xs sm:text-sm font-medium text-indigo-200 mt-1 flex items-center gap-2">
-                                    Review your student records and ensure they match your active registration.
+                                <p className="text-xs sm:text-sm font-medium text-indigo-100 mt-1 flex items-center gap-2">
+                                    Compare your official records and request changes if needed.
                                 </p>
                             </div>
                         </div>
@@ -459,7 +545,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
 
                 {/* Status Banners */}
                 <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2 shrink-0 bg-gray-50/50">
-                    {pendingRequest ? (
+                    {pendingRequest && (
                         <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex gap-4 shadow-sm items-start">
                             <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                                 <Clock className="text-indigo-600" size={20} />
@@ -468,21 +554,6 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
                                 <h4 className="font-bold text-indigo-900 text-sm">Change Request Pending</h4>
                                 <p className="text-sm text-indigo-700/80 mt-1 font-medium leading-relaxed">
                                     A request to update your profile is currently under review by the administration. You will be notified once it is processed.
-                                </p>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-amber-50/80 border border-amber-200/60 rounded-2xl p-4 flex gap-4 shadow-sm items-start">
-                            <div className="w-10 h-10 rounded-full bg-amber-100/80 flex items-center justify-center shrink-0">
-                                <AlertCircle className="text-amber-600" size={20} />
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-amber-900 text-sm">Action Required</h4>
-                                <p className="text-sm text-amber-800/80 mt-1 font-medium leading-relaxed hidden sm:block">
-                                    Please carefully check if these fields match your records. If they are correct, click "Verified, No Changes Needed". If you edit them, you can submit a change request.
-                                </p>
-                                <p className="text-xs text-amber-800/80 mt-1 font-medium leading-relaxed sm:hidden">
-                                    Check if fields match your records. Edit if needed, or click "Verified".
                                 </p>
                             </div>
                         </div>

@@ -176,6 +176,15 @@ exports.updateRequestStatus = async (req, res) => {
                     if (matchedDBCol === 'dob' && value && value.includes('T')) {
                         formattedValue = value.split('T')[0];
                     }
+
+                    // Normalize gender
+                    if (matchedDBCol === 'gender' && value) {
+                        const s = String(value).trim().toUpperCase();
+                        if (['M', 'MALE', 'BOY', '1'].includes(s)) formattedValue = 'M';
+                        else if (['F', 'FEMALE', 'GIRL', '2'].includes(s)) formattedValue = 'F';
+                        else formattedValue = 'Other';
+                    }
+
                     if (!updates.includes(`${matchedDBCol} = ?`)) { // Prevent duplicate DB updates
                         updates.push(`${matchedDBCol} = ?`);
                         updateValues.push(formattedValue);
