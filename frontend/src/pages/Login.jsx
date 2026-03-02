@@ -220,7 +220,7 @@ const Login = () => {
           <div className="relative z-10 flex-1 flex items-center justify-center p-4">
             <div className="w-full h-full max-w-[1200px] max-h-[850px] transform transition-transform duration-700 hover:scale-[1.02]">
               <DotLottieReact
-                src="https://lottie.host/17e18e77-e03b-482f-9c53-dddbb979c260/Y5u2X2eTNf.lottie"
+                src="https://lottie.host/04202662-819a-4f50-939b-9f9892114a39/SYoGvGOZHs.lottie"
                 loop
                 autoplay
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
