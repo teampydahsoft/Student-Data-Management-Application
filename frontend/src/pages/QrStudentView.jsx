@@ -3,8 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { Lock, User, Eye, EyeOff, QrCode, CheckCircle, AlertCircle, Loader, ChevronDown, Info, X, ShieldCheck } from 'lucide-react';
 
-// API base URL from environment or default
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_URL as API_BASE } from '../config/api';
 
 // Canonical field ordering for display
 const FIELD_ORDER = [

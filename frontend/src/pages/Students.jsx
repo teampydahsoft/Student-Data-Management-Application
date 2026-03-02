@@ -810,6 +810,29 @@ const Students = () => {
     }
   }, [editData, showModal, selectedStudent, calculateProfileCompletion]);
 
+  // Fetch secure QR token for selected student
+  const [activeQrToken, setActiveQrToken] = useState(null);
+  useEffect(() => {
+    if (selectedStudent && selectedStudent.admission_number) {
+      if (selectedStudent.qr_token) {
+        setActiveQrToken(selectedStudent.qr_token);
+      } else {
+        setActiveQrToken(null);
+        api.get(`/qr/token/${encodeURIComponent(selectedStudent.admission_number)}`)
+          .then(res => {
+            if (res.data?.success && res.data?.data?.token) {
+              setActiveQrToken(res.data.data.token);
+              // Optimistically update the student object to avoid refetching
+              selectedStudent.qr_token = res.data.data.token;
+            }
+          })
+          .catch(e => console.error('Failed to fetch QR token for UI', e));
+      }
+    } else {
+      setActiveQrToken(null);
+    }
+  }, [selectedStudent]);
+
   // Check expired permits on component mount and when students data changes
   useEffect(() => {
     const checkExpiredPermits = async () => {
@@ -3477,14 +3500,14 @@ const Students = () => {
                       </div>
                       <div id={`student-qr-${selectedStudent.admission_number}`} className="bg-white p-2 rounded-xl border border-gray-200">
                         <QRCodeSVG
-                          value={`${window.location.origin}/qr/${selectedStudent.qr_token || selectedStudent.admission_number}`}
+                          value={`${window.location.origin}/qr/${activeQrToken || selectedStudent.qr_token || selectedStudent.admission_number}`}
                           size={130}
                           level="M"
                           includeMargin={false}
                         />
                       </div>
                       <p className="text-[9px] text-gray-400 text-center font-medium leading-tight">
-                        {selectedStudent.qr_token ? 'Secure ID Active' : selectedStudent.admission_number}
+                        {activeQrToken || selectedStudent.qr_token ? 'Secure ID Active' : selectedStudent.admission_number}
                       </p>
                       <button
                         onClick={() => {
