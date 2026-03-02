@@ -3477,14 +3477,14 @@ const Students = () => {
                       </div>
                       <div id={`student-qr-${selectedStudent.admission_number}`} className="bg-white p-2 rounded-xl border border-gray-200">
                         <QRCodeSVG
-                          value={`${window.location.origin}/qr/${selectedStudent.admission_number}`}
+                          value={`${window.location.origin}/qr/${selectedStudent.qr_token || selectedStudent.admission_number}`}
                           size={130}
                           level="M"
                           includeMargin={false}
                         />
                       </div>
                       <p className="text-[9px] text-gray-400 text-center font-medium leading-tight">
-                        {selectedStudent.admission_number}
+                        {selectedStudent.qr_token ? 'Secure ID Active' : selectedStudent.admission_number}
                       </p>
                       <button
                         onClick={() => {
