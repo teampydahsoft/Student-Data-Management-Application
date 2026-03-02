@@ -21,7 +21,11 @@ import {
   Calendar,
   Bell,
   TrendingUp,
-  Layout
+  Layout,
+  QrCode,
+  CheckSquare,
+  Square,
+  Save
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -311,7 +315,124 @@ const Settings = () => {
     hasMoreStudents: false,
     isLoadingStudents: false
   });
-  const [activeSection, setActiveSection] = useState('courses'); // 'courses', 'calendar', 'academic-calendar', 'forms', 'notifications'
+  const [activeSection, setActiveSection] = useState('courses'); // 'courses', 'calendar', 'academic-calendar', 'forms', 'notifications', 'qr-config'
+
+  // QR Config state
+  const [qrRoleConfigs, setQrRoleConfigs] = useState({}); // { roleKey: ['field1', 'field2'] }
+  const [qrPublicFields, setQrPublicFields] = useState([]); // fields shown WITHOUT login
+  const [qrAvailableFields, setQrAvailableFields] = useState([]);
+  const [qrConfigLoading, setQrConfigLoading] = useState(false);
+  const [qrConfigSaving, setQrConfigSaving] = useState(false);
+  const [qrActiveRole, setQrActiveRole] = useState(null); // which role panel is expanded
+
+  // Known RBAC roles for QR config display
+  const QR_CONFIGURABLE_ROLES = [
+    { key: 'super_admin', label: 'Super Admin', color: 'purple' },
+    { key: 'college_principal', label: 'College Principal', color: 'blue' },
+    { key: 'college_ao', label: 'College AO', color: 'indigo' },
+    { key: 'college_attender', label: 'College Attender', color: 'cyan' },
+    { key: 'branch_hod', label: 'Branch HOD', color: 'green' },
+    { key: 'office_assistant', label: 'Office Assistant', color: 'orange' },
+    { key: 'cashier', label: 'Cashier', color: 'amber' },
+  ];
+
+  const fetchQrConfig = async () => {
+    try {
+      setQrConfigLoading(true);
+      const response = await api.get('/settings/qr-config');
+      if (response.data.success) {
+        setQrRoleConfigs(response.data.data.roleConfigs || {});
+        setQrPublicFields(response.data.data.publicFields || []);
+        setQrAvailableFields(response.data.data.availableFields || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch QR config', error);
+      toast.error('Failed to load QR configuration');
+    } finally {
+      setQrConfigLoading(false);
+    }
+  };
+
+  const saveQrConfig = async () => {
+    try {
+      setQrConfigSaving(true);
+      await api.post('/settings/qr-config', { roleConfigs: qrRoleConfigs, publicFields: qrPublicFields });
+      toast.success('QR configuration saved successfully');
+    } catch (error) {
+      console.error('Failed to save QR config', error);
+      toast.error('Failed to save QR configuration');
+    } finally {
+      setQrConfigSaving(false);
+    }
+  };
+
+  const toggleQrField = (roleKey, fieldKey) => {
+    setQrRoleConfigs(prev => {
+      const current = prev[roleKey] || [];
+      const isSelected = current.includes(fieldKey);
+      return {
+        ...prev,
+        [roleKey]: isSelected
+          ? current.filter(f => f !== fieldKey)
+          : [...current, fieldKey]
+      };
+    });
+  };
+
+  const toggleAllQrFields = (roleKey) => {
+    setQrRoleConfigs(prev => {
+      const current = prev[roleKey] || [];
+      const allSelected = current.length === qrAvailableFields.length;
+      return {
+        ...prev,
+        [roleKey]: allSelected ? [] : qrAvailableFields.map(f => f.key)
+      };
+    });
+  };
+
+  const toggleQrPublicField = (fieldKey) => {
+    setQrPublicFields(prev =>
+      prev.includes(fieldKey) ? prev.filter(f => f !== fieldKey) : [...prev, fieldKey]
+    );
+  };
+
+  const toggleAllQrPublicFields = () => {
+    setQrPublicFields(prev =>
+      prev.length === qrAvailableFields.length ? [] : qrAvailableFields.map(f => f.key)
+    );
+  };
+
+  // Helper: render a field checkbox grid for QR config
+  const renderQrFieldGrid = (selectedFields, onToggle) => (
+    <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      {qrAvailableFields.map(field => {
+        const isSelected = selectedFields.includes(field.key);
+        return (
+          <label
+            key={field.key}
+            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border transition-colors ${isSelected
+              ? 'bg-teal-50 border-teal-300 text-teal-800'
+              : 'bg-white border-gray-200 text-gray-700 hover:border-teal-200 hover:bg-teal-50/50'
+              }`}
+          >
+            <input type="checkbox" checked={isSelected} onChange={() => onToggle(field.key)} className="sr-only" />
+            <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-teal-500' : 'border-2 border-gray-300'
+              }`}>
+              {isSelected && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="text-xs font-medium leading-tight">{field.label}</span>
+          </label>
+        );
+      })}
+      {qrAvailableFields.length === 0 && (
+        <p className="col-span-4 text-sm text-gray-400 py-4 text-center">Loading fields...</p>
+      )}
+    </div>
+  );
 
   // Certificate Configuration State
   const [certificateConfig, setCertificateConfig] = useState({
@@ -2087,6 +2208,25 @@ const Settings = () => {
             </div>
           </button>
 
+          <button
+            onClick={() => { setActiveSection('qr-config'); fetchQrConfig(); }}
+            className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'qr-config'
+              ? 'border-teal-500 bg-teal-50 shadow-md'
+              : 'border-gray-200 bg-white hover:border-teal-300 hover:shadow-sm'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-full p-2 ${activeSection === 'qr-config' ? 'bg-teal-100 text-teal-600' : 'bg-gray-100 text-gray-600'
+                }`}>
+                <QrCode size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">QR Code Config</h2>
+                <p className="text-xs text-gray-500">Per-role student field visibility</p>
+              </div>
+            </div>
+          </button>
+
         </div>
 
         {/* Content Section */}
@@ -3635,6 +3775,126 @@ const Settings = () => {
         {activeSection === 'student-layout' && (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
             <StudentPortalLayoutSettings />
+          </div>
+        )}
+
+        {/* QR Code Config Section */}
+        {activeSection === 'qr-config' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <QrCode size={20} className="text-teal-600" />
+                  QR Code Configuration
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Define <strong>Public Fields</strong> (visible to anyone who scans) and <strong>Private Fields</strong> per role (requires staff login).
+                </p>
+              </div>
+              <button
+                onClick={saveQrConfig}
+                disabled={qrConfigSaving || qrConfigLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm font-medium"
+              >
+                <Save size={16} />
+                {qrConfigSaving ? 'Saving...' : 'Save Config'}
+              </button>
+            </div>
+
+            {qrConfigLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+
+                {/* ── PUBLIC FIELDS PANEL ── */}
+                <div className="border-2 border-teal-200 rounded-xl overflow-hidden bg-teal-50/30">
+                  <div className="flex items-center justify-between px-4 py-3 bg-teal-50 border-b border-teal-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-teal-900">Public View Fields</h3>
+                        <p className="text-[11px] text-teal-600">Shown to <strong>anyone</strong> who scans, without login</p>
+                      </div>
+                      <span className="text-xs text-teal-700 bg-teal-200 px-2 py-0.5 rounded-full font-semibold">
+                        {qrPublicFields.length} selected
+                      </span>
+                    </div>
+                    <button
+                      onClick={toggleAllQrPublicFields}
+                      className="text-xs text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1"
+                    >
+                      {qrPublicFields.length === qrAvailableFields.length && qrAvailableFields.length > 0
+                        ? <><CheckSquare size={14} /> Deselect All</>
+                        : <><Square size={14} /> Select All</>}
+                    </button>
+                  </div>
+                  {renderQrFieldGrid(qrPublicFields, toggleQrPublicField)}
+                </div>
+
+                {/* ── DIVIDER ── */}
+                <div className="flex items-center gap-3 py-1">
+                  <div className="flex-1 border-t border-dashed border-gray-300" />
+                  <span className="text-xs text-gray-400 font-semibold uppercase tracking-wide px-2 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Private Fields — Staff Login Required
+                  </span>
+                  <div className="flex-1 border-t border-dashed border-gray-300" />
+                </div>
+
+                {/* ── PER-ROLE PRIVATE FIELDS ── */}
+                {QR_CONFIGURABLE_ROLES.map(role => {
+                  const selectedFields = qrRoleConfigs[role.key] || [];
+                  const allSelected = qrAvailableFields.length > 0 && selectedFields.length === qrAvailableFields.length;
+                  const isExpanded = qrActiveRole === role.key;
+                  return (
+                    <div key={role.key} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setQrActiveRole(isExpanded ? null : role.key)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                          <h3 className="text-sm font-semibold text-gray-900">{role.label}</h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selectedFields.length > 0
+                              ? 'bg-slate-200 text-slate-700'
+                              : 'bg-gray-100 text-gray-400'
+                            }`}>
+                            {selectedFields.length} private fields
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isExpanded && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleAllQrFields(role.key); }}
+                              className="text-xs text-slate-600 hover:text-slate-800 font-medium flex items-center gap-1"
+                            >
+                              {allSelected ? <><CheckSquare size={14} /> Deselect All</> : <><Square size={14} /> Select All</>}
+                            </button>
+                          )}
+                          <svg
+                            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </button>
+                      {isExpanded && renderQrFieldGrid(selectedFields, (fieldKey) => toggleQrField(role.key, fieldKey))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

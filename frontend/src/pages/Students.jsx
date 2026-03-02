@@ -48,6 +48,7 @@ import RejoinModal from '../components/RejoinModal';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { SkeletonTable, SkeletonStudentsTable } from '../components/SkeletonLoader';
 import { formatDate } from '../utils/dateUtils';
+import { QRCodeSVG } from 'qrcode.react';
 import { useStudents, useUpdateStudent, useDeleteStudent, useBulkDeleteStudents, useInvalidateStudents } from '../hooks/useStudents';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
@@ -279,6 +280,7 @@ const Students = () => {
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [completionPercentages, setCompletionPercentages] = useState({});
   const [profileCompletion, setProfileCompletion] = useState({ percentage: 0, filledCount: 0, totalCount: 0 });
+  const [showIdCardPreview, setShowIdCardPreview] = useState(false);
   const [forms, setForms] = useState([]);
   const [loadingForms, setLoadingForms] = useState(false);
   const [certificateConfig, setCertificateConfig] = useState({
@@ -537,6 +539,11 @@ const Students = () => {
     }, 500); // 500ms debounce delay for immediate fetch
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Reset ID card preview when switching between students
+  useEffect(() => {
+    setShowIdCardPreview(false);
+  }, [selectedStudent?.admission_number]);
 
   // Fetch certificate settings and forms on mount
   useEffect(() => {
@@ -3446,6 +3453,61 @@ const Students = () => {
                     </div>
                   </div>
 
+                  {/* QR Code Widget - visible in view mode only */}
+                  {!editMode && selectedStudent?.admission_number && (
+                    <div className="bg-gray-50/50 rounded-2xl lg:rounded-[2rem] p-4 lg:p-5 border border-gray-100 flex flex-col items-center gap-3">
+                      <div className="flex items-center gap-2 self-start">
+                        <div className="w-5 h-5 text-teal-600">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="5" height="5" x="3" y="3" rx="1" />
+                            <rect width="5" height="5" x="16" y="3" rx="1" />
+                            <rect width="5" height="5" x="3" y="16" rx="1" />
+                            <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+                            <path d="M21 21v.01" />
+                            <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+                            <path d="M3 12h.01" />
+                            <path d="M12 3h.01" />
+                            <path d="M12 16v.01" />
+                            <path d="M16 12h1" />
+                            <path d="M21 12v.01" />
+                            <path d="M12 21v-1" />
+                          </svg>
+                        </div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Student QR Code</p>
+                      </div>
+                      <div id={`student-qr-${selectedStudent.admission_number}`} className="bg-white p-2 rounded-xl border border-gray-200">
+                        <QRCodeSVG
+                          value={`${window.location.origin}/qr/${selectedStudent.admission_number}`}
+                          size={130}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+                      <p className="text-[9px] text-gray-400 text-center font-medium leading-tight">
+                        {selectedStudent.admission_number}
+                      </p>
+                      <button
+                        onClick={() => {
+                          // Download QR as SVG
+                          const svgEl = document.querySelector(`#student-qr-${selectedStudent.admission_number} svg`);
+                          if (!svgEl) return;
+                          const serializer = new XMLSerializer();
+                          const svgStr = serializer.serializeToString(svgEl);
+                          const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `QR_${selectedStudent.admission_number}.svg`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 text-teal-700 bg-teal-50 border border-teal-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-teal-100 transition-all"
+                      >
+                        <Download size={12} /> Download QR
+                      </button>
+                    </div>
+                  )}
+
                   {!editMode && !isCashier && (
                     <button
                       onClick={handleResetPassword}
@@ -3721,39 +3783,230 @@ const Students = () => {
                     </div>
                   )}
 
-                  {activeStudentTab === 'id_card' && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
-                      <div className="max-w-2xl mx-auto flex flex-col items-center">
-                        <div className="text-center mb-8">
-                          <div className="hidden">
-                            <div className="inline-flex items-center justify-center p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4">
-                              <CreditCard size={28} />
-                            </div>
-                            <h3 className="text-2xl font-bold text-gray-900 mb-2">Digital Student ID Card</h3>
-                            <p className="text-gray-500 max-w-md mx-auto">
-                              Verified student identification details including a dynamic QR code for instant scan verification.
-                            </p>
-                          </div>
-                        </div>
+                  {activeStudentTab === 'id_card' && (() => {
+                    // Helper values for PDF
+                    const s = selectedStudent || {};
+                    const sd = s.student_data || {};
+                    const getVal = (key) => s[key] || sd[key] || '';
+                    const studentName = getVal('student_name') || '—';
+                    const pinNumber = getVal('pin_no') || getVal('admission_number') || '—';
+                    const college = getVal('college') || '—';
+                    const program = getVal('course') || '—';
+                    const branch = getVal('branch') || '';
+                    const year = getVal('current_year') || '—';
+                    const semester = getVal('current_semester') || '—';
+                    const batch = getVal('batch') || '—';
+                    const studentMobile = getVal('student_mobile') || '—';
+                    const parentMobile = getVal('parent_mobile1') || '—';
+                    const address = [getVal('student_address'), getVal('city_village'), getVal('district')].filter(Boolean).join(', ') || '—';
+                    const photoSrc = s.student_photo && (s.student_photo.startsWith('data:') || s.student_photo.startsWith('http')) ? s.student_photo : '';
 
-                        <div className="transform origin-top sm:scale-100 scale-95 shadow-2xl rounded-[1.5rem] bg-indigo-50/20 p-2 sm:p-4 border border-indigo-100/50 relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-transparent to-blue-50/50 rounded-[1.5rem] pointer-events-none"></div>
-                          <div className="relative z-10">
-                            <DigitalStudentCard
-                              student={selectedStudent}
-                              getStudentData={(key) => {
-                                if (!selectedStudent || !selectedStudent.student_data) return '';
-                                const dataKeys = Object.keys(selectedStudent.student_data);
-                                const foundKey = dataKeys.find(k => k.toLowerCase() === key.toLowerCase());
-                                const val = foundKey ? selectedStudent.student_data[foundKey] : undefined;
-                                return val !== undefined && val !== null && val !== '' ? val : '';
-                              }}
-                            />
+                    const handleDownloadPDF = async () => {
+                      const { jsPDF } = await import('jspdf');
+                      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [90, 140] });
+                      const W = 90, H = 140;
+
+                      // White background
+                      doc.setFillColor(248, 249, 250);
+                      doc.rect(0, 0, W, H, 'F');
+
+                      // Red top polygon (approximate with rectangles/triangles via lines)
+                      doc.setFillColor(185, 28, 28); // #b91c1c
+                      doc.triangle(0, 0, W, 0, W, 12, 'F');
+                      doc.triangle(0, 0, W, 12, 45, 30, 'F');
+                      doc.triangle(0, 0, 45, 30, 0, 10, 'F');
+
+                      // Logo area (white pill)
+                      doc.setFillColor(255, 255, 255);
+                      doc.roundedRect(W / 2 - 18, 6, 36, 20, 3, 3, 'F');
+                      try {
+                        // Load logo as image
+                        const logoResp = await fetch('/logo.png');
+                        const logoBlob = await logoResp.blob();
+                        const logoDataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(logoBlob); });
+                        doc.addImage(logoDataUrl, 'PNG', W / 2 - 16, 7, 32, 18, undefined, 'FAST');
+                      } catch (_) { }
+
+                      // Photo box
+                      const photoX = 7, photoY = 34, photoW = 28, photoH = 36;
+                      doc.setDrawColor(220, 220, 220);
+                      doc.setFillColor(240, 240, 240);
+                      doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'FD');
+                      if (photoSrc) {
+                        try {
+                          doc.addImage(photoSrc, 'JPEG', photoX, photoY, photoW, photoH, undefined, 'FAST');
+                        } catch (_) {
+                          try { doc.addImage(photoSrc, 'PNG', photoX, photoY, photoW, photoH, undefined, 'FAST'); } catch (__) { }
+                        }
+                      }
+
+                      // Right column info
+                      const infoX = photoX + photoW + 5;
+                      const infoW = W - infoX - 5;
+                      let iy = 36;
+                      doc.setFontSize(5.5);
+                      const rows = [
+                        ['NAME', studentName.toUpperCase()],
+                        ['PROGRAM', program],
+                        branch ? ['BRANCH', branch] : null,
+                        ['PIN', pinNumber],
+                        ['BATCH', batch],
+                        ['STUDENT', studentMobile],
+                        ['PARENT', parentMobile],
+                      ].filter(Boolean);
+                      rows.forEach(([label, value]) => {
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(150, 150, 150);
+                        doc.text(label, infoX, iy);
+                        doc.setTextColor(30, 41, 59);
+                        const lines = doc.splitTextToSize(value || '—', infoW - 16);
+                        doc.text(lines[0] || '—', infoX + 16, iy);
+                        iy += 5.5;
+                      });
+
+                      // Divider
+                      const divY = Math.max(photoY + photoH + 3, iy + 2);
+                      doc.setDrawColor(200, 200, 200);
+                      doc.setLineDashPattern([1, 1], 0);
+                      doc.line(7, divY, W - 7, divY);
+                      doc.setLineDashPattern([], 0);
+
+                      // Address
+                      doc.setFontSize(5);
+                      doc.setTextColor(100, 100, 100);
+                      doc.setFont('helvetica', 'bold');
+                      doc.text('ADDRESS', 9, divY + 4);
+                      doc.setFont('helvetica', 'normal');
+                      doc.setTextColor(60, 60, 60);
+                      const addrLines = doc.splitTextToSize(address, 48);
+                      addrLines.slice(0, 3).forEach((line, i) => doc.text(line, 9, divY + 8 + i * 4));
+
+                      // QR Code (as SVG string → canvas approach not available in jsPDF directly, use placeholder)
+                      const qrX = W - 28, qrY = divY + 2, qrSize = 22;
+                      doc.setFillColor(255, 255, 255);
+                      doc.setDrawColor(220, 220, 220);
+                      doc.roundedRect(qrX - 1, qrY - 1, qrSize + 2, qrSize + 2, 1, 1, 'FD');
+                      // Draw QR via canvas (use hidden QR SVG in DOM)
+                      try {
+                        const qrEl = document.querySelector(`#student-qr-${s.admission_number} svg`);
+                        if (qrEl) {
+                          const svgData = new XMLSerializer().serializeToString(qrEl);
+                          const canvas = document.createElement('canvas');
+                          canvas.width = 100; canvas.height = 100;
+                          const ctx = canvas.getContext('2d');
+                          const img = new Image();
+                          await new Promise((resolve) => {
+                            img.onload = () => { ctx.drawImage(img, 0, 0, 100, 100); resolve(); };
+                            img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+                          });
+                          doc.addImage(canvas.toDataURL(), 'PNG', qrX, qrY, qrSize, qrSize);
+                        }
+                      } catch (_) { }
+
+                      // Red footer bar
+                      doc.setFillColor(185, 28, 28);
+                      doc.roundedRect(0, H - 10, W, 12, 3, 3, 'F');
+                      doc.setFillColor(185, 28, 28);
+                      doc.rect(0, H - 10, W, 6, 'F'); // cover top radius of footer
+                      doc.setFontSize(5.5);
+                      doc.setTextColor(255, 255, 255);
+                      doc.setFont('helvetica', 'bold');
+                      const collegeTrunc = college.length > 48 ? college.substring(0, 45) + '...' : college;
+                      doc.text(collegeTrunc.toUpperCase(), W / 2, H - 4, { align: 'center' });
+
+                      doc.save(`ID_Card_${s.admission_number || studentName}.pdf`);
+                    };
+
+                    return (
+                      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                        <div className="max-w-sm mx-auto flex flex-col items-center gap-5">
+
+                          {/* Header */}
+                          <div className="flex items-center gap-3 self-start w-full">
+                            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                              <CreditCard size={20} className="text-red-700" />
+                            </div>
+                            <div>
+                              <h3 className="text-base font-bold text-gray-900">Digital ID Card</h3>
+                              <p className="text-xs text-gray-400">Student identification document</p>
+                            </div>
                           </div>
+
+                          {/* Preview Gate / Card */}
+                          {!showIdCardPreview ? (
+                            <div
+                              className="relative w-full cursor-pointer group"
+                              style={{ maxWidth: '380px' }}
+                              onClick={() => setShowIdCardPreview(true)}
+                            >
+                              {/* Blurred placeholder card */}
+                              <div className="rounded-[2rem] overflow-hidden shadow-xl select-none pointer-events-none" style={{ filter: 'blur(6px)', opacity: 0.5 }}>
+                                <DigitalStudentCard
+                                  student={selectedStudent}
+                                  getStudentData={(key) => {
+                                    if (!selectedStudent?.student_data) return '';
+                                    const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === key.toLowerCase());
+                                    const v = dk ? selectedStudent.student_data[dk] : undefined;
+                                    return v !== undefined && v !== null && v !== '' ? v : '';
+                                  }}
+                                />
+                              </div>
+                              {/* Overlay */}
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[2rem] bg-white/40 backdrop-blur-[2px] group-hover:bg-white/50 transition-all">
+                                <div className="w-14 h-14 rounded-full bg-white shadow-lg flex items-center justify-center">
+                                  <Eye size={22} className="text-red-700" />
+                                </div>
+                                <span className="bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow">Preview ID Card</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative w-full" style={{ maxWidth: '380px' }}>
+                              <div className="transform sm:scale-100 scale-95 origin-top">
+                                <DigitalStudentCard
+                                  student={selectedStudent}
+                                  getStudentData={(key) => {
+                                    if (!selectedStudent?.student_data) return '';
+                                    const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === key.toLowerCase());
+                                    const v = dk ? selectedStudent.student_data[dk] : undefined;
+                                    return v !== undefined && v !== null && v !== '' ? v : '';
+                                  }}
+                                />
+                              </div>
+                              <button
+                                onClick={() => setShowIdCardPreview(false)}
+                                className="absolute top-3 right-3 w-7 h-7 rounded-full bg-black/30 hover:bg-black/50 text-white flex items-center justify-center transition-all"
+                                title="Hide card"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-3 w-full">
+                            {!showIdCardPreview && (
+                              <button
+                                onClick={() => setShowIdCardPreview(true)}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-700 text-white rounded-xl text-sm font-bold hover:bg-red-800 transition-all active:scale-95"
+                              >
+                                <Eye size={16} /> Preview Card
+                              </button>
+                            )}
+                            <button
+                              onClick={handleDownloadPDF}
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-all active:scale-95"
+                            >
+                              <Download size={16} /> Download PDF
+                            </button>
+                          </div>
+
+                          <p className="text-[10px] text-gray-400 text-center">
+                            The PDF matches the digital card exactly — logo, photo, fields, and QR code.
+                          </p>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">

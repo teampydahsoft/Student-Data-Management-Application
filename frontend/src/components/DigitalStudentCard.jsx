@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, CreditCard } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getStaticFileUrlDirect } from '../config/api';
+import api from '../config/api';
+
+// Module-level token cache: admissionNumber → qrToken
+const _qrTokenCache = {};
+
 
 /**
  * Reusable Digital Student ID Card.
@@ -9,7 +14,24 @@ import { getStaticFileUrlDirect } from '../config/api';
  * compact=true renders a smaller inline version for the profile header.
  */
 const DigitalStudentCard = ({ student, getStudentData, className = '', compact = false }) => {
+  const [qrToken, setQrToken] = useState(null);
+
   if (!student) return null;
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    const admNo = student.admission_number || student.admission_no;
+    if (!admNo) return;
+    if (_qrTokenCache[admNo]) { setQrToken(_qrTokenCache[admNo]); return; }
+    api.get(`/qr/token/${encodeURIComponent(admNo)}`)
+      .then(r => {
+        if (r.data?.success && r.data.data?.token) {
+          _qrTokenCache[admNo] = r.data.data.token;
+          setQrToken(r.data.data.token);
+        }
+      })
+      .catch(() => { /* not authenticated / network error — QR will use origin URL fallback */ });
+  }, [student.admission_number, student.admission_no]);
 
   const get = (key, fallback = '') => {
     const v = student[key];
@@ -185,7 +207,13 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
             {/* Right: QR Code */}
             <div className="bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm flex-shrink-0 mr-1 flex items-center justify-center relative overflow-hidden">
               <QRCodeSVG
-                value={`BEGIN:VCARD\nVERSION:3.0\nN:${name}\nFN:${name}\nORG:${college}\nTITLE:Student - ${program} ${branch}\nNOTE:PIN: ${pinNumber} | Batch: ${batch}\nTEL;TYPE=CELL:${studentMobile}\nADR:;;${fullAddress};;;;\nEND:VCARD`}
+                value={(() => {
+                  const base = typeof window !== 'undefined' ? window.location.origin : '';
+                  if (qrToken) return `${base}/qr/${qrToken}`;
+                  // Fallback: use admission number if token not yet fetched
+                  const admNo = student.admission_number || student.admission_no || get('admission_number') || get('admission_no');
+                  return admNo ? `${base}/qr/${encodeURIComponent(admNo)}` : base;
+                })()}
                 size={86}
                 level="M"
                 includeMargin={true}
@@ -193,6 +221,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
                 style={{ borderRadius: '0.25rem' }}
               />
             </div>
+
           </div>
         </div>
       </div>

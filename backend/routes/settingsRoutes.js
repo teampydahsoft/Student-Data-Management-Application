@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const settingsController = require('../controllers/settingsController');
 const documentSettingsController = require('../controllers/documentSettingsController');
+const qrConfigController = require('../controllers/qrConfigController');
 const authMiddleware = require('../middleware/auth');
 
 // All routes require authentication
@@ -33,6 +34,10 @@ router.delete('/documents/:courseType/:academicStage', documentSettingsControlle
 router.get('/document-requirements', documentSettingsController.getDocumentRequirementsLegacy);
 router.put('/document-requirements', documentSettingsController.updateDocumentRequirements);
 router.get('/document-requirements/:courseType', documentSettingsController.getDocumentRequirementsByCourseType);
+
+// QR Code Configuration routes
+router.get('/qr-config', qrConfigController.getQrConfig);
+router.post('/qr-config', qrConfigController.saveQrConfig);
 
 module.exports = router;
 

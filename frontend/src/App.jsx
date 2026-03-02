@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import PublicForm from './pages/PublicForm';
 import Attendance from './pages/Attendance';
 import GetStarted from './pages/GetStarted';
+import QrStudentView from './pages/QrStudentView';
 
 import UserManagement from './pages/UserManagement';
 import StudentFieldPermissions from './pages/StudentFieldPermissions';
@@ -162,6 +163,7 @@ function App() {
         <Route path="/student/login" element={<Login />} />
         <Route path="/auth-callback" element={<AuthCallback />} />
         <Route path="/form/:formId" element={<PublicForm />} />
+        <Route path="/qr/:qrToken" element={<QrStudentView />} />
 
         {/* Protected Admin Routes */}
         <Route

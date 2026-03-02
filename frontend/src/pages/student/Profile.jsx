@@ -79,115 +79,162 @@ const Profile = () => {
         setIdCardPdfLoading(true);
         try {
             const { jsPDF } = await import('jspdf');
-            const doc = new jsPDF('p', 'mm', [74, 105]);
-            const cardW = 74;
-            const cardH = 105;
-            const redBarW = 12;
-            const red = [160, 30, 40];
 
-            const name = displayData.student_name || getStudentData('Student Name') || '—';
-            // User requested Pin No instead of Roll No
-            const pinNumber = displayData.pin_no || getStudentData('PIN NO') || getStudentData('pin_no') || displayData.admission_number || getStudentData('Admission Number') || '—';
-            const college = displayData.college || getStudentData('College') || '—';
-            const program = displayData.course || getStudentData('Program') || '—';
-            const branch = displayData.branch || getStudentData('Branch') || '—';
-            const batch = displayData.batch || getStudentData('Batch') || '—';
-            const addressRaw = displayData.student_address || getStudentData('Student Address') || getStudentData('Address') || '';
-            const address = String(addressRaw).trim() || '—';
-            const phoneRaw = displayData.student_mobile || getStudentData('Student Mobile number') || getStudentData('Phone') || getStudentData('Student Mobile') || '';
-            const phone = String(phoneRaw).trim() || '—';
-            const bloodGroup = displayData.blood_group || getStudentData('Blood Group') || getStudentData('B.Group') || '—';
-            const course = [program, branch].filter(Boolean).join(' - ') || '—';
+            // Same dimensions as DigitalStudentCard rendered at 380px wide
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [90, 140] });
+            const W = 90, H = 140;
 
-            doc.setFillColor(...red);
-            doc.rect(0, 0, redBarW, cardH, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(22); // Significantly increased size
-            const letters = ['P', 'Y', 'D', 'A', 'H'];
-            const startY = (cardH - (letters.length * 12)) / 2 + 8; // Adjust centering for larger font
-            letters.forEach((letter, i) => {
-                doc.text(letter, redBarW / 2, startY + i * 14, { align: 'center' }); // Increase vertical gap
+            // Helper field access
+            const get = (key) => displayData[key] || getStudentData(key) || '';
+            const name = get('student_name') || '—';
+            const pinNumber = get('pin_no') || get('admission_number') || '—';
+            const college = get('college') || '—';
+            const program = get('course') || '—';
+            const branch = get('branch') || '';
+            const batch = get('batch') || '—';
+            const studentMobile = get('student_mobile') || getStudentData('Student Mobile number') || '—';
+            const parentMobile = get('parent_mobile1') || getStudentData('Parent Mobile Number 1') || '—';
+            const addressParts = [get('student_address'), get('city_village'), get('district')].filter(Boolean);
+            const address = addressParts.join(', ') || '—';
+            const photo = displayData.student_photo;
+            const photoSrc = photo && (photo.startsWith('data:') || photo.startsWith('http')) ? photo : '';
+
+            // ── BACKGROUND ──
+            doc.setFillColor(248, 249, 250);
+            doc.rect(0, 0, W, H, 'F');
+
+            // ── RED TOP SHAPES (mirrors DigitalStudentCard SVG) ──
+            doc.setFillColor(185, 28, 28); // #b91c1c dark red
+            doc.triangle(0, 0, W, 0, W, 12, 'F');
+            doc.triangle(0, 0, W, 12, 45, 30, 'F');
+            doc.triangle(0, 0, 45, 30, 0, 10, 'F');
+            // lighter red accent triangle
+            doc.setFillColor(239, 68, 68); // #ef4444
+            doc.triangle(W, 12, W, 22, 55, 40, 'F');
+
+            // ── LOGO PILL ──
+            doc.setFillColor(255, 255, 255);
+            doc.roundedRect(W / 2 - 18, 5, 36, 22, 3, 3, 'F');
+            try {
+                const logoResp = await fetch('/logo.png');
+                const logoBlob = await logoResp.blob();
+                const logoDataUrl = await new Promise(res => {
+                    const r = new FileReader();
+                    r.onload = () => res(r.result);
+                    r.readAsDataURL(logoBlob);
+                });
+                doc.addImage(logoDataUrl, 'PNG', W / 2 - 16, 6, 32, 20, undefined, 'FAST');
+            } catch (_) { }
+
+            // ── PHOTO BOX (left side) ──
+            const photoX = 7, photoY = 40, photoW = 27, photoH = 36;
+            doc.setFillColor(248, 248, 248);
+            doc.setDrawColor(230, 230, 230);
+            doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'FD');
+            if (photoSrc) {
+                try {
+                    doc.addImage(photoSrc, 'JPEG', photoX, photoY, photoW, photoH, undefined, 'FAST');
+                } catch (_) {
+                    try { doc.addImage(photoSrc, 'PNG', photoX, photoY, photoW, photoH, undefined, 'FAST'); } catch (__) { }
+                }
+            }
+
+            // ── RIGHT COLUMN FIELDS ──
+            const infoX = photoX + photoW + 4;
+            const infoW = W - infoX - 4;
+            let iy = 42;
+            const fieldsToShow = [
+                ['NAME', name.toUpperCase()],
+                ['PROGRAM', program],
+                ...(branch ? [['BRANCH', branch]] : []),
+                ['PIN', pinNumber],
+                ['BATCH', batch],
+                ['STUDENT', studentMobile],
+                ['PARENT', parentMobile],
+            ];
+            doc.setFontSize(5.5);
+            fieldsToShow.forEach(([label, value]) => {
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(150, 150, 150);
+                doc.text(label, infoX, iy);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 41, 59);
+                const lines = doc.splitTextToSize(String(value || '—'), infoW - 17);
+                doc.text(lines[0] || '—', infoX + 17, iy);
+                iy += 4.8;
             });
 
-            let x = redBarW + 3;
-            let y = 8;
-            doc.setTextColor(0, 0, 0);
+            // ── DASHED DIVIDER ──
+            const divY = Math.max(photoY + photoH + 3, iy + 2);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineDashPattern([1, 1], 0);
+            doc.line(7, divY, W - 7, divY);
+            doc.setLineDashPattern([], 0);
+
+            // ── ADDRESS TEXT ──
+            doc.setFontSize(5);
+            doc.setTextColor(120, 120, 120);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10); // Slightly larger header
-            // User requested to remove "Pydah" from header since it's on the side
-            const displayCollege = college.replace(/^Pydah\s+/i, '');
-            doc.text(displayCollege.length > 32 ? displayCollege.substring(0, 31) + '…' : displayCollege, (redBarW + cardW) / 2, y, { align: 'center' });
-            y += 7;
-
-            // Updated Photo dimensions: 35x35mm centered square
-            const photoW = 35;
-            const photoH = 35;
-            const photoX = x + (cardW - redBarW - 6 - photoW) / 2;
-            doc.setFillColor(...red);
-            doc.rect(photoX - 1, y - 1, photoW + 2, photoH + 2, 'F'); // Border
-
-            const photo = displayData.student_photo;
-            const photoUrl = photo
-                ? (photo.startsWith('http') || photo.startsWith('data:')) ? photo : getStaticFileUrlDirect(photo)
-                : '';
-            if (photoUrl && photoUrl.startsWith('data:')) {
-                try {
-                    doc.addImage(photoUrl, 'JPEG', photoX, y, photoW, photoH);
-                } catch {
-                    doc.setTextColor(255, 255, 255);
-                    doc.setFontSize(7);
-                    doc.text('Photo', photoX + photoW / 2 - 4, y + photoH / 2 + 2);
-                }
-            } else {
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(7);
-                doc.text('Photo', photoX + photoW / 2 - 4, y + photoH / 2 + 2);
-            }
-            doc.setTextColor(0, 0, 0);
-            y += photoH + 5;
-
-            // Add Digital ID Card label
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(7);
-            doc.text('DIGITAL STUDENT ID CARD', (redBarW + cardW) / 2, y, { align: 'center' });
-            y += 6;
-
-            doc.setFontSize(7);
-            const detailLineH = 3.5;
-            const colonX = x + 12; // Fixed X position for colons
-            const valueX = colonX + 3; // Fixed X position for values
-
-            const row = (label, value) => {
-                const str = String(value);
-                doc.setFont('helvetica', 'bold');
-                doc.text(label, x, y);
-                doc.text(':', colonX, y); // Aligned colon
-                doc.setFont('helvetica', 'normal');
-
-                const maxWidth = cardW - valueX - 3;
-                const lines = doc.splitTextToSize(str, maxWidth);
-                doc.text(lines, valueX, y);
-
-                y += Math.max(lines.length, 1) * detailLineH + 1.2;
-            };
-
-            row('PIN No', pinNumber);
-            row('Name', name);
-            row('Batch', batch);
-            row('Course', course);
-            row('Address', address);
-            row('Phone', phone);
-            // row('B.Group', bloodGroup); // Removed as requested
-
-            doc.setFillColor(...red);
-            doc.rect(0, cardH - 10, cardW, 10, 'F');
-            doc.setTextColor(255, 255, 255);
+            doc.text('ADDRESS', 9, divY + 5);
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6);
-            doc.text('Yanam Road, Patavala, Kakinada. Ph: 0884-2315333', cardW / 2, cardH - 4, { align: 'center' });
+            doc.setTextColor(70, 70, 70);
+            const addrLines = doc.splitTextToSize(address, 48);
+            addrLines.slice(0, 3).forEach((ln, i) => doc.text(ln, 9, divY + 9 + i * 3.8));
 
-            doc.save(`student_id_${pinNumber || 'card'}.pdf`);
+            // ── QR CODE (from DOM or generate new vCard) ──
+            const qrX = W - 26, qrY = divY + 2, qrSize = 20;
+            doc.setFillColor(255, 255, 255);
+            doc.setDrawColor(210, 210, 210);
+            doc.roundedRect(qrX - 1, qrY - 1, qrSize + 2, qrSize + 2, 1, 1, 'FD');
+            try {
+                // Pull the QR SVG from the existing DigitalStudentCard in the modal
+                const qrEl = document.querySelector('.digital-id-card-qr svg') ||
+                    document.querySelector('[data-qr-admission] svg') ||
+                    document.querySelector('#qr-id-card svg');
+                if (qrEl) {
+                    const svgData = new XMLSerializer().serializeToString(qrEl);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 100; canvas.height = 100;
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    await new Promise(resolve => {
+                        img.onload = () => { ctx.drawImage(img, 0, 0, 100, 100); resolve(); };
+                        img.onerror = () => resolve();
+                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                    });
+                    doc.addImage(canvas.toDataURL(), 'PNG', qrX, qrY, qrSize, qrSize);
+                } else {
+                    // Render a QR via qrcode.react approach using canvas API
+                    const { QRCodeCanvas } = await import('qrcode.react').catch(() => ({}));
+                    if (!QRCodeCanvas) throw new Error('no qr');
+                    const tempDiv = document.createElement('div');
+                    tempDiv.style.position = 'fixed'; tempDiv.style.left = '-9999px';
+                    document.body.appendChild(tempDiv);
+                    const { createRoot } = await import('react-dom/client');
+                    const { createElement } = await import('react');
+                    const root = createRoot(tempDiv);
+                    const admNo = displayData.admission_number || displayData.admission_no || pinNumber;
+                    const qrValue = `${window.location.origin}/qr/${encodeURIComponent(admNo)}`;
+                    root.render(createElement(QRCodeCanvas, { value: qrValue, size: 100, id: '__pdf_qr_tmp__' }));
+                    await new Promise(r => setTimeout(r, 200));
+                    const canvasEl = tempDiv.querySelector('canvas');
+                    if (canvasEl) doc.addImage(canvasEl.toDataURL(), 'PNG', qrX, qrY, qrSize, qrSize);
+                    root.unmount();
+                    document.body.removeChild(tempDiv);
+                }
+            } catch (_) { }
+
+            // ── RED FOOTER BAR ──
+            doc.setFillColor(185, 28, 28);
+            doc.roundedRect(0, H - 9, W, 11, 3, 3, 'F');
+            doc.rect(0, H - 9, W, 5, 'F'); // flatten top rounded corners
+            doc.setFontSize(5.5);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            const collegeTrunc = college.length > 48 ? college.substring(0, 45) + '...' : college;
+            doc.text(collegeTrunc.toUpperCase(), W / 2, H - 3, { align: 'center' });
+
+            doc.save(`ID_Card_${pinNumber || name}.pdf`);
             toast.success('Digital student ID card downloaded');
         } catch (err) {
             console.error('Failed to generate ID card PDF:', err);
@@ -196,6 +243,7 @@ const Profile = () => {
             setIdCardPdfLoading(false);
         }
     }, [displayData, getStudentData]);
+
 
     if (loading) {
         return (
@@ -419,30 +467,63 @@ const Profile = () => {
                 </div>
             </div>
 
-            {/* Added: Embedded Digital ID Card tab area on mobile or extra info block */}
-            <div className="bg-gradient-to-br from-indigo-50/50 to-white rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07)] border border-indigo-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 mb-8 w-full max-w-full overflow-hidden">
+            {/* Digital ID Card CTA — card is shown in modal only */}
+            <div className="bg-gradient-to-br from-red-50/60 to-white rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07)] border border-red-100 p-6 flex flex-col md:flex-row items-center justify-between gap-6 mb-8 w-full max-w-full overflow-hidden">
                 <div className="flex-1 space-y-3 text-center md:text-left">
-                    <div className="inline-flex items-center justify-center p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0 mx-auto md:mx-0">
+                    <div className="inline-flex items-center justify-center p-2.5 bg-red-100 text-red-700 rounded-xl shrink-0 mx-auto md:mx-0">
                         <CreditCard size={24} />
                     </div>
                     <h3 className="text-xl font-bold tracking-tight text-gray-900">Your Digital ID Card</h3>
-                    <p className="text-sm text-gray-600 max-w-lg">
-                        This digital ID card displays your verified profile information and can be used on campus. Save the PDF formatted version offline for faster access.
+                    <p className="text-sm text-gray-500 max-w-lg">
+                        Click <strong>View ID Card</strong> to see your digital student card, or download it as a PDF for offline access.
                     </p>
-                    <button
-                        type="button"
-                        onClick={async () => await handleDownloadIdCardPDF()}
-                        disabled={idCardPdfLoading}
-                        className="mt-2 w-full md:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-md hover:shadow-indigo-500/30 flex items-center justify-center gap-2"
-                    >
-                        <Download size={16} />
-                        {idCardPdfLoading ? 'Downloading…' : 'Download ID PDF'}
-                    </button>
+                    <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-1">
+                        <button
+                            type="button"
+                            onClick={() => setShowIdCardModal(true)}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-700 text-white rounded-xl text-sm font-bold hover:bg-red-800 transition-all shadow-md active:scale-95"
+                        >
+                            <CreditCard size={16} />
+                            View ID Card
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleDownloadIdCardPDF}
+                            disabled={idCardPdfLoading}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 disabled:opacity-60 transition-all shadow-md active:scale-95"
+                        >
+                            <Download size={16} />
+                            {idCardPdfLoading ? 'Downloading…' : 'Download PDF'}
+                        </button>
+                    </div>
                 </div>
 
-                {/* Visual Card Representation */}
-                <div className="w-full md:w-auto shrink-0 flex justify-center scale-95 md:scale-100 transform origin-right">
-                    <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
+                {/* Mini card preview illustration (static, not interactive) */}
+                <div className="shrink-0 hidden md:flex items-center justify-center">
+                    <div className="w-28 h-40 rounded-2xl bg-[#f8f9fa] border-2 border-red-200 shadow-lg overflow-hidden relative">
+                        {/* Red top */}
+                        <div className="absolute top-0 left-0 right-0 h-12 bg-red-700" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 50% 100%, 0 60%)' }} />
+                        {/* Logo dot */}
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center">
+                            <img src="/logo.png" alt="" className="h-5 w-auto object-contain" />
+                        </div>
+                        {/* Photo placeholder */}
+                        <div className="absolute top-14 left-2 w-9 h-11 rounded-lg bg-gray-200 border border-white flex items-center justify-center overflow-hidden">
+                            {displayData.student_photo
+                                ? <img src={displayData.student_photo} alt="" className="w-full h-full object-cover" />
+                                : <User size={16} className="text-gray-400" />}
+                        </div>
+                        {/* Lines */}
+                        <div className="absolute top-14 left-13 right-2 space-y-1" style={{ left: '46px' }}>
+                            {[70, 60, 50, 40].map((w, i) => (
+                                <div key={i} className="h-1.5 bg-gray-200 rounded-full" style={{ width: `${w}%` }} />
+                            ))}
+                        </div>
+                        {/* Red footer */}
+                        <div className="absolute bottom-0 left-0 right-0 h-5 bg-red-700 flex items-center justify-center">
+                            <div className="h-1 w-16 bg-white/50 rounded-full" />
+                        </div>
+                    </div>
                 </div>
             </div>
 
