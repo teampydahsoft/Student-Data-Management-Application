@@ -171,7 +171,7 @@ const MyTickets = () => {
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-50/50 rounded-full -ml-32 -mb-32 blur-3xl"></div>
 
             <div className="relative z-10 max-w-md mx-auto">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner rotate-3 group hover:rotate-6 transition-transform">
+              <div className="w-24 h-24 bg-indigo-50 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner rotate-3 group hover:rotate-6 transition-transform">
                 <Ticket className="text-blue-600" size={48} />
               </div>
               <h3 className="text-2xl lg:text-3xl font-black text-gray-900 mb-4 heading-font">
@@ -198,7 +198,7 @@ const MyTickets = () => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.05 }}
                 key={ticket.id}
-                className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:shadow-blue-900/5 transition-all group relative overflow-hidden"
+                className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 hover:border-indigo-100 transition-all duration-300 group relative overflow-hidden"
               >
                 <div className="flex items-start justify-between relative z-10">
                   <div className="flex-1">

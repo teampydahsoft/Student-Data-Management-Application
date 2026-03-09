@@ -274,13 +274,17 @@ const FeeManagement = () => {
     return (
         <div className="space-y-6 animate-fade-in-up pb-10">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
-                    <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">
-                        Fee Management
+                    <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2 flex items-center gap-4">
+                        <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200">
+                            <CreditCard size={28} />
+                        </div>
+                        Financial Ledger
                     </h1>
-                    <p className="text-gray-500 mt-1 hidden md:block">
-                        Track your fee dues and payment history
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] items-center flex gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                        Secure Transaction Management & Reconciliation
                     </p>
                 </div>
             </div>
@@ -288,80 +292,81 @@ const FeeManagement = () => {
             {/* Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
 
-                {/* Total Due */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm transition-all duration-300 relative">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0">
+                <div className="bg-white p-7 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-rose-100/50 transition-all duration-500"></div>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0 relative z-10">
                         <div>
-                            <p className="text-xs md:text-sm font-medium text-gray-500">Total Due</p>
-                            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Outstanding Balance</p>
+                            <h3 className="text-3xl font-black text-rose-600 tracking-tighter">
                                 {formatCurrency(dueAmount)}
                             </h3>
                             {isPaid ? (
-                                <span className="inline-flex items-center gap-1 mt-1 md:mt-2 text-[10px] md:text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 md:py-1 rounded-full">
-                                    <CheckCircle size={10} className="md:w-3 md:h-3" /> No Dues
+                                <span className="inline-flex items-center gap-2 mt-4 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100">
+                                    <CheckCircle size={12} /> Settled
                                 </span>
                             ) : (
-                                <span className="inline-flex items-center gap-1 mt-1 md:mt-2 text-[10px] md:text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 md:py-1 rounded-full">
-                                    <AlertCircle size={10} className="md:w-3 md:h-3" /> Pending
+                                <span className="inline-flex items-center gap-2 mt-4 text-[9px] font-black uppercase tracking-widest text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100">
+                                    <AlertCircle size={12} /> Pending
                                 </span>
                             )}
                         </div>
-                        <div className={`absolute top-4 right-4 p-2 md:p-3 rounded-xl ${isPaid ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
-                            <AlertCircle size={16} className="md:w-6 md:h-6" />
+                        <div className="p-3 rounded-[1.2rem] bg-rose-600 text-white shadow-lg shadow-rose-200 group-hover:rotate-12 transition-transform">
+                            <AlertCircle size={28} />
                         </div>
                     </div>
                 </div>
 
-                {/* Paid Amount */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm transition-all duration-300 relative">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0">
+                <div className="bg-white p-7 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-indigo-100/50 transition-all duration-500"></div>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0 relative z-10">
                         <div>
-                            <p className="text-xs md:text-sm font-medium text-gray-500">Total Paid</p>
-                            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Total Deposited</p>
+                            <h3 className="text-3xl font-black text-indigo-600 tracking-tighter">
                                 {formatCurrency(stats.paid)}
                             </h3>
-                            <p className="text-[10px] md:text-xs text-gray-400 mt-1 md:mt-2">
-                                Amount collected
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-5 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+                                Verified Record
                             </p>
                         </div>
-                        <div className="absolute top-4 right-4 p-2 md:p-3 rounded-xl bg-blue-50 text-blue-500">
-                            <CheckCircle size={16} className="md:w-6 md:h-6" />
+                        <div className="p-3 rounded-[1.2rem] bg-indigo-600 text-white shadow-lg shadow-indigo-200 group-hover:-rotate-12 transition-transform">
+                            <CheckCircle size={28} />
                         </div>
                     </div>
                 </div>
 
-                {/* Credits */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm transition-all duration-300 relative">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0">
+                <div className="bg-white p-7 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-100/50 transition-all duration-500"></div>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0 relative z-10">
                         <div>
-                            <p className="text-xs md:text-sm font-medium text-gray-500">Credited</p>
-                            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Total Concessions</p>
+                            <h3 className="text-3xl font-black text-amber-600 tracking-tighter">
                                 {formatCurrency(stats.credit)}
                             </h3>
-                            <p className="text-[10px] md:text-xs text-gray-400 mt-1 md:mt-2">
-                                Total Credited
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-5">
+                                Scholarships Applied
                             </p>
                         </div>
-                        <div className="absolute top-4 right-4 p-2 md:p-3 rounded-xl bg-orange-50 text-orange-500">
-                            <Zap size={16} className="md:w-6 md:h-6" />
+                        <div className="p-3 rounded-[1.2rem] bg-amber-500 text-white shadow-lg shadow-amber-200">
+                            <Zap size={28} />
                         </div>
                     </div>
                 </div>
 
-                {/* Total Fee */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm transition-all duration-300 relative">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0">
+                <div className="bg-white p-7 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-cyan-100/50 transition-all duration-500"></div>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-0 relative z-10">
                         <div>
-                            <p className="text-xs md:text-sm font-medium text-gray-500">Total Fee</p>
-                            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Course Value</p>
+                            <h3 className="text-3xl font-black text-cyan-600 tracking-tighter">
                                 {formatCurrency(stats.total)}
                             </h3>
-                            <p className="text-[10px] md:text-xs text-gray-400 mt-1 md:mt-2">
-                                Total Applicable
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-5 italic">
+                                Academic Year Net
                             </p>
                         </div>
-                        <div className="absolute top-4 right-4 p-2 md:p-3 rounded-xl bg-purple-50 text-purple-500">
-                            <BookOpen size={16} className="md:w-6 md:h-6" />
+                        <div className="p-3 rounded-[1.2rem] bg-cyan-500 text-white shadow-lg shadow-cyan-200">
+                            <BookOpen size={28} />
                         </div>
                     </div>
                 </div>

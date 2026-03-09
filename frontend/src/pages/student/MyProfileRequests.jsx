@@ -91,7 +91,7 @@ const MyProfileRequests = () => {
                         }
 
                         return (
-                            <div key={req.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
+                            <div key={req.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-50 pb-4 mb-4 gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-indigo-50 rounded-xl">

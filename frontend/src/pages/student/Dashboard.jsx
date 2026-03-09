@@ -644,8 +644,6 @@ const Dashboard = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-                            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-indigo-500/50 rounded-full blur-2xl"></div>
                         </div>
 
                         <div className="p-8">
@@ -717,7 +715,7 @@ const Dashboard = () => {
 
                             <button
                                 onClick={() => setShowBirthday(false)}
-                                className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all text-lg"
+                                className="w-full py-3 bg-amber-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-lg"
                             >
                                 Thank You!
                             </button>
@@ -733,79 +731,84 @@ const Dashboard = () => {
                 studentData={displayData}
             />
 
-            {/* Premium Welcome Header (Ultra Compact on Mobile) */}
-            <header className={`relative overflow-hidden rounded-2xl lg:rounded-[2rem] p-4 lg:p-8 transition-all duration-700 max-w-full ${isBirthday ? 'bg-gradient-to-br from-amber-400 via-orange-400 to-pink-500 shadow-xl shadow-amber-200/40 text-white' : (isProfileVerified ? 'bg-white border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 shadow-xl shadow-indigo-100/50 text-white')}`}>
+            {/* Premium Welcome Header (Vibrant) */}
+            <header className={`relative overflow-hidden rounded-[2.5rem] p-5 sm:p-6 lg:p-10 transition-all duration-700 max-w-full group shadow-xl border border-white/10 ${isBirthday ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-200 text-white' : (isProfileVerified ? 'bg-slate-900 shadow-slate-900/20 text-white' : 'bg-indigo-600 shadow-indigo-200/50 text-white')}`}>
                 {/* Background Decorations */}
-                <div className="absolute top-0 right-0 w-32 lg:w-64 h-32 lg:h-64 bg-white/5 rounded-full -mr-10 lg:-mr-20 -mt-10 lg:-mt-20 blur-xl lg:blur-3xl pointer-events-none"></div>
-                <div className="absolute bottom-0 left-0 w-24 lg:w-32 h-24 lg:h-32 bg-black/5 rounded-full -ml-8 lg:-ml-10 -mb-8 lg:-mb-10 blur-xl lg:blur-2xl pointer-events-none"></div>
+                <div className={`absolute top-0 right-0 w-64 lg:w-96 h-64 lg:h-96 rounded-full -mr-20 lg:-mr-32 -mt-20 lg:-mt-32 blur-3xl pointer-events-none group-hover:scale-110 transition-transform duration-1000 ${isBirthday ? 'bg-white/10' : (isProfileVerified ? 'bg-emerald-500/10' : 'bg-white/10')}`}></div>
+                <div className={`absolute bottom-0 left-0 w-48 lg:w-64 h-48 lg:h-64 rounded-full -ml-20 lg:-ml-32 -mb-20 lg:-mb-32 blur-3xl pointer-events-none ${isBirthday ? 'bg-black/5' : (isProfileVerified ? 'bg-emerald-500/5' : 'bg-black/5')}`}></div>
 
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-3 lg:gap-8">
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 lg:gap-10">
                     {/* Profile Photo with Status Badge */}
-                    <div className="relative group shrink-0 mt-1 lg:mt-0">
-                        <div className={`h-16 w-16 lg:h-24 lg:w-24 rounded-2xl lg:rounded-[2rem] p-1 lg:p-1.5 transition-transform duration-500 group-hover:scale-105 group-hover:rotate-2 ${isBirthday ? 'bg-white/30' : (isProfileVerified ? 'bg-indigo-50' : 'bg-white/20')}`}>
-                            <div className="h-full w-full rounded-xl lg:rounded-[1.6rem] overflow-hidden shadow-inner bg-white/10">
+                    <div className="relative group shrink-0">
+                        <div className={`h-20 w-20 lg:h-28 lg:w-28 rounded-[2rem] p-1 lg:p-1.5 transition-all duration-500 group-hover:scale-105 group-hover:rotate-3 shadow-2xl ${isBirthday ? 'bg-white/30' : 'bg-white/20'}`}>
+                            <div className="h-full w-full rounded-[1.6rem] overflow-hidden shadow-inner bg-white">
                                 {displayData?.student_photo || user?.student_photo ? (
                                     <img
                                         src={displayData?.student_photo || user?.student_photo}
                                         alt="Profile"
-                                        className="h-full w-full object-cover"
+                                        className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
                                     />
                                 ) : (
-                                    <div className="h-full w-full flex items-center justify-center bg-gray-100 text-gray-400">
-                                        <User className="w-8 h-8 lg:w-10 lg:h-10" />
+                                    <div className="h-full w-full flex items-center justify-center bg-gray-50 text-gray-400">
+                                        <User className="w-10 h-10 lg:w-12 lg:h-12" />
                                     </div>
                                 )}
                             </div>
                         </div>
                         {isProfileVerified ? (
-                            <div className="absolute -bottom-1 -right-1 bg-white p-0.5 lg:p-1 rounded-full shadow-lg border border-indigo-50">
-                                <BadgeCheck className="text-indigo-600 w-5 h-5 lg:w-6 lg:h-6" />
+                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white">
+                                <BadgeCheck className="text-white w-5 h-5 lg:w-6 lg:h-6" />
                             </div>
                         ) : (
-                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-lg lg:rounded-xl shadow-lg border-2 border-white animate-bounce">
-                                <ShieldAlert className="text-white w-3 h-3 lg:w-4 lg:h-4" />
+                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-xl lg:rounded-2xl shadow-2xl border-2 border-white animate-bounce">
+                                <ShieldAlert className="text-white w-4 h-4 lg:w-5 lg:h-5" />
                             </div>
                         )}
                     </div>
 
                     {/* Text Content */}
-                    <div className="flex-1 text-center md:text-left w-full">
-                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-1 lg:gap-2 mb-1">
-                            <h1 className={`text-[22px] leading-6 sm:text-2xl lg:text-4xl font-black tracking-tight ${isBirthday ? 'text-white' : (isProfileVerified ? 'text-gray-900' : 'text-white')}`}>
-                                {isBirthday ? 'Happy Birthday, ' : 'Welcome back, '}{displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}!
+                    <div className="flex-1 text-center md:text-left">
+                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-2 mb-2">
+                            <h1 className="text-3xl lg:text-5xl font-black tracking-tight leading-tight text-white">
+                                {isBirthday ? 'Happy Birthday, ' : 'Welcome back, '}<span className={isBirthday ? 'text-amber-100' : 'text-white/90'}>{displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}</span>!
                             </h1>
-                            {isBirthday && <Sparkles className="text-amber-200 animate-pulse hidden sm:block w-5 h-5 lg:w-6 lg:h-6" />}
+                            {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-8 h-8" />}
                         </div>
-                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-2 lg:gap-x-4 gap-y-0.5 lg:gap-y-1 mb-2 lg:mb-4 opacity-90">
-                            <span className="text-[10px] sm:text-[11px] lg:text-sm font-bold uppercase tracking-wider truncate max-w-full px-2">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
+                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1 mb-3 lg:mb-4">
+                            <span className="text-[10px] lg:text-[13px] font-black uppercase tracking-[0.2em] px-1 text-white/80">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
                         </div>
 
                         {/* Status / Quick Action Row */}
-                        {!isProfileVerified && (
-                            <div className="inline-flex items-center justify-center gap-1.5 lg:gap-3 p-1 pr-2 lg:pr-4 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg lg:rounded-2xl animate-fade-in mx-auto md:mx-0 max-w-full">
-                                <span className="bg-amber-400 text-white text-[8px] lg:text-[10px] font-black px-1.5 lg:px-2 py-0.5 lg:py-1 rounded-md lg:rounded-xl uppercase tracking-widest sm:ml-1 shadow-sm shrink-0">Critical</span>
-                                <p className="text-[9px] sm:text-xs font-bold tracking-tight text-white/90 truncate">Please verify your profile to fix database errors.</p>
+                        {!isProfileVerified ? (
+                            <div className="inline-flex items-center gap-3 p-1.5 sm:p-2 pr-4 sm:pr-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl animate-in fade-in slide-in-from-left-4 duration-500">
+                                <span className="bg-amber-400 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 sm:py-1 rounded-xl uppercase tracking-widest shadow-sm">Critical</span>
+                                <p className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white">Please verify your profile to fix database errors.</p>
+                            </div>
+                        ) : (
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-full animate-in fade-in slide-in-from-left-4 duration-500">
+                                <BadgeCheck size={12} className="text-emerald-400" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-400">Verified Account</span>
                             </div>
                         )}
                     </div>
 
-                    {/* Desktop CTA / Verification Highlight */}
-                    <div className="mt-1 lg:mt-0 w-full md:w-auto">
+                    {/* CTA Section - Hidden or small on mobile */}
+                    <div className="shrink-0 w-full md:w-auto hidden sm:block">
                         {isProfileVerified ? (
-                            <div className={`flex flex-row md:flex-col items-center justify-center lg:items-end gap-1.5 lg:gap-2 p-1.5 sm:p-2.5 lg:p-4 rounded-xl lg:rounded-3xl border transform transition-all cursor-default shadow-sm ${isBirthday ? 'bg-white/10 border-white/20 text-white' : 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-100/50 text-emerald-700 shadow-emerald-500/10'}`}>
-                                <div className="flex items-center gap-1 lg:gap-2">
-                                    <BadgeCheck className={`w-3 h-3 sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px] ${isBirthday ? 'text-white' : 'text-emerald-600'}`} />
-                                    <span className={`text-[9px] sm:text-[10px] lg:text-[11px] font-black uppercase tracking-widest ${isBirthday ? '' : 'bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-green-600'}`}>Verified Account</span>
+                            <div className={`flex flex-col items-center md:items-end gap-1 p-4 lg:p-5 rounded-[2rem] border backdrop-blur-md transition-all duration-300 ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'}`}>
+                                <div className="flex items-center gap-2">
+                                    <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-500'}`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-500'}`}>Status</span>
                                 </div>
-                                <p className={`text-[8px] lg:text-[10px] hidden sm:block font-semibold ${isBirthday ? 'opacity-70 text-white' : 'text-emerald-600/70'}`}>Data Synchronized with DB</p>
+                                <p className={`text-[11px] lg:text-[13px] font-bold ${isBirthday ? 'text-white/80' : 'text-emerald-500/50'}`}>Data Synchronized</p>
                             </div>
                         ) : (
                             <button
                                 onClick={() => setShowVerifyProfile(true)}
-                                className={`w-full md:w-auto flex items-center justify-center gap-1.5 lg:gap-3 px-4 lg:px-8 py-2 md:py-2.5 lg:py-3.5 rounded-xl lg:rounded-[1.5rem] font-black text-[10px] sm:text-xs lg:text-sm tracking-wide shadow-lg lg:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 active:scale-95 group ${isBirthday ? 'bg-white text-orange-600' : 'bg-white text-indigo-700'}`}
+                                className={`w-full md:w-auto flex items-center justify-center gap-3 px-10 py-5 rounded-[1.5rem] font-black text-[13px] transition-all duration-300 transform hover:-translate-y-1 active:scale-95 group shadow-2xl uppercase tracking-widest ${isBirthday ? 'bg-white text-orange-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                             >
-                                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px] group-hover:rotate-180 transition-transform duration-700" />
-                                VERIFY PROFILE NOW
+                                <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-700" />
+                                Verify Profile
                             </button>
                         )}
                     </div>
@@ -816,49 +819,51 @@ const Dashboard = () => {
             <div className={`grid grid-cols-2 md:grid-cols-2 ${isRegistrationCompleted ? 'lg:grid-cols-3' : ''} gap-3 lg:gap-6`}>
                 {/* Today's Status */}
                 {isEnabled('attendance') && (
-                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
-                        <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 lg:mb-4">Today's Attendance</h3>
-                        <div className="flex items-center gap-2 lg:gap-4">
+                    <div className={(() => {
+                        let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
+                        if (status === 'not marked yet') status = 'not marked';
+                        const isSunday = new Date().getDay() === 0;
+                        if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
+
+                        let bgClass = 'bg-slate-700 shadow-slate-200/50';
+                        if (status === 'present') bgClass = 'bg-emerald-600 shadow-emerald-200/50';
+                        else if (status === 'absent') bgClass = 'bg-rose-600 shadow-rose-200/50';
+                        else if (status === 'holiday' || status === 'no class work') bgClass = 'bg-amber-500 shadow-amber-200/50';
+
+                        return `rounded-[2rem] p-4 sm:p-5 lg:p-8 shadow-xl border border-white/10 flex flex-col justify-center h-full transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group overflow-hidden relative text-white ${bgClass}`;
+                    })()}>
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700"></div>
+                        <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em] mb-4 sm:mb-6 relative z-10">Today's Attendance</h3>
+                        <div className="flex items-center gap-3 sm:gap-5 relative z-10">
                             {(() => {
-                                // Priority: Calculated entry from history > displayData.today_attendance_status
                                 let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
-
-                                // Safe fallback
                                 if (status === 'not marked yet') status = 'not marked';
-
-                                // If today is Sunday, override any 'present' or 'not marked' to 'holiday'
                                 const isSunday = new Date().getDay() === 0;
-                                if (isSunday && (status === 'present' || status === 'not marked')) {
-                                    status = 'holiday';
-                                }
+                                if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
 
-                                let colorClass = 'bg-gray-100 text-gray-600';
-                                let Icon = Clock;
-                                let label = 'Not Marked';
+                                let Icon = CheckCircle;
+                                let label = 'Present Today';
 
-                                if (status === 'present') {
-                                    colorClass = 'bg-green-100 text-green-700';
-                                    Icon = CheckCircle;
-                                    label = 'Present';
-                                } else if (status === 'absent') {
-                                    colorClass = 'bg-red-100 text-red-700';
-                                    Icon = MapPin;
-                                    label = 'Absent';
+                                if (status === 'absent') {
+                                    Icon = ShieldAlert;
+                                    label = 'Absent Today';
                                 } else if (status === 'holiday' || status === 'no class work') {
-                                    colorClass = 'bg-amber-100 text-amber-700';
-                                    Icon = BookOpen;
-                                    label = status === 'holiday' ? 'Holiday' : 'No Class Work';
+                                    Icon = Calendar;
+                                    label = 'Campus Holiday';
+                                } else if (status === 'not marked') {
+                                    Icon = Clock;
+                                    label = 'Active Session';
                                 }
 
                                 return (
                                     <>
-                                        <div className={`p-2 lg:p-3 rounded-full ${colorClass} shrink-0`}>
-                                            <Icon size={20} className="lg:w-6 lg:h-6" />
+                                        <div className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white/20 text-white shrink-0 transition-transform group-hover:scale-110 duration-500">
+                                            <Icon size={20} className="sm:w-6 sm:h-6" />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-base lg:text-2xl font-bold text-gray-900 truncate leading-tight">{label}</p>
-                                            <p className="text-[10px] lg:text-xs text-gray-500 truncate">
-                                                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                            <p className="text-white font-black text-base sm:text-lg lg:text-3xl leading-tight tracking-tight truncate">{label}</p>
+                                            <p className="text-white/60 text-[9px] sm:text-xs font-bold mt-0.5 sm:mt-1 uppercase tracking-widest italic">
+                                                {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
                                             </p>
                                         </div>
                                     </>
@@ -868,184 +873,196 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* Attendance Summary: Current Week & Month */}
+                {/* Attendance Summary */}
                 {isEnabled('attendance') && (
-                    <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center h-full">
-                        <div className="flex justify-between items-start mb-2 lg:mb-4">
-                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Summary</h3>
-                            <Link to="/student/attendance" className="text-[10px] lg:text-xs text-blue-600 hover:underline font-medium">View Details</Link>
+                    <div className="bg-blue-600 rounded-[2rem] p-4 sm:p-5 lg:p-8 shadow-xl shadow-blue-200/50 border border-white/10 flex flex-col justify-center h-full transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group overflow-hidden relative text-white">
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700"></div>
+                        <div className="flex justify-between items-start mb-4 sm:mb-6 relative z-10">
+                            <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Overall Progress</h3>
+                            <Link to="/student/attendance" className="p-2 bg-white/10 rounded-xl text-white hover:bg-white/20 transition-all">
+                                <ArrowRight size={18} />
+                            </Link>
                         </div>
                         {attendanceHistory?.semester ? (
-                            <div className="space-y-2 mt-2">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Semester</p>
-                                        <p className="text-2xl lg:text-4xl font-bold text-indigo-700 mt-1">
-                                            {attendanceStats?.percentage || '0.0'}%
-                                        </p>
+                            <div className="flex items-end justify-between relative z-10 gap-2">
+                                <div className="flex flex-col min-w-0">
+                                    <div className="flex items-baseline gap-0.5 sm:gap-1">
+                                        <span className="text-2xl sm:text-3xl lg:text-5xl font-black text-white tracking-tighter truncate">
+                                            {attendanceStats?.percentage || '0.0'}
+                                        </span>
+                                        <span className="text-sm sm:text-lg font-black text-blue-200">%</span>
                                     </div>
-                                    <div className="text-right text-xs lg:text-sm text-gray-500">
-                                        <div>
-                                            <span className="font-bold text-green-600">
-                                                {attendanceStats?.present || 0}
-                                            </span>{' '}
-                                            Present
-                                        </div>
-                                        <div className="mt-1">
-                                            <span className="font-bold text-red-500">
-                                                {attendanceStats?.absent || 0}
-                                            </span>{' '}
-                                            Absent
-                                        </div>
+                                    <span className="text-[8px] sm:text-[10px] font-black text-white/70 uppercase tracking-[0.2em] mt-0.5 sm:mt-1 truncate">Average</span>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 font-black uppercase tracking-widest text-[7px] sm:text-[9px] shrink-0">
+                                    <div className="flex items-center gap-1 text-white bg-white/10 px-1.5 py-0.5 sm:py-1 rounded-lg border border-white/10 w-full justify-between">
+                                        <span className="opacity-70">P:</span>
+                                        <span>{attendanceStats?.present || 0}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-white bg-white/10 px-1.5 py-0.5 sm:py-1 rounded-lg border border-white/10 w-full justify-between">
+                                        <span className="opacity-70">A:</span>
+                                        <span>{attendanceStats?.absent || 0}</span>
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex items-center justify-center h-16 text-gray-400 text-sm">
-                                Attendance data not available.
+                            <div className="flex items-center justify-center h-16 text-slate-400 text-sm font-black italic relative z-10">
+                                Data not available
                             </div>
                         )}
                     </div>
                 )}
 
                 {/* Registration Status Card (Only if Completed) */}
-                {isRegistrationCompleted && isEnabled('semester-registration') && (
-                    <div className="col-span-2 lg:col-span-1 bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden h-full">
-                        <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
-                            <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Registration Status</h3>
-                            <div className="p-1 lg:p-1.5 bg-green-100 text-green-600 rounded-lg">
-                                <CheckCircle size={16} className="lg:w-[18px] lg:h-[18px]" />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 z-10">
-                            <div>
-                                <p className="text-xl lg:text-2xl font-bold text-gray-900">Completed</p>
-                                <Link to="/student/semester-registration" className="text-[10px] lg:text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 mt-1">
-                                    View Slip <ArrowRight size={12} />
-                                </Link>
-                            </div>
-                        </div>
-                        <div className="absolute right-0 bottom-0 opacity-10">
-                            <FileText size={80} className="text-green-600 transform translate-x-4 translate-y-4" />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Fee & Registration Pending Grid (Only if NOT Completed) */}
-            {!isRegistrationCompleted && (isEnabled('semester-registration') || isEnabled('fees')) && (
-                <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 lg:gap-6 mb-6">
-                    {/* Action Required: Registration */}
-                    {isEnabled('semester-registration') && (
-                        <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-orange-100 flex flex-col justify-center relative overflow-hidden">
-                            <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
-                                <h3 className="text-[10px] lg:text-xs font-semibold text-orange-600 uppercase tracking-wider">Action Required</h3>
-                                <div className="p-1 lg:p-1.5 bg-orange-100 text-orange-600 rounded-lg">
-                                    <AlertCircle size={16} className="lg:w-[18px] lg:h-[18px]" />
+                {
+                    isRegistrationCompleted && isEnabled('semester-registration') && (
+                        <div className="col-span-2 lg:col-span-1 bg-emerald-600 rounded-[2rem] p-4 sm:p-5 lg:p-8 shadow-xl shadow-emerald-200/50 border border-white/10 flex flex-col justify-center relative overflow-hidden h-full transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group text-white">
+                            <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700"></div>
+                            <div className="flex items-center justify-between mb-3 sm:mb-6 z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Registration</h3>
+                                <div className="p-2 sm:p-3 bg-white/20 text-white rounded-xl sm:rounded-2xl">
+                                    <CheckCircle size={20} className="sm:w-6 sm:h-6" />
                                 </div>
                             </div>
-                            <div>
-                                <p className="text-base lg:text-xl font-bold text-gray-900 mb-2 truncate">Registration Pending</p>
-                                <Link
-                                    to="/student/semester-registration"
-                                    className="inline-flex items-center px-3 py-1.5 bg-orange-600 text-white text-[10px] lg:text-xs font-bold rounded-lg shadow-md hover:bg-orange-700 transition-colors"
-                                >
-                                    Complete Now
-                                </Link>
-                            </div>
-                            <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-orange-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
-                        </div>
-                    )}
 
-                    {/* Fee Status */}
-                    {isEnabled('fees') && (
-                        <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden">
-                            <div className="flex items-center justify-between mb-2 lg:mb-4 z-10">
-                                <h3 className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider">Fee Status</h3>
-                                <div className={`p-1 lg:p-1.5 rounded-lg ${getStatusColor(normalizeFeeStatus().toLowerCase().replace(' ', '_'))}`}>
-                                    {/* Using Wallet Icon for Fees */}
-                                    <Smartphone size={16} className="lg:w-[18px] lg:h-[18px] hidden" />
-                                    <span className="font-bold text-xs lg:text-sm">$</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3 z-10">
-                                <div>
-                                    <p className="text-lg lg:text-2xl font-bold text-gray-900 truncate">{feeStatusLabel}</p>
-                                    <Link to="/student/fees" className="text-[10px] lg:text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 mt-1">
-                                        View Details <ArrowRight size={12} />
+                            <div className="flex items-center gap-3 z-10 mt-1 sm:mt-auto">
+                                <div className="min-w-0">
+                                    <p className="text-lg sm:text-2xl font-black text-white tracking-tight truncate">Verified Account</p>
+                                    <Link to="/student/semester-registration" className="text-[9px] sm:text-[10px] text-white/70 hover:text-white transition-colors uppercase font-black tracking-[0.1em] flex items-center gap-2 mt-1 sm:mt-2">
+                                        Registration Slip <ArrowRight size={14} />
                                     </Link>
                                 </div>
                             </div>
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-full mix-blend-multiply filter blur-xl opacity-70"></div>
                         </div>
-                    )}
-                </div>
-            )}
+                    )
+                }
+            </div >
+
+            {/* Fee & Registration Pending Grid (Only if NOT Completed) */}
+            {
+                !isRegistrationCompleted && (isEnabled('semester-registration') || isEnabled('fees')) && (
+                    <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 lg:gap-6 mb-6">
+                        {/* Action Required: Registration */}
+                        {isEnabled('semester-registration') && (
+                            <div className="bg-orange-600 rounded-[2rem] p-4 sm:p-5 lg:p-8 shadow-xl shadow-orange-200/50 border border-white/10 flex flex-col justify-center relative overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2 group text-white">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/20 transition-all duration-500"></div>
+                                <div className="flex items-center justify-between mb-4 sm:mb-6 z-10">
+                                    <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Action Required</h3>
+                                    <div className="p-2 sm:p-3 bg-white/20 text-white rounded-2xl border border-white/10 shadow-sm">
+                                        <AlertCircle size={20} />
+                                    </div>
+                                </div>
+                                <div className="relative z-10">
+                                    <p className="text-xl lg:text-2xl font-black text-white mb-3 tracking-tight">Registration Pending</p>
+                                    <Link
+                                        to="/student/semester-registration"
+                                        className="inline-flex items-center px-4 sm:px-6 py-2 bg-white text-orange-600 text-[10px] sm:text-[11px] font-black rounded-xl shadow-lg hover:bg-orange-50 transition-all transform hover:-translate-y-0.5 uppercase tracking-widest"
+                                    >
+                                        Complete Now
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Fee Status */}
+                        {isEnabled('fees') && (
+                            <div className="bg-cyan-600 rounded-[2rem] p-4 sm:p-5 lg:p-8 shadow-xl shadow-cyan-200/50 border border-white/10 flex flex-col justify-center relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:-translate-y-2 group text-white">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/20 transition-all duration-300"></div>
+                                <div className="flex items-center justify-between mb-4 sm:mb-6 z-10">
+                                    <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Financial Status</h3>
+                                    <div className="p-2 sm:p-3 rounded-2xl border border-white/10 bg-white/20 text-white shadow-sm">
+                                        <span className="font-black text-lg">$</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 z-10 relative">
+                                    <div className="w-full">
+                                        <p className="text-xl lg:text-2xl font-black text-white truncate tracking-tight">{feeStatusLabel}</p>
+                                        <Link to="/student/fees" className="text-[9px] sm:text-[10px] text-white/70 hover:text-white font-black uppercase tracking-[0.1em] flex items-center gap-2 mt-3 transition-colors">
+                                            Manage Payments <ArrowRight size={14} />
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )
+            }
 
             {/* Academic summary block removed per requirement */}
 
             {/* Today's Schedule (NEW) */}
-            {isEnabled('timetable') && (
-                <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                            <Clock size={16} /> Today's Schedule
-                        </h3>
-                        <Link to="/student/timetable" className="text-xs text-indigo-600 hover:underline font-bold flex items-center gap-1">
-                            Full Timetable <ArrowRight size={12} />
-                        </Link>
-                    </div>
+            {
+                isEnabled('timetable') && (
+                    <div className="bg-white rounded-[2rem] p-5 sm:p-6 lg:p-8 shadow-xl shadow-slate-200/40 border border-slate-100 mb-8 transition-all duration-500 hover:shadow-2xl group overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
+                        <div className="flex items-center justify-between mb-6 sm:mb-8 relative z-10">
+                            <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                <div className="p-1.5 sm:p-2 bg-purple-50 text-purple-600 rounded-xl border border-purple-100 shadow-sm">
+                                    <Clock size={16} />
+                                </div>
+                                Daily Timeline
+                            </h3>
+                            <Link to="/student/timetable" className="text-[10px] sm:text-[11px] font-black text-indigo-600 hover:text-indigo-700 transition-colors flex items-center gap-2 uppercase tracking-widest pl-2 sm:pl-4">
+                                Full Schedule <ArrowRight size={14} />
+                            </Link>
+                        </div>
 
-                    {todayTimetable && todayTimetable.length > 0 ? (
-                        <div className="overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar">
-                            <div className="flex gap-4 min-w-max">
-                                {todayTimetable.map((slot, idx) => (
-                                    <div
-                                        key={slot.id}
-                                        className={`w-44 p-4 rounded-xl border flex flex-col justify-between transition-all hover:shadow-md ${slot.entry
-                                            ? slot.entry.type === 'subject' ? 'bg-indigo-50/50 border-indigo-100' :
-                                                slot.entry.type === 'lab' ? 'bg-purple-50/50 border-purple-100' :
-                                                    'bg-amber-50/50 border-amber-100'
-                                            : 'bg-slate-50 border-slate-100 opacity-60'
-                                            }`}
-                                    >
-                                        <div className="mb-3">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{slot.slot_name}</p>
-                                            <p className="text-[11px] font-bold text-slate-600 mb-2">{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</p>
-                                            <h4 className="text-sm font-bold text-slate-800 line-clamp-2 leading-tight">
-                                                {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Class'}
-                                            </h4>
-                                        </div>
-
-                                        {slot.entry && (
-                                            <div className="flex items-center justify-between mt-auto">
-                                                <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${slot.entry.type === 'subject' ? 'bg-indigo-100 text-indigo-600' :
-                                                    slot.entry.type === 'lab' ? 'bg-purple-100 text-purple-600' :
-                                                        'bg-amber-100 text-amber-600'
-                                                    }`}>
-                                                    {slot.entry.type}
-                                                </span>
-                                                {slot.entry.subject_code && (
-                                                    <span className="text-[9px] font-bold text-slate-400">{slot.entry.subject_code}</span>
-                                                )}
+                        {todayTimetable && todayTimetable.length > 0 ? (
+                            <div className="overflow-x-auto pb-4 -mx-2 px-2 custom-scrollbar relative z-10">
+                                <div className="flex gap-5 min-w-max">
+                                    {todayTimetable.map((slot, idx) => (
+                                        <div
+                                            key={slot.id}
+                                            className={`flex-shrink-0 w-[160px] sm:w-[200px] p-4 sm:p-5 rounded-[1.8rem] border flex flex-col justify-between transition-all duration-500 hover:scale-[1.03] hover:shadow-xl ${slot.entry
+                                                ? slot.entry.type === 'subject' ? 'bg-indigo-50/30 border-indigo-100/50 hover:bg-indigo-50' :
+                                                    slot.entry.type === 'lab' ? 'bg-purple-50/30 border-purple-100/50 hover:bg-purple-50' :
+                                                        'bg-amber-50/30 border-amber-100/50 hover:bg-amber-50'
+                                                : 'bg-slate-50 border-slate-100 opacity-60'
+                                                }`}
+                                        >
+                                            <div className="mb-3 sm:mb-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{slot.slot_name}</p>
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${slot.entry ? 'animate-pulse bg-indigo-500' : 'bg-slate-300'}`}></span>
+                                                </div>
+                                                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mb-2 sm:mb-3 flex items-center gap-1.5">
+                                                    <Clock size={10} className="text-slate-400" />
+                                                    {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                                                </p>
+                                                <h4 className="text-[13px] sm:text-[15px] font-black text-slate-800 line-clamp-2 leading-tight tracking-tight min-h-[2.2rem]">
+                                                    {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Session'}
+                                                </h4>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+
+                                            {slot.entry && (
+                                                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100/50">
+                                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${slot.entry.type === 'subject' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                        slot.entry.type === 'lab' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                                            'bg-amber-50 text-amber-600 border-amber-100'
+                                                        }`}>
+                                                        {slot.entry.type}
+                                                    </span>
+                                                    {slot.entry.subject_code && (
+                                                        <span className="text-[9px] font-black text-slate-300 tracking-tighter">{slot.entry.subject_code}</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm mb-3">
-                                <Calendar className="w-6 h-6 text-slate-300" />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-12 bg-slate-50/50 rounded-[2rem] border border-dashed border-slate-200 transition-all group-hover:bg-white duration-500 relative z-10">
+                                <div className="w-16 h-16 rounded-[1.5rem] bg-white flex items-center justify-center shadow-lg shadow-slate-200/50 border border-slate-100 mb-4 transform transition-transform group-hover:scale-110 group-hover:rotate-3">
+                                    <Calendar className="w-8 h-8 text-slate-300" />
+                                </div>
+                                <p className="text-[15px] font-black text-slate-500 tracking-tight">Open Horizon Today</p>
+                                <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black mt-1.5">No academic sessions scheduled</p>
                             </div>
-                            <p className="text-sm font-bold text-slate-400">No classes scheduled for today</p>
-                            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-black mt-1">RELAX & RECHARGE</p>
-                        </div>
-                    )}
-                </div>
-            )}
+                        )}
+                    </div>
+                )
+            }
 
             {/* REMOVED STANDALONE CLUB PAYMENT ALERT */}
 
@@ -1059,45 +1076,46 @@ const Dashboard = () => {
 
                         if (myClubs.length > 0) {
                             return (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 relative z-10 transition-all">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                                                <Users size={18} />
+                                <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-5 sm:p-6 lg:p-8 relative z-10 transition-all duration-500 hover:shadow-2xl group overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-amber-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 transition-opacity duration-700"></div>
+                                    <div className="flex items-center justify-between mb-6 sm:mb-8 relative z-10">
+                                        <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                            <div className="p-1.5 sm:p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shadow-sm">
+                                                <Users size={16} />
                                             </div>
-                                            Your Clubs
+                                            Your Communities
                                         </h3>
-                                        <Link to="/student/clubs" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
-                                            View All
+                                        <Link to="/student/clubs" className="text-[10px] sm:text-[11px] font-black text-indigo-600 hover:text-indigo-700 transition-colors uppercase tracking-widest pl-2 sm:pl-4 flex items-center gap-2">
+                                            Active Clusters <ArrowRight size={14} />
                                         </Link>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
                                         {myClubs.map((club) => {
                                             const isPaymentDue = club.payment_status === 'payment_due';
                                             return (
-                                                <div key={club.id} className={`rounded-xl p-4 border transition-all h-full flex flex-col ${isPaymentDue ? 'bg-orange-50/50 border-orange-200' : 'bg-gray-50 border-gray-100'}`}>
-                                                    <div className="flex items-start justify-between mb-3">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-10 w-10 rounded-lg bg-gray-200 overflow-hidden border border-gray-200 flex-shrink-0">
+                                                <div key={club.id} className={`rounded-[2rem] p-5 border transition-all duration-500 h-full flex flex-col group/card hover:shadow-2xl hover:scale-[1.02] ${isPaymentDue ? 'bg-orange-50/30 border-orange-100' : 'bg-slate-50 border-slate-100/50 hover:bg-white'}`}>
+                                                    <div className="flex items-start justify-between mb-5">
+                                                        <div className="flex items-center gap-3 sm:gap-4">
+                                                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-white overflow-hidden border border-slate-100 flex-shrink-0 shadow-sm group-hover/card:scale-110 transition-transform duration-500">
                                                                 {club.image_url ? (
                                                                     <img src={club.image_url} alt={club.name} className="w-full h-full object-cover" />
                                                                 ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-gray-400"><Users size={16} /></div>
+                                                                    <div className="w-full h-full flex items-center justify-center text-slate-300"><Users size={24} /></div>
                                                                 )}
                                                             </div>
-                                                            <div>
-                                                                <h4 className="text-base font-bold text-gray-900 line-clamp-1">{club.name}</h4>
-                                                                <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                                            <div className="min-w-0">
+                                                                <h4 className="text-[15px] sm:text-[17px] font-black text-slate-800 line-clamp-1 tracking-tight">{club.name}</h4>
+                                                                <div className="flex flex-wrap items-center gap-2 mt-1">
                                                                     {club.userStatus === 'approved' && (
-                                                                        <span className="bg-green-100 text-green-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><CheckCircle size={8} /> Member</span>
+                                                                        <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-lg border border-emerald-100 uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} /> Active</span>
                                                                     )}
                                                                     {club.userStatus === 'pending' && (
-                                                                        <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Clock size={8} /> Pending</span>
+                                                                        <span className="bg-amber-50 text-amber-600 text-[9px] font-black px-2 py-0.5 rounded-lg border border-amber-100 uppercase tracking-widest flex items-center gap-1"><Clock size={10} /> Pending</span>
                                                                     )}
 
                                                                     {isPaymentDue && (
-                                                                        <span className="text-[10px] text-orange-600 font-bold flex items-center gap-0.5 animate-pulse"><AlertCircle size={10} /> Payment Pending</span>
+                                                                        <span className="text-[9px] text-rose-600 font-black flex items-center gap-1 animate-pulse uppercase tracking-widest"><AlertCircle size={10} /> Action Required</span>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -1105,36 +1123,40 @@ const Dashboard = () => {
                                                     </div>
 
                                                     {/* Activity Feed for this club - abbreviated for grid */}
-                                                    <div className="flex-1 mb-3">
+                                                    <div className="flex-1 mb-5">
                                                         {club.userStatus === 'approved' && club.activities && club.activities.length > 0 ? (
-                                                            <div className="bg-white rounded-lg p-2 border border-gray-100 hover:border-indigo-100 transition-all cursor-pointer flex gap-2" onClick={() => navigate('/student/clubs')}>
+                                                            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-slate-100 hover:border-indigo-200 transition-all cursor-pointer flex gap-3 shadow-sm" onClick={() => navigate('/student/clubs')}>
                                                                 {club.activities[0].image_url && (
-                                                                    <div className="h-8 w-8 rounded-md overflow-hidden relative flex-shrink-0">
+                                                                    <div className="h-10 w-10 rounded-xl overflow-hidden relative flex-shrink-0">
                                                                         <img src={club.activities[0].image_url} alt="" className="w-full h-full object-cover" />
                                                                     </div>
                                                                 )}
                                                                 <div className="flex-1 min-w-0">
-                                                                    <h5 className="font-bold text-gray-900 line-clamp-1 text-[10px]">{club.activities[0].title}</h5>
-                                                                    <p className="text-[9px] text-gray-500 line-clamp-1">{club.activities[0].description}</p>
+                                                                    <h5 className="font-black text-slate-800 line-clamp-1 text-[11px] mb-0.5">{club.activities[0].title}</h5>
+                                                                    <p className="text-[10px] text-slate-400 font-bold line-clamp-1 italic">{club.activities[0].description}</p>
                                                                 </div>
                                                             </div>
-                                                        ) : null}
+                                                        ) : (
+                                                            <div className="h-16 flex items-center justify-center border border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                                                                No Recent Pulse
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     <div className="mt-auto">
                                                         {isPaymentDue ? (
                                                             <button
                                                                 onClick={() => navigate('/student/clubs')}
-                                                                className="w-full py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors shadow-sm animate-pulse-slow whitespace-nowrap"
+                                                                className="w-full py-3 bg-rose-600 text-white rounded-xl text-[11px] font-black hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20 uppercase tracking-widest transform hover:-translate-y-0.5"
                                                             >
-                                                                Pay Fee
+                                                                Settle Dues
                                                             </button>
                                                         ) : (
                                                             <Link
                                                                 to="/student/clubs"
-                                                                className="w-full block text-center py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors"
+                                                                className="w-full block text-center py-3 bg-white border border-slate-100 text-slate-500 rounded-xl text-[11px] font-black hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all uppercase tracking-widest"
                                                             >
-                                                                View Dashboard
+                                                                Open Portal
                                                             </Link>
                                                         )}
                                                     </div>
@@ -1147,7 +1169,7 @@ const Dashboard = () => {
                         } else {
                             // SHOW EXPLORE CLUBS LIST
                             return (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 relative z-10">
+                                <div className="bg-gradient-to-br from-amber-50 to-white hover:from-amber-100 hover:to-amber-50 rounded-2xl shadow-sm hover:shadow-lg border border-amber-100 p-6 relative z-10 transition-all duration-300 hover:-translate-y-1.5 group">
                                     <div className="flex items-center justify-between mb-4">
                                         <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                                             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
@@ -1206,13 +1228,14 @@ const Dashboard = () => {
 
                     {/* Feed Section - COMPACTED */}
                     {isEnabled('announcements') && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col flex-1 relative z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                    <div className="p-1.5 bg-blue-100 rounded-lg">
-                                        <span role="img" aria-label="feed" className="text-lg">📰</span>
+                        <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-5 sm:p-6 lg:p-8 flex flex-col flex-1 relative z-10 transition-all duration-500 hover:shadow-2xl group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-rose-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
+                            <div className="flex items-center justify-between mb-6 sm:mb-8 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                    <div className="p-1.5 sm:p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 shadow-sm">
+                                        <FileText size={16} />
                                     </div>
-                                    Recent Updates & Polls
+                                    Channel Updates
                                 </h3>
                                 <button
                                     onClick={refreshFeed}
@@ -1264,7 +1287,7 @@ const Dashboard = () => {
                                             return (
                                                 <div
                                                     key={`ann-${ann.id}`}
-                                                    className="p-4 rounded-lg bg-gray-50 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group"
+                                                    className="p-4 rounded-lg bg-white border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
                                                     onClick={() => {
                                                         setCurrentAnnouncement(ann);
                                                         setShowAnnouncement(true);
@@ -1304,15 +1327,16 @@ const Dashboard = () => {
                 {/* Right Column: Events & Services (4col) */}
                 <div className="lg:col-span-4 flex flex-col gap-6">
 
-                    {/* Upcoming Events Section (Moved Here) */}
+                    {/* Upcoming Events Section */}
                     {isEnabled('events') && upcomingEvents.length > 0 && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 lg:p-6 relative z-10">
-                            <div className="flex items-center justify-between mb-3 lg:mb-4">
-                                <h3 className="text-sm lg:text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                    <div className="p-1.5 lg:p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                                        <Calendar size={16} className="lg:w-[18px] lg:h-[18px]" />
+                        <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-5 sm:p-6 relative z-10 transition-all duration-500 hover:shadow-2xl group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
+                            <div className="flex items-center justify-between mb-6 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                    <div className="p-1.5 sm:p-2 bg-fuchsia-50 text-fuchsia-600 rounded-xl border border-fuchsia-100 shadow-sm">
+                                        <Calendar size={16} />
                                     </div>
-                                    Upcoming Events
+                                    Campus Events
                                 </h3>
                                 <Link
                                     to="/student/events"
@@ -1349,14 +1373,15 @@ const Dashboard = () => {
 
                     {/* Ticket Support Widget */}
                     {isEnabled('my-tickets') && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10 mb-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                                        <Users size={20} />
+                        <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-5 sm:p-6 flex flex-col h-fit relative z-10 mb-0 transition-all duration-500 hover:shadow-2xl group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
+                            <div className="flex items-center justify-between mb-6 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                    <div className="p-1.5 sm:p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shadow-sm">
+                                        <Users size={16} />
                                     </div>
-                                    <h3 className="text-lg font-semibold text-gray-900">Support</h3>
-                                </div>
+                                    Help Desk
+                                </h3>
                                 <a href={ticketAppUrl} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded">
                                     <ArrowRight size={16} />
                                 </a>
@@ -1378,14 +1403,15 @@ const Dashboard = () => {
 
                     {/* Services Widget */}
                     {isEnabled('services') && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col h-fit relative z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                        <FileText size={20} />
+                        <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-5 sm:p-6 flex flex-col h-fit relative z-10 transition-all duration-500 hover:shadow-2xl group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-blue-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
+                            <div className="flex items-center justify-between mb-6 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
+                                    <div className="p-1.5 sm:p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shadow-sm">
+                                        <FileText size={16} />
                                     </div>
-                                    <h3 className="text-lg font-semibold text-gray-900">Services</h3>
-                                </div>
+                                    Digital Services
+                                </h3>
                                 <Link to="/student/services" className="text-blue-600 hover:bg-blue-50 p-1 rounded">
                                     <ArrowRight size={16} />
                                 </Link>
@@ -1395,7 +1421,7 @@ const Dashboard = () => {
                             {serviceRequests.length > 0 ? (
                                 <div className="flex-1 space-y-3 mb-4 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
                                     {serviceRequests.map(req => (
-                                        <div key={req.id} className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 transition">
+                                        <div key={req.id} className="p-3 bg-white rounded-lg border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                                             <div className="flex justify-between items-start mb-1">
                                                 <span className="font-medium text-xs text-gray-900 line-clamp-1">{req.service_name}</span>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getStatusColor(req.status)}`}>

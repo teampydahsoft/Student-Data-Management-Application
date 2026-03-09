@@ -156,35 +156,37 @@ const RaiseTicket = () => {
       className="space-y-8 pb-12"
     >
       {/* Header */}
-      <div className="space-y-2 pb-2 border-b border-gray-100">
-        <div className="flex items-center gap-2 text-blue-600 mb-1">
-          <Ticket size={16} />
-          <span className="text-xs font-bold uppercase tracking-widest">Support Center</span>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+        <div>
+          <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2 flex items-center gap-4">
+            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200">
+              <Ticket size={28} />
+            </div>
+            Support Terminal
+          </h1>
+          <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] items-center flex gap-2 ml-14">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+            Dispatching queries to infrastructure management
+          </p>
         </div>
-        <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 heading-font tracking-tight">
-          Raise a Complaint
-        </h1>
-        <p className="text-gray-500 text-sm lg:text-base font-medium">
-          Submit your details and our team will get back to you shortly
-        </p>
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-[2rem] border border-gray-100 p-8 lg:p-10 space-y-8 shadow-2xl shadow-gray-100/50 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+      <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] border border-slate-100 p-8 lg:p-12 space-y-10 shadow-xl shadow-slate-200/50 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/30 rounded-full -mr-32 -mt-32 blur-3xl pointer-events-none"></div>
 
         {/* Category Selection */}
         <div className="relative z-10">
-          <label className="block text-sm font-bold text-gray-700 mb-2 px-1">
-            Category <span className="text-red-500">*</span>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 flex items-center gap-2">
+            Classification <span className="text-rose-500">*</span>
           </label>
           <select
             value={formData.category_id}
             onChange={(e) => handleCategoryChange(e.target.value)}
             required
-            className="w-full px-4 py-3.5 bg-gray-50 border-2 border-gray-50 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all outline-none font-medium appearance-none"
+            className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.2rem] focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-50/50 transition-all outline-none font-bold text-slate-700 appearance-none shadow-sm"
           >
-            <option value="">Select a category</option>
+            <option value="">Select Category</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
@@ -205,8 +207,8 @@ const RaiseTicket = () => {
             animate={{ opacity: 1, height: 'auto' }}
             className="relative z-10"
           >
-            <label className="block text-sm font-bold text-gray-700 mb-2 px-1">
-              Specific Issue <span className="text-gray-400 text-xs font-medium ml-1">(Optional)</span>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">
+              Specify Issue <span className="text-slate-300 text-[8px] italic ml-2">(Optional)</span>
             </label>
             <select
               value={formData.sub_category_id}
@@ -225,40 +227,40 @@ const RaiseTicket = () => {
 
         {/* Title */}
         <div className="relative z-10">
-          <label className="block text-sm font-bold text-gray-700 mb-2 px-1">
-            Subject Line <span className="text-red-500">*</span>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">
+            Incident Heading <span className="text-rose-500">*</span>
           </label>
           <input
             type="text"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
-            placeholder="What's the issue?"
-            className="w-full px-4 py-3.5 bg-gray-50 border-2 border-gray-50 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all outline-none font-medium"
+            placeholder="Headline of your query"
+            className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.2rem] focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-50/50 transition-all outline-none font-bold text-slate-700 shadow-sm"
           />
         </div>
 
         {/* Description */}
         <div className="relative z-10">
-          <label className="block text-sm font-bold text-gray-700 mb-2 px-1">
-            Detailed Description <span className="text-gray-400 text-xs font-medium ml-1">(Optional)</span>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">
+            Detailed Exposition <span className="text-slate-300 text-[8px] italic ml-2">(Optional)</span>
           </label>
           <textarea
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            rows={5}
-            placeholder="Please provide details (optional)..."
-            className="w-full px-4 py-3.5 bg-gray-50 border-2 border-gray-50 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 transition-all outline-none font-medium resize-none shadow-inner"
+            rows={6}
+            placeholder="Provide context for rapid resolution..."
+            className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-50/50 transition-all outline-none font-bold text-slate-700 resize-none shadow-sm"
           />
         </div>
 
         {/* Photo Upload */}
         <div className="relative z-10">
-          <label className="block text-sm font-bold text-gray-700 mb-2 px-1">
-            Attachment <span className="text-gray-400 text-xs font-medium ml-1">(Optional)</span>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">
+            Visual Documentation <span className="text-slate-300 text-[8px] italic ml-2">(Optional)</span>
           </label>
           {!photoPreview ? (
-            <div className="group border-2 border-dashed border-gray-200 rounded-3xl p-10 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer">
+            <div className="group border-2 border-dashed border-slate-200 rounded-[2rem] p-12 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer bg-slate-50/50">
               <input
                 type="file"
                 id="photo-upload"
@@ -267,11 +269,11 @@ const RaiseTicket = () => {
                 className="hidden"
               />
               <label htmlFor="photo-upload" className="cursor-pointer block">
-                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 group-hover:bg-blue-100 transition-all">
-                  <Camera className="text-gray-400 group-hover:text-blue-600" size={32} />
+                <div className="w-20 h-20 bg-white shadow-md rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 group-hover:rotate-6 transition-all">
+                  <Camera className="text-indigo-600" size={36} />
                 </div>
-                <p className="text-base text-gray-900 font-bold mb-1">Click or drag photo</p>
-                <p className="text-xs text-gray-500 font-medium tracking-wide">JPG, PNG up to 5MB</p>
+                <p className="text-lg text-slate-900 font-black mb-1">Upload Visual Proof</p>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest italic">JPG, PNG up to 5MB</p>
               </label>
             </div>
           ) : (
@@ -299,7 +301,7 @@ const RaiseTicket = () => {
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="w-full sm:flex-1 px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-2xl shadow-blue-200 hover:-translate-y-1 transition-all active:scale-95 group"
+            className="w-full sm:flex-1 px-8 py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-4 shadow-xl shadow-indigo-200 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 active:scale-95 group"
           >
             {createMutation.isPending ? (
               <>
@@ -329,7 +331,7 @@ const RaiseTicket = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-6 lg:p-8"
+        className="bg-blue-50 border border-blue-100 rounded-3xl p-6 lg:p-8"
       >
         <div className="flex items-start gap-4">
           <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm border border-blue-100">

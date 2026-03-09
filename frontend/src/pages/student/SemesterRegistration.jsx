@@ -294,7 +294,7 @@ const SemesterRegistration = () => {
     if (regStatus === 'completed') {
         return (
             <div className="max-w-4xl mx-auto py-10 animate-fade-in">
-                <div className="bg-gradient-to-br from-green-500 to-emerald-700 rounded-3xl p-10 text-white shadow-xl relative overflow-hidden">
+                <div className="bg-green-600 rounded-3xl p-10 text-white shadow-sm relative overflow-hidden">
                     <div className="relative z-10 text-center">
                         <div className="mx-auto w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6 backdrop-blur-sm">
                             <CheckCircle size={40} className="text-white" />
@@ -345,7 +345,7 @@ const SemesterRegistration = () => {
                             key={step.id}
                             onClick={() => setActiveStepId(step.id)}
                             className={`
-                                relative bg-white rounded-2xl p-6 border-l-4 transition-all cursor-pointer hover:shadow-lg group shadow-sm
+                                relative bg-white rounded-2xl p-6 border-l-4 transition-all duration-300 cursor-pointer hover:shadow-md hover:-translate-y-1 group shadow-sm
                                 ${isComplete
                                     ? 'border-l-green-500 border-gray-100 bg-green-50/10'
                                     : 'border-l-red-500 border-red-50 bg-white hover:bg-red-50/10'}

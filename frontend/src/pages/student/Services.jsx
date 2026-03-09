@@ -213,24 +213,27 @@ const Services = () => {
 
     return (
         <div className="p-6 space-y-6 animate-fade-in max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Student Services</h1>
-                    <p className="text-gray-500">Request certificates and track status</p>
+                    <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2">Campus Services</h1>
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] items-center flex gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                        Request Resources & Track Status
+                    </p>
                 </div>
 
-                <div className="flex bg-gray-100 p-1 rounded-lg">
+                <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] p-1.5 shadow-xl shadow-slate-200/50 border border-white flex gap-1 w-full md:w-auto">
                     <button
                         onClick={() => setActiveTab('available')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'available' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`flex-1 md:flex-none px-8 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all duration-300 ${activeTab === 'available' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                     >
-                        Available Services
+                        Catalogs
                     </button>
                     <button
                         onClick={() => setActiveTab('history')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`flex-1 md:flex-none px-8 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all duration-300 ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                     >
-                        My Requests
+                        Active Requests
                     </button>
                 </div>
             </div>
@@ -257,20 +260,26 @@ const Services = () => {
                         </div>
                     ) : (
                         services.map(service => (
-                            <div key={service.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition group">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-100 transition">
-                                        <FileText size={24} />
+                            <div key={service.id} className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 hover:shadow-2xl hover:-translate-y-2 hover:scale-[1.02] transition-all duration-500 group relative overflow-hidden flex flex-col h-full">
+                                <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50/50 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-indigo-100/50 transition-all duration-700"></div>
+                                <div className="flex justify-between items-start mb-8 relative z-10">
+                                    <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[1.5rem] border border-indigo-100 shadow-sm transition-transform group-hover:scale-110 duration-500">
+                                        <FileText size={28} />
                                     </div>
-                                    <span className="font-mono font-semibold text-gray-900">₹{service.price}</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="font-black text-2xl text-slate-900 tracking-tighter">₹{service.price}</span>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Processing Fee</span>
+                                    </div>
                                 </div>
-                                <h3 className="text-lg font-bold text-gray-900 mb-2">{service.name}</h3>
-                                <p className="text-gray-500 text-sm mb-6 line-clamp-2">{service.description}</p>
+                                <div className="relative z-10 flex-1">
+                                    <h3 className="text-2xl font-black text-slate-800 mb-3 leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">{service.name}</h3>
+                                    <p className="text-slate-400 text-sm mb-10 line-clamp-2 font-bold italic opacity-80">{service.description}</p>
+                                </div>
                                 <button
                                     onClick={() => setSelectedService(service)}
-                                    className="w-full py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-medium flex items-center justify-center gap-2"
+                                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 font-black uppercase tracking-widest text-[11px] relative z-10 transform hover:-translate-y-0.5 active:scale-95"
                                 >
-                                    Apply Now
+                                    Initiate Process
                                 </button>
                             </div>
                         ))
@@ -279,7 +288,7 @@ const Services = () => {
             )}
 
             {activeTab === 'history' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden group">
                     {/* Desktop Table View */}
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">

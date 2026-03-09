@@ -151,47 +151,60 @@ const StudentAnnouncements = () => {
             {activeTab === 'announcements' ? (
                 <div>
                     {announcements.length === 0 ? (
-                        <div className="text-center py-24 bg-white/60 backdrop-blur-xl rounded-[2rem] shadow-sm border border-white">
+                        <div className="text-center py-24 bg-white/60 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white">
                             <div className="mx-auto w-24 h-24 bg-indigo-50/80 rounded-[2rem] flex items-center justify-center text-indigo-400 mb-6 shadow-inner">
                                 <Megaphone size={40} />
                             </div>
-                            <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">No Announcements</h3>
-                            <p className="text-gray-500 font-medium">You're all caught up! Check back later.</p>
+                            <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Quiet Horizon</h3>
+                            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">No new transmissions detected</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                             {announcements.map((ann) => (
                                 <div
                                     key={ann.id}
                                     onClick={() => setSelectedAnnouncement(ann)}
-                                    className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1.5 transition-all duration-500 group cursor-pointer flex flex-col h-full"
+                                    className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-2 hover:scale-[1.02] transition-all duration-500 group cursor-pointer flex flex-col h-full relative"
                                 >
+                                    <div className="absolute top-5 right-5 z-30 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                        <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200">
+                                            <Megaphone size={16} />
+                                        </div>
+                                    </div>
                                     {ann.image_url ? (
-                                        <div className="h-56 w-full bg-gray-100 overflow-hidden relative shrink-0">
-                                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-gray-900/20 to-transparent z-10 opacity-80 transition-opacity duration-500" />
-                                            <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
-                                            <div className="absolute bottom-5 left-5 z-20 flex gap-2">
-                                                <span className="bg-indigo-600/90 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-[10px] uppercase font-black tracking-widest shadow-lg">
-                                                    {ann.target_college || 'General Notice'}
+                                        <div className="h-52 w-full bg-slate-100 overflow-hidden relative shrink-0">
+                                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 opacity-60 group-hover:opacity-40 transition-opacity duration-500" />
+                                            <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
+                                            <div className="absolute bottom-5 left-5 z-20">
+                                                <span className="bg-white text-indigo-600 px-3 py-1.5 rounded-xl text-[9px] uppercase font-black tracking-widest shadow-xl border border-white">
+                                                    {ann.target_college || 'Notice'}
                                                 </span>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="h-40 bg-gradient-to-br from-indigo-50 via-blue-50 to-white flex items-center justify-center relative overflow-hidden shrink-0">
-                                            <div className="absolute -right-8 -top-8 text-indigo-600/5 group-hover:scale-110 group-hover:rotate-12 transition-all duration-700 ease-out">
+                                        <div className="h-40 bg-slate-50 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-slate-100/50">
+                                            <div className="absolute -right-8 -top-8 text-indigo-600/5 group-hover:scale-110 group-hover:rotate-12 transition-all duration-1000 ease-out">
                                                 <Megaphone size={140} />
                                             </div>
-                                            <div className="h-16 w-16 bg-white rounded-[1.5rem] shadow-sm flex items-center justify-center relative z-10 group-hover:scale-110 transition-transform duration-500">
+                                            <div className="h-16 w-16 bg-white rounded-[1.8rem] shadow-md border border-slate-100 flex items-center justify-center relative z-10 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-500">
                                                 <Megaphone className="text-indigo-500" size={32} />
                                             </div>
                                         </div>
                                     )}
-                                    <div className="p-6 sm:p-8 flex-1 flex flex-col">
-                                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-indigo-500 font-bold mb-4">
-                                            <Calendar size={14} className="opacity-70" /> {new Date(ann.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    <div className="p-8 flex-1 flex flex-col">
+                                        <div className="flex items-center gap-2 text-[10px] uppercase font-black tracking-[0.2em] text-slate-400 mb-5">
+                                            <Calendar size={14} className="text-indigo-400/60" /> {new Date(ann.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </div>
-                                        <h3 className="text-xl font-black text-gray-900 mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-tight tracking-tight">{ann.title}</h3>
-                                        <p className="text-gray-500 text-sm line-clamp-3 leading-relaxed font-medium mt-auto">{ann.content}</p>
+                                        <h3 className="text-xl font-black text-slate-900 mb-4 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-tight tracking-tight">{ann.title}</h3>
+                                        <p className="text-slate-500 text-[14px] line-clamp-3 leading-relaxed font-bold italic mt-auto opacity-70">{ann.content}</p>
+                                        <div className="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                                                Read More <Clock size={12} />
+                                            </span>
+                                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
+                                                <RefreshCw size={14} />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -228,7 +241,7 @@ const StudentAnnouncements = () => {
                                 const isUrgent = timeLeft && timeLeft < 86400000; // Less than 24h
 
                                 return (
-                                    <div key={poll.id} className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-6 sm:p-8 hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-500 relative flex flex-col h-full group">
+                                    <div key={poll.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-6 sm:p-8 hover:shadow-md hover:-translate-y-1 transition-all duration-300 relative flex flex-col h-full group">
                                         {/* Status Badge */}
                                         <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
                                             {poll.has_voted ? (

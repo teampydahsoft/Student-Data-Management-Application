@@ -124,52 +124,59 @@ const StudentTimetable = () => {
         const isLab = entry.type === 'lab';
         const isBreak = entry.type === 'break' || entry.type === 'Lunch';
 
-        let bgColor = 'bg-white';
-        let borderColor = 'border-slate-200';
+        let accentColor = 'bg-indigo-600';
+        let lightBg = 'bg-indigo-50/30';
+        let textColor = 'text-indigo-600';
         let tagColor = 'bg-indigo-100 text-indigo-700';
 
         if (isLab) {
-            bgColor = 'bg-purple-50/50';
-            borderColor = 'border-purple-100';
+            accentColor = 'bg-purple-600';
+            lightBg = 'bg-purple-50/30';
+            textColor = 'text-purple-600';
             tagColor = 'bg-purple-100 text-purple-700';
         } else if (isBreak) {
-            bgColor = 'bg-amber-50/50';
-            borderColor = 'border-amber-100';
-            tagColor = 'bg-amber-100 text-amber-500';
+            accentColor = 'bg-amber-500';
+            lightBg = 'bg-amber-50/30';
+            textColor = 'text-amber-600';
+            tagColor = 'bg-amber-100 text-amber-700';
         } else if (entry.type === 'Other' || entry.type === 'other') {
-            bgColor = 'bg-teal-50/50';
-            borderColor = 'border-teal-100';
-            tagColor = 'bg-teal-100 text-teal-700';
+            accentColor = 'bg-cyan-500';
+            lightBg = 'bg-cyan-50/30';
+            textColor = 'text-cyan-600';
+            tagColor = 'bg-cyan-100 text-cyan-700';
         }
 
         return (
-            <div className={`h-full w-full rounded-2xl p-3 flex flex-col border shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md hover:scale-[1.01] cursor-default ${bgColor} ${borderColor}`}>
-                <div className="flex-1">
-                    <div className="flex items-start justify-between mb-1.5">
-                        <span className={`text-[9px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-md ${tagColor}`}>
+            <div className={`h-full w-full rounded-[1.8rem] p-4 flex flex-col border border-slate-100 shadow-xl shadow-slate-200/40 hover:shadow-2xl hover:-translate-y-1.5 hover:scale-[1.01] cursor-pointer transition-all duration-500 group relative overflow-hidden bg-white`}>
+                <div className={`absolute top-0 left-0 w-1.5 h-full ${accentColor}`} />
+                <div className={`absolute top-0 right-0 w-20 h-20 ${lightBg} rounded-full -mr-10 -mt-10 blur-2xl group-hover:scale-150 transition-transform duration-700`}></div>
+
+                <div className="flex-1 relative z-10">
+                    <div className="flex items-start justify-between mb-3">
+                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-lg ${tagColor} shadow-sm backdrop-blur-md border border-white/50`}>
                             {entry.type}
                         </span>
                         {span > 1 && !isMobile && (
-                            <span className="text-[9px] font-bold text-slate-400 bg-white border border-slate-50 px-1.5 py-0.5 rounded shadow-sm">
-                                {span} periods
+                            <span className="text-[8px] font-black text-slate-400 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg shadow-sm uppercase tracking-widest">
+                                {span} Periods
                             </span>
                         )}
                     </div>
-                    <h4 className="font-bold text-slate-800 text-sm leading-snug line-clamp-2">
+                    <h4 className={`font-black ${textColor} text-[13px] leading-tight line-clamp-2 group-hover:text-slate-900 transition-colors tracking-tight`}>
                         {entry.type === 'subject' ? entry.subject_name : entry.custom_label}
                     </h4>
                 </div>
                 {(entry.subject_code || (isMobile && span > 1)) && (
-                    <div className="mt-2 pt-2 border-t border-slate-100/50 flex items-center justify-between">
+                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between relative z-10">
                         {entry.subject_code && (
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
-                                <Info className="w-3 h-3" />
+                            <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                <Info className="w-3 h-3 opacity-40" />
                                 {entry.subject_code}
                             </div>
                         )}
                         {isMobile && span > 1 && entry.isStart && (
-                            <span className="text-[9px] font-black text-indigo-500/60 uppercase tracking-widest">
-                                Spans {span} slots
+                            <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest italic">
+                                Extended
                             </span>
                         )}
                     </div>
@@ -351,7 +358,7 @@ const StudentTimetable = () => {
                     </div>
                 </div>
 
-                <div className="hidden lg:flex bg-gradient-to-br from-indigo-600 to-indigo-700 p-5 rounded-[2.2rem] text-white flex gap-4 shadow-xl shadow-indigo-100 transition-transform hover:scale-[1.02] duration-300">
+                <div className="hidden lg:flex bg-indigo-600 p-5 rounded-[2.2rem] text-white flex gap-4 shadow-md transition-all hover:shadow-lg hover:-translate-y-1 duration-300">
                     <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-white shrink-0">
                         <Calendar className="w-6 h-6" />
                     </div>

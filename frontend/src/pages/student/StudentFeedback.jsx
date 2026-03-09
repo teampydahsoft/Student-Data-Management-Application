@@ -210,10 +210,20 @@ const StudentFeedback = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-8">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">Faculty Feedback</h1>
-                <p className="text-gray-500 mt-1">Share your valuable feedback to help us improve.</p>
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+                <div>
+                    <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2 flex items-center gap-4">
+                        <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200">
+                            <RiMessage2Line size={28} />
+                        </div>
+                        Academic Appraisal
+                    </h1>
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] items-center flex gap-2 ml-14">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                        Direct channel for pedagogical improvement
+                    </p>
+                </div>
             </div>
 
             {feedbackItems.length === 0 ? (
@@ -228,10 +238,10 @@ const StudentFeedback = () => {
                 <>
                     {/* Pending Section */}
                     {pendingItems.length > 0 && (
-                        <div className="space-y-4">
-                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                Pending Feedback ({pendingItems.length})
+                        <div className="space-y-6">
+                            <h2 className="text-sm font-black text-slate-900 flex items-center gap-3 uppercase tracking-[0.2em]">
+                                <span className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.4)]"></span>
+                                Outstanding Appraisals ({pendingItems.length})
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {pendingItems.map((item, idx) => (
@@ -240,54 +250,44 @@ const StudentFeedback = () => {
                                         initial={{ opacity: 0, y: 20 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: idx * 0.05 }}
-                                        className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow relative overflow-hidden group"
+                                        className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50 border border-slate-100 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 relative overflow-hidden group"
                                     >
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-indigo-100 transition-all duration-500 pointer-events-none"></div>
 
                                         <div className="relative z-10">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                                                    <RiBookOpenLine size={24} />
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div className="p-4 bg-indigo-600 text-white rounded-[1.2rem] shadow-lg shadow-indigo-200 group-hover:rotate-6 transition-transform">
+                                                    <RiBookOpenLine size={28} />
                                                 </div>
                                             </div>
 
-                                            <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1">{item.subjectName}</h3>
-                                            <div className="flex items-center gap-2 mb-4">
-                                                <p className="text-sm text-gray-500 font-mono">{item.subjectCode}</p>
-                                                <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${item.subjectType === 'lab'
-                                                        ? 'bg-purple-100 text-purple-700'
-                                                        : 'bg-blue-100 text-blue-700'
+                                            <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight group-hover:text-indigo-600 transition-colors uppercase line-clamp-1">{item.subjectName}</h3>
+                                            <div className="flex flex-wrap items-center gap-2 mb-6">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{item.subjectCode}</p>
+                                                <span className={`px-3 py-1 text-[8px] font-black rounded-lg border uppercase tracking-widest ${item.subjectType === 'lab'
+                                                    ? 'bg-purple-50 text-purple-600 border-purple-100'
+                                                    : 'bg-indigo-50 text-indigo-600 border-indigo-100'
                                                     }`}>
-                                                    {item.subjectType === 'lab' ? '🧪 LAB' : '📚 THEORY'}
+                                                    {item.subjectType === 'lab' ? 'Laboratory' : 'Theory Core'}
                                                 </span>
-                                                {item.subjectType === 'theory' && item.units && (
-                                                    <span className="px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-700 rounded-full">
-                                                        {item.units} Units
-                                                    </span>
-                                                )}
-                                                {item.subjectType === 'lab' && item.experimentsCount && (
-                                                    <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full">
-                                                        {item.experimentsCount} Experiments
-                                                    </span>
-                                                )}
                                             </div>
 
-                                            <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-500 shadow-sm border border-gray-100">
-                                                    <RiUser3Line size={16} />
+                                            <div className="flex items-center gap-4 mb-8 p-4 bg-slate-50 border border-slate-100 rounded-[1.5rem]">
+                                                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 shadow-sm border border-slate-100">
+                                                    <RiUser3Line size={20} />
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Faculty</p>
-                                                    <p className="text-sm font-semibold text-gray-700">{item.facultyName}</p>
+                                                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Pedagogue</p>
+                                                    <p className="text-[15px] font-black text-slate-700 tracking-tight">{item.facultyName}</p>
                                                 </div>
                                             </div>
 
                                             <button
                                                 onClick={() => handleOpenFeedback(item)}
-                                                className="w-full py-3 px-4 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 group-hover:shadow-lg"
+                                                className="w-full py-4 px-6 bg-slate-900 hover:bg-indigo-600 text-white rounded-[1.2rem] font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-3 shadow-lg hover:shadow-indigo-200 active:scale-95 duration-500"
                                             >
-                                                Give Feedback
-                                                <RiArrowRightLine className="group-hover:translate-x-1 transition-transform" />
+                                                Initialize Review
+                                                <RiArrowRightLine size={18} className="group-hover:translate-x-1.5 transition-transform" />
                                             </button>
                                         </div>
                                     </motion.div>
@@ -337,53 +337,56 @@ const StudentFeedback = () => {
                             className="relative bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden"
                         >
                             {/* Modal Header */}
-                            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                            <div className="p-8 border-b-2 border-slate-50 flex justify-between items-center bg-white relative z-10">
                                 <div>
-                                    <h2 className="text-xl font-bold text-gray-900">{selectedItem.subjectName}</h2>
-                                    <p className="text-sm text-gray-500">Feedback for {selectedItem.facultyName}</p>
+                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{selectedItem.subjectName}</h2>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1 italic">Formal evaluation of {selectedItem.facultyName}</p>
                                 </div>
-                                <button onClick={handleCloseModal} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                                <button onClick={handleCloseModal} className="p-3 bg-slate-50 hover:bg-rose-50 hover:text-rose-500 text-slate-400 rounded-2xl transition-all active:scale-90">
                                     <RiCloseLine size={24} />
                                 </button>
                             </div>
 
                             {/* Modal Body (Scrollable) */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                                <form id="feedback-form" onSubmit={handleSubmit} className="space-y-6">
+                            <div className="flex-1 overflow-y-auto p-8 lg:p-10 space-y-10 bg-white">
+                                <form id="feedback-form" onSubmit={handleSubmit} className="space-y-10">
                                     {selectedItem.questions.map((q, idx) => (
-                                        <div key={q.id || idx} className="space-y-2">
-                                            <label className="block text-sm font-bold text-gray-700">
-                                                {idx + 1}. {q.label} {q.required && <span className="text-red-500">*</span>}
+                                        <div key={q.id || idx} className="space-y-4">
+                                            <label className="block text-sm font-black text-slate-700 leading-relaxed">
+                                                <span className="text-indigo-600 mr-2 opacity-50 font-mono">#{idx + 1}</span>
+                                                {q.label} {q.required && <span className="text-rose-500 ml-1">*</span>}
                                             </label>
 
-                                            {renderField(q)}
+                                            <div className="pl-6 border-l-2 border-slate-50">
+                                                {renderField(q)}
+                                            </div>
                                         </div>
                                     ))}
                                 </form>
                             </div>
 
                             {/* Modal Footer */}
-                            <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
+                            <div className="p-8 border-t-2 border-slate-50 bg-white flex flex-col sm:flex-row justify-end gap-4">
                                 <button
                                     type="button"
                                     onClick={handleCloseModal}
-                                    className="px-6 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-200 transition-colors"
+                                    className="px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all active:scale-95"
                                 >
-                                    Cancel
+                                    Abort
                                 </button>
                                 <button
                                     type="submit"
                                     form="feedback-form"
                                     disabled={submitting}
-                                    className="px-6 py-2.5 rounded-xl font-bold text-white bg-balance bg-gray-900 hover:bg-black transition-all shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    className="px-10 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 hover:shadow-indigo-200 hover:-translate-y-1 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                                 >
                                     {submitting ? (
                                         <>
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            Submitting...
+                                            Transmitting...
                                         </>
                                     ) : (
-                                        'Submit Feedback'
+                                        'Commit Review'
                                     )}
                                 </button>
                             </div>

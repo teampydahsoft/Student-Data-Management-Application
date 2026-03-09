@@ -87,67 +87,88 @@ const Transport = () => {
         <div className="p-6 space-y-8 animate-fade-in max-w-7xl mx-auto">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                        <RiBusLine className="text-blue-600" /> College Transport
+                    <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2 flex items-center gap-4">
+                        <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200">
+                            <RiBusLine size={28} />
+                        </div>
+                        Transit Nexus
                     </h1>
-                    <p className="text-gray-500">View routes, fares and manage your transport subscription.</p>
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] items-center flex gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                        Route Intelligence & Commute Management
+                    </p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
                 {/* Left: Request Form */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                        <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                            <RiTicketLine className="text-blue-500" /> New Transport Request
+                <div className="lg:col-span-2 space-y-8">
+                    <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 sm:p-12 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-indigo-100/50 transition-all duration-1000"></div>
+                        <h2 className="text-2xl font-black text-slate-900 mb-10 flex items-center gap-4 relative z-10">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 shadow-sm">
+                                <RiTicketLine size={24} />
+                            </div>
+                            Access Permit Request
                         </h2>
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handleSubmit} className="space-y-8 relative z-10">
                             {/* Route Selection */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Select Route</label>
-                                <div className="relative">
+                                <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-4 ml-1">Select Transit Corridors</label>
+                                <div className="relative group/select">
                                     <select
-                                        className="w-full p-3 pl-10 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                        className="w-full p-5 pl-14 bg-slate-50 border border-slate-100 rounded-[1.8rem] text-slate-900 focus:ring-4 focus:ring-indigo-100 outline-none appearance-none font-bold transition-all hover:bg-white hover:border-indigo-100 shadow-sm"
                                         onChange={handleRouteSelect}
                                         value={selectedRoute?.routeId || ''}
                                         required
                                     >
-                                        <option value="">-- Choose a Route --</option>
+                                        <option value="" className="text-gray-900">-- Select Available Route --</option>
                                         {routes.map(r => (
-                                            <option key={r.routeId} value={r.routeId}>
+                                            <option key={r.routeId} value={r.routeId} className="text-gray-900">
                                                 {r.routeName} ({r.startPoint} - {r.endPoint})
                                             </option>
                                         ))}
                                     </select>
-                                    <RiMapPinLine className="absolute left-3 top-3.5 text-gray-400" size={18} />
+                                    <RiMapPinLine className="absolute left-5 top-5.5 text-indigo-400 group-hover/select:scale-110 transition-transform" size={20} />
+                                    <div className="absolute right-5 top-5.5 text-slate-300 pointer-events-none group-hover/select:text-indigo-600 group-hover/select:translate-y-0.5 transition-all">
+                                        <RiBusLine size={24} />
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Stage Selection */}
                             {selectedRoute && (
-                                <div className="animate-fade-in-up">
-                                    <label className="block text-sm font-medium text-gray-700 mb-3">Select Boarding Point (Stage)</label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto custom-scrollbar p-1">
+                                <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+                                    <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-5 ml-1">Select Boarding Terminal (Stage)</label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-h-80 overflow-y-auto overflow-x-hidden custom-scrollbar pr-3">
                                         {selectedRoute.stages.map((stage, idx) => (
                                             <div
                                                 key={idx}
                                                 onClick={() => setSelectedStage(stage)}
-                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex justify-between items-center ${selectedStage?.stageName === stage.stageName
-                                                        ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-sm'
-                                                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                                className={`group/stage p-6 rounded-[2rem] border-2 cursor-pointer transition-all duration-500 flex justify-between items-center relative overflow-hidden h-full ${selectedStage?.stageName === stage.stageName
+                                                    ? 'bg-indigo-600 border-indigo-600 shadow-2xl shadow-indigo-200 scale-[1.02]'
+                                                    : 'bg-slate-50 border-slate-100 hover:border-indigo-100 hover:bg-white hover:shadow-lg'
                                                     }`}
                                             >
-                                                <div>
-                                                    <p className="font-semibold text-gray-800">{stage.stageName}</p>
-                                                    <p className="text-xs text-gray-500">{stage.distanceFromStart} km</p>
+                                                <div className="relative z-10 text-left">
+                                                    <p className={`font-black text-[17px] tracking-tight transition-colors mb-1 ${selectedStage?.stageName === stage.stageName ? 'text-white' : 'text-slate-800'}`}>{stage.stageName}</p>
+                                                    <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${selectedStage?.stageName === stage.stageName ? 'text-indigo-200' : 'text-slate-400'}`}>{stage.distanceFromStart} KM Distance</p>
                                                 </div>
-                                                <div className="text-right">
-                                                    <span className="block text-lg font-bold text-green-600">₹{stage.fare}</span>
+                                                <div className="relative z-10 text-right">
+                                                    <span className={`block text-xl font-black transition-colors ${selectedStage?.stageName === stage.stageName ? 'text-white' : 'text-indigo-600'}`}>₹{stage.fare}</span>
                                                 </div>
+                                                {selectedStage?.stageName === stage.stageName && (
+                                                    <div className="absolute right-2 top-2">
+                                                        <div className="w-6 h-6 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20">
+                                                            <RiCheckboxCircleFill size={14} />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -156,17 +177,21 @@ const Transport = () => {
 
                             {/* Summary & Action */}
                             {selectedRoute && selectedStage && (
-                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex justify-between items-center animate-fade-in">
-                                    <div>
-                                        <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Total Annual Fare</p>
-                                        <p className="text-2xl font-bold text-gray-900">₹{selectedStage.fare}</p>
+                                <div className="bg-slate-900 rounded-[2rem] p-8 flex flex-col sm:flex-row justify-between items-center gap-8 animate-in zoom-in-95 duration-700 shadow-2xl relative overflow-hidden group/footer">
+                                    <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover/footer:bg-indigo-500/20 transition-all"></div>
+                                    <div className="text-center sm:text-left relative z-10">
+                                        <p className="text-[10px] text-indigo-400 font-black uppercase tracking-[0.3em] mb-2">Cycle Assessment</p>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black text-white tracking-tighter">₹{selectedStage.fare}</span>
+                                            <span className="text-xs font-bold text-slate-500 italic">Net Amount</span>
+                                        </div>
                                     </div>
                                     <button
                                         type="submit"
                                         disabled={submitting}
-                                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
+                                        className="w-full sm:w-auto px-12 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-50 relative z-10"
                                     >
-                                        {submitting ? 'Submitting...' : 'Raise Request'}
+                                        {submitting ? 'Processing Signal...' : 'Initiate Subscription'}
                                     </button>
                                 </div>
                             )}
@@ -175,26 +200,32 @@ const Transport = () => {
 
                     {/* Route Details Card */}
                     {selectedRoute && (
-                        <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-2xl shadow-lg p-6 animate-fade-in">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <RiBusLine /> Route Details: {selectedRoute.routeName}
+                        <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 p-10 animate-in fade-in zoom-in-95 duration-1000 border border-slate-100 relative overflow-hidden">
+                            <h3 className="text-2xl font-black mb-10 text-slate-900 tracking-tight flex items-center gap-4">
+                                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                                    <RiBusLine />
+                                </div>
+                                Corridor Intelligence
                             </h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                                <div>
-                                    <p className="text-gray-400 text-xs uppercase mb-1">Start Point</p>
-                                    <p className="font-semibold">{selectedRoute.startPoint}</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
+                                <div className="space-y-2">
+                                    <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Entry Point</p>
+                                    <p className="font-black text-xl text-slate-800 tracking-tight">{selectedRoute.startPoint}</p>
                                 </div>
-                                <div>
-                                    <p className="text-gray-400 text-xs uppercase mb-1">End Point</p>
-                                    <p className="font-semibold">{selectedRoute.endPoint}</p>
+                                <div className="space-y-2">
+                                    <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Destination</p>
+                                    <p className="font-black text-xl text-slate-800 tracking-tight">{selectedRoute.endPoint}</p>
                                 </div>
-                                <div>
-                                    <p className="text-gray-400 text-xs uppercase mb-1">Est. Time</p>
-                                    <p className="font-semibold flex items-center gap-1"><RiTimeLine /> {selectedRoute.estimatedTime || 'N/A'}</p>
+                                <div className="space-y-2">
+                                    <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Transit Time</p>
+                                    <p className="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2">
+                                        <RiTimeLine className="text-indigo-500" />
+                                        {selectedRoute.estimatedTime || 'N/A'}
+                                    </p>
                                 </div>
-                                <div>
-                                    <p className="text-gray-400 text-xs uppercase mb-1">Total Distance</p>
-                                    <p className="font-semibold">{selectedRoute.totalDistance} km</p>
+                                <div className="space-y-2">
+                                    <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Total Span</p>
+                                    <p className="font-black text-xl text-indigo-600 tracking-tight underline decoration-indigo-200 underline-offset-8">{selectedRoute.totalDistance} KM</p>
                                 </div>
                             </div>
                         </div>
@@ -223,10 +254,10 @@ const Transport = () => {
                                     /* Bus Pass Card - shown when request is approved */
                                     <div
                                         key={req.id}
-                                        className="relative overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-50 via-white to-teal-50 shadow-lg shadow-emerald-200/50"
+                                        className="relative overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-emerald-50 shadow-md shadow-emerald-100"
                                     >
                                         {/* Decorative strip */}
-                                        <div className="h-2 bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-600" />
+                                        <div className="h-2 bg-emerald-600" />
                                         <div className="p-4">
                                             {/* Header: BUS PASS + Valid badge */}
                                             <div className="flex items-center justify-between mb-4">

@@ -268,7 +268,7 @@ const StudentCalendar = () => {
                                     .slice(0, 5) // Limit to 5
                                     .map(ev => (
                                         <div key={ev.id}
-                                            className="p-3 rounded-lg border bg-gray-50 relative overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors"
+                                            className="p-3 rounded-lg border bg-gray-50 relative overflow-hidden cursor-pointer hover:bg-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
                                             onClick={() => {
                                                 setSelectedEvent(ev);
                                                 setShowEventModal(true);

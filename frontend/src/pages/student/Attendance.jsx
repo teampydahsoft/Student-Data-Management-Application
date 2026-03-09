@@ -12,7 +12,9 @@ import {
     TrendingUp,
     Info,
     BarChart2,
-    Award
+    Award,
+    ChevronLeft,
+    ChevronRight,
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -198,9 +200,9 @@ const LoadingSkeleton = () => (
 // ─── Stat Mini Card ───────────────────────────────────────────────────────────
 
 const StatCard = ({ label, value, colorClass, bgClass, borderClass }) => (
-    <div className={`${bgClass} ${borderClass} border rounded-2xl p-4 text-center`}>
-        <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mb-1">{label}</p>
-        <p className={`text-2xl font-extrabold ${colorClass}`}>{value}</p>
+    <div className={`bg-white border-slate-100 border rounded-2xl p-5 text-center shadow-sm hover:shadow-md transition-all group`}>
+        <p className="text-[9px] text-slate-400 uppercase font-black tracking-[0.2em] mb-2 group-hover:text-indigo-400 transition-colors">{label}</p>
+        <p className={`text-3xl font-black ${colorClass} tracking-tighter`}>{value}</p>
     </div>
 );
 
@@ -231,62 +233,64 @@ const WeeklyTab = ({ weekly, semesterSeries }) => {
     return (
         <div className="space-y-6">
             {/* Hero Card */}
-            <div className={`bg-white border ${colors.border} rounded-2xl p-5 shadow-sm`}>
-                <div className="flex flex-col sm:flex-row items-center gap-6">
-                    <CircularRing pct={pct} size={140} />
-                    <div className="flex-1 space-y-3 text-center sm:text-left">
+            <div className="bg-white rounded-[2.5rem] p-8 md:p-10 shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:-translate-y-1 group mb-8">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-50/50 rounded-full -mr-48 -mt-48 blur-3xl group-hover:bg-emerald-100/50 transition-all duration-1000 pointer-events-none"></div>
+                <div className="flex flex-col lg:flex-row items-center gap-12 relative z-10">
+                    <CircularRing pct={pct} size={180} />
+                    <div className="flex-1 space-y-6 text-center lg:text-left">
                         <div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Current Week</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Weekly Performance Index</p>
                             {weekly?.startDate && weekly?.endDate && (
-                                <p className="text-sm font-bold text-gray-800 mt-0.5">
-                                    {formatDisplayDate(weekly.startDate)} → {formatDisplayDate(weekly.endDate)}
-                                </p>
+                                <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                                    {formatShortDate(weekly.startDate)} <span className="text-slate-200 mx-2">—</span> {formatShortDate(weekly.endDate)}
+                                </h2>
                             )}
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <StatCard label="Present" value={present} colorClass="text-green-700" bgClass="bg-green-50" borderClass="border-green-100" />
-                            <StatCard label="Absent" value={absent} colorClass="text-red-600" bgClass="bg-red-50" borderClass="border-red-100" />
-                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-700" bgClass="bg-amber-50" borderClass="border-amber-100" />
-                            <StatCard label="Pending" value={unmarked} colorClass="text-gray-500" bgClass="bg-gray-50" borderClass="border-gray-200" />
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <StatCard label="Present" value={present} colorClass="text-emerald-600" />
+                            <StatCard label="Absent" value={absent} colorClass="text-rose-600" />
+                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-600" />
+                            <StatCard label="Pending" value={unmarked} colorClass="text-slate-300" />
                         </div>
-                        <p className="text-xs text-gray-400">
-                            Percentage based on <span className="font-semibold">{present + absent}</span> marked day{present + absent !== 1 ? 's' : ''} (holidays &amp; pending excluded)
-                        </p>
                     </div>
                 </div>
             </div>
 
             {/* Day-by-Day List */}
             {days.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <Calendar size={16} className="text-blue-500" />
-                        Day-by-Day Breakdown
+                <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
+                    <h3 className="text-sm font-black text-slate-900 mb-8 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                            <Calendar size={20} />
+                        </div>
+                        Chronicle of Attendance
                     </h3>
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {days.map(entry => {
                             const effectiveStatus = entry.isHoliday ? 'holiday' : (entry.status || 'pending');
                             return (
                                 <div
                                     key={entry.date}
-                                    className={`flex items-center justify-between px-4 py-3 rounded-xl border ${statusBg(effectiveStatus)}`}
+                                    className={`flex items-center justify-between px-6 py-5 rounded-[1.8rem] border-2 transition-all duration-500 hover:scale-[1.01] hover:shadow-lg ${statusBg(effectiveStatus)} border-opacity-50 group/item`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-2 h-8 rounded-full ${statusDot(effectiveStatus)}`} />
+                                    <div className="flex items-center gap-5">
+                                        <div className={`w-1.5 h-12 rounded-full ${statusDot(effectiveStatus)} shadow-lg scale-y-75 group-hover/item:scale-y-100 transition-transform`} />
                                         <div>
-                                            <p className="text-sm font-bold text-gray-900">{formatShortDate(entry.date)}</p>
-                                            <p className="text-xs text-gray-500 capitalize">
+                                            <p className="text-[15px] font-black text-slate-900 tracking-tight">{formatShortDate(entry.date)}</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
                                                 {entry.isHoliday
                                                     ? getHolidayLabel(entry.holiday)
                                                     : effectiveStatus === 'present'
-                                                        ? 'Present'
+                                                        ? 'Presence Verified'
                                                         : effectiveStatus === 'absent'
-                                                            ? 'Absent'
-                                                            : 'Pending / Unmarked'}
+                                                            ? 'Absence Recorded'
+                                                            : 'Awaiting Transmission'}
                                             </p>
                                         </div>
                                     </div>
-                                    <StatusIcon status={effectiveStatus} size={18} />
+                                    <div className="p-2 bg-white rounded-xl shadow-sm">
+                                        <StatusIcon status={effectiveStatus} size={22} />
+                                    </div>
                                 </div>
                             );
                         })}
@@ -410,50 +414,46 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
 
     return (
         <div className="space-y-6">
-            {/* Hero Card — selected month */}
-            <div className={`bg-white border ${colors.border} rounded-2xl p-4 sm:p-5 shadow-sm`}>
-                <div className="flex flex-col sm:flex-row items-center gap-6">
-                    <CircularRing pct={pct} size={120} />
-                    <div className="flex-1 space-y-3 text-center sm:text-left">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-                            <div className="w-full text-center sm:w-auto sm:text-left">
-                                <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    This Month
-                                </p>
-                                <p className="text-sm font-bold text-gray-800 mt-0.5">
-                                    {monthLabel}
-                                </p>
+            <div className={`bg-emerald-600 rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-emerald-500 relative overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:-translate-y-1.5 group mb-6`}>
+                <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -mr-40 -mt-40 blur-3xl group-hover:bg-white/20 transition-all duration-500 pointer-events-none"></div>
+                <div className="flex flex-col sm:flex-row items-center gap-8 relative z-10">
+                    <CircularRing pct={pct} size={140} />
+                    <div className="flex-1 space-y-4 text-center sm:text-left">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-black text-emerald-100 uppercase tracking-[0.2em] mb-1 opacity-80">Monthly Attendance</p>
+                                <h2 className="text-2xl font-black text-white heading-font">{monthLabel}</h2>
                             </div>
-                            <div className="flex items-center justify-center sm:justify-end gap-2 shrink-0">
+                            <div className="flex items-center justify-center sm:justify-end gap-3">
                                 <button
                                     onClick={goToPrevMonth}
-                                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm grid place-items-center"
+                                    className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 text-white hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
                                 >
-                                    ‹
+                                    <ChevronLeft size={20} />
                                 </button>
                                 <button
                                     onClick={goToNextMonth}
-                                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm grid place-items-center"
+                                    className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 text-white hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
                                 >
-                                    ›
+                                    <ChevronRight size={20} />
                                 </button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <StatCard label="Present" value={present} colorClass="text-green-700" bgClass="bg-green-50" borderClass="border-green-100" />
-                            <StatCard label="Absent" value={absent} colorClass="text-red-600" bgClass="bg-red-50" borderClass="border-red-100" />
-                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-700" bgClass="bg-amber-50" borderClass="border-amber-100" />
-                            <StatCard label="Pending" value={unmarked} colorClass="text-gray-500" bgClass="bg-gray-50" borderClass="border-gray-200" />
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <StatCard label="Present" value={present} colorClass="text-emerald-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Absent" value={absent} colorClass="text-rose-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Pending" value={unmarked} colorClass="text-white/60" bgClass="bg-white/10" borderClass="border-white/20" />
                         </div>
-                        <p className="text-[10px] sm:text-xs text-gray-400">
-                            Percentage based on <span className="font-semibold">{present + absent}</span> marked day{present + absent !== 1 ? 's' : ''} (holidays &amp; pending excluded)
+                        <p className="text-[10px] font-black text-emerald-100/60 uppercase tracking-widest">
+                            Based on {present + absent} marked days
                         </p>
                     </div>
                 </div>
             </div>
 
             {/* Calendar Grid */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
                 <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <Calendar size={16} className="text-blue-500" />
                     Monthly Calendar
@@ -494,8 +494,8 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
                         );
                     })}
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
 
@@ -556,56 +556,54 @@ const SemesterTab = ({ semester, semesterSeries }) => {
     return (
         <div className="space-y-6">
             {/* Hero Card */}
-            <div className={`bg-white border ${colors.border} rounded-2xl p-5 shadow-sm`}>
+            <div className={`bg-emerald-600 rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-emerald-500 relative overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:-translate-y-1.5 group mb-6`}>
+                <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -mr-40 -mt-40 blur-3xl group-hover:bg-white/20 transition-all duration-500 pointer-events-none"></div>
                 {isFallback && (
-                    <div className="flex items-start gap-2 px-3 py-2 mb-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                        <Info size={14} className="mt-0.5 shrink-0" />
+                    <div className="relative z-20 flex items-start gap-2 px-4 py-3 mb-6 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-[10px] sm:text-xs text-white">
+                        <Info size={16} className="mt-0.5 shrink-0" />
                         <span>Semester dates are not set. Configure them in <strong>Settings → Academic Calendar</strong> for accurate attendance.</span>
                     </div>
                 )}
-                <div className="flex flex-col sm:flex-row items-center gap-6">
+                <div className="flex flex-col sm:flex-row items-center gap-8 relative z-10">
                     <CircularRing pct={pct} size={150} />
-                    <div className="flex-1 space-y-3 text-center sm:text-left">
+                    <div className="flex-1 space-y-4 text-center sm:text-left">
                         <div>
-                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1.5">
+                            <p className="text-[10px] font-black text-emerald-100 uppercase tracking-[0.2em] mb-1 opacity-80 flex items-center justify-center sm:justify-start gap-1.5">
                                 <BookOpen size={14} /> Semester Attendance
                             </p>
                             {semester.startDate && semester.endDate && (
-                                <div className="flex flex-wrap items-center gap-2 mt-2 justify-center sm:justify-start">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm font-semibold">
+                                <div className="flex flex-wrap items-center gap-3 mt-2 justify-center sm:justify-start">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-black">
                                         <Calendar size={13} /> {formatDisplayDate(semester.startDate)}
                                     </span>
-                                    <span className="text-gray-400 font-bold">→</span>
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm font-semibold">
+                                    <span className="text-white/40 font-black">→</span>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-black">
                                         <Calendar size={13} /> {formatDisplayDate(semester.endDate)}
                                     </span>
                                 </div>
                             )}
-                            <div className="flex flex-wrap gap-2 mt-2 justify-center sm:justify-start">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs border border-gray-200">
+                            <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-emerald-100 text-[10px] font-black border border-white/10 uppercase tracking-widest">
                                     <Calendar size={12} /> {stats.workingDays} working days
                                 </span>
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs border border-amber-200">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-amber-300 text-[10px] font-black border border-white/10 uppercase tracking-widest">
                                     <Sun size={12} /> {stats.holidays} holidays
                                 </span>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <StatCard label="Present" value={stats.present} colorClass="text-green-700" bgClass="bg-green-50" borderClass="border-green-100" />
-                            <StatCard label="Absent" value={stats.absent} colorClass="text-red-600" bgClass="bg-red-50" borderClass="border-red-100" />
-                            <StatCard label="Holidays" value={stats.holidays} colorClass="text-amber-700" bgClass="bg-amber-50" borderClass="border-amber-100" />
-                            <StatCard label="Pending" value={stats.unmarked} colorClass="text-gray-500" bgClass="bg-gray-50" borderClass="border-gray-200" />
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <StatCard label="Present" value={stats.present} colorClass="text-emerald-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Absent" value={stats.absent} colorClass="text-rose-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Holidays" value={stats.holidays} colorClass="text-amber-300" bgClass="bg-white/10" borderClass="border-white/20" />
+                            <StatCard label="Pending" value={stats.unmarked} colorClass="text-white/60" bgClass="bg-white/10" borderClass="border-white/20" />
                         </div>
-                        <p className="text-xs text-gray-400">
-                            Percentage based on <span className="font-semibold">{stats.present + stats.absent}</span> marked days (holidays &amp; pending excluded)
-                        </p>
                     </div>
                 </div>
             </div>
 
             {/* Holidays */}
             {semesterHolidays.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
                     <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                         <Umbrella size={16} className="text-amber-500" />
                         Holidays This Semester
