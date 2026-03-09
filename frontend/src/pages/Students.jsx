@@ -28,7 +28,8 @@ import {
   AlertTriangle,
   Mail,
   CreditCard,
-  Loader2
+  Loader2,
+  GitBranch
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -110,7 +111,7 @@ const maskMobileNumber = (mobile) => {
 };
 
 // Helper component for sidebar details
-const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', options = [], onChange }) => (
+const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', options = [], onChange, onFocus }) => (
   <div className="flex flex-col gap-1.5">
     <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
       {icon}
@@ -121,6 +122,7 @@ const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', option
         <select
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
           className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans"
         >
           <option value="">Select {label}</option>
@@ -1064,9 +1066,8 @@ const Students = () => {
 
       // Include course only if:
       // 1. Course is selected AND
-      // 2. Course is not being changed AND
-      // 3. Branch is not being changed (because we want all branches for the selected course)
-      if (currentFilters.course && excludeField !== 'course' && excludeField !== 'branch') {
+      // 2. Course is not being changed
+      if (currentFilters.course && excludeField !== 'course') {
         params.append('course', currentFilters.course);
       }
 
@@ -2131,6 +2132,7 @@ const Students = () => {
 
       // If course/program changes, refresh branch options
       if (key === 'course' || key === 'Program') {
+        newData.branch = ''; // Clear branch when program changes
         fetchQuickFilterOptions({ college: newData.college, course: value }).catch(console.warn);
       }
 
@@ -3457,6 +3459,24 @@ const Students = () => {
                       type="select"
                       options={quickFilterOptions.courses}
                       onChange={(val) => updateEditField('course', val)}
+                    />
+                    <SidebarDetailItem
+                      label="Branch"
+                      value={editData.branch || selectedStudent?.branch}
+                      icon={<GitBranch size={14} />}
+                      editable={editMode}
+                      type="select"
+                      options={quickFilterOptions.branches}
+                      onChange={(val) => updateEditField('branch', val)}
+                      onFocus={() => {
+                        // Refresh branches for selected course when dropdown is focused
+                        if (editData.course || selectedStudent?.course) {
+                          fetchQuickFilterOptions({
+                            college: editData.college || selectedStudent?.college,
+                            course: editData.course || selectedStudent?.course
+                          }, 'branch').catch(console.warn);
+                        }
+                      }}
                     />
                     <div className="grid grid-cols-2 gap-2 w-full">
                       <SidebarDetailItem

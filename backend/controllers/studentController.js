@@ -4930,53 +4930,35 @@ exports.getQuickFilterOptions = async (req, res) => {
               );
               const validBranchNames = courseBranches.map(b => b.name);
 
-              if (validBranchNames.length > 0) {
-                // Get distinct branches from students that match:
-                // 1. The current filters (college, course, batch, year, semester, etc.)
-                // 2. AND are in the list of valid branches for this course
-                const placeholders = validBranchNames.map(() => '?').join(',');
-                const branchWhereClause = `${whereClause} AND branch IN (${placeholders})`;
-                const branchParams = [...params, ...validBranchNames];
-                [branchRows] = await masterPool.query(
-                  `SELECT DISTINCT branch FROM students ${branchWhereClause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
-                  branchParams
-                );
-              } else {
-                branchRows = [];
-              }
+              // RETURN ALL branches for this course from config
+              branchRows = validBranchNames.map(name => ({ branch: name }));
             } else {
-              // Selected course doesn't belong to this college
               branchRows = [];
             }
           } else {
-            // No course selected, get all branches for all courses in this college
-            // Get all branches for all courses in this college
-            if (validCourseIds.length > 0) {
-              const courseIdPlaceholders = validCourseIds.map(() => '?').join(',');
-              const [allBranches] = await masterPool.query(
-                `SELECT name FROM course_branches WHERE course_id IN (${courseIdPlaceholders}) AND is_active = 1 ORDER BY name ASC`,
-                validCourseIds
-              );
-              const validBranchNames = allBranches.map(b => b.name);
+            // Selected course doesn't belong to this college
+            branchRows = [];
+          }
+        } else {
+          // No course selected, get all branches for all courses in this college
+          // Get all branches for all courses in this college
+          if (validCourseIds.length > 0) {
+            const courseIdPlaceholders = validCourseIds.map(() => '?').join(',');
+            const [allBranches] = await masterPool.query(
+              `SELECT name FROM course_branches WHERE course_id IN (${courseIdPlaceholders}) AND is_active = 1 ORDER BY name ASC`,
+              validCourseIds
+            );
+            const validBranchNames = allBranches.map(b => b.name);
 
-              if (validBranchNames.length > 0) {
-                const placeholders = validBranchNames.map(() => '?').join(',');
-                const branchWhereClause = `${whereClause} AND branch IN (${placeholders})`;
-                const branchParams = [...params, ...validBranchNames];
-                [branchRows] = await masterPool.query(
-                  `SELECT DISTINCT branch FROM students ${branchWhereClause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
-                  branchParams
-                );
-              } else {
-                branchRows = [];
-              }
+            if (validBranchNames.length > 0) {
+              // RETURN ALL branches for all courses in this college from config
+              branchRows = validBranchNames.map(name => ({ branch: name }));
             } else {
               branchRows = [];
             }
+          } else {
+            branchRows = [];
           }
-        } else {
-          // No courses configured for this college
-          branchRows = [];
         }
       } else {
         // College not found, return empty branches

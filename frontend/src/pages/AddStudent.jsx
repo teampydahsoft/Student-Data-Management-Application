@@ -338,60 +338,21 @@ const AddStudent = () => {
       return [];
     }
 
-    // Get branches from the selected course only
-    // The backend already filters branches by course_id, so selectedCourse.branches
-    // should only contain branches for this specific course
-    let branches = (selectedCourse.branches || []).filter(
-      (branch) => branch?.isActive !== false
-    );
+    // Get all active branches from the selected course configuration
+    // This ensures that ALL configured branches are visible, even if no students are currently enrolled
+    const branches = (selectedCourse.branches || [])
+      .filter((branch) => branch?.isActive !== false);
 
-    // Always show branches for the selected course, regardless of batch matching
-    // This ensures branches are always available when a course is selected
-    // (Similar to the fix we implemented in the attendance page)
-    if (branches.length === 0) {
-      return [];
-    }
-
-    // Always deduplicate branches by name to avoid showing duplicates
+    // Deduplicate branches by name to avoid duplicates
     const branchMap = new Map();
-
-    if (studentData.batch) {
-      // If batch is selected, prefer branches that match the batch
-      // But still show all branches for the course if no matches found
-      const batchMatchingBranches = branches.filter(
-        (branch) => branch.academicYearLabel === studentData.batch || !branch.academicYearLabel
-      );
-
-      // First, add batch-matching branches (prefer batch-specific)
-      batchMatchingBranches.forEach(branch => {
-        const existing = branchMap.get(branch.name);
-        // Prefer batch-specific branch over generic one
-        if (!existing || branch.academicYearLabel === studentData.batch) {
-          branchMap.set(branch.name, branch);
-        }
-      });
-
-      // If we have batch matches, use those. Otherwise, show all branches for the course
-      // This ensures branches are always available when a course is selected
-      if (branchMap.size === 0) {
-        // No batch matches, show all branches for the course
-        branches.forEach(branch => {
-          if (!branchMap.has(branch.name)) {
-            branchMap.set(branch.name, branch);
-          }
-        });
+    branches.forEach(branch => {
+      if (!branchMap.has(branch.name)) {
+        branchMap.set(branch.name, branch);
       }
-    } else {
-      // If no batch selected, just deduplicate by name (show unique branch names)
-      branches.forEach(branch => {
-        if (!branchMap.has(branch.name)) {
-          branchMap.set(branch.name, branch);
-        }
-      });
-    }
+    });
 
     return Array.from(branchMap.values());
-  }, [selectedCourse, selectedCourseName, studentData.batch]);
+  }, [selectedCourse, selectedCourseName]);
 
   const selectedBranch = useMemo(
     () =>
@@ -1319,15 +1280,11 @@ const AddStudent = () => {
                     className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
                   >
                     <option value="">Select Branch</option>
-                    {quickFilterBranches.length > 0
-                      ? [...new Set(quickFilterBranches)].map((name) => (
-                        <option key={`qf-branch-${name}`} value={name}>{name}</option>
-                      ))
-                      : [...new Map(branchOptions.map(b => [b.name, b])).values()].map((branch) => (
-                        <option key={`branch-${branch.id || branch.name}`} value={branch.name}>
-                          {branch.name}
-                        </option>
-                      ))}
+                    {branchOptions.map((branch) => (
+                      <option key={`branch-${branch.id || branch.name}`} value={branch.name}>
+                        {branch.name}
+                      </option>
+                    ))}
                   </select>
                 ) : (
                   <input
