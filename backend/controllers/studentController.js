@@ -6633,6 +6633,7 @@ exports.getRegistrationReport = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN (student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') THEN 1 ELSE 0 END) as verification_completed,
         SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
+        SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
         SUM(CASE WHEN current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '' THEN 1 ELSE 0 END) as promotion_completed,
         SUM(CASE WHEN scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' THEN 1 ELSE 0 END) as scholarship_assigned,
@@ -6644,7 +6645,15 @@ exports.getRegistrationReport = async (req, res) => {
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
               (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
-             THEN 1 ELSE 0 END) as overall_completed
+             THEN 1 ELSE 0 END) as overall_completed,
+        SUM(CASE WHEN 
+             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
+             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
+              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
+              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
+              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+             THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
 
@@ -6656,7 +6665,8 @@ exports.getRegistrationReport = async (req, res) => {
       total: totalCount,
       registration: {
         completed: parseInt(statsRow.overall_completed || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0)
+        temporary: parseInt(statsRow.overall_temporary || 0),
+        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
       },
       verification: {
         completed: parseInt(statsRow.verification_completed || 0),
@@ -6664,7 +6674,8 @@ exports.getRegistrationReport = async (req, res) => {
       },
       certificates: {
         verified: parseInt(statsRow.certificates_verified || 0),
-        pending: totalCount - parseInt(statsRow.certificates_verified || 0)
+        temporary: parseInt(statsRow.certificates_temporary || 0),
+        pending: totalCount - parseInt(statsRow.certificates_verified || 0) - parseInt(statsRow.certificates_temporary || 0)
       },
       fees: {
         cleared: parseInt(statsRow.fee_cleared || 0),
@@ -6680,7 +6691,8 @@ exports.getRegistrationReport = async (req, res) => {
       },
       overall: {
         completed: parseInt(statsRow.overall_completed || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0)
+        temporary: parseInt(statsRow.overall_temporary || 0),
+        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
       }
     };
 
@@ -6712,8 +6724,18 @@ exports.getRegistrationReport = async (req, res) => {
       // Stage 2: Certificates
       const certStatusRaw = (student.certificates_status || '').toLowerCase();
       const isCertVerified = certStatusRaw.includes('verified');
-      const certificatesStatusDisplay = isCertVerified ? 'Verified' : 'Unverified';
-      const certificatesStatus = isCertVerified ? 'completed' : 'pending';
+      const isCertTemporary = certStatusRaw.includes('temporary');
+
+      let certificatesStatusDisplay = 'Unverified';
+      let certificatesStatus = 'pending';
+
+      if (isCertTemporary) {
+        certificatesStatusDisplay = 'Temporary';
+        certificatesStatus = 'temporary';
+      } else if (isCertVerified) {
+        certificatesStatusDisplay = 'Verified';
+        certificatesStatus = 'completed';
+      }
 
       // Stage 3: Fee Status
       const feeRaw = (student.fee_status || '').toLowerCase();
@@ -6748,15 +6770,30 @@ exports.getRegistrationReport = async (req, res) => {
         : 'completed'; // Any status (including not eligible) means it's been reviewed
 
       // Overall Registration Status (All 5 steps must be completed including Scholarship)
-      // Also consider the DB column if it's already marked as Completed
-      const overallStatus = (
-        (student.registration_status && student.registration_status.toLowerCase() === 'completed') ||
-        (verificationStatus === 'completed' &&
-          certificatesStatus === 'completed' &&
-          feeStatus === 'completed' &&
-          promotionStatus === 'completed' &&
-          scholarshipStatus === 'completed')
-      ) ? 'completed' : 'pending';
+      // Also consider the DB column if it's already marked as Completed or Temporary
+      let overallStatus = 'pending';
+
+      if (student.registration_status && student.registration_status.toLowerCase() === 'completed') {
+        overallStatus = 'completed';
+      } else if (student.registration_status && student.registration_status.toLowerCase() === 'temporary') {
+        overallStatus = 'Temporary';
+      } else if (
+        verificationStatus === 'completed' &&
+        certificatesStatus === 'completed' &&
+        feeStatus === 'completed' &&
+        promotionStatus === 'completed' &&
+        scholarshipStatus === 'completed'
+      ) {
+        overallStatus = 'completed';
+      } else if (
+        verificationStatus === 'completed' &&
+        certificatesStatus === 'temporary' &&
+        feeStatus === 'completed' &&
+        promotionStatus === 'completed' &&
+        scholarshipStatus === 'completed'
+      ) {
+        overallStatus = 'Temporary';
+      }
 
       return {
         id: student.id,
@@ -6931,6 +6968,7 @@ exports.getRegistrationAbstract = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN (student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') THEN 1 ELSE 0 END) as verification_completed,
         SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
+        SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
         SUM(CASE WHEN current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '' THEN 1 ELSE 0 END) as promotion_completed,
         SUM(CASE WHEN scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' THEN 1 ELSE 0 END) as scholarship_assigned,
@@ -6942,7 +6980,15 @@ exports.getRegistrationAbstract = async (req, res) => {
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
               (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
-             THEN 1 ELSE 0 END) as overall_completed
+             THEN 1 ELSE 0 END) as overall_completed,
+        SUM(CASE WHEN 
+             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
+             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
+              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
+              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
+              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+             THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
       GROUP BY batch, college, course, branch, current_year, current_semester
       ORDER BY batch, college, course, branch, current_year, current_semester ASC
@@ -7093,7 +7139,15 @@ exports.exportRegistrationReport = async (req, res) => {
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
               (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
-             THEN 1 ELSE 0 END) as overall_completed
+             THEN 1 ELSE 0 END) as overall_completed,
+        SUM(CASE WHEN 
+             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
+             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
+              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
+              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
+              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+             THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
     const [statsResult] = await masterPool.query(statsQuery, params);
@@ -7107,7 +7161,8 @@ exports.exportRegistrationReport = async (req, res) => {
       fees: { cleared: parseInt(statsRow.fee_cleared || 0) },
       overall: {
         completed: parseInt(statsRow.overall_completed || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0)
+        temporary: parseInt(statsRow.overall_temporary || 0),
+        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
       }
     };
 
@@ -7133,7 +7188,14 @@ exports.exportRegistrationReport = async (req, res) => {
 
       const certStatusRaw = (student.certificates_status || '').toLowerCase();
       const isCertVerified = certStatusRaw.includes('verified') || certStatusRaw === 'completed';
-      const certificatesStatus = isCertVerified ? 'Verified' : 'Unverified';
+      const isCertTemporary = certStatusRaw.includes('temporary');
+
+      let certificatesStatus = 'Unverified';
+      if (isCertTemporary) {
+        certificatesStatus = 'Temporary';
+      } else if (isCertVerified) {
+        certificatesStatus = 'Verified';
+      }
 
       const feeRaw = (student.fee_status || '').toLowerCase();
       let feeStatus = student.fee_status || 'Pending';
@@ -7150,16 +7212,31 @@ exports.exportRegistrationReport = async (req, res) => {
       const promotionStatus = (student.current_year && student.current_semester) ? 'Completed' : 'Pending';
 
       // Overall Status Logic - must match main report and stats query (all 5 steps including scholarship)
-      // Also prioritize the database column if it's already marked as Completed
+      // Also prioritize the database column if it's already marked as Completed or Temporary
       const isScholarshipCompleted = student.scholar_status && student.scholar_status.trim() !== '' && student.scholar_status.toLowerCase() !== 'null' && student.scholar_status.toLowerCase() !== 'undefined';
-      const overallStatus = (
-        (student.registration_status && student.registration_status.toLowerCase() === 'completed') ||
-        (verificationStatus === 'Completed' &&
-          certificatesStatus === 'Verified' &&
-          isFeeCleared &&
-          promotionStatus === 'Completed' &&
-          isScholarshipCompleted)
-      ) ? 'Completed' : 'Pending';
+
+      let overallStatus = 'Pending';
+      if (student.registration_status && student.registration_status.toLowerCase() === 'completed') {
+        overallStatus = 'Completed';
+      } else if (student.registration_status && student.registration_status.toLowerCase() === 'temporary') {
+        overallStatus = 'Temporary';
+      } else if (
+        verificationStatus === 'Completed' &&
+        certificatesStatus === 'Verified' &&
+        isFeeCleared &&
+        promotionStatus === 'Completed' &&
+        isScholarshipCompleted
+      ) {
+        overallStatus = 'Completed';
+      } else if (
+        verificationStatus === 'Completed' &&
+        certificatesStatus === 'Temporary' &&
+        isFeeCleared &&
+        promotionStatus === 'Completed' &&
+        isScholarshipCompleted
+      ) {
+        overallStatus = 'Temporary';
+      }
 
       return {
         'Pin No': student.pin_no,
@@ -7197,6 +7274,7 @@ exports.exportRegistrationReport = async (req, res) => {
         ['Statistics'],
         ['Total Students', statistics.total],
         ['Overall Completed', statistics.overall.completed],
+        ['Overall Temporary', statistics.overall.temporary],
         ['Registration Pending', statistics.overall.pending],
         ['Mobile Verified', statistics.verification.completed],
         ['Fees Cleared', statistics.fees.cleared]

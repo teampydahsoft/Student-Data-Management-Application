@@ -43,12 +43,14 @@ const StatusBadge = ({ status, type = 'icon' }) => {
   const isCompleted = status === 'completed' || status === 'Verified' || status === 'No Due';
   const isPermitted = status === 'Permitted';
   const isPending = status === 'pending' || status === 'Unverified' || status === 'Pending';
+  const isTemporary = status === 'Temporary' || status === 'temporary';
 
   if (type === 'text') {
     let colorClass = 'bg-gray-100 text-gray-700'; // Default
     if (status === 'No Due' || status === 'Verified' || status === 'completed') colorClass = 'bg-green-100 text-green-700';
     else if (status === 'Permitted') colorClass = 'bg-orange-100 text-orange-700';
     else if (status === 'Unverified' || status === 'Pending' || status === 'pending') colorClass = 'bg-red-50 text-red-600';
+    else if (isTemporary) colorClass = 'bg-amber-100 text-amber-700';
 
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${colorClass}`}>
@@ -60,10 +62,10 @@ const StatusBadge = ({ status, type = 'icon' }) => {
   // Icon checks (strictly for 'completed' vs others logic usually)
   const isIconCompleted = status === 'completed';
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${isIconCompleted ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${isIconCompleted ? 'bg-green-100 text-green-700' : isTemporary ? 'bg-amber-100 text-amber-700' : 'bg-yellow-100 text-yellow-700'
       }`}>
-      {isIconCompleted ? <CheckCircle size={12} /> : <Clock size={12} />}
-      {isIconCompleted ? 'Completed' : 'Pending'}
+      {isIconCompleted ? <CheckCircle size={12} /> : isTemporary ? <AlertCircle size={12} /> : <Clock size={12} />}
+      {isIconCompleted ? 'Completed' : isTemporary ? 'Temporary' : 'Pending'}
     </span>
   );
 };
@@ -1494,6 +1496,8 @@ const Reports = () => {
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm font-bold text-green-600">{stats?.registration?.completed || 0}</span>
           <span className="text-xs text-gray-400">/</span>
+          <span className="text-sm font-bold text-amber-500">{stats?.registration?.temporary || 0}</span>
+          <span className="text-xs text-gray-400">/</span>
           <span className="text-sm font-bold text-red-500">{stats?.registration?.pending || 0}</span>
         </div>
       </div>
@@ -1509,6 +1513,8 @@ const Reports = () => {
         <div className="text-[10px] md:text-xs text-purple-600 uppercase font-semibold">Certificates</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm font-bold text-green-600">{stats?.certificates?.verified || 0}</span>
+          <span className="text-xs text-gray-400">/</span>
+          <span className="text-sm font-bold text-amber-500">{stats?.certificates?.temporary || 0}</span>
           <span className="text-xs text-gray-400">/</span>
           <span className="text-sm font-bold text-red-500">{stats?.certificates?.pending || 0}</span>
         </div>
@@ -1879,6 +1885,7 @@ const Reports = () => {
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Sem</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Total Students</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Overall Completed</th>
+                      <th className="px-4 py-3 whitespace-nowrap text-center">Temporary</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Pending</th>
                       {/* Removed Completion % */}
                       {/* Detailed Breakdowns - Unified (No border-l) */}
@@ -1904,7 +1911,8 @@ const Reports = () => {
                           <td className="px-4 py-3 text-center text-gray-700">{row.current_semester || '-'}</td>
                           <td className="px-4 py-3 text-center font-semibold">{total}</td>
                           <td className="px-4 py-3 text-center text-green-600 font-medium">{completed}</td>
-                          <td className="px-4 py-3 text-center text-red-500 font-medium">{pending}</td>
+                          <td className="px-4 py-3 text-center text-amber-600 font-medium">{parseInt(row.overall_temporary || 0)}</td>
+                          <td className="px-4 py-3 text-center text-red-500 font-medium">{pending - parseInt(row.overall_temporary || 0)}</td>
                           {/* Removed Completion % Cell */}
 
                           {/* Breakdown Columns - Matches Header */}
@@ -1915,7 +1923,7 @@ const Reports = () => {
                           </td>
                           <td className="px-4 py-3 text-center text-gray-600">
                             <div className="text-xs">
-                              <span className="text-green-600 font-medium">{row.certificates_verified}</span> / <span className="text-red-400">{total - row.certificates_verified}</span>
+                              <span className="text-green-600 font-medium">{row.certificates_verified}</span> / <span className="text-amber-600 font-medium">{row.certificates_temporary || 0}</span> / <span className="text-red-400">{total - row.certificates_verified - parseInt(row.certificates_temporary || 0)}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center text-gray-600">
@@ -1944,15 +1952,16 @@ const Reports = () => {
                         <td className="px-4 py-3" colSpan={5}>Total</td>
                         <td className="px-4 py-3 text-center">{abstractData.reduce((acc, r) => acc + parseInt(r.total || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-green-700">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_completed || 0), 0)}</td>
+                        <td className="px-4 py-3 text-center text-amber-600">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_temporary || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-red-600">{
-                          abstractData.reduce((acc, r) => acc + (parseInt(r.total || 0) - parseInt(r.overall_completed || 0)), 0)
+                          abstractData.reduce((acc, r) => acc + (parseInt(r.total || 0) - parseInt(r.overall_completed || 0) - parseInt(r.overall_temporary || 0)), 0)
                         }</td>
                         {/* Removed % Total Cell */}
                         <td className="px-4 py-3 text-center">
                           {abstractData.reduce((acc, r) => acc + parseInt(r.verification_completed || 0), 0)}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {abstractData.reduce((acc, r) => acc + parseInt(r.certificates_verified || 0), 0)}
+                          <span className="text-green-700">{abstractData.reduce((acc, r) => acc + parseInt(r.certificates_verified || 0), 0)}</span> / <span className="text-amber-600">{abstractData.reduce((acc, r) => acc + parseInt(r.certificates_temporary || 0), 0)}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {abstractData.reduce((acc, r) => acc + parseInt(r.fee_cleared || 0), 0)}
