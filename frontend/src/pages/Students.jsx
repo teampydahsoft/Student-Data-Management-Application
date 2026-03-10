@@ -1319,7 +1319,18 @@ const Students = () => {
       }
 
       if (certResponse.data?.success && certResponse.data.data) {
-        setCertificateConfig(certResponse.data.data);
+        // Normalize cert options from old string format to new {value, type} format
+        const rawConfig = certResponse.data.data;
+        const normalized = {};
+        for (const [courseType, certs] of Object.entries(rawConfig)) {
+          normalized[courseType] = certs.map(cert => ({
+            ...cert,
+            options: (cert.options || []).map(opt =>
+              typeof opt === 'string' ? { value: opt, type: 'permanent' } : opt
+            )
+          }));
+        }
+        setCertificateConfig(normalized);
       }
     } catch (error) {
       console.error('Failed to load form/certificate settings', error);
@@ -2254,13 +2265,43 @@ const Students = () => {
 
     if (courseType) {
       const certificates = getCertificatesForCourse(courseType);
-      const allYes = certificates.every(cert => {
+      const type = courseType.toLowerCase();
+
+      let allFilled = true;
+      let hasTemporary = false;
+
+      certificates.forEach(cert => {
         const certValue = cert.key === certKey ? value : newEditData[cert.key];
-        if (certValue === true || certValue === 'Yes' || certValue === 'yes') return true;
-        if (typeof certValue === 'string' && certValue.trim() !== '' && certValue.toLowerCase() !== 'no' && certValue.toLowerCase() !== 'pending') return true;
-        return false;
+        const isPresent = certValue === true || certValue === 'Yes' || certValue === 'yes' ||
+          (typeof certValue === 'string' && certValue.trim() !== '' && certValue.toLowerCase() !== 'no' && certValue.toLowerCase() !== 'pending');
+
+        if (!isPresent) {
+          allFilled = false;
+        } else if (typeof certValue === 'string' && certValue.trim() !== '' && certValue !== 'Yes' && certValue !== 'yes') {
+          // Look up the option type from certificate config
+          const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
+          if (configCert && configCert.options && configCert.options.length > 0) {
+            const matchedOption = configCert.options.find(opt => {
+              const optVal = typeof opt === 'object' ? opt.value : opt;
+              return optVal === certValue;
+            });
+            if (matchedOption && typeof matchedOption === 'object' && matchedOption.type === 'temporary') {
+              hasTemporary = true;
+            }
+          }
+        }
       });
-      newEditData.certificates_status = allYes && certificates.length > 0 ? 'Verified' : 'Unverified';
+
+      if (allFilled && certificates.length > 0) {
+        if (hasTemporary) {
+          newEditData.certificates_status = 'Temporary';
+          newEditData.registration_status = 'Temporary';
+        } else {
+          newEditData.certificates_status = 'Verified';
+        }
+      } else {
+        newEditData.certificates_status = 'Unverified';
+      }
     }
 
     setEditData(newEditData);
@@ -4807,9 +4848,12 @@ const Students = () => {
                                           const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
                                           const options = configCert?.options || [];
                                           if (options.length > 0) {
-                                            return options.map((opt, idx) => (
-                                              <option key={idx} value={opt}>{opt}</option>
-                                            ));
+                                            return options.map((opt, idx) => {
+                                              const optValue = typeof opt === 'object' ? opt.value : opt;
+                                              return (
+                                                <option key={idx} value={optValue}>{optValue}</option>
+                                              );
+                                            });
                                           }
                                           return <option value="Yes">Yes</option>;
                                         })()}

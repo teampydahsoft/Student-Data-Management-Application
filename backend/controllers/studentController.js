@@ -2396,6 +2396,7 @@ exports.getAllStudents = async (req, res) => {
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
         previous_college, remarks, college, caste,
         CASE
+          WHEN certificates_status = 'Temporary' THEN 'Temporary'
           WHEN
             ((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND 
              (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
@@ -2741,6 +2742,7 @@ exports.getStudentByAdmission = async (req, res) => {
     const [students] = await masterPool.query(
       `SELECT *,
         CASE
+          WHEN certificates_status = 'Temporary' THEN 'Temporary'
           WHEN
             (student_data LIKE '%"is_student_mobile_verified":true%' AND student_data LIKE '%"is_parent_mobile_verified":true%') AND
             (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND

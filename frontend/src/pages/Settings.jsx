@@ -554,7 +554,7 @@ const Settings = () => {
     setCertificateConfig(prev => ({
       ...prev,
       [type]: prev[type].map(cert =>
-        cert.id === certId ? { ...cert, options: [...(cert.options || []), ''] } : cert
+        cert.id === certId ? { ...cert, options: [...(cert.options || []), { value: '', type: 'permanent' }] } : cert
       )
     }));
   };
@@ -565,7 +565,30 @@ const Settings = () => {
       [type]: prev[type].map(cert => {
         if (cert.id === certId) {
           const newOptions = [...(cert.options || [])];
-          newOptions[optionIndex] = value;
+          // Handle both old string format and new object format
+          if (typeof newOptions[optionIndex] === 'object') {
+            newOptions[optionIndex] = { ...newOptions[optionIndex], value };
+          } else {
+            newOptions[optionIndex] = { value, type: 'permanent' };
+          }
+          return { ...cert, options: newOptions };
+        }
+        return cert;
+      })
+    }));
+  };
+
+  const updateCertificateOptionType = (type, certId, optionIndex, optType) => {
+    setCertificateConfig(prev => ({
+      ...prev,
+      [type]: prev[type].map(cert => {
+        if (cert.id === certId) {
+          const newOptions = [...(cert.options || [])];
+          if (typeof newOptions[optionIndex] === 'object') {
+            newOptions[optionIndex] = { ...newOptions[optionIndex], type: optType };
+          } else {
+            newOptions[optionIndex] = { value: newOptions[optionIndex], type: optType };
+          }
           return { ...cert, options: newOptions };
         }
         return cert;
@@ -586,11 +609,25 @@ const Settings = () => {
   };
 
 
+  // Helper to normalize cert options from old string format to new {value, type} format
+  const normalizeCertOptions = (config) => {
+    const normalized = {};
+    for (const [courseType, certs] of Object.entries(config)) {
+      normalized[courseType] = certs.map(cert => ({
+        ...cert,
+        options: (cert.options || []).map(opt =>
+          typeof opt === 'string' ? { value: opt, type: 'permanent' } : opt
+        )
+      }));
+    }
+    return normalized;
+  };
+
   const fetchCertificateSettings = async () => {
     try {
       const response = await api.get('/settings/certificates');
       if (response.data.success && response.data.data) {
-        setCertificateConfig(response.data.data);
+        setCertificateConfig(normalizeCertOptions(response.data.data));
       }
     } catch (error) {
       console.error('Failed to fetch certificate settings', error);
@@ -3531,23 +3568,35 @@ const Settings = () => {
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                  {(cert.options || []).map((opt, optIdx) => (
-                                    <div key={optIdx} className="flex items-center gap-1 group">
-                                      <input
-                                        type="text"
-                                        value={opt}
-                                        onChange={(e) => updateCertificateOption('diploma', cert.id, optIdx, e.target.value)}
-                                        placeholder="e.g. Original"
-                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                                      />
-                                      <button
-                                        onClick={() => removeCertificateOption('diploma', cert.id, optIdx)}
-                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  ))}
+                                  {(cert.options || []).map((opt, optIdx) => {
+                                    const optValue = typeof opt === 'object' ? opt.value : opt;
+                                    const optType = typeof opt === 'object' ? opt.type : 'permanent';
+                                    return (
+                                      <div key={optIdx} className="flex items-center gap-1 group">
+                                        <input
+                                          type="text"
+                                          value={optValue}
+                                          onChange={(e) => updateCertificateOption('diploma', cert.id, optIdx, e.target.value)}
+                                          placeholder="e.g. Original"
+                                          className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                        />
+                                        <select
+                                          value={optType}
+                                          onChange={(e) => updateCertificateOptionType('diploma', cert.id, optIdx, e.target.value)}
+                                          className={`text-[10px] px-1 py-0.5 border rounded outline-none ${optType === 'temporary' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-green-300 bg-green-50 text-green-700'}`}
+                                        >
+                                          <option value="permanent">Permanent</option>
+                                          <option value="temporary">Temporary</option>
+                                        </select>
+                                        <button
+                                          onClick={() => removeCertificateOption('diploma', cert.id, optIdx)}
+                                          className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                   {(cert.options || []).length === 0 && (
                                     <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
                                   )}
@@ -3611,23 +3660,35 @@ const Settings = () => {
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                  {(cert.options || []).map((opt, optIdx) => (
-                                    <div key={optIdx} className="flex items-center gap-1 group">
-                                      <input
-                                        type="text"
-                                        value={opt}
-                                        onChange={(e) => updateCertificateOption('ug', cert.id, optIdx, e.target.value)}
-                                        placeholder="e.g. Original"
-                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                                      />
-                                      <button
-                                        onClick={() => removeCertificateOption('ug', cert.id, optIdx)}
-                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  ))}
+                                  {(cert.options || []).map((opt, optIdx) => {
+                                    const optValue = typeof opt === 'object' ? opt.value : opt;
+                                    const optType = typeof opt === 'object' ? opt.type : 'permanent';
+                                    return (
+                                      <div key={optIdx} className="flex items-center gap-1 group">
+                                        <input
+                                          type="text"
+                                          value={optValue}
+                                          onChange={(e) => updateCertificateOption('ug', cert.id, optIdx, e.target.value)}
+                                          placeholder="e.g. Original"
+                                          className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                        />
+                                        <select
+                                          value={optType}
+                                          onChange={(e) => updateCertificateOptionType('ug', cert.id, optIdx, e.target.value)}
+                                          className={`text-[10px] px-1 py-0.5 border rounded outline-none ${optType === 'temporary' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-green-300 bg-green-50 text-green-700'}`}
+                                        >
+                                          <option value="permanent">Permanent</option>
+                                          <option value="temporary">Temporary</option>
+                                        </select>
+                                        <button
+                                          onClick={() => removeCertificateOption('ug', cert.id, optIdx)}
+                                          className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                   {(cert.options || []).length === 0 && (
                                     <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
                                   )}
@@ -3691,23 +3752,35 @@ const Settings = () => {
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                  {(cert.options || []).map((opt, optIdx) => (
-                                    <div key={optIdx} className="flex items-center gap-1 group">
-                                      <input
-                                        type="text"
-                                        value={opt}
-                                        onChange={(e) => updateCertificateOption('pg', cert.id, optIdx, e.target.value)}
-                                        placeholder="e.g. Original"
-                                        className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
-                                      />
-                                      <button
-                                        onClick={() => removeCertificateOption('pg', cert.id, optIdx)}
-                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  ))}
+                                  {(cert.options || []).map((opt, optIdx) => {
+                                    const optValue = typeof opt === 'object' ? opt.value : opt;
+                                    const optType = typeof opt === 'object' ? opt.type : 'permanent';
+                                    return (
+                                      <div key={optIdx} className="flex items-center gap-1 group">
+                                        <input
+                                          type="text"
+                                          value={optValue}
+                                          onChange={(e) => updateCertificateOption('pg', cert.id, optIdx, e.target.value)}
+                                          placeholder="e.g. Original"
+                                          className="w-24 px-2 py-0.5 text-[11px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 outline-none"
+                                        />
+                                        <select
+                                          value={optType}
+                                          onChange={(e) => updateCertificateOptionType('pg', cert.id, optIdx, e.target.value)}
+                                          className={`text-[10px] px-1 py-0.5 border rounded outline-none ${optType === 'temporary' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-green-300 bg-green-50 text-green-700'}`}
+                                        >
+                                          <option value="permanent">Permanent</option>
+                                          <option value="temporary">Temporary</option>
+                                        </select>
+                                        <button
+                                          onClick={() => removeCertificateOption('pg', cert.id, optIdx)}
+                                          className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                   {(cert.options || []).length === 0 && (
                                     <span className="text-[10px] text-gray-400 italic">No options (will use Yes/No)</span>
                                   )}
