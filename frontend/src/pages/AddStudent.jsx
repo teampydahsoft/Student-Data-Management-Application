@@ -9,7 +9,7 @@ import ManagePreviousCollegesModal from '../components/ManagePreviousCollegesMod
 import { addressData } from '../data/addressData';
 
 // Dropdown options for student fields
-const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG'];
+const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
 const STUDENT_STATUS_OPTIONS = [
   'Regular',
   'Discontinued from the second year',
