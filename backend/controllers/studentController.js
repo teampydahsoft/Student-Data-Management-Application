@@ -2925,17 +2925,17 @@ exports.updateStudent = async (req, res) => {
               });
             }
 
-            // Check if any of the incoming fields overlap with the frozen fields
+            // Strip frozen fields from the incoming data instead of blocking the entire update
             if (studentData && typeof studentData === 'object') {
-              // Normalize keys to ensure matching (e.g. lowercase matching if necessary, but exact matching works best here)
               const incomingFields = Object.keys(studentData);
               const overlappingFields = incomingFields.filter(field => frozenFields.includes(field));
 
               if (overlappingFields.length > 0) {
-                return res.status(403).json({
-                  success: false,
-                  message: `Cannot update the following frozen fields for batch '${studentBatch}': ${overlappingFields.join(', ')}`
+                // Remove frozen fields from the update payload silently
+                overlappingFields.forEach(field => {
+                  delete studentData[field];
                 });
+                console.log(`⚠️ Stripped frozen fields from update for batch '${studentBatch}': ${overlappingFields.join(', ')}`);
               }
             }
           }

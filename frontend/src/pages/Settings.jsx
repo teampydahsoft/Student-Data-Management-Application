@@ -252,7 +252,8 @@ const FREEZABLE_FIELDS = [
       { key: 'dob', label: 'Date of Birth' },
       { key: 'adhar_no', label: 'Aadhar Number' },
       { key: 'apaar_id', label: 'APAAR ID' },
-      { key: 'caste', label: 'Caste' }
+      { key: 'caste', label: 'Caste' },
+      { key: 'stud_type', label: 'Student Type' }
     ]
   },
   {
