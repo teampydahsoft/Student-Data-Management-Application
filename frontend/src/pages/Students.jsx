@@ -94,6 +94,9 @@ const SCHOLAR_STATUS_OPTIONS = [
   'rejected from the final year'
 ];
 
+// Student type options
+const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
+
 // Registration status options
 const REGISTRATION_STATUS_OPTIONS = [
   'Pending',
@@ -3455,9 +3458,23 @@ const Students = () => {
                         </h4>
                       )}
                       <div className="mt-1 lg:mt-2 flex lg:justify-center">
-                        <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">
-                          {editData.stud_type || selectedStudent?.stud_type || 'Regular'}
-                        </span>
+                        {editMode ? (
+                          <select
+                            value={editData.stud_type || selectedStudent?.stud_type || ''}
+                            onChange={(e) => updateEditField('stud_type', e.target.value)}
+                            disabled={isFieldFrozen(selectedStudent, 'stud_type')}
+                            className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest border-none outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="">Select Type</option>
+                            {STUDENT_TYPE_OPTIONS.map((type) => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">
+                            {editData.stud_type || selectedStudent?.stud_type || 'Regular'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
