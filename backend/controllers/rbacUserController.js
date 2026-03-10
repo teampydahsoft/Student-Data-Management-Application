@@ -19,6 +19,9 @@ const { sendCredentialsEmail, sendPasswordResetEmail, sendBrevoEmail } = require
 const { getNotificationSetting } = require('./settingsController');
 const { getPermissionsForRole, roleExistsInConfig } = require('./roleConfigController');
 const { getScopeConditionString } = require('../utils/scoping');
+const { getHRMSConnection } = require('../config/mongoConfig');
+const { getModel: getHRMSEmployeeModel } = require('../models/HRMSEmployee');
+const { getModel: getHRMSUserModel } = require('../models/HRMSUser');
 
 // App configuration from environment
 const appName = process.env.APP_NAME || 'Pydah Student Database';
@@ -429,6 +432,52 @@ exports.getUser = async (req, res) => {
 };
 
 /**
+ * GET /api/rbac/users/search-hrms-employee
+ * Search for an employee in the remote HRMS MongoDB
+ */
+exports.searchHRMSEmployee = async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query || query.length < 3) {
+      return res.status(400).json({ success: false, message: 'Search query must be at least 3 characters long' });
+    }
+
+    const hrmsConn = getHRMSConnection();
+    if (!hrmsConn) {
+      return res.status(503).json({ success: false, message: 'HRMS Database connection is currently unavailable' });
+    }
+
+    const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
+    const regex = new RegExp(query, 'i');
+
+    // Search by emp_no, name, or email
+    const employees = await HRMSEmployee.find({
+      $or: [
+        { emp_no: regex },
+        { employee_name: regex },
+        { email: regex }
+      ],
+      is_active: true
+    }).limit(10).lean().exec();
+
+    // Transform for frontend
+    const results = employees.map(emp => ({
+      _id: emp._id.toString(),
+      emp_no: emp.emp_no,
+      name: emp.employee_name,
+      email: emp.email || emp.emp_no, // Fallback if no email
+      phone: emp.phone_number || '',
+      type: 'Employee'
+    }));
+
+    return res.json({ success: true, data: results });
+  } catch (error) {
+    console.error('Failed to search HRMS employees:', error);
+    res.status(500).json({ success: false, message: 'Server error while searching HRMS' });
+  }
+};
+
+/**
  * POST /api/rbac/users
  * Create new user
  */
@@ -451,19 +500,27 @@ exports.createUser = async (req, res) => {
       allCourses,
       allBranches,
       permissions,
-      sendCredentials
+      sendCredentials,
+      hrms_id
     } = req.body;
 
-    // Validate required fields
-    if (!name || !email || !username || !role || !password) {
+    // Validate required fields (password is not required if hrms_id is provided)
+    if (!name || !email || !username || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, username, password, and role are required'
+        message: 'Name, email, username, and role are required'
       });
     }
 
-    // Validate password length
-    if (password.length < 6) {
+    if (!hrms_id && !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required for local users'
+      });
+    }
+
+    // Validate password length for local users
+    if (!hrms_id && password.length < 6) {
       return res.status(400).json({
         success: false,
         message: 'Password must be at least 6 characters'
@@ -564,8 +621,11 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    // Hash the provided password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash the provided password (or null if HRMS)
+    let hashedPassword = null;
+    if (!hrms_id) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
 
     // Permissions: super_admin gets all; others use role config (single source of truth)
     let userPermissions;
@@ -582,9 +642,9 @@ exports.createUser = async (req, res) => {
     const [result] = await masterPool.query(
       `
         INSERT INTO rbac_users 
-          (name, email, phone, username, password, role, college_id, course_id, branch_id, 
+          (name, email, phone, username, password, role, hrms_id, college_id, course_id, branch_id, 
            college_ids, course_ids, branch_ids, all_courses, all_branches, permissions, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?)
       `,
       [
         name.trim(),
@@ -593,6 +653,7 @@ exports.createUser = async (req, res) => {
         username.trim(),
         hashedPassword,
         role,
+        hrms_id || null,
         normalizedCollegeIds[0] || null,
         normalizedCourseIds[0] || null,
         normalizedBranchIds[0] || null,
@@ -648,7 +709,7 @@ exports.createUser = async (req, res) => {
     let emailError = null;
     let smsError = null;
 
-    if (sendCredentials) {
+    if (sendCredentials && !hrms_id) { // Only send credentials for local users
       try {
         // Get notification settings
         const notificationSettings = await getNotificationSetting('user_creation');
@@ -1025,7 +1086,8 @@ exports.updateUser = async (req, res) => {
       allCourses,
       allBranches,
       permissions,
-      isActive
+      isActive,
+      hrms_id
     } = req.body;
 
     // Fetch existing user
@@ -1060,6 +1122,11 @@ exports.updateUser = async (req, res) => {
     if (phone !== undefined) {
       updates.push('phone = ?');
       params.push(phone ? phone.trim() : null);
+    }
+
+    if (hrms_id !== undefined) {
+      updates.push('hrms_id = ?');
+      params.push(hrms_id || null);
     }
 
     if (role !== undefined) {

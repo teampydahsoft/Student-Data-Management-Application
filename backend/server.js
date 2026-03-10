@@ -348,8 +348,9 @@ const startServer = async () => {
     });
 
     // Connect to MongoDB
-    const connectDB = require("./config/mongoConfig");
+    const { connectDB, getHRMSConnection } = require("./config/mongoConfig");
     await connectDB();
+    getHRMSConnection();
 
     // Test database and S3 connections AFTER server starts (async)
     setTimeout(async () => {

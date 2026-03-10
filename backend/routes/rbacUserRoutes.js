@@ -24,6 +24,14 @@ router.get(
   rbacUserController.getUsers
 );
 
+// Search HRMS Employees (for pre-mapping users)
+// Requires user_management control permission
+router.get(
+  '/search-hrms-employee',
+  verifyPermission('user_management', 'control'),
+  rbacUserController.searchHRMSEmployee
+);
+
 // Get single user
 router.get(
   '/:id',

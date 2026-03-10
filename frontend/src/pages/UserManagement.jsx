@@ -86,9 +86,11 @@ const initialFormState = {
   collegeIds: [],
   courseIds: [],
   branchIds: [],
+  branchIds: [],
   allCourses: false,
   allBranches: false,
-  permissions: {}
+  permissions: {},
+  hrms_id: ''
 };
 
 // Selection Modal Component
@@ -342,6 +344,12 @@ const UserManagement = () => {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('create');
   const [showPassword, setShowPassword] = useState(false);
+
+  // HRMS Search States
+  const [hrmsSearchQuery, setHrmsSearchQuery] = useState('');
+  const [hrmsSearchResults, setHrmsSearchResults] = useState([]);
+  const [searchingHrms, setSearchingHrms] = useState(false);
+  const [showHrmsSearch, setShowHrmsSearch] = useState(false);
 
   // Selection modal states
   const [showCollegeModal, setShowCollegeModal] = useState(false);
@@ -901,11 +909,11 @@ const UserManagement = () => {
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.email || !form.username || !form.role || !form.password) {
-      toast.error('Please fill all required fields including password');
+    if (!form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id)) {
+      toast.error('Please fill all required fields');
       return;
     }
-    if (form.password.length < 6) {
+    if (!form.hrms_id && form.password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
@@ -929,7 +937,8 @@ const UserManagement = () => {
         allCourses: form.allCourses,
         allBranches: form.allBranches,
         permissions: initializePermissions(),
-        sendCredentials: true // Always send credentials
+        hrms_id: form.hrms_id || null, // Include hrms_id
+        sendCredentials: !form.hrms_id // Only send credentials for local accounts
       };
 
       const response = await api.post('/rbac/users', payload);
@@ -969,7 +978,8 @@ const UserManagement = () => {
       allCourses: userData.allCourses || false,
       allBranches: userData.allBranches || false,
       permissions: userData.permissions || {},
-      isActive: userData.isActive
+      isActive: userData.isActive,
+      hrms_id: userData.hrms_id || ''
     });
 
     const collegeIds = userData.collegeIds || (userData.collegeId ? [userData.collegeId] : []);
@@ -1068,7 +1078,8 @@ const UserManagement = () => {
         allCourses: editForm.allCourses,
         allBranches: editForm.allBranches,
         permissions: editForm.permissions,
-        isActive: editForm.isActive
+        isActive: editForm.isActive,
+        hrms_id: editForm.hrms_id || null
       };
 
       const response = await api.put(`/rbac/users/${editForm.id}`, payload);
@@ -1329,7 +1340,7 @@ const UserManagement = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-sm">User Information</h3>
-                  <p className="text-[10px] text-slate-500">Basic details & credentials</p>
+                  <p className="text-[10px] text-slate-500">Details & credentials</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 bg-white rounded-lg p-2.5 border border-slate-200 shadow-sm">
@@ -1356,13 +1367,134 @@ const UserManagement = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 flex-1 min-h-0">
               {/* Section 1: User Information */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden flex flex-col">
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 flex-shrink-0">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 flex-shrink-0 flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <User size={16} className="text-white" />
                     <h2 className="text-sm font-bold text-white">User Information</h2>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowHrmsSearch(!showHrmsSearch)}
+                    className="flex items-center gap-1.5 px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs transition-colors border border-white/20"
+                  >
+                    <Search size={12} />
+                    Import form HRMS
+                  </button>
                 </div>
                 <div className="p-3 space-y-2.5 flex-1 overflow-y-auto">
+                  {showHrmsSearch && (
+                    <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-inner">
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Search HRMS Employee</label>
+                      <div className="flex gap-2 relative">
+                        <input
+                          type="text"
+                          value={hrmsSearchQuery}
+                          onChange={(e) => setHrmsSearchQuery(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (!hrmsSearchQuery || hrmsSearchQuery.length < 3) {
+                                toast.error('Enter at least 3 characters');
+                                return;
+                              }
+                              setSearchingHrms(true);
+                              try {
+                                const res = await api.get(`/rbac/users/search-hrms-employee?query=${hrmsSearchQuery}`);
+                                if (res.data?.success) {
+                                  setHrmsSearchResults(res.data.data);
+                                  if (res.data.data.length === 0) toast.error('No employee found');
+                                }
+                              } catch (err) {
+                                toast.error('Failed to search HRMS');
+                              } finally {
+                                setSearchingHrms(false);
+                              }
+                            }
+                          }}
+                          placeholder="Search by Emp No, Name or Email..."
+                          className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!hrmsSearchQuery || hrmsSearchQuery.length < 3) {
+                              toast.error('Enter at least 3 characters');
+                              return;
+                            }
+                            setSearchingHrms(true);
+                            try {
+                              const res = await api.get(`/rbac/users/search-hrms-employee?query=${hrmsSearchQuery}`);
+                              if (res.data?.success) {
+                                setHrmsSearchResults(res.data.data);
+                                if (res.data.data.length === 0) toast.error('No employee found');
+                              }
+                            } catch (err) {
+                              toast.error('Failed to search HRMS');
+                            } finally {
+                              setSearchingHrms(false);
+                            }
+                          }}
+                          disabled={searchingHrms}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                        >
+                          {searchingHrms ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+                        </button>
+                      </div>
+
+                      {hrmsSearchResults.length > 0 && (
+                        <div className="mt-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                          {hrmsSearchResults.map(emp => (
+                            <div
+                              key={emp._id}
+                              className="p-2 bg-white hover:bg-blue-50 cursor-pointer flex justify-between items-center group"
+                              onClick={() => {
+                                setForm(prev => ({
+                                  ...prev,
+                                  name: emp.name,
+                                  email: emp.email,
+                                  phone: emp.phone,
+                                  username: emp.emp_no || emp.email.split('@')[0],
+                                  hrms_id: emp._id,
+                                  password: '' // Password not required
+                                }));
+                                setHrmsSearchResults([]);
+                                setHrmsSearchQuery('');
+                                setShowHrmsSearch(false);
+                                toast.success(`Imported ${emp.name}`);
+                              }}
+                            >
+                              <div>
+                                <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email}</div>
+                              </div>
+                              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Check size={12} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {form.hrms_id && (
+                    <div className="mb-3 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-2">
+                      <ShieldCheck size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-emerald-800">Linked to HRMS</p>
+                        <p className="text-[10px] text-emerald-600 leading-tight">This mapped user will use their HRMS password to login.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setForm(prev => ({ ...prev, hrms_id: '' }))}
+                        className="p-1 hover:bg-emerald-200 rounded text-emerald-700"
+                        title="Unlink"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+
                   <div>
                     <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 mb-1">
                       <User size={12} className="text-blue-500" />
@@ -1371,8 +1503,9 @@ const UserManagement = () => {
                     <input
                       type="text"
                       value={form.name}
+                      readOnly={!!form.hrms_id}
                       onChange={(e) => handleFormChange('name', e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all touch-manipulation min-h-[36px]"
+                      className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all touch-manipulation min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                       placeholder="Enter full name"
                       required
                     />
@@ -1385,8 +1518,9 @@ const UserManagement = () => {
                     <input
                       type="email"
                       value={form.email}
+                      readOnly={!!form.hrms_id}
                       onChange={(e) => handleFormChange('email', e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
+                      className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                       placeholder="email@example.com"
                       required
                     />
@@ -1400,8 +1534,9 @@ const UserManagement = () => {
                       <input
                         type="text"
                         value={form.username}
+                        readOnly={!!form.hrms_id}
                         onChange={(e) => handleFormChange('username', e.target.value)}
-                        className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
+                        className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                         placeholder="username"
                         required
                       />
@@ -1414,37 +1549,40 @@ const UserManagement = () => {
                       <input
                         type="tel"
                         value={form.phone}
+                        readOnly={!!form.hrms_id}
                         onChange={(e) => handleFormChange('phone', e.target.value)}
-                        className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
+                        className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                         placeholder="+91..."
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 mb-1">
-                      <Lock size={12} className="text-blue-500" />
-                      Password <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={form.password}
-                        onChange={(e) => handleFormChange('password', e.target.value)}
-                        className="w-full px-2.5 py-2 pr-8 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
-                        placeholder="Enter password (min 6 chars)"
-                        required
-                        minLength={6}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 active:text-slate-700 touch-manipulation p-1 min-w-[32px] min-h-[32px] flex items-center justify-center"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
+                  {!form.hrms_id && (
+                    <div>
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 mb-1">
+                        <Lock size={12} className="text-blue-500" />
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={form.password}
+                          onChange={(e) => handleFormChange('password', e.target.value)}
+                          className="w-full px-2.5 py-2 pr-8 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
+                          placeholder="Enter password (min 6 chars)"
+                          required
+                          minLength={6}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 active:text-slate-700 touch-manipulation p-1 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1667,8 +1805,8 @@ const UserManagement = () => {
               </button>
               <button
                 type="submit"
-                disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || !form.password || form.collegeIds.length === 0}
-                className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || !form.password || form.collegeIds.length === 0
+                disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || form.collegeIds.length === 0}
+                className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || form.collegeIds.length === 0
                   ? 'bg-slate-300 cursor-not-allowed'
                   : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
                   }`}
@@ -2989,12 +3127,137 @@ const UserManagement = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                   {/* User Info */}
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                        <User size={16} className="text-blue-500" />
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                          <User size={16} className="text-blue-500" />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800">User Details</h3>
                       </div>
-                      <h3 className="text-sm font-bold text-slate-800">User Details</h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowHrmsSearch(!showHrmsSearch)}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-colors"
+                      >
+                        <Search size={12} />
+                        Link HRMS Profile
+                      </button>
                     </div>
+
+                    {showHrmsSearch && (
+                      <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-inner">
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Search HRMS Employee</label>
+                        <div className="flex gap-2 relative">
+                          <input
+                            type="text"
+                            value={hrmsSearchQuery}
+                            onChange={(e) => setHrmsSearchQuery(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (!hrmsSearchQuery || hrmsSearchQuery.length < 3) {
+                                  toast.error('Enter at least 3 characters');
+                                  return;
+                                }
+                                setSearchingHrms(true);
+                                try {
+                                  const res = await api.get(`/rbac/users/search-hrms-employee?query=${hrmsSearchQuery}`);
+                                  if (res.data?.success) {
+                                    setHrmsSearchResults(res.data.data);
+                                    if (res.data.data.length === 0) toast.error('No employee found');
+                                  }
+                                } catch (err) {
+                                  toast.error('Failed to search HRMS');
+                                } finally {
+                                  setSearchingHrms(false);
+                                }
+                              }
+                            }}
+                            placeholder="Search by Emp No, Name or Email..."
+                            className="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!hrmsSearchQuery || hrmsSearchQuery.length < 3) {
+                                toast.error('Enter at least 3 characters');
+                                return;
+                              }
+                              setSearchingHrms(true);
+                              try {
+                                const res = await api.get(`/rbac/users/search-hrms-employee?query=${hrmsSearchQuery}`);
+                                if (res.data?.success) {
+                                  setHrmsSearchResults(res.data.data);
+                                  if (res.data.data.length === 0) toast.error('No employee found');
+                                }
+                              } catch (err) {
+                                toast.error('Failed to search HRMS');
+                              } finally {
+                                setSearchingHrms(false);
+                              }
+                            }}
+                            disabled={searchingHrms}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                          >
+                            {searchingHrms ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+                          </button>
+                        </div>
+
+                        {hrmsSearchResults.length > 0 && (
+                          <div className="mt-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                            {hrmsSearchResults.map(emp => (
+                              <div
+                                key={emp._id}
+                                className="p-2 bg-white hover:bg-blue-50 cursor-pointer flex justify-between items-center group"
+                                onClick={() => {
+                                  setEditForm(prev => ({
+                                    ...prev,
+                                    name: emp.name,
+                                    email: emp.email,
+                                    phone: emp.phone || prev.phone,
+                                    hrms_id: emp._id
+                                  }));
+                                  setHrmsSearchResults([]);
+                                  setHrmsSearchQuery('');
+                                  setShowHrmsSearch(false);
+                                  toast.success(`Successfully mapped ${emp.name} to this account`);
+                                }}
+                              >
+                                <div>
+                                  <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                  <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email}</div>
+                                </div>
+                                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Check size={12} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {editForm.hrms_id && (
+                      <div className="mb-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
+                        <ShieldCheck size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-emerald-800">Linked to HRMS</p>
+                          <p className="text-xs text-emerald-600 leading-tight mt-1">
+                            This user is mapped to HRMS profile ID: <strong>{editForm.hrms_id.substring(0, 8)}...</strong>
+                          </p>
+                          <p className="text-xs text-emerald-600 leading-tight mt-1">They can login with their local credentials AND their HRMS credentials.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditForm(prev => ({ ...prev, hrms_id: '' }))}
+                          className="p-1.5 hover:bg-emerald-200 rounded-lg text-emerald-700 transition-colors"
+                          title="Unlink"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Name</label>
                       <input

@@ -7,6 +7,9 @@ const {
   parseModules
 } = require('../constants/operations');
 const { parsePermissions, USER_ROLES } = require('../constants/rbac');
+const { getHRMSConnection } = require('../config/mongoConfig');
+const { getModel: getHRMSUserModel } = require('../models/HRMSUser');
+const { getModel: getHRMSEmployeeModel } = require('../models/HRMSEmployee');
 
 const buildAdminResponse = (admin) => ({
   id: admin.id,
@@ -90,7 +93,119 @@ exports.unifiedLogin = async (req, res) => {
       }
     }
 
-    // 2. Check RBAC User (Fast, Indexed)
+    // --- NEW: HRMS MongoDB Check for Staff/Admin ---
+    const hrmsConn = getHRMSConnection();
+    let isHRMSLogin = false;
+    let hrmsMatchedObj = null;
+    let hrmsMatchedRole = null;
+    let mappedRole = 'staff';
+    let mappedName = 'HRMS User';
+    let mappedEmail = username;
+    let mappedPhone = null;
+
+    if (hrmsConn) {
+      try {
+        const HRMSUser = getHRMSUserModel(hrmsConn);
+        const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
+
+        // Try Employee Collection first (since they use emp_no)
+        let empDoc = await HRMSEmployee.findOne({ emp_no: username }).select('+password').lean().exec();
+
+        // If not employee, try User Collection (email)
+        if (!empDoc) {
+          let userDoc = await HRMSUser.findOne({ email: username }).select('+password').lean().exec();
+          if (userDoc && await bcrypt.compare(password, userDoc.password)) {
+            isHRMSLogin = true;
+            hrmsMatchedObj = userDoc;
+            hrmsMatchedRole = userDoc.role || 'staff';
+            mappedName = userDoc.name || mappedName;
+            mappedEmail = userDoc.email || mappedEmail;
+
+            // Very basic role mapping logic. 
+            if (hrmsMatchedRole === 'super_admin' || (userDoc.roles && userDoc.roles.includes('super_admin'))) {
+              mappedRole = USER_ROLES.SUPER_ADMIN;
+            } else {
+              mappedRole = hrmsMatchedRole;
+            }
+          }
+        } else {
+          if (await bcrypt.compare(password, empDoc.password)) {
+            isHRMSLogin = true;
+            hrmsMatchedObj = empDoc;
+            // Default role for employee if not specified
+            mappedRole = USER_ROLES.FACULTY;
+            mappedName = empDoc.employee_name || mappedName;
+            mappedEmail = empDoc.email || empDoc.emp_no || mappedEmail;
+            mappedPhone = empDoc.phone_number || null;
+          }
+        }
+
+        if (isHRMSLogin) {
+          // SYNC LAYER: Upsert into local rbac_users using hrms_id
+          const hrmsIdStr = hrmsMatchedObj._id.toString();
+
+          if (hrmsMatchedObj.isActive === false || hrmsMatchedObj.is_active === false) {
+            return res.status(403).json({ success: false, message: 'Account deactivated centrally' });
+          }
+
+          let [existingLocal] = await masterPool.query(
+            'SELECT * FROM rbac_users WHERE hrms_id = ? LIMIT 1',
+            [hrmsIdStr]
+          );
+
+          if (!existingLocal || existingLocal.length === 0) {
+            // HRMS User authenticated successfully, but they are NOT mapped to any local RBAC user account
+            return res.status(403).json({
+              success: false,
+              message: 'Your HRMS account is not linked to any portal user. Please contact the administrator to grant you access.'
+            });
+          }
+
+          const localUserId = existingLocal[0].id;
+
+          // Update details from HRMS just in case they changed, but DO NOT overwrite password
+          const syncUpdateQuery = `
+            UPDATE rbac_users
+            SET
+              name = ?,
+              email = ?,
+              phone = ?,
+              updated_at = NOW()
+            WHERE id = ?
+          `;
+          const syncUpdateParams = [
+            mappedName,
+            mappedEmail,
+            mappedPhone,
+            localUserId
+          ];
+          await masterPool.query(syncUpdateQuery, syncUpdateParams);
+
+          // Fetch the final synced structure to generate local token
+          const [syncedUsers] = await masterPool.query(
+            'SELECT * FROM rbac_users WHERE id = ? LIMIT 1',
+            [localUserId]
+          );
+
+          const rbacUser = syncedUsers[0];
+          const rbacResponse = buildRBACUserResponse(rbacUser);
+          const token = jwt.sign({
+            id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
+            collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
+            collegeIds: rbacUser.college_ids, courseIds: rbacUser.course_ids, branchIds: rbacUser.branch_ids,
+            permissions: rbacUser.permissions
+          }, process.env.JWT_SECRET, { expiresIn: '24h' });
+
+          return res.json({ success: true, message: 'Login successful', token, user: rbacResponse });
+        }
+      } catch (hrmsErr) {
+        console.error('HRMS Login Error:', hrmsErr);
+        // Fallback below if HRMS connection/query fails
+      }
+    }
+
+
+    // 2. Check traditional local RBAC User (Fast, Indexed)
     const [rbacRows] = await masterPool.query(
       `SELECT id, name, username, email, phone, password, role, college_id, course_id, branch_id, college_ids, course_ids, branch_ids, permissions, is_active
        FROM rbac_users WHERE username = ? OR email = ? LIMIT 1`,
@@ -99,7 +214,7 @@ exports.unifiedLogin = async (req, res) => {
 
     if (rbacRows && rbacRows.length > 0) {
       const rbacUser = rbacRows[0];
-      if (await bcrypt.compare(password, rbacUser.password)) {
+      if (rbacUser.password && await bcrypt.compare(password, rbacUser.password)) {
         if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
         const rbacResponse = buildRBACUserResponse(rbacUser);
@@ -113,7 +228,7 @@ exports.unifiedLogin = async (req, res) => {
       }
     }
 
-    // 3. Check Staff User (Fast, Indexed)
+    // 3. Check Staff User (Legacy, Fast, Indexed)
     const [staffRows] = await masterPool.query(
       'SELECT id, username, email, password_hash, assigned_modules, is_active FROM staff_users WHERE username = ? LIMIT 1',
       [username]
@@ -655,6 +770,19 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
+    // Check if it's an HRMS synced user
+    const [userRows] = await masterPool.query(
+      'SELECT hrms_id FROM rbac_users WHERE id = ?',
+      [authUser.id]
+    );
+
+    if (userRows && userRows.length > 0 && userRows[0].hrms_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your profile is managed centrally via the HRMS Application. Please update your details there.'
+      });
+    }
+
     // Check for unique username/email/phone exclusions
     // Check if any OTHER user has these details
     const [existing] = await masterPool.query(
@@ -777,6 +905,12 @@ exports.changePassword = async (req, res) => {
       if (!users || users.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
 
       const user = users[0];
+
+      // Prevent password change if HRMS user
+      if (user.hrms_id) {
+        return res.status(403).json({ success: false, message: 'Your password is managed centrally via the HRMS Application. Please change it there.' });
+      }
+
       const isValid = await bcrypt.compare(currentPassword, user.password);
       if (!isValid) return res.status(401).json({ success: false, message: 'Current password is incorrect' });
 
