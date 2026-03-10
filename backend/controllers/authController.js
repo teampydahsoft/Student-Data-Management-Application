@@ -163,19 +163,18 @@ exports.unifiedLogin = async (req, res) => {
 
           const localUserId = existingLocal[0].id;
 
-          // Update details from HRMS just in case they changed, but DO NOT overwrite password
+          // Update details from HRMS just in case they changed, but DO NOT overwrite password or email
+          // to preserve the local login identity ("created id") as requested.
           const syncUpdateQuery = `
             UPDATE rbac_users
             SET
               name = ?,
-              email = ?,
               phone = ?,
               updated_at = NOW()
             WHERE id = ?
           `;
           const syncUpdateParams = [
             mappedName,
-            mappedEmail,
             mappedPhone,
             localUserId
           ];

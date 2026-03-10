@@ -3213,7 +3213,6 @@ const UserManagement = () => {
                                   setEditForm(prev => ({
                                     ...prev,
                                     name: emp.name,
-                                    email: emp.email,
                                     phone: emp.phone || prev.phone,
                                     hrms_id: emp._id
                                   }));
