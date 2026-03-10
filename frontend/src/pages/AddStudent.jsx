@@ -46,6 +46,8 @@ const AddStudent = () => {
   const [quickFilterBranchesLoading, setQuickFilterBranchesLoading] = useState(false);
   const [admissionNumberLoading, setAdmissionNumberLoading] = useState(false);
   const [isAdmissionNumberManual, setIsAdmissionNumberManual] = useState(false);
+  const [frozenBatches, setFrozenBatches] = useState({});
+  const [frozenBatchesLoading, setFrozenBatchesLoading] = useState(true);
 
 
   const [studentData, setStudentData] = useState({
@@ -137,8 +139,21 @@ const AddStudent = () => {
       }
     };
 
+    const loadFrozenBatches = async () => {
+      try {
+        setFrozenBatchesLoading(true);
+        const response = await api.get('/settings/frozen-batches');
+        setFrozenBatches(response.data?.data || {});
+      } catch (error) {
+        console.error('Failed to load frozen batches:', error);
+      } finally {
+        setFrozenBatchesLoading(false);
+      }
+    };
+
     loadColleges();
     loadBatches();
+    loadFrozenBatches();
   }, []);
 
   // Determine course type (Diploma, UG, or PG) based on course name
@@ -1198,6 +1213,9 @@ const AddStudent = () => {
                     className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
                   />
                 )}
+                {studentData.batch && frozenBatches[studentData.batch]?.includes("ALL") && (
+                  <p className="mt-1 text-xs text-red-500 font-medium">This batch is completely frozen. You cannot add students to it.</p>
+                )}
               </div>
 
               {/* 3. Level */}
@@ -1866,7 +1884,7 @@ const AddStudent = () => {
           <div className="flex justify-end pt-6">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (studentData.batch && frozenBatches[studentData.batch]?.includes("ALL"))}
               className="flex items-center gap-2 bg-gradient-to-r from-gray-800 via-gray-900 to-black text-white px-8 py-4 rounded-xl font-semibold
              hover:from-gray-900 hover:via-black hover:to-gray-800 focus:ring-4 focus:ring-gray-400/40 transition-all duration-300
              disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-2xl transform hover:scale-105 active:scale-95"

@@ -25,7 +25,10 @@ import {
   QrCode,
   CheckSquare,
   Square,
-  Save
+  Save,
+  Lock,
+  Unlock,
+  Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -38,6 +41,7 @@ import NotificationSettings from '../components/NotificationSettings';
 import CollegeTransfer from './CollegeTransfer';
 import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettings';
 import { isFullAccessRole } from '../constants/rbac';
+import { hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
 import { formatDateToLocalISO } from '../utils/dateUtils';
 
 // Field categorization function (same as PublicForm.jsx)
@@ -238,6 +242,54 @@ const defaultCourseForm = {
   yearSemesterConfig: [], // Array of {year: number, semesters: number}
   isActive: true
 };
+const FREEZABLE_FIELDS = [
+  {
+    group: 'Personal Information', fields: [
+      { key: 'student_name', label: 'Student Name' },
+      { key: 'father_name', label: 'Father Name' },
+      { key: 'mother_name', label: 'Mother Name' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'dob', label: 'Date of Birth' },
+      { key: 'adhar_no', label: 'Aadhar Number' },
+      { key: 'apaar_id', label: 'APAAR ID' },
+      { key: 'caste', label: 'Caste' }
+    ]
+  },
+  {
+    group: 'Academic Details', fields: [
+      { key: 'pin_no', label: 'Student PIN' },
+      { key: 'batch', label: 'Batch' },
+      { key: 'college', label: 'College' },
+      { key: 'course', label: 'Course / Program' },
+      { key: 'branch', label: 'Branch / Specialization' },
+      { key: 'current_year', label: 'Current Year' },
+      { key: 'current_semester', label: 'Current Semester' },
+      { key: 'student_status', label: 'Student Status' },
+      { key: 'admission_no', label: 'Admission Number' },
+      { key: 'admission_date', label: 'Admission Date' },
+      { key: 'previous_college', label: 'Previous College' }
+    ]
+  },
+  {
+    group: 'Contact & Address Information', fields: [
+      { key: 'student_mobile', label: 'Student Mobile' },
+      { key: 'parent_mobile1', label: 'Parent Mobile 1' },
+      { key: 'parent_mobile2', label: 'Parent Mobile 2' },
+      { key: 'student_address', label: 'Full Address' },
+      { key: 'city_village', label: 'City/Village' },
+      { key: 'mandal_name', label: 'Mandal' },
+      { key: 'district', label: 'District' }
+    ]
+  },
+  {
+    group: 'Administrative Information', fields: [
+      { key: 'scholar_status', label: 'Scholar Status' },
+      { key: 'fee_status', label: 'Fee Status' },
+      { key: 'registration_status', label: 'Registration Status' },
+      { key: 'certificates_status', label: 'Certificate Status' }
+    ]
+  }
+];
 
 const Settings = () => {
   const [colleges, setColleges] = useState([]);
@@ -558,6 +610,112 @@ const Settings = () => {
       setSavingCertificates(false);
     }
   };
+
+  // Frozen Batches State
+  const [frozenBatches, setFrozenBatches] = useState({});
+  const [allBatches, setAllBatches] = useState([]);
+  const [batchesLoading, setBatchesLoading] = useState(false);
+  const [frozenBatchesLoading, setFrozenBatchesLoading] = useState(false);
+  const [savingFrozenBatch, setSavingFrozenBatch] = useState(null);
+
+  // Field-Level Freeze Modal state
+  const [freezeConfigModal, setFreezeConfigModal] = useState({
+    isOpen: false,
+    batch: null,
+    selectedFields: []
+  });
+
+  // View Students modal state for Freeze Database tab
+  const [viewBatchStudentsModal, setViewBatchStudentsModal] = useState({
+    isOpen: false,
+    batch: null,
+    students: [],
+    loading: false
+  });
+
+  const fetchAllBatches = async () => {
+    try {
+      setBatchesLoading(true);
+      const response = await api.get('/students/batches');
+      if (response.data.success) {
+        setAllBatches(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch available batches', error);
+    } finally {
+      setBatchesLoading(false);
+    }
+  };
+
+  const fetchFrozenBatches = async () => {
+    try {
+      setFrozenBatchesLoading(true);
+      const response = await api.get('/settings/frozen-batches');
+      if (response.data.success) {
+        setFrozenBatches(response.data.data || {});
+      }
+    } catch (error) {
+      console.error('Failed to fetch frozen batches', error);
+    } finally {
+      setFrozenBatchesLoading(false);
+    }
+  };
+
+  const openFreezeConfigModal = (batchStr) => {
+    // Treat old array entries as ["ALL"] in case they slip through, but normally it's an object mapping to array
+    const existing = frozenBatches[batchStr] || [];
+    setFreezeConfigModal({
+      isOpen: true,
+      batch: batchStr,
+      selectedFields: [...existing]
+    });
+  };
+
+  const saveFreezeConfig = async () => {
+    const { batch: batchStr, selectedFields } = freezeConfigModal;
+
+    try {
+      setSavingFrozenBatch(batchStr);
+      let updatedBatches = { ...frozenBatches };
+
+      if (selectedFields.length === 0) {
+        delete updatedBatches[batchStr];
+      } else {
+        updatedBatches[batchStr] = selectedFields;
+      }
+
+      await api.put('/settings/frozen-batches', { batches: updatedBatches });
+      setFrozenBatches(updatedBatches);
+      toast.success(`Freeze configuration for batch ${batchStr} updated successfully`);
+      setFreezeConfigModal({ isOpen: false, batch: null, selectedFields: [] });
+    } catch (error) {
+      console.error('Failed to update frozen batches', error);
+      toast.error('Failed to update frozen batches');
+    } finally {
+      setSavingFrozenBatch(null);
+    }
+  };
+
+  const loadBatchStudents = async (batchStr) => {
+    setViewBatchStudentsModal({ isOpen: true, batch: batchStr, students: [], loading: true });
+    try {
+      // Using the existing students endpoint with filter
+      const response = await api.get('/students', {
+        params: { batch: batchStr, limit: 1000 }
+      });
+      if (response.data.success) {
+        setViewBatchStudentsModal(prev => ({ ...prev, students: response.data.data.students || [], loading: false }));
+      } else {
+        toast.error('Failed to load students for batch');
+        setViewBatchStudentsModal(prev => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      console.error('Failed to load batch students', error);
+      toast.error('Failed to load students for batch');
+      setViewBatchStudentsModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
 
   // Calendar state
   const [calendarViewMonthKey, setCalendarViewMonthKey] = useState(() => {
@@ -1359,6 +1517,8 @@ const Settings = () => {
       await fetchAcademicYears();
       await fetchRegistrationForms();
       await fetchCertificateSettings();
+      await fetchAllBatches();
+      await fetchFrozenBatches();
     };
     initializeData();
   }, []);
@@ -2074,7 +2234,7 @@ const Settings = () => {
         </div>
 
         {/* Navigation Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           <button
             onClick={() => setActiveSection('courses')}
             className={`rounded-lg border-2 p-3 sm:p-4 text-left transition-all touch-manipulation min-h-[80px] ${activeSection === 'courses'
@@ -2226,6 +2386,27 @@ const Settings = () => {
               </div>
             </div>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => setActiveSection('freeze-database')}
+              className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'freeze-database'
+                ? 'border-red-500 bg-red-50 shadow-md'
+                : 'border-gray-200 bg-white hover:border-red-300 hover:shadow-sm'
+                }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className={`rounded-full p-2 ${activeSection === 'freeze-database' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Freeze Database</h2>
+                  <p className="text-xs text-gray-500">Lock records by batch</p>
+                </div>
+              </div>
+            </button>
+          )}
 
         </div>
 
@@ -3866,8 +4047,8 @@ const Settings = () => {
                           <div className="w-2 h-2 rounded-full bg-slate-400"></div>
                           <h3 className="text-sm font-semibold text-gray-900">{role.label}</h3>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selectedFields.length > 0
-                              ? 'bg-slate-200 text-slate-700'
-                              : 'bg-gray-100 text-gray-400'
+                            ? 'bg-slate-200 text-slate-700'
+                            : 'bg-gray-100 text-gray-400'
                             }`}>
                             {selectedFields.length} private fields
                           </span>
@@ -3893,6 +4074,203 @@ const Settings = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Freeze Database Section */}
+        {activeSection === 'freeze-database' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
+            {/* Header */}
+            <div className="flex md:flex-row flex-col items-start md:items-center justify-between mb-6 gap-4 border-b border-gray-200 pb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Lock size={20} className="text-red-600" />
+                  Freeze Database by Batch
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Locking a batch prevents any further edits to the student profiles of that specific batch.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  fetchAllBatches();
+                  fetchFrozenBatches();
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                disabled={batchesLoading || frozenBatchesLoading}
+              >
+                <RefreshCcw size={14} className={batchesLoading || frozenBatchesLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            {batchesLoading || frozenBatchesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+              </div>
+            ) : allBatches.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <GraduationCap size={48} className="mb-4 text-gray-300" />
+                <h3 className="text-base font-semibold text-gray-900">No Batches Found</h3>
+                <p className="text-sm">There are no batches configured in the database yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {allBatches.map(batchStr => {
+                  const batchValue = typeof batchStr === 'object' ? (batchStr.value || batchStr.yearLabel || batchStr.name || JSON.stringify(batchStr)) : batchStr;
+                  const isFrozen = !!frozenBatches[batchValue];
+                  const isFullyFrozen = isFrozen && frozenBatches[batchValue]?.includes("ALL");
+                  const freezeText = isFullyFrozen ? 'Fully Frozen' : isFrozen ? 'Partially Frozen' : 'Active';
+                  const isSaving = savingFrozenBatch === batchValue;
+                  return (
+                    <div key={batchValue} className={`border rounded-xl p-4 flex flex-col justify-between transition-all ${isFrozen ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="font-bold text-lg text-gray-900">{batchValue} Batch</div>
+                        <div className={`text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 ${isFrozen ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                          {isFrozen ? <Lock size={12} /> : <Unlock size={12} />}
+                          {freezeText}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-2 pt-4 border-t border-gray-100/50">
+                        <button
+                          onClick={() => openFreezeConfigModal(batchValue)}
+                          disabled={isSaving}
+                          className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:opacity-50 ${isFrozen
+                            ? 'bg-red-50 text-red-700 border border-red-300 hover:bg-red-100'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}
+                        >
+                          {isSaving ? (
+                            <RefreshCcw size={14} className="animate-spin" />
+                          ) : (
+                            <>
+                              <Settings2 size={14} />
+                              Configure Freeze
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Freeze Batch Configuration Modal */}
+            {freezeConfigModal.isOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <Lock size={20} className="text-red-600" />
+                        Configure Freeze Settings for {freezeConfigModal.batch} Batch
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Select specific fields to freeze, or freeze the entire batch to disable all edits.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setFreezeConfigModal({ isOpen: false, batch: null, selectedFields: [] })}
+                      className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Freeze All Option */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={freezeConfigModal.selectedFields.includes("ALL")}
+                          onChange={(e) => {
+                            if (e.target.checked) setFreezeConfigModal(prev => ({ ...prev, selectedFields: ["ALL"] }));
+                            else setFreezeConfigModal(prev => ({ ...prev, selectedFields: [] }));
+                          }}
+                          className="mt-1 w-5 h-5 rounded border-red-300 text-red-600 focus:ring-red-500"
+                        />
+                        <div>
+                          <span className="block font-bold text-red-900">Freeze Entire Batch</span>
+                          <span className="block text-sm text-red-700">Checking this will lock all fields for all students in this batch, completely disabling editing.</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Field Checkboxes */}
+                    {!freezeConfigModal.selectedFields.includes("ALL") && (
+                      <div className="space-y-6">
+                        {FREEZABLE_FIELDS.map((section, idx) => (
+                          <div key={idx}>
+                            <h4 className="text-sm font-bold text-gray-900 mb-3 border-b border-gray-100 pb-2 uppercase tracking-wide">
+                              {section.group}
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {section.fields.map(field => {
+                                const isSelected = freezeConfigModal.selectedFields.includes(field.key);
+                                return (
+                                  <label
+                                    key={field.key}
+                                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:border-blue-300'}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setFreezeConfigModal(prev => {
+                                          const prevFields = prev.selectedFields;
+                                          if (prevFields.includes(field.key)) {
+                                            return { ...prev, selectedFields: prevFields.filter(k => k !== field.key) };
+                                          } else {
+                                            return { ...prev, selectedFields: [...prevFields, field.key] };
+                                          }
+                                        });
+                                      }}
+                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className={`text-sm ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}>
+                                      {field.label}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                    <button
+                      onClick={() => setFreezeConfigModal({ isOpen: false, batch: null, selectedFields: [] })}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveFreezeConfig}
+                      disabled={savingFrozenBatch === freezeConfigModal.batch}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {savingFrozenBatch === freezeConfigModal.batch ? (
+                        <>
+                          <RefreshCcw size={16} className="animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          Save Configuration
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -4059,6 +4437,110 @@ const Settings = () => {
           </div>
         )}
 
+        {/* View Batch Students Modal */}
+        {viewBatchStudentsModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Users size={24} className="text-blue-600" />
+                    Students in Batch {viewBatchStudentsModal.batch}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Total {viewBatchStudentsModal.students.length} student(s) mapped to this batch.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewBatchStudentsModal({ isOpen: false, batch: null, students: [], loading: false })}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-0 bg-gray-50/50">
+                {viewBatchStudentsModal.loading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : viewBatchStudentsModal.students.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                    <Users size={48} className="mb-4 text-gray-300" />
+                    <p className="text-base font-medium text-gray-900">No students found</p>
+                    <p className="text-sm">No students are currently mapped to this batch.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto w-full">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                      <thead className="bg-gray-100 text-gray-600 font-semibold text-xs uppercase sticky top-0 shadow-sm z-10 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Admission No</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Name</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Program / Branch</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Current Year/Sem</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {viewBatchStudentsModal.students.map((student, idx) => {
+                          const studName = student.student_name || student.student_data?.student_name || student.student_data?.['Student Name'] || '-';
+                          const studCourse = student.course || student.student_data?.course || student.student_data?.['Program Name'] || student.student_data?.['Course'] || '-';
+                          const studBranch = student.branch || student.student_data?.branch || student.student_data?.['Branch Name'] || student.student_data?.['Branch'] || '-';
+                          const studYr = student.current_year || student.student_data?.current_year || student.student_data?.['Current Academic Year'] || '-';
+                          const studSem = student.current_semester || student.student_data?.current_semester || student.student_data?.['Current Semester'] || '-';
+                          const studStatus = student.student_status || student.student_data?.student_status || student.student_data?.['Student Status'] || 'Regular';
+
+                          return (
+                            <tr key={student.admission_number || idx} className="hover:bg-blue-50/30 transition-colors">
+                              <td className="px-6 py-3.5 font-medium text-gray-900">{student.admission_number}</td>
+                              <td className="px-6 py-3.5">{studName}</td>
+                              <td className="px-6 py-3.5">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-900">{studCourse}</span>
+                                  <span className="text-xs text-gray-500">{studBranch}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5">Y{studYr} / S{studSem}</td>
+                              <td className="px-6 py-3.5">
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${studStatus === 'Regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}`}>
+                                  {studStatus}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                <p className="text-sm text-gray-500">
+                  {!!frozenBatches[viewBatchStudentsModal.batch] ? (
+                    <span className="flex items-center gap-1.5 text-red-600 font-medium whitespace-nowrap">
+                      <Lock size={16} />
+                      This batch is currently frozen.
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-green-600 font-medium whitespace-nowrap">
+                      <Unlock size={16} />
+                      This batch is currently active.
+                    </span>
+                  )}
+                </p>
+                <button
+                  onClick={() => setViewBatchStudentsModal({ isOpen: false, batch: null, students: [], loading: false })}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Edit Branch Modal */}
         {editingBranch && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -4141,6 +4623,110 @@ const Settings = () => {
                   className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
                 >
                   {savingBranchId === editingBranch.branchId ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* View Batch Students Modal */}
+        {viewBatchStudentsModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Users size={24} className="text-blue-600" />
+                    Students in Batch {viewBatchStudentsModal.batch}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Total {viewBatchStudentsModal.students.length} student(s) mapped to this batch.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewBatchStudentsModal({ isOpen: false, batch: null, students: [], loading: false })}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-0 bg-gray-50/50">
+                {viewBatchStudentsModal.loading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : viewBatchStudentsModal.students.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                    <Users size={48} className="mb-4 text-gray-300" />
+                    <p className="text-base font-medium text-gray-900">No students found</p>
+                    <p className="text-sm">No students are currently mapped to this batch.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto w-full">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                      <thead className="bg-gray-100 text-gray-600 font-semibold text-xs uppercase sticky top-0 shadow-sm z-10 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Admission No</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Name</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Program / Branch</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Current Year/Sem</th>
+                          <th className="px-6 py-3 font-semibold tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {viewBatchStudentsModal.students.map((student, idx) => {
+                          const studName = student.student_name || student.student_data?.student_name || student.student_data?.['Student Name'] || '-';
+                          const studCourse = student.course || student.student_data?.course || student.student_data?.['Program Name'] || student.student_data?.['Course'] || '-';
+                          const studBranch = student.branch || student.student_data?.branch || student.student_data?.['Branch Name'] || student.student_data?.['Branch'] || '-';
+                          const studYr = student.current_year || student.student_data?.current_year || student.student_data?.['Current Academic Year'] || '-';
+                          const studSem = student.current_semester || student.student_data?.current_semester || student.student_data?.['Current Semester'] || '-';
+                          const studStatus = student.student_status || student.student_data?.student_status || student.student_data?.['Student Status'] || 'Regular';
+
+                          return (
+                            <tr key={student.admission_number || idx} className="hover:bg-blue-50/30 transition-colors">
+                              <td className="px-6 py-3.5 font-medium text-gray-900">{student.admission_number}</td>
+                              <td className="px-6 py-3.5">{studName}</td>
+                              <td className="px-6 py-3.5">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-900">{studCourse}</span>
+                                  <span className="text-xs text-gray-500">{studBranch}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5">Y{studYr} / S{studSem}</td>
+                              <td className="px-6 py-3.5">
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${studStatus === 'Regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}`}>
+                                  {studStatus}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                <p className="text-sm text-gray-500">
+                  {!!frozenBatches[viewBatchStudentsModal.batch] ? (
+                    <span className="flex items-center gap-1.5 text-red-600 font-medium whitespace-nowrap">
+                      <Lock size={16} />
+                      This batch is currently frozen.
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-green-600 font-medium whitespace-nowrap">
+                      <Unlock size={16} />
+                      This batch is currently active.
+                    </span>
+                  )}
+                </p>
+                <button
+                  onClick={() => setViewBatchStudentsModal({ isOpen: false, batch: null, students: [], loading: false })}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                >
+                  Close
                 </button>
               </div>
             </div>

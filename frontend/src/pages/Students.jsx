@@ -111,7 +111,7 @@ const maskMobileNumber = (mobile) => {
 };
 
 // Helper component for sidebar details
-const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', options = [], onChange, onFocus }) => (
+const SidebarDetailItem = ({ label, value, icon, editable, disabled, type = 'text', options = [], onChange, onFocus }) => (
   <div className="flex flex-col gap-1.5">
     <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
       {icon}
@@ -123,7 +123,8 @@ const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', option
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
-          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans"
+          disabled={disabled}
+          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
         >
           <option value="">Select {label}</option>
           {options.map((opt) => (
@@ -135,7 +136,8 @@ const SidebarDetailItem = ({ label, value, icon, editable, type = 'text', option
           type={type}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans placeholder-gray-300"
+          disabled={disabled}
+          className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-sans placeholder-gray-300 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
           placeholder={`Enter ${label.toLowerCase()}`}
         />
       )
@@ -235,6 +237,18 @@ const Students = () => {
     if (!fieldPerms) return true;
     return fieldPerms[fieldKey]?.edit === true;
   }, [userPermissions, user?.role]);
+
+  const [frozenBatches, setFrozenBatches] = useState({});
+  const [frozenBatchesLoading, setFrozenBatchesLoading] = useState(true);
+
+  // Helper to check if a specific field is frozen for a student's batch
+  const isFieldFrozen = useCallback((student, fieldKey) => {
+    if (!student) return false;
+    const batchKey = student.batch || student.student_data?.batch;
+    if (!batchKey) return false;
+    const batchConfig = frozenBatches[batchKey] || [];
+    return batchConfig.includes("ALL") || batchConfig.includes(fieldKey);
+  }, [frozenBatches]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1311,6 +1325,25 @@ const Students = () => {
     }
   };
 
+  const fetchFrozenBatches = async () => {
+    try {
+      setFrozenBatchesLoading(true);
+      const response = await api.get('/settings/frozen-batches');
+      if (response.data?.success) {
+        setFrozenBatches(response.data.data || {});
+      }
+    } catch (error) {
+      console.error('Failed to load frozen batches:', error);
+    } finally {
+      setFrozenBatchesLoading(false);
+    }
+  };
+
+  // Fetch frozen batches on mount
+  useEffect(() => {
+    fetchFrozenBatches();
+  }, []);
+
   // Apply server-side filtering
   const applyFilters = () => {
     setCurrentPage(1);
@@ -1525,7 +1558,10 @@ const Students = () => {
     // Allow editing if:
     // 1. General edit permission is true AND field-level edit permission is true AND field allows edits
     // 2. OR User is cashier AND field is fee_status (override general permission if needed)
-    const hasPermissionToEdit = ((canEditStudents && canEditField(field)) || (isCashier && field === 'fee_status'));
+    // 3. AND student's batch is NOT frozen
+    const studentBatch = student.batch || student.student_data?.batch;
+    const isBatchFrozen = (frozenBatches[studentBatch]?.includes("ALL") || frozenBatches[studentBatch]?.includes(field));
+    const hasPermissionToEdit = ((canEditStudents && canEditField(field)) || (isCashier && field === 'fee_status')) && !isBatchFrozen;
 
     const isEditing = hasPermissionToEdit && isEditsAllowedForField && editingCell?.studentId === studentKey && editingCell?.field === field;
     const currentValue = student[field] || '';
@@ -3269,7 +3305,7 @@ const Students = () => {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {!editMode && canEditStudents && !isCashier && (
+                {!editMode && canEditStudents && !isCashier && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.student_data?.batch]?.includes("ALL")) && (
                   <button
                     onClick={handleEdit}
                     className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs transition-all shadow-lg shadow-indigo-200 active:scale-95"
@@ -3433,6 +3469,7 @@ const Students = () => {
                       value={editData.student_name || selectedStudent?.student_name}
                       icon={<User size={14} />}
                       editable={editMode}
+                      disabled={isFieldFrozen(selectedStudent, 'student_name')}
                       onChange={(val) => updateEditField('student_name', val)}
                     />
                     <SidebarDetailItem
@@ -3440,6 +3477,7 @@ const Students = () => {
                       value={editData.batch || selectedStudent?.batch}
                       icon={<Calendar size={14} />}
                       editable={editMode}
+                      disabled={isFieldFrozen(selectedStudent, 'batch')}
                       type="select"
                       options={quickFilterOptions.batches}
                       onChange={(val) => updateEditField('batch', val)}
@@ -3449,6 +3487,7 @@ const Students = () => {
                       value={editData.college || selectedStudent?.college}
                       icon={<Book size={14} />}
                       editable={editMode}
+                      disabled={isFieldFrozen(selectedStudent, 'college')}
                       onChange={(val) => updateEditField('college', val)}
                     />
                     <SidebarDetailItem
@@ -3456,6 +3495,7 @@ const Students = () => {
                       value={editData.course || selectedStudent?.course}
                       icon={<Book size={14} />}
                       editable={editMode}
+                      disabled={isFieldFrozen(selectedStudent, 'course')}
                       type="select"
                       options={quickFilterOptions.courses}
                       onChange={(val) => updateEditField('course', val)}
@@ -3465,6 +3505,7 @@ const Students = () => {
                       value={editData.branch || selectedStudent?.branch}
                       icon={<GitBranch size={14} />}
                       editable={editMode}
+                      disabled={isFieldFrozen(selectedStudent, 'branch')}
                       type="select"
                       options={quickFilterOptions.branches}
                       onChange={(val) => updateEditField('branch', val)}
@@ -3484,6 +3525,7 @@ const Students = () => {
                         value={editData.current_year || selectedStudent?.current_year}
                         icon={<Calendar size={14} />}
                         editable={editMode}
+                        disabled={isFieldFrozen(selectedStudent, 'current_year')}
                         onChange={(val) => updateEditField('current_year', val)}
                       />
                       <SidebarDetailItem
@@ -3491,6 +3533,7 @@ const Students = () => {
                         value={editData.current_semester || selectedStudent?.current_semester}
                         icon={<Calendar size={14} />}
                         editable={editMode}
+                        disabled={isFieldFrozen(selectedStudent, 'current_semester')}
                         onChange={(val) => updateEditField('current_semester', val)}
                       />
                     </div>
@@ -3551,7 +3594,7 @@ const Students = () => {
                     </div>
                   )}
 
-                  {!editMode && !isCashier && (
+                  {!editMode && !isCashier && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.student_data?.batch]?.includes("ALL")) && (
                     <button
                       onClick={handleResetPassword}
                       className="w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-100 text-orange-600 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest hover:bg-orange-50 transition-all active:scale-95"
@@ -4138,7 +4181,8 @@ const Students = () => {
                                     onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
                                     placeholder="Enter parent mobile 1"
                                     maxLength={10}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                                    disabled={isFieldFrozen(selectedStudent, 'parent_mobile1')}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4159,7 +4203,8 @@ const Students = () => {
                                     onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
                                     placeholder="Enter parent mobile 2"
                                     maxLength={10}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                                    disabled={isFieldFrozen(selectedStudent, 'parent_mobile2')}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4189,7 +4234,8 @@ const Students = () => {
                                     onChange={(e) => updateEditField('student_address', e.target.value)}
                                     placeholder="Enter student address"
                                     rows="3"
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                    disabled={isFieldFrozen(selectedStudent, 'student_address')}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4210,7 +4256,8 @@ const Students = () => {
                                       value={editData.city_village ?? editData['City/Village'] ?? ''}
                                       onChange={(e) => updateEditField('city_village', e.target.value)}
                                       placeholder="Enter city/village"
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                      disabled={isFieldFrozen(selectedStudent, 'city_village')}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                     />
                                   ) : (
                                     <p className="text-sm text-gray-900 font-medium">
@@ -4230,7 +4277,8 @@ const Students = () => {
                                       value={editData.mandal_name ?? editData['Mandal Name'] ?? ''}
                                       onChange={(e) => updateEditField('mandal_name', e.target.value)}
                                       placeholder="Enter mandal name"
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                      disabled={isFieldFrozen(selectedStudent, 'mandal_name')}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                     />
                                   ) : (
                                     <p className="text-sm text-gray-900 font-medium">
@@ -4250,7 +4298,8 @@ const Students = () => {
                                       value={editData.district ?? editData.District ?? ''}
                                       onChange={(e) => updateEditField('district', e.target.value)}
                                       placeholder="Enter district"
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                      disabled={isFieldFrozen(selectedStudent, 'district')}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                     />
                                   ) : (
                                     <p className="text-sm text-gray-900 font-medium">
@@ -4270,7 +4319,8 @@ const Students = () => {
                                       value={editData.caste ?? editData.Caste ?? ''}
                                       onChange={(e) => updateEditField('caste', e.target.value)}
                                       placeholder="Enter caste"
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                      disabled={isFieldFrozen(selectedStudent, 'caste')}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                     />
                                   ) : (
                                     <p className="text-sm text-gray-900 font-medium">
@@ -4288,7 +4338,8 @@ const Students = () => {
                                     <select
                                       value={editData.gender ?? editData['M/F'] ?? ''}
                                       onChange={(e) => updateEditField('gender', e.target.value)}
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                                      disabled={isFieldFrozen(selectedStudent, 'gender')}
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                     >
                                       <option value="">Select Gender</option>
                                       <option value="M">Male</option>
@@ -4328,7 +4379,8 @@ const Students = () => {
                                     onChange={(e) => updateEditField('student_mobile', e.target.value)}
                                     placeholder="Enter mobile number"
                                     maxLength={10}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'student_mobile')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4348,7 +4400,8 @@ const Students = () => {
                                     value={editData.father_name ?? editData['Father Name'] ?? ''}
                                     onChange={(e) => updateEditField('father_name', e.target.value)}
                                     placeholder="Enter father name"
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'father_name')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4368,7 +4421,8 @@ const Students = () => {
                                     value={(editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']) ?
                                       (editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
                                     onChange={(e) => updateEditField('dob', e.target.value)}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'dob')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4388,7 +4442,8 @@ const Students = () => {
                                     value={editData.adhar_no ?? editData['ADHAR No'] ?? ''}
                                     onChange={(e) => updateEditField('adhar_no', e.target.value)}
                                     placeholder="Enter Aadhar number"
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'adhar_no')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4414,7 +4469,8 @@ const Students = () => {
                                     placeholder="Enter 12-digit APAAR ID"
                                     maxLength={12}
                                     inputMode="numeric"
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'apaar_id')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4434,7 +4490,8 @@ const Students = () => {
                                     value={(editData.admission_date ?? editData['Admission Date']) ?
                                       (editData.admission_date ?? editData['Admission Date']).split('T')[0] : ''}
                                     onChange={(e) => updateEditField('admission_date', e.target.value)}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'admission_date')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4463,7 +4520,8 @@ const Students = () => {
                                   <select
                                     value={editData.student_status ?? editData['Student Status'] ?? selectedStudent?.student_status ?? ''}
                                     onChange={(e) => updateEditField('student_status', e.target.value)}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                    disabled={isFieldFrozen(selectedStudent, 'student_status')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   >
                                     {!editData.student_status && !editData['Student Status'] && !selectedStudent?.student_status && (
                                       <option value="">Select Status</option>
@@ -4490,7 +4548,8 @@ const Students = () => {
                                   <select
                                     value={editData.scholar_status ?? editData['Scholar Status'] ?? selectedStudent?.scholar_status ?? ''}
                                     onChange={(e) => updateEditField('scholar_status', e.target.value)}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                    disabled={isFieldFrozen(selectedStudent, 'scholar_status')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   >
                                     {!editData.scholar_status && !editData['Scholar Status'] && !selectedStudent?.scholar_status && (
                                       <option value="">Select Scholar Status</option>
@@ -4523,7 +4582,8 @@ const Students = () => {
                                         setPermitRemarks('');
                                       }
                                     }}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                    disabled={isFieldFrozen(selectedStudent, 'fee_status')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   >
                                     {!editFeeStatus && !editData.fee_status && !editData['Fee Status'] && !selectedStudent?.fee_status && (
                                       <option value="">Select Fee Status</option>
@@ -4605,7 +4665,8 @@ const Students = () => {
                                   <select
                                     value={editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || ''}
                                     onChange={(e) => setEditRegistrationStatus(e.target.value)}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white"
+                                    disabled={isFieldFrozen(selectedStudent, 'registration_status')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   >
                                     {!editRegistrationStatus && !editData.registration_status && !editData['Registration Status'] && !selectedStudent?.registration_status && (
                                       <option value="">Select Registration Status</option>
@@ -4634,7 +4695,8 @@ const Students = () => {
                                     value={editData.previous_college ?? ''}
                                     onChange={(e) => updateEditField('previous_college', e.target.value)}
                                     placeholder="Enter previous college"
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px]"
+                                    disabled={isFieldFrozen(selectedStudent, 'previous_college')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                   />
                                 ) : (
                                   <p className="text-sm text-gray-900 font-medium">
@@ -4720,7 +4782,8 @@ const Students = () => {
                                       <select
                                         value={getCertificateStatusDisplay(cert.key) === 'No' ? '' : getCertificateStatusDisplay(cert.key)}
                                         onChange={(e) => updateCertificateStatus(cert.key, e.target.value)}
-                                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white"
+                                        disabled={isFieldFrozen(selectedStudent, 'certificates_status')}
+                                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                       >
                                         <option value="">No</option>
                                         {(() => {

@@ -39,5 +39,9 @@ router.get('/document-requirements/:courseType', documentSettingsController.getD
 router.get('/qr-config', qrConfigController.getQrConfig);
 router.post('/qr-config', qrConfigController.saveQrConfig);
 
+// Frozen Batches Configuration routes
+router.get('/frozen-batches', settingsController.getFrozenBatches);
+router.put('/frozen-batches', settingsController.updateFrozenBatches);
+
 module.exports = router;
 

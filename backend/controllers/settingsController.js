@@ -515,3 +515,84 @@ exports.updateCertificateSettings = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/settings/frozen-batches
+ * Get frozen batches configuration
+ */
+exports.getFrozenBatches = async (req, res) => {
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['frozen_batches']
+    );
+
+    let frozenBatches = {};
+
+    if (settings && settings.length > 0) {
+      try {
+        const storedConfig = JSON.parse(settings[0].value);
+        if (Array.isArray(storedConfig)) {
+          // Legacy format: ["2024", "2025"] -> { "2024": ["ALL"], "2025": ["ALL"] }
+          storedConfig.forEach(batch => {
+            frozenBatches[batch] = ["ALL"];
+          });
+        } else if (typeof storedConfig === 'object' && storedConfig !== null) {
+          // New format: { "2024": ["student_name", "student_mobile"] }
+          frozenBatches = storedConfig;
+        }
+      } catch (e) {
+        console.error('Error parsing frozen batches settings:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: frozenBatches
+    });
+  } catch (error) {
+    console.error('Get frozen batches settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching frozen batches settings'
+    });
+  }
+};
+
+/**
+ * PUT /api/settings/frozen-batches
+ * Update frozen batches configuration
+ */
+exports.updateFrozenBatches = async (req, res) => {
+  try {
+    const { batches } = req.body;
+
+    if (!batches || typeof batches !== 'object' || Array.isArray(batches)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Batches must be an object mapping batch names to array of frozen fields'
+      });
+    }
+
+    const value = JSON.stringify(batches);
+
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) 
+       VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['frozen_batches', value, new Date(), value, new Date()]
+    );
+
+    res.json({
+      success: true,
+      message: 'Frozen batches settings saved successfully',
+      data: batches
+    });
+  } catch (error) {
+    console.error('Update frozen batches settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating frozen batches settings'
+    });
+  }
+};

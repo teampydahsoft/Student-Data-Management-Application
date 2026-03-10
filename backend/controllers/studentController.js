@@ -2879,6 +2879,74 @@ exports.updateStudent = async (req, res) => {
     const { admissionNumber } = req.params;
     const { studentData } = req.body;
 
+    // Fetch existing student to check batch
+    const [existingStudentsBeforeCheck] = await masterPool.query(
+      'SELECT id, batch, student_data FROM students WHERE admission_number = ?',
+      [admissionNumber]
+    );
+
+    if (existingStudentsBeforeCheck.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const currentStudent = existingStudentsBeforeCheck[0];
+    const currentStudentData = parseJSON(currentStudent.student_data) || {};
+    // Extract actual batch from DB column or JSON field
+    const studentBatch = currentStudent.batch || currentStudentData.batch || currentStudentData.Batch || currentStudentData.BATCH;
+
+    // Check if the student's batch is frozen
+    if (studentBatch) {
+      try {
+        const [settings] = await masterPool.query(
+          'SELECT value FROM settings WHERE `key` = ?',
+          ['frozen_batches']
+        );
+
+        if (settings && settings.length > 0) {
+          const storedConfig = JSON.parse(settings[0].value);
+          let frozenBatches = {};
+
+          if (Array.isArray(storedConfig)) {
+            storedConfig.forEach(batch => { frozenBatches[batch] = ["ALL"]; });
+          } else if (typeof storedConfig === 'object' && storedConfig !== null) {
+            frozenBatches = storedConfig;
+          }
+
+          if (frozenBatches[String(studentBatch)]) {
+            const frozenFields = frozenBatches[String(studentBatch)];
+
+            if (frozenFields.includes("ALL")) {
+              return res.status(403).json({
+                success: false,
+                message: `Update failed: The batch '${studentBatch}' is currently frozen.`
+              });
+            }
+
+            // Check if any of the incoming fields overlap with the frozen fields
+            if (studentData && typeof studentData === 'object') {
+              // Normalize keys to ensure matching (e.g. lowercase matching if necessary, but exact matching works best here)
+              const incomingFields = Object.keys(studentData);
+              const overlappingFields = incomingFields.filter(field => frozenFields.includes(field));
+
+              if (overlappingFields.length > 0) {
+                return res.status(403).json({
+                  success: false,
+                  message: `Cannot update the following frozen fields for batch '${studentBatch}': ${overlappingFields.join(', ')}`
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking frozen batches:', err);
+        // Continue if checking fails to avoid blocking legitimate saves due to a parsing error
+      }
+    }
+
+
     // SECURITY: Define protected columns that cannot be updated via this generic endpoint.
     // These fields must be updated via their dedicated endpoints or are immutable/system-managed.
     const PROTECTED_COLUMNS = [
