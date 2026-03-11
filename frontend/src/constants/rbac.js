@@ -351,7 +351,13 @@ export const USER_ROLES = {
   CASHIER: 'cashier',
   STAFF: 'staff', // Legacy staff role
   FACULTY: 'faculty',
-  BRANCH_FACULTY: 'branch_faculty'
+  BRANCH_FACULTY: 'branch_faculty',
+  // Ticket app roles
+  COURSE_PRINCIPAL: 'course_principal',
+  COURSE_HOD: 'course_hod',
+  BRANCH_CLERK: 'branch_clerk',
+  BRANCH_COUNSELOR: 'branch_counselor',
+  SUPPORT_STAFF: 'support_staff'
 };
 
 // Role Labels for UI display
@@ -366,7 +372,12 @@ export const ROLE_LABELS = {
   [USER_ROLES.CASHIER]: 'Cashier',
   [USER_ROLES.STAFF]: 'Staff',
   [USER_ROLES.FACULTY]: 'Faculty',
-  [USER_ROLES.BRANCH_FACULTY]: 'Branch Faculty'
+  [USER_ROLES.BRANCH_FACULTY]: 'Branch Faculty',
+  course_principal: 'Course Principal',
+  course_hod: 'Course HOD',
+  branch_clerk: 'Branch Clerk',
+  branch_counselor: 'Branch Counselor',
+  support_staff: 'Support Staff'
 };
 
 // Role Colors for UI
@@ -381,7 +392,12 @@ export const ROLE_COLORS = {
   [USER_ROLES.CASHIER]: 'bg-green-50 text-green-700 border-green-200',
   [USER_ROLES.STAFF]: 'bg-slate-100 text-slate-700 border-slate-200',
   [USER_ROLES.FACULTY]: 'bg-teal-50 text-teal-700 border-teal-200',
-  [USER_ROLES.BRANCH_FACULTY]: 'bg-teal-50 text-teal-700 border-teal-200'
+  [USER_ROLES.BRANCH_FACULTY]: 'bg-teal-50 text-teal-700 border-teal-200',
+  course_principal: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  course_hod: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  branch_clerk: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  branch_counselor: 'bg-orange-50 text-orange-700 border-orange-200',
+  support_staff: 'bg-slate-100 text-slate-700 border-slate-200'
 };
 
 // Check if role has full access (super admin or legacy admin)

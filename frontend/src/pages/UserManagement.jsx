@@ -49,7 +49,15 @@ const ROLE_AVATAR_COLORS = {
   office_assistant: 'from-purple-400 to-purple-600',
   cashier: 'from-green-400 to-green-600',
   faculty: 'from-teal-400 to-teal-600',
-  super_admin: 'from-rose-400 to-rose-600'
+  super_admin: 'from-rose-400 to-rose-600',
+  course_principal: 'from-blue-500 to-indigo-700',
+  course_hod: 'from-cyan-500 to-blue-700',
+  branch_clerk: 'from-emerald-400 to-emerald-600',
+  branch_counselor: 'from-orange-400 to-orange-600',
+  branch_faculty: 'from-pink-400 to-pink-600',
+  support_staff: 'from-slate-500 to-slate-700',
+  // Map any other custom roles to a default gradient
+  default: 'from-slate-400 to-slate-600'
 };
 
 const ROLE_DESCRIPTIONS = {
@@ -59,7 +67,13 @@ const ROLE_DESCRIPTIONS = {
   branch_hod: 'Head of Department with control over specific branches and their operations',
   office_assistant: 'Assists with office operations, document management, and administrative tasks',
   cashier: 'Handles fee collection, payment processing, and financial transactions',
-  faculty: 'Teaching staff with access to student records, attendance, and course-related modules'
+  faculty: 'Teaching staff with access to student records, attendance, and course-related modules',
+  course_principal: 'Course-level principal for ticket and academic operations',
+  course_hod: 'Head of Department at course level',
+  branch_clerk: 'Branch-level clerk for ticket and administrative tasks',
+  branch_counselor: 'Branch counselor role',
+  branch_faculty: 'Branch faculty role',
+  support_staff: 'Ticket support staff for handling complaints and tickets'
 };
 
 // Helper: prefer API roleLabel so role always shows (backend is source of truth)
@@ -73,7 +87,13 @@ const FIXED_ROLES = [
   { value: 'branch_hod', label: 'Branch HOD' },
   { value: 'office_assistant', label: 'Office Assistant' },
   { value: 'cashier', label: 'Cashier' },
-  { value: 'faculty', label: 'Faculty' }
+  { value: 'faculty', label: 'Faculty' },
+  { value: 'course_principal', label: 'Course Principal' },
+  { value: 'course_hod', label: 'Course HOD' },
+  { value: 'branch_clerk', label: 'Branch Clerk' },
+  { value: 'branch_counselor', label: 'Branch Counselor' },
+  { value: 'branch_faculty', label: 'Branch Faculty' },
+  { value: 'support_staff', label: 'Support Staff' }
 ];
 
 const initialFormState = {
@@ -113,27 +133,11 @@ const SelectionModal = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   const colors = {
-    blue: {
-      bg: 'bg-blue-600',
-      light: 'bg-blue-50',
-      text: 'text-blue-600',
-      border: 'border-blue-200',
-      gradient: 'from-blue-600 to-indigo-600'
-    },
-    green: {
-      bg: 'bg-emerald-600',
-      light: 'bg-emerald-50',
-      text: 'text-emerald-600',
-      border: 'border-emerald-200',
-      gradient: 'from-emerald-600 to-teal-600'
-    },
-    orange: {
-      bg: 'bg-orange-600',
-      light: 'bg-orange-50',
-      text: 'text-orange-600',
-      border: 'border-orange-200',
-      gradient: 'from-orange-600 to-amber-600'
-    }
+    green: { bg: 'bg-emerald-600', light: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', gradient: 'from-emerald-600 to-teal-600' },
+    orange: { bg: 'bg-orange-600', light: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200', gradient: 'from-orange-600 to-amber-600' },
+    purple: { bg: 'bg-purple-600', light: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', gradient: 'from-purple-600 to-indigo-600' },
+    rose: { bg: 'bg-rose-600', light: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200', gradient: 'from-rose-600 to-pink-600' },
+    indigo: { bg: 'bg-indigo-600', light: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', gradient: 'from-indigo-600 to-violet-600' }
   };
   const c = colors[colorScheme] || colors.blue;
 
@@ -1601,7 +1605,8 @@ const UserManagement = () => {
                 <div className="p-3 space-y-2 flex-1 overflow-y-auto">
                   {(availableRolesForCreate.length ? availableRolesForCreate : FIXED_ROLES.map(r => ({ value: r.value, label: r.label }))).map(role => {
                     const roleValue = role.value ?? role.role_key;
-                    const roleLabel = role.label ?? ROLE_LABELS[roleValue];
+                    // Use backend provided label if available, otherwise fallback to frontend constants
+                    const roleLabel = role.label ?? ROLE_LABELS[roleValue] ?? roleValue;
                     const isSelected = form.role === roleValue;
                     return (
                       <div
@@ -1807,10 +1812,10 @@ const UserManagement = () => {
                 <RefreshCw size={16} />
                 Reset
               </button>
-              <button
+                <button
                 type="submit"
-                disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || form.collegeIds.length === 0}
-                className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || form.collegeIds.length === 0
+                disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)}
+                className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)
                   ? 'bg-slate-300 cursor-not-allowed'
                   : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
                   }`}
@@ -2054,10 +2059,10 @@ const UserManagement = () => {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-2 py-1.5">
+                            <td className="px-2 py-1.5 border-r border-slate-100/50">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                 <ShieldCheck size={10} />
-                                {ROLE_LABELS[userData.role] || userData.role}
+                                {getRoleDisplay(userData)}
                               </span>
                             </td>
                             <td className="px-2 py-1.5">
@@ -3331,25 +3336,27 @@ const UserManagement = () => {
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Role</label>
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                        {FIXED_ROLES.map(role => {
-                          const isSelected = editForm.role === role.value;
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {(availableRolesForCreate.length ? availableRolesForCreate : FIXED_ROLES.map(r => ({ value: r.value, label: r.label }))).map(role => {
+                          const roleValue = role.value ?? role.role_key;
+                          const roleLabel = role.label ?? ROLE_LABELS[roleValue] ?? roleValue;
+                          const isSelected = editForm.role === roleValue;
                           return (
                             <div
-                              key={role.value}
-                              onClick={() => setEditForm(prev => ({ ...prev, role: role.value }))}
+                              key={roleValue}
+                              onClick={() => setEditForm(prev => ({ ...prev, role: roleValue }))}
                               className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all border-2 ${isSelected
-                                ? `${ROLE_COLORS[role.value]} border-current`
+                                ? `${ROLE_COLORS[roleValue] || 'bg-slate-100 text-slate-700 border-slate-200'} border-current`
                                 : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                                 }`}
                             >
-                              <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[role.value]} flex items-center justify-center shadow-sm flex-shrink-0`}>
+                              <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[roleValue] || 'from-slate-400 to-slate-600'} flex items-center justify-center shadow-sm flex-shrink-0`}>
                                 <ShieldCheck size={14} className="text-white" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-xs text-slate-800">{role.label}</h4>
+                                <h4 className="font-bold text-xs text-slate-800">{roleLabel}</h4>
                                 <p className="text-[10px] text-slate-500 line-clamp-1">
-                                  {ROLE_DESCRIPTIONS[role.value]}
+                                  {role.description ?? ROLE_DESCRIPTIONS[roleValue] ?? ''}
                                 </p>
                               </div>
                               {isSelected && (
@@ -3635,8 +3642,8 @@ const UserManagement = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={updatingUser || editForm.collegeIds.length === 0}
-                    className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 touch-manipulation min-h-[44px] ${updatingUser || editForm.collegeIds.length === 0 ? 'bg-blue-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
+                    disabled={updatingUser || (editForm.role && editForm.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(editForm.role) && editForm.collegeIds.length === 0)}
+                    className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 touch-manipulation min-h-[44px] ${updatingUser || (editForm.role && editForm.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(editForm.role) && editForm.collegeIds.length === 0) ? 'bg-blue-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
                       }`}
                   >
                     {updatingUser ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}

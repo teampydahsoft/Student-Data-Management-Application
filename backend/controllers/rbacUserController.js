@@ -1659,21 +1659,31 @@ exports.getAvailableRoles = async (req, res) => {
   try {
     const user = req.user || req.admin;
     const effectiveRole = user.role === 'admin' ? USER_ROLES.SUPER_ADMIN : user.role;
-    let availableRoles = ROLE_HIERARCHY[effectiveRole] || [];
-
-    const allBuiltIn = new Set(availableRoles);
+    let availableRoles = [];
 
     if (isSuperAdmin(user)) {
+      // 1. Get standard configurable roles from roleConfigController
+      const { CONFIGURABLE_ROLES } = require('./roleConfigController');
+      availableRoles = [...(CONFIGURABLE_ROLES || [])];
+
+      // 2. Add Faculty (standard teaching role)
+      if (!availableRoles.includes(USER_ROLES.FACULTY)) {
+        availableRoles.push(USER_ROLES.FACULTY);
+      }
+
+      // 3. Add dynamic roles from rbac_role_config
       const [customRows] = await masterPool.query(
-        'SELECT role_key, label FROM rbac_role_config'
+        'SELECT role_key FROM rbac_role_config'
       ).catch(() => [[]]);
-      const { TICKET_APP_ROLES } = require('./roleConfigController');
+      
       (customRows || []).forEach(r => {
-        if (!allBuiltIn.has(r.role_key) && !(TICKET_APP_ROLES || []).includes(r.role_key)) {
+        if (!availableRoles.includes(r.role_key)) {
           availableRoles.push(r.role_key);
-          allBuiltIn.add(r.role_key);
         }
       });
+    } else {
+      // For non-super admins, stay with standard hierarchy
+      availableRoles = ROLE_HIERARCHY[effectiveRole] || [];
     }
 
     const roleLabels = { ...ROLE_LABELS };

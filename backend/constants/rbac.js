@@ -12,7 +12,14 @@ const USER_ROLES = {
   BRANCH_HOD: 'branch_hod',
   OFFICE_ASSISTANT: 'office_assistant',
   CASHIER: 'cashier',
-  FACULTY: 'faculty'
+  FACULTY: 'faculty',
+  // Ticket app roles (linked app)
+  COURSE_PRINCIPAL: 'course_principal',
+  COURSE_HOD: 'course_hod',
+  BRANCH_CLERK: 'branch_clerk',
+  BRANCH_COUNSELOR: 'branch_counselor',
+  BRANCH_FACULTY: 'branch_faculty',
+  SUPPORT_STAFF: 'support_staff'
 };
 
 // Role Hierarchy (who can create whom)
@@ -24,7 +31,13 @@ const ROLE_HIERARCHY = {
     USER_ROLES.BRANCH_HOD,
     USER_ROLES.OFFICE_ASSISTANT,
     USER_ROLES.CASHIER,
-    USER_ROLES.FACULTY
+    USER_ROLES.FACULTY,
+    USER_ROLES.COURSE_PRINCIPAL,
+    USER_ROLES.COURSE_HOD,
+    USER_ROLES.BRANCH_CLERK,
+    USER_ROLES.BRANCH_COUNSELOR,
+    USER_ROLES.BRANCH_FACULTY,
+    USER_ROLES.SUPPORT_STAFF
   ],
   [USER_ROLES.COLLEGE_PRINCIPAL]: [
     USER_ROLES.COLLEGE_AO,
@@ -396,6 +409,66 @@ const ROLE_REQUIREMENTS = {
     supportsMultiBranch: true,
     supportsAllCourses: true,
     supportsAllBranches: true
+  },
+  'course_principal': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
+  },
+  'course_hod': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
+  },
+  'branch_clerk': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
+  },
+  'branch_counselor': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
+  },
+  'branch_faculty': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
+  },
+  'support_staff': {
+    requiresCollege: false,
+    requiresCourse: false,
+    requiresBranch: false,
+    supportsMultiCollege: true,
+    supportsMultiCourse: true,
+    supportsMultiBranch: true,
+    supportsAllCourses: true,
+    supportsAllBranches: true
   }
 };
 
@@ -515,7 +588,13 @@ const ROLE_LABELS = {
   [USER_ROLES.BRANCH_HOD]: 'Branch HOD',
   [USER_ROLES.OFFICE_ASSISTANT]: 'Office Assistant',
   [USER_ROLES.CASHIER]: 'Cashier',
-  [USER_ROLES.FACULTY]: 'Faculty'
+  [USER_ROLES.FACULTY]: 'Faculty',
+  course_principal: 'Course Principal',
+  course_hod: 'Course HOD',
+  branch_clerk: 'Branch Clerk',
+  branch_counselor: 'Branch Counselor',
+  branch_faculty: 'Branch Faculty',
+  support_staff: 'Support Staff'
 };
 
 module.exports = {
