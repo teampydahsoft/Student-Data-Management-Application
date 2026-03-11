@@ -1464,7 +1464,12 @@ const UserManagement = () => {
                               }}
                             >
                               <div>
-                                <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                  <span className={`text-[8px] font-bold uppercase px-1 rounded ${emp.type === 'Employee' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
+                                    {emp.type}
+                                  </span>
+                                </div>
                                 <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email}</div>
                               </div>
                               <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2034,7 +2039,18 @@ const UserManagement = () => {
                                   {userData.name?.charAt(0)?.toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="font-semibold text-slate-800 text-xs truncate max-w-[150px]">{userData.name}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="font-semibold text-slate-800 text-xs truncate max-w-[150px]">{userData.name}</div>
+                                    {userData.hrms_id ? (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase tracking-tighter" title="Linked to HRMS">
+                                        Linked
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-50 text-slate-400 border border-slate-100 uppercase tracking-tighter" title="Not linked to HRMS">
+                                        Pending
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="text-[10px] text-slate-500 truncate max-w-[150px]">{userData.email}</div>
                                 </div>
                               </div>
@@ -2196,7 +2212,18 @@ const UserManagement = () => {
                               {userData.name?.charAt(0)?.toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-slate-800 text-base mb-1">{userData.name}</div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="font-semibold text-slate-800 text-base">{userData.name}</div>
+                                {userData.hrms_id ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase tracking-tighter">
+                                    Linked
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-50 text-slate-400 border border-slate-100 uppercase tracking-tighter">
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-slate-500 truncate">{userData.email}</div>
                               <span className={`inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-lg text-xs font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                 <ShieldCheck size={12} />
@@ -3213,6 +3240,8 @@ const UserManagement = () => {
                                   setEditForm(prev => ({
                                     ...prev,
                                     name: emp.name,
+                                    email: emp.email,
+                                    username: emp.emp_no || emp.email.split('@')[0],
                                     phone: emp.phone || prev.phone,
                                     hrms_id: emp._id
                                   }));
@@ -3223,7 +3252,12 @@ const UserManagement = () => {
                                 }}
                               >
                                 <div>
-                                  <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-sm font-bold text-slate-800">{emp.name}</div>
+                                    <span className={`text-[8px] font-bold uppercase px-1 rounded ${emp.type === 'Employee' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
+                                      {emp.type}
+                                    </span>
+                                  </div>
                                   <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email}</div>
                                 </div>
                                 <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3262,8 +3296,9 @@ const UserManagement = () => {
                       <input
                         type="text"
                         value={editForm.name}
+                        readOnly={!!editForm.hrms_id}
                         onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
+                        className={`w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all ${editForm.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                         required
                       />
                     </div>
@@ -3279,8 +3314,9 @@ const UserManagement = () => {
                       <input
                         type="email"
                         value={editForm.email}
+                        readOnly={!!editForm.hrms_id}
                         onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
+                        className={`w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all ${editForm.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                         required
                       />
                     </div>
@@ -3289,8 +3325,9 @@ const UserManagement = () => {
                       <input
                         type="tel"
                         value={editForm.phone}
+                        readOnly={!!editForm.hrms_id}
                         onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
+                        className={`w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all ${editForm.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
                       />
                     </div>
                     <div>

@@ -161,6 +161,7 @@ exports.getUsers = async (req, res) => {
         u.college_id,
         u.course_id,
         u.branch_id,
+        u.hrms_id,
         c.name as college_name,
         co.name as course_name,
         cb.name as branch_name
@@ -306,6 +307,7 @@ exports.getUsers = async (req, res) => {
         branchNames,
         permissions: parsePermissions(row.permissions),
         isActive: !!row.is_active,
+        hrms_id: row.hrms_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };
@@ -352,6 +354,7 @@ exports.getUser = async (req, res) => {
           u.all_branches,
           u.permissions,
           u.is_active,
+          u.hrms_id,
           u.created_at,
           u.updated_at,
           c.name as college_name,
@@ -418,6 +421,7 @@ exports.getUser = async (req, res) => {
         branchName: userData.branch_name,
         permissions: parsePermissions(userData.permissions),
         isActive: !!userData.is_active,
+        hrms_id: userData.hrms_id,
         createdAt: userData.created_at,
         updatedAt: userData.updated_at
       }
@@ -448,29 +452,48 @@ exports.searchHRMSEmployee = async (req, res) => {
     }
 
     const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
+    const HRMSUser = getHRMSUserModel(hrmsConn);
     const regex = new RegExp(query, 'i');
 
-    // Search by emp_no, name, or email
-    const employees = await HRMSEmployee.find({
-      $or: [
-        { emp_no: regex },
-        { employee_name: regex },
-        { email: regex }
-      ],
-      is_active: true
-    }).limit(10).lean().exec();
+    // Search both collections concurrently
+    const [employees, users] = await Promise.all([
+      HRMSEmployee.find({
+        $or: [
+          { emp_no: regex },
+          { employee_name: regex },
+          { email: regex }
+        ],
+        is_active: true
+      }).limit(10).lean().exec(),
+      HRMSUser.find({
+        $or: [
+          { name: regex },
+          { email: regex }
+        ],
+        isActive: true
+      }).limit(10).lean().exec()
+    ]);
 
-    // Transform for frontend
-    const results = employees.map(emp => ({
+    // Transform and combine results
+    const employeeResults = employees.map(emp => ({
       _id: emp._id.toString(),
       emp_no: emp.emp_no,
       name: emp.employee_name,
-      email: emp.email || emp.emp_no, // Fallback if no email
+      email: emp.email || emp.emp_no,
       phone: emp.phone_number || '',
       type: 'Employee'
     }));
 
-    return res.json({ success: true, data: results });
+    const userResults = users.map(user => ({
+      _id: user._id.toString(),
+      emp_no: user.email, // Users usually don't have emp_no, use email as identifier
+      name: user.name,
+      email: user.email,
+      phone: '', // Users collection doesn't have phone in schema
+      type: 'User'
+    }));
+
+    return res.json({ success: true, data: [...employeeResults, ...userResults] });
   } catch (error) {
     console.error('Failed to search HRMS employees:', error);
     res.status(500).json({ success: false, message: 'Server error while searching HRMS' });

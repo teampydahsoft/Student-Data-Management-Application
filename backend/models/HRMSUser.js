@@ -7,6 +7,8 @@ const hrmsUserSchema = new mongoose.Schema({
   role: String,
   roles: [String],
   isActive: Boolean,
+  employeeId: String,
+  employeeRef: mongoose.Schema.Types.ObjectId,
 }, { timestamps: true });
 
 // Export the schema and a factory function

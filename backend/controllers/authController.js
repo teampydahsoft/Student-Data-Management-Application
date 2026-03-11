@@ -108,37 +108,97 @@ exports.unifiedLogin = async (req, res) => {
         const HRMSUser = getHRMSUserModel(hrmsConn);
         const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
 
-        // Try Employee Collection first (since they use emp_no)
-        let empDoc = await HRMSEmployee.findOne({ emp_no: username }).select('+password').lean().exec();
+        // 1. First, search Employee Collection (by emp_no or email)
+        console.log(`[AUTH] Attempting HRMS Login for: ${username}`);
+        const empDoc = await HRMSEmployee.findOne({
+          $or: [
+            { emp_no: username },
+            { email: username }
+          ]
+        }).select('+password').lean().exec();
 
-        // If not employee, try User Collection (email)
-        if (!empDoc) {
-          let userDoc = await HRMSUser.findOne({ email: username }).select('+password').lean().exec();
-          if (userDoc && await bcrypt.compare(password, userDoc.password)) {
-            isHRMSLogin = true;
-            hrmsMatchedObj = userDoc;
-            hrmsMatchedRole = userDoc.role || 'staff';
-            mappedName = userDoc.name || mappedName;
-            mappedEmail = userDoc.email || mappedEmail;
-
-            // Very basic role mapping logic. 
-            if (hrmsMatchedRole === 'super_admin' || (userDoc.roles && userDoc.roles.includes('super_admin'))) {
-              mappedRole = USER_ROLES.SUPER_ADMIN;
-            } else {
-              mappedRole = hrmsMatchedRole;
-            }
-          }
-        } else {
-          if (await bcrypt.compare(password, empDoc.password)) {
+        if (empDoc) {
+          console.log(`[AUTH] Employee profile found: ${empDoc.emp_no} (${empDoc.email})`);
+          const isEmpPassValid = await bcrypt.compare(password, empDoc.password);
+          console.log(`[AUTH] Employee password check: ${isEmpPassValid ? 'MATCH' : 'FAIL'}`);
+          
+          if (isEmpPassValid) {
             isHRMSLogin = true;
             hrmsMatchedObj = empDoc;
-            // Default role for employee if not specified
             mappedRole = USER_ROLES.FACULTY;
             mappedName = empDoc.employee_name || mappedName;
             mappedEmail = empDoc.email || empDoc.emp_no || mappedEmail;
             mappedPhone = empDoc.phone_number || null;
           }
+        } else {
+          console.log(`[AUTH] No Employee profile found for: ${username}`);
         }
+
+        // 3. If still not logged in, but we have an Employee record, try the User collection using links (email, emp_no, or ref)
+        if (!isHRMSLogin && empDoc) {
+          const userSearchCriteria = [
+            { employeeId: empDoc.emp_no },
+            { employeeRef: empDoc._id }
+          ];
+          if (empDoc.email) {
+            userSearchCriteria.push({ email: empDoc.email });
+          }
+
+          console.log(`[AUTH] Checking User collection fallback using links: emp_no=${empDoc.emp_no}, id=${empDoc._id}`);
+          const userDocByEmpLink = await HRMSUser.findOne({ $or: userSearchCriteria }).select('+password').lean().exec();
+          
+          if (userDocByEmpLink) {
+            console.log(`[AUTH] User record found by employee link. Checking password...`);
+            const isUserPassValid = await bcrypt.compare(password, userDocByEmpLink.password);
+            console.log(`[AUTH] User password check: ${isUserPassValid ? 'MATCH' : 'FAIL'}`);
+
+            if (isUserPassValid) {
+              isHRMSLogin = true;
+              hrmsMatchedObj = userDocByEmpLink;
+              hrmsMatchedRole = userDocByEmpLink.role || 'staff';
+              mappedName = userDocByEmpLink.name || empDoc.employee_name || mappedName;
+              mappedEmail = userDocByEmpLink.email || empDoc.email || mappedEmail;
+              mappedPhone = empDoc.phone_number || null;
+
+              if (hrmsMatchedRole === 'super_admin' || (userDocByEmpLink.roles && userDocByEmpLink.roles.includes('super_admin'))) {
+                mappedRole = USER_ROLES.SUPER_ADMIN;
+              } else {
+                mappedRole = hrmsMatchedRole;
+              }
+            }
+          } else {
+            console.log(`[AUTH] No User record found linked to employee: ${empDoc.emp_no}`);
+          }
+        }
+
+        // 4. Finally, if still not logged in, try the User collection directly with the provided username (as email)
+        if (!isHRMSLogin) {
+          console.log(`[AUTH] Final attempt: Direct User collection search for email: ${username}`);
+          const directUserDoc = await HRMSUser.findOne({ email: username }).select('+password').lean().exec();
+          if (directUserDoc) {
+            console.log(`[AUTH] Direct User profile found. Checking password...`);
+            const isDirectUserPassValid = await bcrypt.compare(password, directUserDoc.password);
+            console.log(`[AUTH] Direct User password check: ${isDirectUserPassValid ? 'MATCH' : 'FAIL'}`);
+
+            if (isDirectUserPassValid) {
+              isHRMSLogin = true;
+              hrmsMatchedObj = directUserDoc;
+              hrmsMatchedRole = directUserDoc.role || 'staff';
+              mappedName = directUserDoc.name || mappedName;
+              mappedEmail = directUserDoc.email || mappedEmail;
+
+              if (hrmsMatchedRole === 'super_admin' || (directUserDoc.roles && directUserDoc.roles.includes('super_admin'))) {
+                mappedRole = USER_ROLES.SUPER_ADMIN;
+              } else {
+                mappedRole = hrmsMatchedRole;
+              }
+            }
+          } else {
+            console.log(`[AUTH] No User profile found for: ${username}`);
+          }
+        }
+        
+        console.log(`[AUTH] Final HRMS Authentication Result: ${isHRMSLogin ? 'SUCCESS' : 'FAILED'}`);
 
         if (isHRMSLogin) {
           // SYNC LAYER: Upsert into local rbac_users using hrms_id
@@ -154,7 +214,14 @@ exports.unifiedLogin = async (req, res) => {
           );
 
           if (!existingLocal || existingLocal.length === 0) {
-            // HRMS User authenticated successfully, but they are NOT mapped to any local RBAC user account
+            // Check by email fallback for HRMS-linked accounts
+            [existingLocal] = await masterPool.query(
+              'SELECT * FROM rbac_users WHERE email = ? AND hrms_id IS NOT NULL LIMIT 1',
+              [mappedEmail]
+            );
+          }
+
+          if (!existingLocal || existingLocal.length === 0) {
             return res.status(403).json({
               success: false,
               message: 'Your HRMS account is not linked to any portal user. Please contact the administrator to grant you access.'
@@ -163,18 +230,23 @@ exports.unifiedLogin = async (req, res) => {
 
           const localUserId = existingLocal[0].id;
 
-          // Update details from HRMS just in case they changed, but DO NOT overwrite password or email
-          // to preserve the local login identity ("created id") as requested.
+          // Update details from HRMS just in case they changed.
+          // We also update the hrms_id to the one that just successfully logged in 
+          // to ensure future searches and logins match the active profile.
           const syncUpdateQuery = `
             UPDATE rbac_users
             SET
-              name = ?,
-              phone = ?,
+              hrms_id = ?,
+              name = COALESCE(?, name),
+              email = ?,
+              phone = COALESCE(?, phone),
               updated_at = NOW()
             WHERE id = ?
           `;
           const syncUpdateParams = [
+            hrmsIdStr,
             mappedName,
+            mappedEmail,
             mappedPhone,
             localUserId
           ];
