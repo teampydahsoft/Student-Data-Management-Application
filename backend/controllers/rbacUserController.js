@@ -475,21 +475,37 @@ exports.searchHRMSEmployee = async (req, res) => {
     ]);
 
     // Transform and combine results
-    const employeeResults = employees.map(emp => ({
-      _id: emp._id.toString(),
-      emp_no: emp.emp_no,
-      name: emp.employee_name,
-      email: emp.email || emp.emp_no,
-      phone: emp.phone_number || '',
-      type: 'Employee'
+    // Fetch and merge data for better autofill
+    const employeeResults = await Promise.all(employees.map(async (emp) => {
+      // Try to find a linked user to get more data (like email if missing)
+      let linkedEmail = emp.email;
+      const linkedUser = await HRMSUser.findOne({ 
+        $or: [
+          { employeeId: emp.emp_no },
+          { email: emp.email }
+        ]
+      }).lean().exec();
+
+      if (linkedUser && !linkedEmail) {
+        linkedEmail = linkedUser.email;
+      }
+
+      return {
+        _id: emp._id.toString(),
+        emp_no: emp.emp_no,
+        name: emp.employee_name,
+        email: linkedEmail || emp.emp_no, // Fallback to emp_no if still null
+        phone: emp.phone_number || '',
+        type: 'Employee'
+      };
     }));
 
     const userResults = users.map(user => ({
       _id: user._id.toString(),
-      emp_no: user.email, // Users usually don't have emp_no, use email as identifier
+      emp_no: user.employeeId || user.email, // Use employeeId if available
       name: user.name,
       email: user.email,
-      phone: '', // Users collection doesn't have phone in schema
+      phone: '', // Users collection usually doesn't have phone
       type: 'User'
     }));
 

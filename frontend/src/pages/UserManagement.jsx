@@ -86,7 +86,6 @@ const initialFormState = {
   collegeIds: [],
   courseIds: [],
   branchIds: [],
-  branchIds: [],
   allCourses: false,
   allBranches: false,
   permissions: {},
