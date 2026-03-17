@@ -1059,6 +1059,7 @@ exports.createUser = async (req, res) => {
     res.status(201).json({
       success: true,
       message: successMessage,
+      notificationsAttempted: !!(sendCredentials && !hrms_id),
       emailSent,
       smsSent,
       emailError: emailError || undefined,

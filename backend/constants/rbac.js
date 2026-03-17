@@ -174,11 +174,12 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.SERVICES]: {
-    permissions: ['view', 'manage_config', 'manage_requests'],
+    permissions: ['view', 'manage_config', 'manage_requests', 'manage_certificate_borrow'],
     labels: {
       view: 'View Services',
       manage_config: 'Manage Configuration (Create/Edit Services)',
-      manage_requests: 'Manage Requests (Process/Close)'
+      manage_requests: 'Manage Requests (Process/Close)',
+      manage_certificate_borrow: 'Manage Certificate Borrow Requests (Issue/Receive)'
     }
   },
   [MODULES.ANNOUNCEMENTS]: {

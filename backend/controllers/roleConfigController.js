@@ -116,6 +116,7 @@ const roleExistsInConfig = async (roleKey) => {
 
 module.exports.getPermissionsForRole = getPermissionsForRole;
 module.exports.roleExistsInConfig = roleExistsInConfig;
+module.exports.CONFIGURABLE_ROLES = CONFIGURABLE_ROLES;
 module.exports.TICKET_APP_ROLES = TICKET_APP_ROLES;
 module.exports.TICKET_APP_ROLE_LABELS = TICKET_APP_ROLE_LABELS;
 

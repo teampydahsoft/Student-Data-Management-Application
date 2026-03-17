@@ -91,6 +91,12 @@ const NAV_ITEMS = [
         permission: FRONTEND_MODULES.STUDENTS,
         action: 'edit_student'
       },
+      {
+        path: "/promotions",
+        label: "Promotions",
+        icon: TrendingUp,
+        permission: FRONTEND_MODULES.PROMOTIONS,
+      },
     ],
   },
   {
@@ -194,6 +200,13 @@ const NAV_ITEMS = [
         label: "Configuration",
         icon: Settings,
         permission: FRONTEND_MODULES.SERVICES,
+      },
+      {
+        path: "/services/borrow-management",
+        label: "Borrow Management",
+        icon: ShieldCheck,
+        permission: FRONTEND_MODULES.SERVICES,
+        action: 'manage_certificate_borrow'
       },
     ],
   },

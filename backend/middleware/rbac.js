@@ -334,6 +334,11 @@ const verifyCanCreateRole = (req, res, next) => {
   // Convert legacy 'admin' role to 'super_admin' for permission check
   const effectiveRole = user.role === 'admin' ? USER_ROLES.SUPER_ADMIN : user.role;
 
+  // Super admin bypasses role hierarchy check
+  if (isSuperAdmin(user)) {
+    return next();
+  }
+
   if (!canCreateRole(effectiveRole, targetRole)) {
     return res.status(403).json({
       success: false,

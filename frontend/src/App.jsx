@@ -41,6 +41,7 @@ import Profile from './pages/Profile';
 import ProfileChangeRequests from './pages/admin/ProfileChangeRequests';
 import Clubs from './pages/Clubs';
 import InternshipAdmin from './internship/InternshipAdmin';
+import CertificateBorrowManagement from './pages/admin/CertificateBorrowManagement';
 
 
 // Student Pages
@@ -59,6 +60,7 @@ import FeeManagement from './pages/student/FeeManagement';
 import Transport from './pages/student/Transport';
 import InternshipStudent from './internship/InternshipStudent';
 import MyProfileRequests from './pages/student/MyProfileRequests';
+import MyDocuments from './pages/student/MyDocuments';
 
 
 // Faculty Pages (v2.0)
@@ -218,6 +220,7 @@ function App() {
           <Route path="faculty-management" element={<FacultyManagement />} />
           <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
           <Route path="internship-management" element={<InternshipAdmin />} />
+          <Route path="services/borrow-management" element={<CertificateBorrowManagement />} />
         </Route>
 
 
@@ -249,7 +252,7 @@ function App() {
           <Route path="internship" element={<InternshipStudent />} />
           <Route path="feedback" element={<StudentFeedback />} />
           <Route path="profile-requests" element={<MyProfileRequests />} />
-
+          <Route path="my-documents" element={<MyDocuments />} />
         </Route>
 
         {/* Protected Faculty Routes (v2.0) */}

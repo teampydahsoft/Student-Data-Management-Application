@@ -236,7 +236,8 @@ const StudentLayout = ({ children }) => {
         { icon: RiTicketLine, activeIcon: RiTicketFill, label: 'Maintenance', path: '/student/my-tickets', isExternal: true, isTicketApp: true },
         { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
         { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
-        { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' }
+        { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' },
+        { icon: RiFolderLine, activeIcon: RiFolderFill, label: 'My Documents', path: '/student/my-documents' }
     ].filter(item => {
         if (item.label === 'Internship' && !hasInternship) return false;
 

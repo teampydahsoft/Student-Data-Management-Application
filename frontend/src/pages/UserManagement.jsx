@@ -133,6 +133,7 @@ const SelectionModal = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   const colors = {
+    blue: { bg: 'bg-blue-600', light: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', gradient: 'from-blue-600 to-indigo-600' },
     green: { bg: 'bg-emerald-600', light: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', gradient: 'from-emerald-600 to-teal-600' },
     orange: { bg: 'bg-orange-600', light: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200', gradient: 'from-orange-600 to-amber-600' },
     purple: { bg: 'bg-purple-600', light: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', gradient: 'from-purple-600 to-indigo-600' },
@@ -946,13 +947,21 @@ const UserManagement = () => {
 
       const response = await api.post('/rbac/users', payload);
       if (response.data?.success) {
-        if (response.data?.emailSent) {
+        if (!response.data.notificationsAttempted) {
+          toast.success('User created successfully and linked to HRMS!');
+        } else if (response.data.emailSent && response.data.smsSent) {
+          toast.success('User created and credentials sent via Email and SMS!');
+        } else if (response.data.emailSent) {
           toast.success('User created and credentials sent to email!');
+        } else if (response.data.smsSent) {
+          toast.success('User created and credentials sent via SMS!');
         } else {
-          // User created but email failed
-          const emailError = response.data?.emailError || 'Unknown error';
-          toast.warning(`User created successfully, but email notification failed: ${emailError}`, {
-            duration: 5000
+          // User created but notifications failed
+          const errors = [];
+          if (response.data.emailError) errors.push(`Email: ${response.data.emailError}`);
+          if (response.data.smsError) errors.push(`SMS: ${response.data.smsError}`);
+          toast.warning(`User created successfully, but notifications failed: ${errors.join(', ')}`, {
+            duration: 6000
           });
         }
         resetForm();
@@ -1384,7 +1393,7 @@ const UserManagement = () => {
                     Import form HRMS
                   </button>
                 </div>
-                <div className="p-3 space-y-2.5 flex-1 overflow-y-auto">
+                <div className="p-3 space-y-2.5 flex-1 overflow-y-auto max-h-[500px]">
                   {showHrmsSearch && (
                     <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-inner">
                       <label className="text-xs font-bold text-slate-700 block mb-1">Search HRMS Employee</label>
@@ -1602,7 +1611,7 @@ const UserManagement = () => {
                     <h2 className="text-sm font-bold text-white">Role Selection</h2>
                   </div>
                 </div>
-                <div className="p-3 space-y-2 flex-1 overflow-y-auto">
+                <div className="p-3 space-y-2 flex-1 overflow-y-auto max-h-[500px]">
                   {(availableRolesForCreate.length ? availableRolesForCreate : FIXED_ROLES.map(r => ({ value: r.value, label: r.label }))).map(role => {
                     const roleValue = role.value ?? role.role_key;
                     // Use backend provided label if available, otherwise fallback to frontend constants
@@ -1658,7 +1667,7 @@ const UserManagement = () => {
                     <h2 className="text-sm font-bold text-white">Access Scope</h2>
                   </div>
                 </div>
-                <div className="p-3 space-y-2.5 flex-1 overflow-y-auto">
+                <div className="p-3 space-y-2.5 flex-1 overflow-y-auto max-h-[500px]">
                   {/* Colleges Selection */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
