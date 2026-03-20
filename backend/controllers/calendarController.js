@@ -261,6 +261,21 @@ exports.saveCustomHoliday = async (req, res) => {
     // Clear holiday cache to reflect changes immediately
     clearCache();
 
+    // Revoke any existing attendance records for this date:
+    // Convert all present/absent records to 'holiday' status so that
+    // students who were already marked are not incorrectly counted.
+    const holidayReason = (title && title.trim()) ? title.trim() : 'Institute Holiday';
+    const normalizedDate = normalizeDate(date);
+    if (normalizedDate) {
+      const [revokeResult] = await masterPool.query(
+        `UPDATE attendance_records
+         SET status = 'holiday', holiday_reason = ?
+         WHERE attendance_date = ? AND status IN ('present', 'absent')`,
+        [holidayReason, normalizedDate]
+      );
+      console.log(`[Holiday] Revoked ${revokeResult.affectedRows} attendance record(s) for ${normalizedDate} → holiday`);
+    }
+
     res.json({
       success: true,
       data: holiday
@@ -292,6 +307,19 @@ exports.deleteCustomHoliday = async (req, res) => {
 
     // Clear holiday cache to reflect changes immediately
     clearCache();
+
+    // Remove attendance records that were set to 'holiday' when this
+    // institute holiday was saved, so the day reverts to "not marked".
+    // (We cannot safely restore the original present/absent values.)
+    const normalizedDate = normalizeDate(date);
+    if (normalizedDate) {
+      const [cleanupResult] = await masterPool.query(
+        `DELETE FROM attendance_records
+         WHERE attendance_date = ? AND status = 'holiday'`,
+        [normalizedDate]
+      );
+      console.log(`[Holiday] Removed ${cleanupResult.affectedRows} holiday attendance record(s) for ${normalizedDate}`);
+    }
 
     res.json({
       success: true,

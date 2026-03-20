@@ -64,8 +64,12 @@ const calculateStudentAttendanceStats = (attendanceMap, dateSet, holidayDates) =
   let unmarkedDays = 0;
 
   dateSet.forEach((date) => {
-    const isHoliday = holidayDates.has(date);
     const status = attendanceMap.get(date) || null;
+    // Treat a day as a holiday if:
+    // (a) it appears in the calendar's holiday set (Sunday / public / institute), OR
+    // (b) the attendance record itself has status='holiday'
+    //     (safety net for records revoked when a holiday was retroactively added)
+    const isHoliday = holidayDates.has(date) || status === 'holiday';
 
     if (isHoliday) {
       holidays += 1;
