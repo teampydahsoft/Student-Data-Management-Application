@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../config/api';
 import { toast } from 'react-hot-toast';
-import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText, Lock } from 'lucide-react';
+import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText, Lock, BarChart2, Edit3, ShieldAlert, ChevronDown, ChevronUp, Building2, Box, ArrowRight, ChevronLeft } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Circle } from 'react-leaflet';
@@ -184,6 +184,78 @@ const InternshipAdmin = () => {
     const [conflictModalOpen, setConflictModalOpen] = useState(false);
     const [conflictData, setConflictData] = useState([]);
 
+    // ── Period Report State ──────────────────────────────────────────────────
+    const [periodReport, setPeriodReport] = useState([]);
+    const [periodReportLoading, setPeriodReportLoading] = useState(false);
+    const [expandedRows, setExpandedRows] = useState(new Set());
+    const [markingCell, setMarkingCell] = useState(null); // { assignmentId, date } while saving
+    const [periodFilters, setPeriodFilters] = useState({ location: '', batch: '', college: '', course: '', branch: '', year: '', semester: '' });
+    const [periodFilterOptions, setPeriodFilterOptions] = useState({ locations: [], batches: [], courses: [], branches: [], years: [], semesters: [], colleges: [] });
+
+    // ── Backdate Marking State (new workflow) ─────────────────────────────────
+    const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'Super Admin' || user?.role === 'superadmin';
+    // Step 1: Select internship + batch + date range
+    const [bdInternship, setBdInternship] = useState('');     // internship_id
+    const [bdBatch, setBdBatch]           = useState('');
+    const [bdBranch, setBdBranch]         = useState('');
+    const [bdFromDate, setBdFromDate]     = useState('');
+    const [bdToDate, setBdToDate]         = useState('');
+    const [bdWorkingDates, setBdWorkingDates] = useState([]); // computed list of working dates
+    const [bdActiveDate, setBdActiveDate]   = useState('');   // selected date in the calendar
+    const [bdStudents, setBdStudents]       = useState([]);   // students for bdActiveDate
+    const [bdStudentsLoading, setBdStudentsLoading] = useState(false);
+    const [bdChanges, setBdChanges]         = useState({});   // studentId → 'Present' | 'Absent'
+    const [bdReason, setBdReason]           = useState('');
+    const [bdSaving, setBdSaving]           = useState(false);
+    const [bdPhase, setBdPhase]             = useState(1);    // 1=setup, 2=calendar grid
+    const [auditLog, setAuditLog]           = useState([]);
+    const [auditLoading, setAuditLoading]   = useState(false);
+    const [showAuditLog, setShowAuditLog]   = useState(false);
+    
+    // Active/Running groups dashboard
+    const [activeGroups, setActiveGroups]   = useState([]);
+    const [activeGroupsLoading, setActiveGroupsLoading] = useState(false);
+    const [activeRights, setActiveRights]   = useState([]); // DB persistent rights
+    const [viewAuditDetail, setViewAuditDetail] = useState(null);
+
+    // Right to edit: { date, location, batch }
+    const [unlockedForEdit, setUnlockedForEdit] = useState(null);
+
+    // Persistence Effect: Load state on mount (tab specific)
+    useEffect(() => {
+        const saved = sessionStorage.getItem('bd_state');
+        if (saved) {
+            try {
+                const state = JSON.parse(saved);
+                if (state.internship) setBdInternship(state.internship);
+                if (state.batch)      setBdBatch(state.batch);
+                if (state.phase)      setBdPhase(state.phase);
+                if (state.fromDate)   setBdFromDate(state.fromDate);
+                if (state.toDate)     setBdToDate(state.toDate);
+                
+                // If we were in phase 2, we should probably try to load the calendar
+                if (state.phase === 2 && state.internship) {
+                    // We'll delay it slightly to ensure periodFilterOptions might be loaded
+                    setTimeout(() => {
+                        bdLoadCalendar(state.internship, state.batch, state.fromDate, state.toDate);
+                    }, 500);
+                }
+            } catch (e) { console.error("Persistence load error", e); }
+        }
+    }, []);
+
+    // Save state whenever it changes
+    useEffect(() => {
+        const state = {
+            internship: bdInternship,
+            batch: bdBatch,
+            phase: bdPhase,
+            fromDate: bdFromDate,
+            toDate: bdToDate
+        };
+        sessionStorage.setItem('bd_state', JSON.stringify(state));
+    }, [bdInternship, bdBatch, bdPhase, bdFromDate, bdToDate]);
+
     useEffect(() => {
         if (selectedAttendance) {
             setViewAddresses({ checkIn: null, checkOut: null }); // Reset
@@ -232,7 +304,38 @@ const InternshipAdmin = () => {
         if (activeTab === 'report' || activeTab === 'assign') {
             fetchFilterOptions();
         }
+        if (activeTab === 'backdate') {
+            fetchActiveGroups();
+            fetchAuditLog();
+            fetchActiveRights();
+        }
+        if (activeTab === 'period-report') {
+            fetchActiveRights();
+        }
     }, [activeTab, filters.location, filters.college, filters.course, filters.batch]);
+
+    const fetchActiveRights = async () => {
+        try {
+            const res = await api.get('/internship/active-backdate-rights');
+            if (res.data.success) {
+                setActiveRights(res.data.data);
+            }
+        } catch (e) { console.error("Failed to fetch active rights", e); }
+    };
+
+    const fetchActiveGroups = async () => {
+        try {
+            setActiveGroupsLoading(true);
+            const res = await api.get('/internship/active-groups');
+            if (res.data.success) {
+                setActiveGroups(res.data.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch active groups", error);
+        } finally {
+            setActiveGroupsLoading(false);
+        }
+    };
 
     const fetchFilterOptions = async () => {
         try {
@@ -409,13 +512,10 @@ const InternshipAdmin = () => {
             setLoadingReport(true);
             const res = await api.get('/internship/report', { params: { ...filters } });
             if (res.data.success) {
-                // post-process to handle any in-browser overdue cells
-                // compute local time string (avoid UTC offsets)
                 const nowDate = new Date();
                 const nowTime = nowDate.getHours().toString().padStart(2, '0') + ':' + nowDate.getMinutes().toString().padStart(2, '0');
                 const today = new Date().toISOString().split('T')[0];
                 const updated = res.data.data.map(r => {
-                    // if still not marked and it's today and we know allowedEndTime
                     if (r.status === 'Not Marked' && r.date && r.date.split('T')[0] === today) {
                         const allowed = r.internshipId?.allowedEndTime;
                         if (allowed && nowTime > allowed) {
@@ -432,6 +532,286 @@ const InternshipAdmin = () => {
             setLoadingReport(false);
         }
     };
+
+    // ── Period Report handlers ────────────────────────────────────────────────
+    const fetchPeriodReport = async () => {
+        try {
+            setPeriodReportLoading(true);
+            const res = await api.get('/internship/period-report', { params: { ...periodFilters } });
+            if (res.data.success) setPeriodReport(res.data.data);
+        } catch (error) {
+            toast.error('Failed to fetch period report');
+        } finally {
+            setPeriodReportLoading(false);
+        }
+    };
+
+    const fetchPeriodFilterOptions = async () => {
+        try {
+            const res = await api.get('/internship/filters');
+            if (res.data.success) setPeriodFilterOptions(prev => ({ ...prev, ...res.data.data }));
+        } catch (e) { /* ignore */ }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'period-report') {
+            fetchPeriodFilterOptions();
+            fetchPeriodReport();
+        }
+    }, [activeTab, periodFilters]);
+
+    const toggleRow = (id) => setExpandedRows(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+    });
+
+    // Inline date-cell attendance marking from Period Report calendar
+    const handleCellMark = async (row, day, currentStatus) => {
+        // Validation: Verify if marking rights exist in DB for this date/location/batch
+        const isUnlocked = activeRights.some(r => 
+            r.date === day.date && 
+            String(r.internship_id) === String(row.internshipId) &&
+            String(r.batch) === String(row.batch)
+        );
+
+        if (!isUnlocked) {
+            toast.error(`Editing is locked for ${day.date}. Please 'Grant Rights' via the Backdate Marking tab first.`);
+            return;
+        }
+
+        const statusToSave = currentStatus === 'Present' ? 'Absent' : 'Present';
+        const cellKey = `${row.assignmentId}-${day.date}`;
+        setMarkingCell(cellKey);
+        try {
+            await api.post('/internship/manual-attendance', {
+                student_id: row.studentId,
+                attendance_date: day.date,
+                status: statusToSave,
+                reason: 'Marked via Period Report by admin'
+            });
+            // Update local state
+            setPeriodReport(prev => prev.map(r => {
+                if (r.assignmentId !== row.assignmentId) return r;
+                const newBreakdown = r.dayBreakdown.map(d =>
+                    d.date === day.date
+                        ? { ...d, status: statusToSave, source: 'internship', isManual: true, markedByName: user?.name || 'Admin' }
+                        : d
+                );
+                const totalDays   = newBreakdown.filter(d => d.status !== 'Holiday').length;
+                const presentDays = newBreakdown.filter(d => d.status === 'Present').length;
+                const absentDays  = newBreakdown.filter(d => d.status === 'Absent').length;
+                const notMarked   = newBreakdown.filter(d => d.status === 'Not Marked').length;
+                const pct = totalDays > 0 ? parseFloat(((presentDays / totalDays) * 100).toFixed(2)) : 0;
+                return { ...r, dayBreakdown: newBreakdown, totalDays, presentDays, absentDays, notMarked, attendancePercentage: pct };
+            }));
+            toast.success(`Marked ${statusToSave}`);
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Failed to mark attendance');
+        } finally {
+            setMarkingCell(null);
+        }
+    };
+
+    const handleDownloadPeriodReport = async () => {
+        try {
+            const XLSX = (await import('xlsx')).default;
+            const wb = XLSX.utils.book_new();
+            const rows = [
+                ['Student Name', 'Admission No', 'Company', 'Start Date', 'End Date', 'Total Days', 'Present', 'Absent', 'Not Marked', '%'],
+                ...periodReport.map(r => [r.studentName, r.admissionNumber, r.companyName, r.startDate, r.endDate, r.totalDays, r.presentDays, r.absentDays, r.notMarked, r.attendancePercentage])
+            ];
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Period Report');
+            XLSX.writeFile(wb, `internship_period_report.xlsx`);
+            toast.success('Downloaded');
+        } catch (e) {
+            toast.error('Download failed');
+        }
+    };
+
+    // ── Backdate Marking handlers (new workflow) ──────────────────────────────
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const bdLoadCalendar = (explicitLocation, explicitBatch, explicitFrom, explicitTo) => {
+        const locId = explicitLocation || bdInternship;
+        const batch = explicitBatch !== undefined ? explicitBatch : bdBatch;
+        let from  = explicitFrom || bdFromDate;
+        let to    = explicitTo   || bdToDate;
+
+        if (!locId) { toast.error('Select an internship'); return; }
+        
+        const intObj = periodFilterOptions.locations?.find(l => String(l.id) === String(locId));
+        
+        if (!from || !to) {
+             if (intObj?.startDate && intObj?.endDate) {
+                 from = intObj.startDate;
+                 to = intObj.endDate;
+                 setBdFromDate(from);
+                 setBdToDate(to);
+             } else {
+                 toast.error('Select a date range'); 
+                 return;
+             }
+        }
+
+        if (from > to) { toast.error('From date must be before To date'); return; }
+
+        // Find the internship's allowedDays
+        let allowedDayNums = new Set([1, 2, 3, 4, 5, 6]); // default Mon-Sat
+        if (intObj?.allowed_days) {
+            try {
+                const days = typeof intObj.allowed_days === 'string' ? JSON.parse(intObj.allowed_days) : intObj.allowed_days;
+                const nm = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+                if (Array.isArray(days) && days.length > 0) allowedDayNums = new Set(days.map(d => nm[d]).filter(n => n !== undefined));
+            } catch (_) {}
+        }
+
+        // Enumerate dates in range
+        const dates = [];
+        const cur = new Date(from + 'T00:00:00');
+        const end = new Date(to   + 'T00:00:00');
+        const today = new Date(); today.setHours(23, 59, 59, 999);
+        while (cur <= end) {
+            const dateStr = cur.toISOString().split('T')[0];
+            dates.push({
+                date: dateStr,
+                dayNum: cur.getDay(),
+                dayName: DAY_NAMES[cur.getDay()],
+                isWorkingDay: allowedDayNums.has(cur.getDay()),
+                isPast: cur <= today
+            });
+            cur.setDate(cur.getDate() + 1);
+        }
+        setBdWorkingDates(dates);
+        setBdActiveDate('');
+        setBdPhase(2);
+    };
+
+    const handleActiveGroupSelect = (group) => {
+        setBdInternship(group.location_id);
+        setBdBatch(group.batch);
+        setBdFromDate(group.start_date.split('T')[0]);
+        setBdToDate(group.end_date.split('T')[0]);
+        
+        // Trigger calendar load with the values immediately
+        bdLoadCalendar(group.location_id, group.batch, group.start_date.split('T')[0], group.end_date.split('T')[0]);
+    };
+
+    const handleGrantRights = async () => {
+        if (!bdActiveDate) { toast.error("Select a date from the grid first"); return; }
+        
+        try {
+            setBdSaving(true);
+            const res = await api.post('/internship/grant-backdate-rights', {
+                internship_id: bdInternship,
+                batch: bdBatch,
+                date: bdActiveDate
+            });
+
+            if (res.data.success) {
+                toast.success("Marking rights granted and stored in database.");
+                await fetchActiveRights();
+                
+                // Pre-fill period filters
+                const newFilters = {
+                    ...periodFilters,
+                    location: bdInternship,
+                    batch: bdBatch
+                };
+                setPeriodFilters(newFilters);
+                
+                setActiveTab('period-report');
+            }
+        } catch (error) {
+            console.error("Grant rights error", error);
+            toast.error(error.response?.data?.message || "Failed to grant marking rights");
+        } finally {
+            setBdSaving(false);
+        }
+    };
+
+    const bdSelectDate = async (date) => {
+        if (bdActiveDate === date) { setBdActiveDate(''); setBdStudents([]); return; }
+        setBdActiveDate(date);
+        setBdChanges({});
+        setBdReason('');
+        try {
+            setBdStudentsLoading(true);
+            const res = await api.get('/internship/students-for-date', {
+                params: { date, location: bdInternship, batch: bdBatch, branch: bdBranch }
+            });
+            if (res.data.success) setBdStudents(res.data.data);
+        } catch (e) {
+            toast.error('Failed to load students');
+        } finally {
+            setBdStudentsLoading(false);
+        }
+    };
+
+    const bdSetStatus = (studentId, status) => setBdChanges(prev => ({ ...prev, [studentId]: status }));
+
+    const bdBulkMark = (status) => {
+        const changes = {};
+        bdStudents.forEach(s => { changes[s.studentId] = status; });
+        setBdChanges(changes);
+    };
+
+    const bdSubmit = async () => {
+        if (!bdReason.trim() || bdReason.trim().length < 5) { toast.error('Enter a reason (min 5 chars)'); return; }
+        const entries = Object.entries(bdChanges);
+        if (entries.length === 0) { toast.error('No changes to submit'); return; }
+        try {
+            setBdSaving(true);
+            let ok = 0, fail = 0;
+            for (const [student_id, status] of entries) {
+                try {
+                    await api.post('/internship/manual-attendance', {
+                        student_id: Number(student_id),
+                        attendance_date: bdActiveDate,
+                        status,
+                        reason: bdReason.trim()
+                    });
+                    ok++;
+                } catch (e) { fail++; }
+            }
+            toast.success(`Saved ${ok} record(s)${fail > 0 ? `, ${fail} failed` : ''}`);
+            setBdChanges({});
+            setBdReason('');
+            bdSelectDate(bdActiveDate); // Refresh students for this date
+            if (showAuditLog) fetchAuditLog();
+        } catch (e) {
+            toast.error('Failed to save');
+        } finally {
+            setBdSaving(false);
+        }
+    };
+
+
+    const fetchAuditLog = async () => {
+        try {
+            setAuditLoading(true);
+            const res = await api.get('/internship/audit-log', { params: { limit: 50 } });
+            if (res.data.success) setAuditLog(res.data.data);
+        } catch (e) {
+            toast.error('Failed to load audit log');
+        } finally {
+            setAuditLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'period-report') {
+            fetchPeriodFilterOptions();
+            fetchPeriodReport();
+        }
+        if (activeTab === 'backdate' && isSuperAdmin) {
+            fetchPeriodFilterOptions(); // reuse
+        }
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (showAuditLog) fetchAuditLog();
+    }, [showAuditLog]);
 
     const handleDayEndReport = async () => {
         if (dayEndReportOpen) return;
@@ -752,7 +1132,7 @@ const InternshipAdmin = () => {
             </div>
 
             {/* Tabs */}
-            <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6 w-fit">
+            <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg mb-6 w-fit">
                 <button
                     onClick={() => setActiveTab('create')}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'create' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -775,8 +1155,22 @@ const InternshipAdmin = () => {
                     onClick={() => setActiveTab('report')}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'report' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                    attendance Report
+                    Daily Report
                 </button>
+                <button
+                    onClick={() => setActiveTab('period-report')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1.5 ${activeTab === 'period-report' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    <BarChart2 className="w-3.5 h-3.5" /> Period Report
+                </button>
+                {isSuperAdmin && (
+                    <button
+                        onClick={() => setActiveTab('backdate')}
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1.5 ${activeTab === 'backdate' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <Edit3 className="w-3.5 h-3.5" /> Backdate Marking
+                    </button>
+                )}
             </div>
 
             {activeTab === 'create' && (
@@ -1332,8 +1726,511 @@ const InternshipAdmin = () => {
                     </div>
                 </div>
             )}
+
+            {/* ── Period Report Tab ──────────────────────────────────────────────────── */}
+            {activeTab === 'period-report' && (
+                <div className="space-y-6">
+                    {/* Filters */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                        <div className="flex flex-wrap gap-3 items-end">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Company</label>
+                                <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.location} onChange={e => setPeriodFilters(f => ({ ...f, location: e.target.value }))}>
+                                    <option value="">All Companies</option>
+                                    {periodFilterOptions.locations?.map(l => <option key={l.id} value={l.id}>{l.companyName}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Batch</label>
+                                <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.batch} onChange={e => setPeriodFilters(f => ({ ...f, batch: e.target.value }))}>
+                                    <option value="">All</option>
+                                    {periodFilterOptions.batches?.map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">College</label>
+                                <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.college} onChange={e => setPeriodFilters(f => ({ ...f, college: e.target.value }))}>
+                                    <option value="">All</option>
+                                    {periodFilterOptions.colleges?.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Course</label>
+                                <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.course} onChange={e => setPeriodFilters(f => ({ ...f, course: e.target.value }))}>
+                                    <option value="">All</option>
+                                    {periodFilterOptions.courses?.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Branch</label>
+                                <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.branch} onChange={e => setPeriodFilters(f => ({ ...f, branch: e.target.value }))}>
+                                    <option value="">All</option>
+                                    {periodFilterOptions.branches?.map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                            </div>
+                            <button onClick={fetchPeriodReport} className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1.5">
+                                {periodReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Filter className="w-4 h-4" />} Apply
+                            </button>
+                            <button onClick={() => { setPeriodFilters({ location:'',batch:'',college:'',course:'',branch:'',year:'',semester:'' }); }} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">Clear</button>
+                            {periodReport.length > 0 && (
+                                <button onClick={handleDownloadPeriodReport} className="ml-auto px-4 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-1.5">
+                                    <Download className="w-4 h-4" /> Download Excel
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Stats removed — data shown inline in table */}
+
+
+                    {/* Report Table */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        {periodReportLoading ? (
+                            <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>
+                        ) : periodReport.length === 0 ? (
+                            <div className="py-16 text-center text-gray-400">
+                                <BarChart2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                <p>No data found. Apply filters and click Apply.</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Student</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Company</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Start Date</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">End Date</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Days</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">Present</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-red-500 uppercase">Absent</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Not Marked</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase">%</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {periodReport.map(row => {
+                                            const isExpanded = expandedRows.has(row.assignmentId);
+                                            return (
+                                            <>
+                                                <tr key={row.assignmentId}
+                                                    className="hover:bg-indigo-50 transition-colors cursor-pointer"
+                                                    onClick={() => toggleRow(row.assignmentId)}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-medium text-gray-900 flex items-center gap-1">
+                                                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-indigo-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                                                            {row.studentName}
+                                                        </div>
+                                                        <div className="text-xs text-gray-400 ml-5">{row.admissionNumber} • {row.branch}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="text-gray-700 text-sm">{row.companyName}</div>
+                                                        <div className="text-xs text-gray-400">{row.allowedDays?.join(', ')}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-600 text-sm">{row.startDate}</td>
+                                                    <td className="px-4 py-3 text-gray-600 text-sm">{row.endDate}</td>
+                                                    <td className="px-4 py-3 text-center text-sm font-medium">{row.totalDays}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-semibold">{row.presentDays}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-semibold">{row.absentDays}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs">{row.notMarked}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${row.attendancePercentage >= 75 ? 'bg-green-100 text-green-700' : row.attendancePercentage >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                                                            {row.attendancePercentage}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center text-gray-400 text-xs">
+                                                        {isExpanded ? '▲' : '▼'}
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && (
+                                                    <tr key={`${row.assignmentId}-expanded`}>
+                                                        <td colSpan={10} className="bg-gray-50 border-b border-gray-200 p-0">
+                                                            <div className="px-6 py-5">
+                                                                {/* Header row */}
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <div className="text-sm font-semibold text-gray-700">
+                                                                        Attendance Calendar — {row.studentName}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3 text-[10px] text-gray-400">
+                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-400 rounded-sm inline-block" /> Present</span>
+                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-400 rounded-sm inline-block" /> Absent</span>
+                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-200 rounded-sm inline-block" /> Not Marked</span>
+                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Holiday</span>
+                                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 border border-amber-400 rounded-sm inline-block" /> Manual</span>
+                                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 border border-blue-400 rounded-sm inline-block" /> College Roll-call</span>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Day grid */}
+                                                                <div className="grid gap-1.5" style={{gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))'}}>
+                                                                    {row.dayBreakdown.map(day => {
+                                                                        const dt = new Date(day.date + 'T00:00:00');
+                                                                        const dayName = dt.toLocaleDateString('en-US',{weekday:'short'});
+                                                                        const datePart = day.date.slice(5).replace('-','/');
+                                                                        const isPresent  = day.status === 'Present';
+                                                                        const isAbsent   = day.status === 'Absent';
+                                                                        const isHoliday  = day.status === 'Holiday';
+                                                                        const cellBase = isPresent ? 'bg-green-100 border-green-300 text-green-800'
+                                                                                       : isAbsent  ? 'bg-red-100 border-red-300 text-red-700'
+                                                                                       : isHoliday ? 'bg-blue-50 border-blue-200 text-blue-500'
+                                                                                       : 'bg-white border-gray-200 text-gray-400';
+                                                                        const manualRing = day.isManual ? 'ring-2 ring-amber-400 ring-offset-1' : '';
+                                                                        const regularRing = (!day.isManual && day.source === 'regular') ? 'ring-2 ring-blue-300 ring-offset-1' : '';
+                                                                        const cellKey = `${row.assignmentId}-${day.date}`;
+                                                                        const isMarking = markingCell === cellKey;
+                                                                        
+                                                                        // Check if this specific cell is the SELECTED date to highlight, but marking is allowed for ANY date if unlocked
+                                                                        const isUnlockedBatch = unlockedForEdit && 
+                                                                            String(unlockedForEdit.location) === String(row.internshipId) &&
+                                                                            String(unlockedForEdit.batch) === String(row.batch);
+                                                                        
+                                                                        const isActiveDate = isUnlockedBatch && unlockedForEdit.date === day.date;
+
+                                                                        const unlockedStyles = isUnlockedBatch ? (isActiveDate ? 'ring-4 ring-indigo-500 scale-105 z-10' : 'ring-2 ring-indigo-200') : '';
+
+                                                                        return (
+                                                                            <div key={day.date}
+                                                                                onClick={(e) => { e.stopPropagation(); handleCellMark(row, day, day.status); }}
+                                                                                title={`${day.date} (${day.status})${day.isManual ? ` — Manual by ${day.markedByName}` : day.source === 'regular' ? ' — College roll-call' : ''}${isUnlockedBatch ? ' (UNLOCKED FOR EDITING)' : ''}`}
+                                                                                className={`relative flex flex-col items-center justify-center rounded-lg border p-1.5 text-center transition-all ${cellBase} ${manualRing} ${regularRing} ${unlockedStyles} ${isMarking ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:shadow-md'}`}>
+                                                                                <div className="text-[9px] font-medium opacity-60">{dayName}</div>
+                                                                                <div className="text-[11px] font-bold">{datePart}</div>
+                                                                                <div className={`text-[8px] mt-0.5 font-medium ${
+                                                                                    isPresent ? 'text-green-600' : isAbsent ? 'text-red-500' : isHoliday ? 'text-blue-400' : 'text-gray-300'
+                                                                                }`}>
+                                                                                    {isMarking ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : (isPresent ? '✓' : isAbsent ? '✗' : isHoliday ? 'H' : '—')}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Backdate Marking Tab (Super Admin only) ───────────────────────────── */}
+            {activeTab === 'backdate' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* ── LEFT SIDE: Marking Operations (66%) ───────────────────────────── */}
+                    <div className="lg:col-span-8 space-y-6">
+                        {!isSuperAdmin ? (
+                            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col items-center justify-center py-20 text-center">
+                                <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+                                    <ShieldAlert className="text-amber-500 w-8 h-8" />
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-800 mb-2">Super Admin Only</h3>
+                                <p className="text-gray-500 max-w-xs">Backdate attendance marking is restricted to Super Administrators only.</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* PHASE 1: Running Internships Dashboard */}
+                                {bdPhase === 1 && (
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                                                <div className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-100 italic text-white uppercase text-[10px] tracking-widest font-black">Active</div>
+                                                Running Internships
+                                            </h3>
+                                            <div className="text-xs text-gray-400 font-medium">Select a batch to start marking</div>
+                                        </div>
+
+                                        {activeGroupsLoading ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {[1,2,3,4].map(i => <div key={i} className="h-40 bg-gray-50 border border-gray-100 rounded-2xl animate-pulse" />)}
+                                            </div>
+                                        ) : activeGroups.length === 0 ? (
+                                            <div className="bg-white rounded-2xl border-2 border-dashed border-gray-100 py-20 text-center">
+                                                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                    <Box className="w-6 h-6 text-gray-300" />
+                                                </div>
+                                                <div className="text-sm font-bold text-gray-400">No Running Internships Found</div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+                                                {activeGroups.map((group, idx) => (
+                                                    <div key={idx} 
+                                                        onClick={() => handleActiveGroupSelect(group)}
+                                                        className="group relative bg-white rounded-2xl border border-gray-200 p-5 hover:border-indigo-600 hover:ring-4 hover:ring-indigo-50 transition-all cursor-pointer shadow-sm hover:shadow-xl overflow-hidden active:scale-95">
+                                                        <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="bg-indigo-600 text-white p-1.5 rounded-full shadow-lg">
+                                                                <Navigation className="w-3.5 h-3.5" />
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex items-start gap-4 mb-4">
+                                                            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                                <Building2 className="w-6 h-6" />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-black text-gray-900 leading-tight mb-1 group-hover:text-indigo-600 transition-colors uppercase italic">{group.company_name}</h4>
+                                                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 rounded-md text-[10px] font-black text-gray-500 uppercase tracking-tighter">
+                                                                    Batch: {group.batch}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2 mt-auto">
+                                                            <div className="bg-gray-50 rounded-xl p-2.5 group-hover:bg-indigo-50 transition-colors">
+                                                                <div className="text-[9px] uppercase font-black text-gray-400 group-hover:text-indigo-400">Students</div>
+                                                                <div className="flex items-center gap-1.5 font-bold text-gray-800">
+                                                                    <Users className="w-3.5 h-3.5 text-indigo-500" />
+                                                                    {group.student_count}
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-gray-50 rounded-xl p-2.5 group-hover:bg-indigo-50 transition-colors">
+                                                                <div className="text-[9px] uppercase font-black text-gray-400 group-hover:text-indigo-400">Duration</div>
+                                                                <div className="flex items-center gap-1.5 font-bold text-gray-800 overflow-hidden text-ellipsis whitespace-nowrap">
+                                                                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                                                                    {new Date(group.start_date).getMonth() + 1}/{new Date(group.start_date).getFullYear().toString().slice(2)}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* PHASE 2: Date Grid + Grant Rights */}
+                                {bdPhase === 2 && (
+                                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+                                        <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => setBdPhase(1)} className="p-2 hover:bg-gray-200 rounded-lg text-gray-500 transition-colors">
+                                                    <ChevronLeft className="w-5 h-5" />
+                                                </button>
+                                                <div>
+                                                    <h3 className="font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                                        {periodFilterOptions.locations?.find(l => String(l.id) === String(bdInternship))?.companyName}
+                                                    </h3>
+                                                    <p className="text-[10px] font-bold text-indigo-600 uppercase mt-1 tracking-widest">{bdBatch} • Batch Marking</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-[10px] uppercase font-black text-gray-400">Assignment Range</div>
+                                                <div className="text-xs font-bold text-gray-700">{bdFromDate} ↔ {bdToDate}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-6 space-y-8">
+                                            {/* Date selection grid */}
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase italic">
+                                                    <span>1. Select Date to Unlock</span>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="flex items-center gap-1 opacity-60"><span className="w-2 h-2 bg-gray-100 border rounded-sm" /> Holiday</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-white border border-indigo-200 rounded-sm" /> Working</span>
+                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-indigo-600 rounded-sm" /> Selected</span>
+                                                    </div>
+                                                </div>
+                                                <div className="grid gap-2" style={{gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))'}}>
+                                                    {bdWorkingDates.map((d) => (
+                                                        <button key={d.date} disabled={!d.isPast}
+                                                            onClick={() => bdSelectDate(d.date)}
+                                                            className={`h-14 flex flex-col items-center justify-center rounded-xl border-2 text-center transition-all relative group
+                                                                ${d.date === bdActiveDate ? 'bg-indigo-600 text-white border-indigo-800 shadow-xl shadow-indigo-100 scale-105 z-10' :
+                                                                  !d.isWorkingDay ? 'bg-gray-50 text-gray-300 border-gray-100 opacity-50' :
+                                                                  d.isPast ? 'bg-white text-gray-700 border-gray-100 hover:border-indigo-400 hover:bg-gray-50 shadow-sm' :
+                                                                  'bg-white text-gray-200 border-gray-50 cursor-not-allowed'}`}>
+                                                            <span className="text-[9px] uppercase font-black opacity-60 leading-none mb-1">{d.dayName}</span>
+                                                            <span className="text-sm font-black leading-none">{d.date.slice(8)}</span>
+                                                            {d.date === bdActiveDate && (
+                                                                <div className="absolute -top-1 -right-1">
+                                                                    <div className="w-3 h-3 bg-green-400 rounded-full border-2 border-indigo-600" />
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Grant button panel */}
+                                            {bdActiveDate && (
+                                                <div className="bg-indigo-50 border-2 border-indigo-100 rounded-2xl p-6 text-center animate-in fade-in slide-in-from-top-4 duration-500">
+                                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                                        <Pen className="text-indigo-600 w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-black text-indigo-900 uppercase italic mb-1">Grant Marking Rights</h4>
+                                                    <p className="text-xs text-indigo-600 font-bold mb-6">
+                                                        Enable manual editing for <span className="underline decoration-2 underline-offset-4">{bdActiveDate}</span> in the Period Report.
+                                                    </p>
+                                                    <button onClick={handleGrantRights}
+                                                        className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-sm hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-3 active:scale-95 group">
+                                                        Open Report & Unlock Range
+                                                        <Navigation className="w-4 h-4 group-hover:translate-x-1" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* ── RIGHT SIDE: Vertical Audit Log (33%) ────────────────────────────── */}
+                    <div className="lg:col-span-4 space-y-4 lg:sticky lg:top-6">
+                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[calc(100vh-280px)] overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                                <h3 className="font-black text-gray-900 uppercase italic text-sm flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-indigo-500" />
+                                    Audit Activity
+                                </h3>
+                                <div className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full uppercase">Live</div>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                {auditLoading ? (
+                                    <div className="space-y-3">
+                                        {[1,2,3,4,5].map(i => <div key={i} className="h-16 bg-gray-50 rounded-xl animate-pulse" />)}
+                                    </div>
+                                ) : auditLog.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+                                        <Box className="w-8 h-8 mb-2" />
+                                        <div className="text-xs font-bold uppercase">No records</div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {auditLog.map((entry) => (
+                                            <div key={entry.id} 
+                                                onClick={() => setViewAuditDetail(entry)}
+                                                className="p-3 bg-white border border-gray-100 rounded-xl hover:border-indigo-200 transition-all group shadow-sm cursor-pointer hover:shadow-md">
+                                                <div className="flex items-center gap-1.5 mb-2">
+                                                    <div className="px-1.5 py-0.5 bg-indigo-50 border border-indigo-100 rounded-md text-[9px] font-black text-indigo-600 uppercase italic">
+                                                        {entry.changed_by_name}
+                                                    </div>
+                                                    <div className="text-[8px] text-gray-400 font-bold uppercase tracking-tighter ml-auto">
+                                                        {new Date(entry.changed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <div className="text-[10px] font-black text-gray-900 truncate max-w-[120px] uppercase italic">{entry.student_name}</div>
+                                                        <div className="text-[9px] font-bold text-gray-400">{entry.admission_number}</div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="flex items-center gap-1 justify-end">
+                                                            <span className="text-[9px] px-1 bg-gray-100 rounded line-through text-gray-400">{entry.old_status?.slice(0,1) || '-'}</span>
+                                                            <ArrowRight className="w-2 h-2 text-gray-300" />
+                                                            <span className={`text-[10px] px-1.5 font-bold rounded ${entry.new_status === 'Present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                                                {entry.new_status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Detail Modal (Audit) */}
+            {viewAuditDetail && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-6 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="font-black text-gray-900 uppercase italic flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-indigo-600" />
+                                Change Details
+                            </h3>
+                            <button onClick={() => setViewAuditDetail(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black italic text-xl">
+                                    {viewAuditDetail.changed_by_name?.slice(0,1)}
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black text-indigo-600 uppercase italic tracking-widest">Performed By</div>
+                                    <div className="text-lg font-black text-gray-900 uppercase italic">{viewAuditDetail.changed_by_name}</div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 rounded-2xl p-4">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1">Student</div>
+                                    <div className="font-black text-gray-900 uppercase italic text-sm">{viewAuditDetail.student_name}</div>
+                                    <div className="text-xs font-bold text-gray-500">{viewAuditDetail.admission_number}</div>
+                                </div>
+                                <div className="bg-gray-50 rounded-2xl p-4">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1">Date</div>
+                                    <div className="font-black text-gray-900 uppercase italic text-sm">{viewAuditDetail.attendance_date}</div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-6 py-4 border-y border-dashed border-gray-200">
+                                <div className="text-center">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1">Old Status</div>
+                                    <div className="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg font-black italic text-xs uppercase">{viewAuditDetail.old_status || '—'}</div>
+                                </div>
+                                <ArrowRight className="w-6 h-6 text-indigo-200 mt-4" />
+                                <div className="text-center">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1">New Status</div>
+                                    <div className={`px-4 py-1 rounded-lg font-black italic text-xs uppercase ${viewAuditDetail.new_status === 'Present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                        {viewAuditDetail.new_status}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1 flex items-center gap-1">
+                                        <Clock className="w-3 h-3" /> Timestamp
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-700">
+                                        {new Date(viewAuditDetail.changed_at).toLocaleString('en-US', { 
+                                            dateStyle: 'long', 
+                                            timeStyle: 'medium' 
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase italic mb-1 flex items-center gap-1">
+                                        <Pen className="w-3 h-3" /> Reason
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-700 italic border-l-2 border-indigo-200 pl-3 py-1 bg-indigo-50/50 rounded-r-lg">
+                                        {viewAuditDetail.reason || 'No reason provided'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-gray-50 border-t border-gray-100">
+                            <button onClick={() => setViewAuditDetail(null)} className="w-full py-3 bg-gray-900 text-white rounded-xl font-black uppercase tracking-widest text-xs hover:bg-black transition-all">
+                                Close Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* View Assigned Students Modal */}
             {viewStudentsModal && (
+
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[80vh] flex flex-col">
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center">

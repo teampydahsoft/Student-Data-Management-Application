@@ -26,6 +26,7 @@
     "react-quill": "^2.0.0",
     "react-router-dom": "^6.30.3",
     "recharts": "^2.10.4",
+    "xlsx": "^0.18.5",
     "zustand": "^4.5.7"
   },
   "devDependencies": {

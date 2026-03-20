@@ -38,4 +38,15 @@ router.get('/list', authMiddleware, internshipController.getInternships);
 router.post('/mark-attendance', authMiddleware, internshipController.markAttendance);
 router.get('/status', authMiddleware, internshipController.getStudentStatus);
 
+// ── New: Period Report, Backdate Marking, Audit Log ──────────────────────────
+router.get('/period-report',    authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getPeriodReport);
+router.get('/students-for-date',authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getStudentsForDate);
+router.get('/active-groups',    authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getActiveGroups);
+router.post('/manual-attendance', authMiddleware, internshipController.manualMarkAttendance); // super_admin gate inside controller
+router.get('/audit-log',        authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getAuditLog);
+
+// Backdate Marking Rights
+router.post('/grant-backdate-rights', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.grantBackdateRights);
+router.get('/active-backdate-rights', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getActiveBackdateRights);
+
 module.exports = router;

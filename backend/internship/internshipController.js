@@ -49,7 +49,7 @@ exports.createInternship = async (req, res) => {
 };
 
 exports.getInternships = async (req, res) => {
-    console.log('Fetching all active internship locations');
+
     try {
         const [rows] = await masterPool.query('SELECT * FROM internship_locations WHERE is_active = 1');
         // Map to camelCase for frontend consistency if needed
@@ -65,7 +65,7 @@ exports.getInternships = async (req, res) => {
             isActive: loc.is_active,
             createdAt: loc.created_at
         }));
-        console.log(`Fetched ${locations.length} internship locations`);
+
         res.json({ success: true, data: locations });
     } catch (error) {
         console.error('Error fetching internships:', error);
@@ -1100,18 +1100,25 @@ exports.getInternshipFilters = async (req, res) => {
         const semesters = [...new Set(rows.map(r => r.current_semester).filter(Boolean))].sort((a, b) => a - b);
         const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))].sort();
 
-        // Fetch locations list
+        // Fetch locations list with their standard duration (min start to max end)
         const [locationRows] = await masterPool.query(`
-            SELECT DISTINCT il.id, il.company_name
+            SELECT 
+                il.id, 
+                il.company_name,
+                DATE_FORMAT(MIN(ia.start_date), '%Y-%m-%d') as min_start,
+                DATE_FORMAT(MAX(ia.end_date), '%Y-%m-%d') as max_end
             FROM internship_locations il
             JOIN internship_assignments ia ON il.id = ia.internship_id
             WHERE ia.end_date >= CURDATE()
+            GROUP BY il.id, il.company_name
             ORDER BY il.company_name
         `);
 
         const locations = locationRows.map(loc => ({
             id: loc.id,
-            companyName: loc.company_name
+            companyName: loc.company_name,
+            startDate: loc.min_start,
+            endDate: loc.max_end
         }));
 
         res.json({
@@ -1201,5 +1208,604 @@ exports.deleteInternshipLocation = async (req, res) => {
     } catch (error) {
         console.error('Error deleting location:', error);
         res.status(500).json({ success: false, message: 'Failed to delete location' });
+    }
+};
+
+// ─── Auto-run DB migrations on first require (MySQL 5.6/5.7/8 compatible) ─────
+(async () => {
+    try {
+        const [[{ db }]] = await masterPool.query('SELECT DATABASE() AS db');
+
+        // Helper: add a column only if it doesn't already exist
+        const addColumnIfMissing = async (table, column, definition) => {
+            const [[{ count }]] = await masterPool.query(
+                `SELECT COUNT(*) AS \`count\` FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+                [db, table, column]
+            );
+            if (count === 0) {
+                await masterPool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+                console.log(`[Internship] Added column: ${table}.${column}`);
+            }
+        };
+
+        // 1. Add manual-marking columns to internship_attendance
+        await addColumnIfMissing('internship_attendance', 'is_manual',      'BOOLEAN NOT NULL DEFAULT FALSE');
+        await addColumnIfMissing('internship_attendance', 'marked_by',      'INT NULL');
+        await addColumnIfMissing('internship_attendance', 'marked_by_name', 'VARCHAR(120) NULL');
+        await addColumnIfMissing('internship_attendance', 'manual_reason',  'TEXT NULL');
+
+        // 2. Create audit log table
+        await masterPool.query(`
+            CREATE TABLE IF NOT EXISTS internship_attendance_audit (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                internship_attendance_id INT NULL,
+                student_id INT NOT NULL,
+                attendance_date DATE NOT NULL,
+                old_status VARCHAR(30) NULL,
+                new_status VARCHAR(30) NOT NULL,
+                changed_by INT NOT NULL,
+                changed_by_name VARCHAR(120) NOT NULL,
+                reason TEXT NOT NULL,
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_student_audit (student_id, attendance_date),
+                INDEX idx_changed_by (changed_by),
+                INDEX idx_changed_at (changed_at)
+            )
+        `);
+        console.log('[Internship] DB migrations applied successfully.');
+    } catch (err) {
+        console.warn('[Internship] Migration warning:', err.message);
+    }
+})();
+
+// ─── Helper: format Date object → YYYY-MM-DD string ──────────────────────────
+const fmtDate = (d) => {
+    if (!d) return null;
+    if (typeof d === 'string') return d.split('T')[0];
+    return d.toISOString().split('T')[0];
+};
+
+// ─── Helper: enumerate all dates between start and end (inclusive) ────────────
+const enumerateDates = (start, end) => {
+    const dates = [];
+    const cur = new Date(start);
+    const finish = new Date(end);
+    while (cur <= finish) {
+        dates.push(fmtDate(cur));
+        cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /internship/period-report
+// Returns per-student attendance stats over their full assignment date range
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getPeriodReport = async (req, res) => {
+    try {
+        const { batch, college, course, branch, year, semester, location } = req.query;
+
+        // 1. Fetch all assignments (with optional filters)
+        let assignQuery = `
+            SELECT
+                ia.id AS assignment_id,
+                ia.student_id,
+                ia.internship_id,
+                DATE_FORMAT(ia.start_date, '%Y-%m-%d') AS start_date,
+                DATE_FORMAT(ia.end_date,   '%Y-%m-%d') AS end_date,
+                ia.allowed_days,
+                s.student_name,
+                s.admission_number,
+                s.pin_no,
+                s.batch,
+                s.course,
+                s.branch,
+                s.college,
+                s.current_year,
+                s.current_semester,
+                il.company_name,
+                il.address AS company_address
+            FROM internship_assignments ia
+            JOIN students s ON s.id = ia.student_id
+            JOIN internship_locations il ON il.id = ia.internship_id
+            WHERE s.student_status = 'Regular'
+        `;
+        const params = [];
+
+        if (location) { assignQuery += ' AND ia.internship_id = ?'; params.push(location); }
+        if (batch)    { assignQuery += ' AND s.batch = ?';          params.push(batch); }
+        if (college)  { assignQuery += ' AND s.college = ?';        params.push(college); }
+        if (course)   { assignQuery += ' AND s.course = ?';         params.push(course); }
+        if (branch)   { assignQuery += ' AND s.branch = ?';         params.push(branch); }
+        if (year)     { assignQuery += ' AND s.current_year = ?';   params.push(year); }
+        if (semester) { assignQuery += ' AND s.current_semester = ?'; params.push(semester); }
+
+        assignQuery += ' ORDER BY s.student_name ASC';
+        const [assignments] = await masterPool.query(assignQuery, params);
+
+        if (assignments.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const studentIds = [...new Set(assignments.map(a => a.student_id))];
+
+        // 2. Fetch internship_attendance records (GPS check-ins)
+        const [internshipRows] = await masterPool.query(`
+            SELECT
+                student_id,
+                DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+                status,
+                is_manual,
+                marked_by_name,
+                check_in_time,
+                check_out_time
+            FROM internship_attendance
+            WHERE student_id IN (?)
+            ORDER BY attendance_date ASC
+        `, [studentIds]);
+
+        // 3. Fetch regular attendance_records (college roll-call) for the same students
+        const [regularRows] = await masterPool.query(`
+            SELECT
+                student_id,
+                DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+                status
+            FROM attendance_records
+            WHERE student_id IN (?)
+            ORDER BY attendance_date ASC
+        `, [studentIds]);
+
+        // Build maps: student_id → date → record
+        // internshipMap has GPS/manual records (higher priority)
+        const internshipMap = new Map();
+        internshipRows.forEach(row => {
+            if (!internshipMap.has(row.student_id)) internshipMap.set(row.student_id, new Map());
+            internshipMap.get(row.student_id).set(row.attendance_date, row);
+        });
+
+        // regularMap has regular roll-call records (fallback)
+        const regularMap = new Map();
+        regularRows.forEach(row => {
+            if (!regularMap.has(row.student_id)) regularMap.set(row.student_id, new Map());
+            // Normalise status: regular uses lowercase 'present'/'absent'
+            regularMap.get(row.student_id).set(row.attendance_date, {
+                ...row,
+                // Map regular statuses to internship statuses for consistency
+                status: row.status === 'present' ? 'Present'
+                      : row.status === 'absent'  ? 'Absent'
+                      : row.status === 'holiday' ? 'Holiday'
+                      : row.status
+            });
+        });
+
+        // 4. Build per-student report (internship record wins; fall back to regular; else Not Marked)
+        const report = assignments.map(asgn => {
+            const allowedDays = (() => {
+                try {
+                    const d = typeof asgn.allowed_days === 'string'
+                        ? JSON.parse(asgn.allowed_days)
+                        : asgn.allowed_days;
+                    return Array.isArray(d) ? d : [];
+                } catch { return []; }
+            })();
+
+            const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+            const allowedDayNums = new Set(allowedDays.map(d => DAY_MAP[d]).filter(n => n !== undefined));
+
+            const allDates = enumerateDates(asgn.start_date, asgn.end_date);
+            const workingDates = allDates.filter(d => {
+                const dayNum = new Date(d).getDay();
+                return allowedDayNums.size === 0 ? dayNum !== 0 : allowedDayNums.has(dayNum);
+            });
+
+            const studentIntMap = internshipMap.get(asgn.student_id) || new Map();
+            const studentRegMap = regularMap.get(asgn.student_id)    || new Map();
+
+            const dayBreakdown = workingDates.map(date => {
+                const intRec = studentIntMap.get(date);
+                const regRec = studentRegMap.get(date);
+
+                if (intRec) {
+                    // Internship GPS/manual record takes priority
+                    return {
+                        date,
+                        status: intRec.status,
+                        source: 'internship',
+                        isManual: Boolean(intRec.is_manual),
+                        markedByName: intRec.marked_by_name || null,
+                        checkInTime: intRec.check_in_time || null,
+                        checkOutTime: intRec.check_out_time || null
+                    };
+                } else if (regRec && regRec.status !== 'Holiday') {
+                    // Fall back to regular college attendance
+                    return {
+                        date,
+                        status: regRec.status,
+                        source: 'regular',
+                        isManual: false,
+                        markedByName: null,
+                        checkInTime: null,
+                        checkOutTime: null
+                    };
+                } else {
+                    return {
+                        date,
+                        status: regRec?.status === 'Holiday' ? 'Holiday' : 'Not Marked',
+                        source: regRec?.status === 'Holiday' ? 'holiday' : 'none',
+                        isManual: false,
+                        markedByName: null,
+                        checkInTime: null,
+                        checkOutTime: null
+                    };
+                }
+            });
+
+            const countableDay = d => d.status !== 'Holiday';
+            const totalDays   = dayBreakdown.filter(countableDay).length;
+            const presentDays = dayBreakdown.filter(d => d.status === 'Present').length;
+            const absentDays  = dayBreakdown.filter(d => d.status === 'Absent').length;
+            const notMarked   = dayBreakdown.filter(d => d.status === 'Not Marked').length;
+            const percentage  = totalDays > 0
+                ? parseFloat(((presentDays / totalDays) * 100).toFixed(2))
+                : 0;
+
+            return {
+                assignmentId: asgn.assignment_id,
+                studentId: asgn.student_id,
+                internshipId: asgn.internship_id,
+                studentName: asgn.student_name,
+                admissionNumber: asgn.admission_number,
+                pinNo: asgn.pin_no,
+                batch: asgn.batch,
+                course: asgn.course,
+                branch: asgn.branch,
+                college: asgn.college,
+                year: asgn.current_year,
+                semester: asgn.current_semester,
+                companyName: asgn.company_name,
+                companyAddress: asgn.company_address,
+                startDate: asgn.start_date,
+                endDate: asgn.end_date,
+                allowedDays,
+                totalDays,
+                presentDays,
+                absentDays,
+                notMarked,
+                attendancePercentage: percentage,
+                dayBreakdown
+            };
+        });
+
+        res.json({ success: true, data: report });
+    } catch (error) {
+        console.error('Error generating period report:', error);
+        res.status(500).json({ success: false, message: 'Server error generating period report' });
+    }
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /internship/students-for-date?date=YYYY-MM-DD&batch=&course=&...
+// Returns all students with active assignments on a given date + current status
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getStudentsForDate = async (req, res) => {
+    try {
+        const { date, batch, college, course, branch, year, semester, location } = req.query;
+
+        if (!date) {
+            return res.status(400).json({ success: false, message: 'date param is required' });
+        }
+
+        let query = `
+            SELECT
+                s.id AS student_id,
+                s.student_name,
+                s.admission_number,
+                s.pin_no,
+                s.batch,
+                s.course,
+                s.branch,
+                s.college,
+                s.current_year,
+                s.current_semester,
+                il.company_name,
+                ia.id AS assignment_id,
+                DATE_FORMAT(ia.start_date, '%Y-%m-%d') AS start_date,
+                DATE_FORMAT(ia.end_date,   '%Y-%m-%d') AS end_date,
+                att.id AS attendance_id,
+                att.status AS current_status,
+                att.is_manual,
+                att.marked_by_name
+            FROM students s
+            JOIN internship_assignments ia
+                ON s.id = ia.student_id
+                AND ? BETWEEN ia.start_date AND ia.end_date
+            JOIN internship_locations il ON il.id = ia.internship_id
+            LEFT JOIN internship_attendance att
+                ON att.student_id = s.id AND att.attendance_date = ?
+            WHERE s.student_status = 'Regular'
+        `;
+        const params = [date, date];
+
+        if (location) { query += ' AND ia.internship_id = ?'; params.push(location); }
+        if (batch)    { query += ' AND s.batch = ?';          params.push(batch); }
+        if (college)  { query += ' AND s.college = ?';        params.push(college); }
+        if (course)   { query += ' AND s.course = ?';         params.push(course); }
+        if (branch)   { query += ' AND s.branch = ?';         params.push(branch); }
+        if (year)     { query += ' AND s.current_year = ?';   params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
+
+        query += ' ORDER BY s.student_name ASC';
+
+        const [rows] = await masterPool.query(query, params);
+
+        const data = rows.map(row => ({
+            studentId: row.student_id,
+            studentName: row.student_name,
+            admissionNumber: row.admission_number,
+            pinNo: row.pin_no,
+            batch: row.batch,
+            course: row.course,
+            branch: row.branch,
+            college: row.college,
+            year: row.current_year,
+            semester: row.current_semester,
+            companyName: row.company_name,
+            assignmentId: row.assignment_id,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            attendanceId: row.attendance_id || null,
+            currentStatus: row.current_status || 'Not Marked',
+            isManual: Boolean(row.is_manual),
+            markedByName: row.marked_by_name || null
+        }));
+
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error fetching students for date:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /internship/manual-attendance  (Super Admin only)
+// Body: { student_id, attendance_date, status, reason }
+// Upserts internship_attendance + writes audit log entry
+// ─────────────────────────────────────────────────────────────────────────────
+exports.manualMarkAttendance = async (req, res) => {
+    try {
+        const adminUser = req.admin || req.user;
+        if (!adminUser) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        // Super admin gate
+        const role = adminUser.role || '';
+        if (role !== 'super_admin' && role !== 'Super Admin' && role !== 'superadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only Super Admins can manually mark internship attendance'
+            });
+        }
+
+        const { student_id, attendance_date, status, reason } = req.body;
+
+        if (!student_id || !attendance_date || !status) {
+            return res.status(400).json({ success: false, message: 'student_id, attendance_date, and status are required' });
+        }
+
+        const validStatuses = ['Present', 'Absent'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: `status must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        if (!reason || reason.trim().length < 5) {
+            return res.status(400).json({ success: false, message: 'A reason of at least 5 characters is required' });
+        }
+
+        // Verify student has an assignment that covers this date
+        const [assignments] = await masterPool.query(`
+            SELECT ia.id, ia.internship_id, s.batch 
+            FROM internship_assignments ia
+            JOIN students s ON ia.student_id = s.id
+            WHERE ia.student_id = ?
+            AND ? BETWEEN ia.start_date AND ia.end_date
+            LIMIT 1
+        `, [student_id, attendance_date]);
+
+        if (assignments.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No internship assignment found for this student on the given date'
+            });
+        }
+
+        const assignment = assignments[0];
+
+        // Check if backdate marking rights exist for this internship/batch/date
+        const [rights] = await masterPool.query(`
+            SELECT id FROM internship_backdate_rights
+            WHERE internship_id = ? AND batch = ? AND date = ? AND is_active = 1
+            LIMIT 1
+        `, [assignment.internship_id, assignment.batch, attendance_date]);
+
+        if (rights.length === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'Editing is locked for this date. A Super Admin must grant marking rights first.'
+            });
+        }
+        const markedByName = adminUser.name || adminUser.email || `Admin #${adminUser.id}`;
+        const markedById = adminUser.id;
+
+        // Check for existing record
+        const [existing] = await masterPool.query(`
+            SELECT id, status FROM internship_attendance
+            WHERE student_id = ? AND attendance_date = ?
+            LIMIT 1
+        `, [student_id, attendance_date]);
+
+        const oldStatus = existing.length > 0 ? existing[0].status : 'Not Marked';
+        let attendanceId;
+
+        if (existing.length > 0) {
+            // UPDATE existing row
+            await masterPool.query(`
+                UPDATE internship_attendance
+                SET status = ?, is_manual = TRUE, marked_by = ?, marked_by_name = ?, manual_reason = ?
+                WHERE id = ?
+            `, [status, markedById, markedByName, reason.trim(), existing[0].id]);
+            attendanceId = existing[0].id;
+        } else {
+            // INSERT new row
+            const [insertResult] = await masterPool.query(`
+                INSERT INTO internship_attendance
+                    (student_id, internship_id, attendance_date, status, is_manual, marked_by, marked_by_name, manual_reason)
+                VALUES (?, ?, ?, ?, TRUE, ?, ?, ?)
+            `, [student_id, assignment.internship_id, attendance_date, status, markedById, markedByName, reason.trim()]);
+            attendanceId = insertResult.insertId;
+        }
+
+        // Write audit log
+        await masterPool.query(`
+            INSERT INTO internship_attendance_audit
+                (internship_attendance_id, student_id, attendance_date, old_status, new_status, changed_by, changed_by_name, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [attendanceId, student_id, attendance_date, oldStatus, status, markedById, markedByName, reason.trim()]);
+
+        res.json({
+            success: true,
+            message: `Attendance marked as ${status} for ${attendance_date}`,
+            data: { attendanceId, oldStatus, newStatus: status, markedByName }
+        });
+    } catch (error) {
+        console.error('Error in manualMarkAttendance:', error);
+        res.status(500).json({ success: false, message: 'Server error while marking attendance' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /internship/audit-log?student_id=&from=&to=&limit=50&offset=0
+// Returns internship_attendance_audit rows
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getAuditLog = async (req, res) => {
+    try {
+        const { student_id, from, to, limit = 50, offset = 0 } = req.query;
+
+        let query = `
+            SELECT
+                a.id,
+                a.student_id,
+                s.student_name,
+                s.admission_number,
+                DATE_FORMAT(a.attendance_date, '%Y-%m-%d') AS attendance_date,
+                a.old_status,
+                a.new_status,
+                a.changed_by_name,
+                a.reason,
+                a.changed_at
+            FROM internship_attendance_audit a
+            JOIN students s ON s.id = a.student_id
+            WHERE 1=1
+        `;
+        const params = [];
+
+        if (student_id) { query += ' AND a.student_id = ?';  params.push(student_id); }
+        if (from)       { query += ' AND a.attendance_date >= ?'; params.push(from); }
+        if (to)         { query += ' AND a.attendance_date <= ?'; params.push(to); }
+
+        query += ` ORDER BY a.changed_at DESC LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit, 10), parseInt(offset, 10));
+
+        const [rows] = await masterPool.query(query, params);
+
+        // Count
+        let countQuery = `SELECT COUNT(*) AS total FROM internship_attendance_audit a WHERE 1=1`;
+        const countParams = [];
+        if (student_id) { countQuery += ' AND a.student_id = ?';       countParams.push(student_id); }
+        if (from)       { countQuery += ' AND a.attendance_date >= ?';  countParams.push(from); }
+        if (to)         { countQuery += ' AND a.attendance_date <= ?';  countParams.push(to); }
+        const [[{ total }]] = await masterPool.query(countQuery, countParams);
+
+        res.json({
+            success: true,
+            data: rows,
+            pagination: { total: Number(total), limit: parseInt(limit, 10), offset: parseInt(offset, 10) }
+        });
+    } catch (error) {
+        console.error('Error fetching audit log:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching audit log' });
+    }
+};// -----------------------------------------------------------------------------
+// GET /internship/active-groups
+// Returns Location + Batch pairs that currently have student assignments
+// -----------------------------------------------------------------------------
+exports.getActiveGroups = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                il.id as location_id, 
+                il.company_name, 
+                s.batch, 
+                COUNT(DISTINCT ia.student_id) as student_count, 
+                MIN(ia.start_date) as start_date, 
+                MAX(ia.end_date) as end_date 
+            FROM internship_assignments ia 
+            JOIN internship_locations il ON il.id = ia.internship_id 
+            JOIN students s ON s.id = ia.student_id
+            GROUP BY il.id, il.company_name, s.batch 
+            ORDER BY il.company_name, s.batch DESC
+        `;
+        const [rows] = await masterPool.query(query);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Failed to fetch active groups:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+};
+
+// -----------------------------------------------------------------------------
+// POST /internship/grant-backdate-rights
+// -----------------------------------------------------------------------------
+exports.grantBackdateRights = async (req, res) => {
+    try {
+        const { internship_id, batch, date } = req.body;
+        const granted_by = req.user.id;
+
+        if (!internship_id || !batch || !date) {
+            return res.status(400).json({ success: false, message: 'Internship, Batch, and Date are required.' });
+        }
+
+        // Optional: Revoke existing active rights for the same session to keep it clean
+        // await masterPool.query("UPDATE internship_backdate_rights SET is_active = 0 WHERE internship_id = ? AND batch = ? AND date = ?", [internship_id, batch, date]);
+
+        await masterPool.query(`
+            INSERT INTO internship_backdate_rights (internship_id, batch, date, granted_by)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE is_active = 1
+        `, [internship_id, batch, date, granted_by]);
+
+        res.json({ success: true, message: 'Marking rights granted successfully.' });
+    } catch (error) {
+        console.error('Failed to grant backdate rights:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+};
+
+// -----------------------------------------------------------------------------
+// GET /internship/active-backdate-rights
+// -----------------------------------------------------------------------------
+exports.getActiveBackdateRights = async (req, res) => {
+    try {
+        const [rows] = await masterPool.query(`
+            SELECT id, internship_id, batch, date, granted_at 
+            FROM internship_backdate_rights 
+            WHERE is_active = 1
+        `);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Failed to fetch active backdate rights:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
