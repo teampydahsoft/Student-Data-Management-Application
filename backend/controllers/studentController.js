@@ -2883,7 +2883,7 @@ exports.updateStudent = async (req, res) => {
 
     // Fetch existing student to check batch
     const [existingStudentsBeforeCheck] = await masterPool.query(
-      'SELECT id, batch, student_data FROM students WHERE admission_number = ?',
+      'SELECT id, batch, pin_no, student_data FROM students WHERE admission_number = ?',
       [admissionNumber]
     );
 
@@ -2949,13 +2949,39 @@ exports.updateStudent = async (req, res) => {
     }
 
 
+    // Extract new PIN if provided to check for uniqueness
+    let newPinNo = null;
+    if (studentData && typeof studentData === 'object') {
+      for (const [key, value] of Object.entries(studentData)) {
+        const normalizedKey = normalizeHeaderKeyForLookup(key);
+        if (FIELD_LOOKUP[normalizedKey] === 'pin_no' && value) {
+          newPinNo = String(value).trim();
+          break;
+        }
+      }
+    }
+
+    if (newPinNo && newPinNo !== currentStudent.pin_no) {
+      const [existingPin] = await masterPool.query(
+        'SELECT admission_number FROM students WHERE pin_no = ? AND admission_number != ?',
+        [newPinNo, admissionNumber]
+      );
+
+      if (existingPin.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Update failed: The PIN number '${newPinNo}' is already assigned to another student (Admission: ${existingPin[0].admission_number}).`
+        });
+      }
+    }
+
+
     // SECURITY: Define protected columns that cannot be updated via this generic endpoint.
     // These fields must be updated via their dedicated endpoints or are immutable/system-managed.
     const PROTECTED_COLUMNS = [
       'admission_number',
       'admission_no',
       'id',
-      'pin_no',
       'created_at',
       'updated_at'
     ];
