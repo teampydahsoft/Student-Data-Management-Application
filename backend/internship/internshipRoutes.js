@@ -22,6 +22,7 @@ router.get('/eligible-students', authMiddleware, verifyPermission(MODULES.ATTEND
 router.post('/assign', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.assignInternship);
 router.get('/:id/students', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getAssignedStudents);
 router.put('/location/:id', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.updateInternshipLocation);
+router.post('/re-validate-attendance', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.revalidateAttendanceByFilters);
 router.delete('/location/:id', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.deleteInternshipLocation);
 router.get('/attendance-details/:id', authMiddleware, verifyPermission(MODULES.ATTENDANCE, 'view_internship'), internshipController.getAttendanceDetails);
 

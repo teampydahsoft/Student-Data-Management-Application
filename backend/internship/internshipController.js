@@ -17,6 +17,103 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
     return R * c; // Distance in meters
 };
 
+// Helper: Re-validates attendance records against a (possibly new) internship location
+const revalidateAttendanceInternal = async (connection, studentIdList, startDate, endDate, internshipId) => {
+    if (!studentIdList || studentIdList.length === 0) return 0;
+
+    // 1. Fetch target location details
+    const [locRows] = await connection.query('SELECT latitude, longitude, radius FROM internship_locations WHERE id = ?', [internshipId]);
+    const newLoc = locRows[0];
+
+    if (!newLoc) {
+        console.warn(`[Internship] Re-validation failed: Location ID ${internshipId} not found.`);
+        return 0;
+    }
+
+    const targetLat = parseFloat(newLoc.latitude);
+    const targetLng = parseFloat(newLoc.longitude);
+    const targetRadius = parseInt(newLoc.radius);
+
+    // 2. Fetch affected attendance records
+    const [attendanceRecords] = await connection.query(`
+        SELECT * FROM internship_attendance 
+        WHERE student_id IN (?) 
+        AND attendance_date BETWEEN ? AND ?
+        AND is_manual = 0
+    `, [studentIdList, startDate, endDate]);
+
+    if (attendanceRecords.length === 0) return 0;
+
+    console.log(`[Internship] Re-validating ${attendanceRecords.length} records against location ${newLoc.company_name} (radius ${targetRadius}m).`);
+
+    let updatedCount = 0;
+    for (const record of attendanceRecords) {
+        let checkInLocData = null;
+        try {
+            checkInLocData = typeof record.check_in_location === 'string' ? JSON.parse(record.check_in_location) : record.check_in_location;
+        } catch (e) { }
+
+        if (checkInLocData && checkInLocData.latitude && checkInLocData.longitude) {
+            // Calculate new distance for Check-In
+            const newDistance = calculateDistance(checkInLocData.latitude, checkInLocData.longitude, targetLat, targetLng);
+            checkInLocData.distanceFromSite = newDistance;
+
+            let checkOutLocData = null;
+            if (record.check_out_location) {
+                try {
+                    checkOutLocData = typeof record.check_out_location === 'string' ? JSON.parse(record.check_out_location) : record.check_out_location;
+                    if (checkOutLocData.latitude && checkOutLocData.longitude) {
+                        const outDist = calculateDistance(checkOutLocData.latitude, checkOutLocData.longitude, targetLat, targetLng);
+                        checkOutLocData.distanceFromSite = outDist;
+                    }
+                } catch (e) { }
+            }
+
+            // Determine status logic (consistency with markAttendance)
+            let isSuspicious = record.accuracy > 500;
+            let suspiciousReason = isSuspicious ? `Low Accuracy (${Math.round(record.accuracy)}m)` : null;
+
+            let finalStatus = 'Present';
+            if (newDistance > targetRadius) {
+                finalStatus = 'Absent';
+                isSuspicious = true;
+                suspiciousReason = (suspiciousReason ? suspiciousReason + " | " : "") + `Outside Radius: ${Math.round(newDistance)}m (Target: ${targetRadius}m)`;
+            }
+
+            if (checkOutLocData && checkOutLocData.distanceFromSite > targetRadius) {
+                finalStatus = 'Absent';
+                isSuspicious = true;
+                suspiciousReason = (suspiciousReason ? suspiciousReason + " | " : "") + `Outside Radius at Checkout: ${Math.round(checkOutLocData.distanceFromSite)}m`;
+            }
+
+            await connection.query(`
+                UPDATE internship_attendance 
+                SET internship_id = ?, 
+                    check_in_location = ?, 
+                    check_out_location = ?,
+                    status = ?,
+                    is_suspicious = ?,
+                    suspicious_reason = ?
+                WHERE id = ?
+            `, [
+                internshipId, 
+                JSON.stringify(checkInLocData), 
+                checkOutLocData ? JSON.stringify(checkOutLocData) : record.check_out_location,
+                finalStatus,
+                isSuspicious ? 1 : 0,
+                suspiciousReason || record.suspicious_reason, // Keep existing if no new reason
+                record.id
+            ]);
+            updatedCount++;
+        } else {
+            // Just update the ID if no location data (e.g. manual fallback)
+            await connection.query('UPDATE internship_attendance SET internship_id = ? WHERE id = ?', [internshipId, record.id]);
+            updatedCount++;
+        }
+    }
+    return updatedCount;
+};
+
 // --- Admin Controllers ---
 
 exports.createInternship = async (req, res) => {
@@ -90,7 +187,30 @@ exports.updateInternshipLocation = async (req, res) => {
             id
         ]);
 
-        res.json({ success: true, message: 'Internship location updated successfully.' });
+        // Auto-revalidate attendance records for all students assigned here
+        // (Since coordinates or radius might have changed)
+        const connection = await masterPool.getConnection();
+        try {
+            // Find all active/future assignments for this location
+            const [assignments] = await connection.query(
+                'SELECT student_id, start_date, end_date FROM internship_assignments WHERE internship_id = ?',
+                [id]
+            );
+
+            if (assignments.length > 0) {
+                // Group by dates to handle range
+                const minStart = assignments.reduce((min, a) => a.start_date < min ? a.start_date : min, assignments[0].start_date);
+                const studentIds = assignments.map(a => a.student_id);
+                
+                await revalidateAttendanceInternal(connection, studentIds, minStart, new Date().toISOString().split('T')[0], id);
+            }
+        } catch (err) {
+            console.error('[Internship] Error during auto-revalidation:', err);
+        } finally {
+            connection.release();
+        }
+
+        res.json({ success: true, message: 'Internship location updated and attendance records re-validated successfully.' });
     } catch (error) {
         console.error('Error updating internship location:', error);
         res.status(500).json({ success: false, message: 'Server error while updating location.' });
@@ -100,134 +220,83 @@ exports.updateInternshipLocation = async (req, res) => {
 exports.getAttendanceReport = async (req, res) => {
     console.log('Fetching internship attendance report with filters:', req.query);
     try {
-        const { batch, college, course, branch, year, semester, location } = req.query;
-        const reportDate = new Date().toISOString().split('T')[0];
-        // before generating report, mark any overdue students as absent
-        await autoMarkAbsentees(reportDate);
+        const { batch, college, course, branch, year, semester, location, startDate, endDate } = req.query;
+        
+        // Use provided dates or default to today
+        const reportStartDate = startDate || new Date().toISOString().split('T')[0];
+        const reportEndDate = endDate || reportStartDate;
 
-        // Fetch students and LEFT JOIN attendance for TODAY (or recent/all)
-        // Usually report shows presence/absence for today if context is "Current Attendance"
-        // Or history? Given the filters are meant to "select students", let's show Today's status for the filtered group.
+        // before generating report, mark any overdue students as absent for today
+        if (!startDate || reportStartDate === new Date().toISOString().split('T')[0]) {
+            await autoMarkAbsentees(reportStartDate);
+        }
 
+        // We'll use a slightly different query strategy to fix duplicates:
+        // 1. Find valid assignments for the target date(s) that match the allowed_days
+        // 2. Left join attendance records for those specific assignments/dates
+        
         let query = `
             SELECT 
-                s.id AS student_db_id,
-                s.student_name,
-                s.admission_number,
-                s.batch,
-                s.course,
-                s.branch,
-                s.current_year,
-                s.current_semester,
-                ia.id AS attendance_id,
-                ia.check_in_time,
-                ia.check_out_time,
-                ia.check_in_location,
-                ia.check_out_location,
-                ia.status,
-                ia.is_suspicious,
-                ia.suspicious_reason,
-                ia.attendance_date,
-                il.company_name,
-                il.address,
-                il.allowed_end_time AS attendance_allowed_end_time,
-                il_assigned.company_name AS assigned_company_name,
-                il_assigned.address AS assigned_address,
-                il_assigned.allowed_end_time AS assigned_allowed_end_time
+                s.id AS student_db_id, s.student_name, s.admission_number, s.batch, s.course, s.branch, s.current_year, s.current_semester,
+                ia.id AS attendance_id, ia.check_in_time, ia.check_out_time, ia.check_in_location, ia.check_out_location, ia.status, ia.is_suspicious, ia.suspicious_reason, ia.attendance_date,
+                il_assigned.company_name AS assigned_company_name, il_assigned.address AS assigned_address, il_assigned.allowed_end_time AS assigned_allowed_end_time
             FROM students s
+            JOIN internship_assignments i_assign ON s.id = i_assign.student_id
+            JOIN internship_locations il_assigned ON i_assign.internship_id = il_assigned.id
             LEFT JOIN internship_attendance ia 
                 ON s.id = ia.student_id 
-                AND ia.attendance_date = CURDATE()
-            LEFT JOIN internship_locations il 
-                ON ia.internship_id = il.id
-            JOIN internship_assignments i_assign
-                ON s.id = i_assign.student_id
-                AND CURDATE() BETWEEN i_assign.start_date AND i_assign.end_date
-            LEFT JOIN internship_locations il_assigned
-                ON i_assign.internship_id = il_assigned.id
-            WHERE 1=1 AND s.student_status = 'Regular'
+                AND ia.internship_id = i_assign.internship_id
+                AND ia.attendance_date BETWEEN ? AND ?
+                AND ia.attendance_date BETWEEN i_assign.start_date AND i_assign.end_date
+            WHERE 1=1 
+            AND s.student_status = 'Regular'
+            AND (
+                -- Case A: If report is for a range, we show all records within that range
+                -- Case B: If single date, we strictly enforce it
+                (ia.attendance_date IS NOT NULL) 
+                OR 
+                (? = ? AND ? BETWEEN i_assign.start_date AND i_assign.end_date 
+                 AND JSON_CONTAINS(i_assign.allowed_days, JSON_QUOTE(LEFT(DAYNAME(?), 3))))
+            )
         `;
 
-        const params = [];
+        const params = [reportStartDate, reportEndDate, reportStartDate, reportEndDate, reportStartDate, reportStartDate];
 
-        // Apply filters dynamically
-        if (location) {
-            query += ' AND i_assign.internship_id = ?';
-            params.push(location);
-        }
-        if (batch) {
-            query += ' AND s.batch = ?';
-            params.push(batch);
-        }
-        if (college) {
-            query += ' AND s.college = ?';
-            params.push(college);
-        }
-        if (course) {
-            query += ' AND s.course = ?';
-            params.push(course);
-        }
-        if (branch) {
-            query += ' AND s.branch = ?';
-            params.push(branch);
-        }
-        if (year) {
-            query += ' AND s.current_year = ?';
-            params.push(year);
-        }
-        if (semester) {
-            query += ' AND s.current_semester = ?';
-            params.push(semester);
-        }
+        if (location) { query += ' AND i_assign.internship_id = ?'; params.push(location); }
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (college) { query += ' AND s.college = ?'; params.push(college); }
+        if (course) { query += ' AND s.course = ?'; params.push(course); }
+        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (year) { query += ' AND s.current_year = ?'; params.push(year); }
+        if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
-        // Show attended first, then alphabetically
-        query += ' ORDER BY ia.check_in_time DESC, s.admission_number ASC LIMIT 100';
+        query += ' ORDER BY ia.attendance_date DESC, ia.check_in_time DESC, s.admission_number ASC LIMIT 200';
 
         const [rows] = await masterPool.query(query, params);
 
-        console.log(`Report query returned ${rows.length} records`);
-
-        // Map simple structure
         const reportData = rows.map(row => ({
-            _id: row.attendance_id || `temp-${row.student_db_id}`, // temporary ID if not marked
+            _id: row.attendance_id || `temp-${row.student_db_id}-${row.assigned_company_name}`,
             studentId: row.admission_number,
-            internshipId: row.company_name ? {
-                companyName: row.company_name,
-                address: row.address,
-                allowedEndTime: row.attendance_allowed_end_time || row.assigned_allowed_end_time
-            } : (row.assigned_company_name ? {
+            internshipId: {
                 companyName: row.assigned_company_name,
                 address: row.assigned_address,
                 allowedEndTime: row.assigned_allowed_end_time
-            } : null),
+            },
             studentDetails: {
-                name: row.student_name,
-                batch: row.batch,
-                course: row.course,
-                branch: row.branch,
-                year: row.current_year,
-                semester: row.current_semester
+                name: row.student_name, batch: row.batch, course: row.course, branch: row.branch, year: row.current_year, semester: row.current_semester
             },
             checkInTime: row.check_in_time,
             checkOutTime: row.check_out_time,
             checkInLocation: row.check_in_location ? (() => {
-                try {
-                    const loc = JSON.parse(row.check_in_location);
-                    delete loc.image; // Remove image for list view
-                    return loc;
-                } catch (e) { return null; }
+                try { const loc = JSON.parse(row.check_in_location); delete loc.image; return loc; } catch (e) { return null; }
             })() : null,
             checkOutLocation: row.check_out_location ? (() => {
-                try {
-                    const loc = JSON.parse(row.check_out_location);
-                    delete loc.image; // Remove image for list view
-                    return loc;
-                } catch (e) { return null; }
+                try { const loc = JSON.parse(row.check_out_location); delete loc.image; return loc; } catch (e) { return null; }
             })() : null,
             status: row.status || 'Not Marked',
             isSuspicious: row.is_suspicious,
             suspiciousReason: row.suspicious_reason,
-            date: row.attendance_date || new Date().toISOString()
+            date: row.attendance_date || reportStartDate
         }));
 
         res.json({ success: true, data: reportData });
@@ -237,6 +306,7 @@ exports.getAttendanceReport = async (req, res) => {
     }
 };
 
+
 exports.getDayEndReport = async (req, res) => {
     try {
         const { date, batch, college, course, branch, year, semester } = req.query;
@@ -244,7 +314,7 @@ exports.getDayEndReport = async (req, res) => {
         // automatically mark absentees for provided date as well
         await autoMarkAbsentees(reportDate);
 
-        // Base query to get students with active internships and their attendance for the date
+        // Base query to get students with active internships (scheduled for THIS specific day) and their attendance
         let query = `
             SELECT 
                 s.college,
@@ -262,13 +332,15 @@ exports.getDayEndReport = async (req, res) => {
             JOIN internship_assignments i_assign
                 ON s.id = i_assign.student_id
                 AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+                AND JSON_CONTAINS(i_assign.allowed_days, JSON_QUOTE(LEFT(DAYNAME(?), 3)))
             LEFT JOIN internship_attendance ia 
                 ON s.id = ia.student_id 
                 AND ia.attendance_date = ?
+                AND ia.internship_id = i_assign.internship_id
             WHERE s.student_status = 'Regular'
         `;
 
-        const params = [reportDate, reportDate];
+        const params = [reportDate, reportDate, reportDate];
 
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
         if (college) { query += ' AND s.college = ?'; params.push(college); }
@@ -570,9 +642,9 @@ exports.getAttendanceDetails = async (req, res) => {
 
 exports.assignInternship = async (req, res) => {
     console.log('Assigning internship with filters:', req.body);
+    const connection = await masterPool.getConnection();
     try {
-        const { internshipId, startDate, endDate, allowedDays, filters, studentIds } = req.body;
-        // filters: batch, college, course, branch, year, semester
+        const { internshipId, startDate, endDate, allowedDays, filters, studentIds, overwrite } = req.body;
 
         if (!internshipId || !startDate || !endDate || !allowedDays) {
             return res.status(400).json({ success: false, message: 'Internship, Start Date, End Date, and Allowed Days are required.' });
@@ -582,20 +654,15 @@ exports.assignInternship = async (req, res) => {
 
         // 1. Find eligible students
         if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
-            // Provided IDs may be admission numbers, pin numbers or the internal id.
-            // We will select any students matching any of the possibilities so the
-            // frontend can continue to send the value shown in the table (which is
-            // the internal id) while older code might send admission numbers.
-            const [rows] = await masterPool.query(
+            const [rows] = await connection.query(
                 `SELECT id FROM students 
                  WHERE id IN (?) 
                     OR admission_number IN (?) 
                     OR pin_no IN (?)`,
                 [studentIds, studentIds, studentIds]
             );
-            students = rows; // rows contains objects like { id: 123 }
+            students = rows;
         } else {
-            // Use filters (this query already selects internal ID)
             let query = `SELECT id FROM students WHERE 1=1 AND student_status = 'Regular'`;
             const params = [];
 
@@ -608,74 +675,98 @@ exports.assignInternship = async (req, res) => {
                 if (filters.semester) { query += ' AND current_semester = ?'; params.push(filters.semester); }
             }
 
-            const [rows] = await masterPool.query(query, params);
+            const [rows] = await connection.query(query, params);
             students = rows;
         }
 
         if (students.length === 0) {
-            // no students matched the provided filters/ids; treat as bad request rather than missing endpoint
+            connection.release();
             return res.status(400).json({ success: false, message: 'No valid students found matching the selection.' });
         }
 
-        console.log(`Found ${students.length} students to assign.`);
-
-        // 2. Check for Overlapping Assignments
         const studentIdList = students.map(s => s.id);
-        if (studentIdList.length > 0) {
-            // Overlap Condition: (NewStart <= ExistingEnd) AND (NewEnd >= ExistingStart)
-            const [existingAssignments] = await masterPool.query(`
-                SELECT 
-                    ia.student_id, 
-                    s.student_name, 
-                    s.admission_number, 
-                    il.company_name, 
-                    ia.start_date, 
-                    ia.end_date
-                FROM internship_assignments ia
-                JOIN students s ON ia.student_id = s.id
-                JOIN internship_locations il ON ia.internship_id = il.id
-                WHERE ia.student_id IN (?)
-                AND ia.start_date <= ? 
-                AND ia.end_date >= ?
-            `, [studentIdList, endDate, startDate]);
+        
+        // 2. Check for Overlapping Assignments
+        const [existingAssignments] = await connection.query(`
+            SELECT ia.id, ia.student_id, s.student_name, s.admission_number, il.company_name, ia.start_date, ia.end_date, ia.allowed_days
+            FROM internship_assignments ia
+            JOIN students s ON ia.student_id = s.id
+            JOIN internship_locations il ON ia.internship_id = il.id
+            WHERE ia.student_id IN (?)
+            AND ia.start_date <= ? 
+            AND ia.end_date >= ?
+        `, [studentIdList, endDate, startDate]);
 
-            if (existingAssignments.length > 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: 'Some students already have overlapping internships.',
-                    conflicts: existingAssignments.map(c => ({
-                        studentName: c.student_name,
-                        admissionNumber: c.admission_number,
-                        companyName: c.company_name,
-                        startDate: c.start_date,
-                        endDate: c.end_date
-                    }))
-                });
+        // Filter overlaps by checking staggered days
+        const conflicts = existingAssignments.filter(ea => {
+            try {
+                const existingDays = typeof ea.allowed_days === 'string' ? JSON.parse(ea.allowed_days) : ea.allowed_days;
+                const newDays = Array.isArray(allowedDays) ? allowedDays : [];
+                // Intersection check: conflict exists only if at least one day overlaps
+                return existingDays.some(day => newDays.includes(day));
+            } catch (e) {
+                return true; // Assume conflict if days can't be determined
             }
-        }
-
-        // 3. Prepare bulk insert
-        // allowedDays should be JSON string
-        const allowedDaysStr = JSON.stringify(allowedDays);
-        const values = students.map(s => [
-            s.id, internshipId, startDate, endDate, allowedDaysStr
-        ]);
-
-        if (values.length > 0) {
-            const sql = `INSERT INTO internship_assignments (student_id, internship_id, start_date, end_date, allowed_days) VALUES ?`;
-            await masterPool.query(sql, [values]);
-        }
-
-        res.json({
-            success: true,
-            message: `Successfully assigned internship to ${students.length} students.`
         });
+
+        if (!overwrite && conflicts.length > 0) {
+            connection.release();
+            return res.status(409).json({
+                success: false,
+                message: 'Some students already have overlapping internships on these days.',
+                conflicts: conflicts.map(c => ({
+                    studentName: c.student_name,
+                    admissionNumber: c.admission_number,
+                    companyName: c.company_name,
+                    startDate: c.start_date,
+                    endDate: c.end_date
+                }))
+            });
+        }
+
+        // 3. Execution with Transaction
+        await connection.beginTransaction();
+        try {
+            // Delete existing true overlaps if overwriting
+            if (overwrite && conflicts.length > 0) {
+                const conflictIds = conflicts.map(c => c.id);
+                await connection.query(`DELETE FROM internship_assignments WHERE id IN (?)`, [conflictIds]);
+            }
+
+            // Prepare bulk insert
+            const allowedDaysStr = JSON.stringify(allowedDays);
+            const values = students.map(s => [s.id, internshipId, startDate, endDate, allowedDaysStr]);
+
+            if (values.length > 0) {
+                const sql = `INSERT INTO internship_assignments (student_id, internship_id, start_date, end_date, allowed_days) VALUES ?`;
+                await connection.query(sql, [values]);
+            }
+
+            // 4. Attendance Re-validation (If overwriting)
+            if (overwrite) {
+                await revalidateAttendanceInternal(connection, studentIdList, startDate, endDate, internshipId);
+            }
+
+            await connection.commit();
+            res.json({
+                success: true,
+                message: overwrite 
+                    ? `Successfully updated internship and re-validated attendance for ${students.length} students.`
+                    : `Successfully assigned internship to ${students.length} students.`
+            });
+        } catch (txError) {
+            await connection.rollback();
+            throw txError;
+        } finally {
+            connection.release();
+        }
 
     } catch (error) {
         console.error('Error assigning internship:', error);
         res.status(500).json({ success: false, message: 'Server error while assigning internship.' });
     }
 };
+
 
 exports.getAssignedStudents = async (req, res) => {
     try {
@@ -1110,6 +1201,7 @@ exports.getInternshipFilters = async (req, res) => {
             FROM internship_locations il
             JOIN internship_assignments ia ON il.id = ia.internship_id
             WHERE ia.end_date >= CURDATE()
+            AND il.is_active = 1
             GROUP BY il.id, il.company_name
             ORDER BY il.company_name
         `);
@@ -1211,6 +1303,80 @@ exports.deleteInternshipLocation = async (req, res) => {
     }
 };
 
+exports.revalidateAttendanceByFilters = async (req, res) => {
+    try {
+        const { locationId, batch, course, branch, year, semester, startDate, endDate } = req.body;
+        
+        if (!startDate || !endDate) {
+            return res.status(400).json({ success: false, message: 'Start date and End date are required for re-validation.' });
+        }
+
+        const connection = await masterPool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            // 1. Find all students matching filters
+            let studentQuery = `SELECT DISTINCT s.id FROM students s JOIN internship_assignments ia ON s.id = ia.student_id WHERE s.student_status = 'Regular'`;
+            const params = [];
+
+            if (locationId) { studentQuery += ' AND ia.internship_id = ?'; params.push(locationId); }
+            if (batch) { studentQuery += ' AND s.batch = ?'; params.push(batch); }
+            if (course) { studentQuery += ' AND s.course = ?'; params.push(course); }
+            if (branch) { studentQuery += ' AND s.branch = ?'; params.push(branch); }
+            if (year) { studentQuery += ' AND s.current_year = ?'; params.push(year); }
+            if (semester) { studentQuery += ' AND s.current_semester = ?'; params.push(semester); }
+
+            const [students] = await connection.query(studentQuery, params);
+            if (students.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ success: false, message: 'No students found matching the filters.' });
+            }
+
+            const studentIdList = students.map(s => s.id);
+            
+            // 2. Fetch assignments for these students that overlap with the date range
+            let assignQuery = `
+                SELECT student_id, internship_id, start_date, end_date 
+                FROM internship_assignments 
+                WHERE student_id IN (?) 
+                AND (
+                    (start_date BETWEEN ? AND ?) 
+                    OR (end_date BETWEEN ? AND ?) 
+                    OR (? BETWEEN start_date AND end_date)
+                )
+            `;
+            const [assignments] = await connection.query(assignQuery, [studentIdList, startDate, endDate, startDate, endDate, startDate]);
+
+            let totalUpdated = 0;
+            for (const asgn of assignments) {
+                // Determine overlapping range
+                const rangeStart = asgn.start_date > new Date(startDate) ? asgn.start_date : new Date(startDate);
+                const rangeEnd = asgn.end_date < new Date(endDate) ? asgn.end_date : new Date(endDate);
+                
+                const count = await revalidateAttendanceInternal(
+                    connection, 
+                    [asgn.student_id], 
+                    fmtDate(rangeStart), 
+                    fmtDate(rangeEnd), 
+                    asgn.internship_id
+                );
+                totalUpdated += count;
+            }
+
+            await connection.commit();
+            res.json({ success: true, message: `Re-validation complete. Updated ${totalUpdated} attendance records.` });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Error in revalidateAttendanceByFilters:', error);
+        res.status(500).json({ success: false, message: 'Server error during re-validation.' });
+    }
+};
+
 // ─── Auto-run DB migrations on first require (MySQL 5.6/5.7/8 compatible) ─────
 (async () => {
     try {
@@ -1284,7 +1450,7 @@ const enumerateDates = (start, end) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getPeriodReport = async (req, res) => {
     try {
-        const { batch, college, course, branch, year, semester, location } = req.query;
+        const { batch, college, course, branch, year, semester, location, startDate, endDate } = req.query;
 
         // 1. Fetch all assignments (with optional filters)
         let assignQuery = `
@@ -1379,35 +1545,56 @@ exports.getPeriodReport = async (req, res) => {
             });
         });
 
-        // 4. Build per-student report (internship record wins; fall back to regular; else Not Marked)
-        const report = assignments.map(asgn => {
+        // 4. Build per-student report
+        // Group assignments by student_id to merge staggered schedules
+        const studentGroups = new Map();
+        assignments.forEach(asgn => {
+            if (!studentGroups.has(asgn.student_id)) {
+                studentGroups.set(asgn.student_id, {
+                    studentId: asgn.student_id,
+                    studentName: asgn.student_name,
+                    admissionNumber: asgn.admission_number,
+                    pinNo: asgn.pin_no,
+                    batch: asgn.batch,
+                    course: asgn.course,
+                    branch: asgn.branch,
+                    college: asgn.college,
+                    year: asgn.current_year,
+                    semester: asgn.current_semester,
+                    assignments: []
+                });
+            }
+            
             const allowedDays = (() => {
                 try {
-                    const d = typeof asgn.allowed_days === 'string'
-                        ? JSON.parse(asgn.allowed_days)
-                        : asgn.allowed_days;
+                    const d = typeof asgn.allowed_days === 'string' ? JSON.parse(asgn.allowed_days) : asgn.allowed_days;
                     return Array.isArray(d) ? d : [];
                 } catch { return []; }
             })();
-
+            
             const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
             const allowedDayNums = new Set(allowedDays.map(d => DAY_MAP[d]).filter(n => n !== undefined));
 
-            const allDates = enumerateDates(asgn.start_date, asgn.end_date);
-            const workingDates = allDates.filter(d => {
-                const dayNum = new Date(d).getDay();
-                return allowedDayNums.size === 0 ? dayNum !== 0 : allowedDayNums.has(dayNum);
+            studentGroups.get(asgn.student_id).assignments.push({
+                ...asgn,
+                allowedDays,
+                allowedDayNums
             });
+        });
 
-            const studentIntMap = internshipMap.get(asgn.student_id) || new Map();
-            const studentRegMap = regularMap.get(asgn.student_id)    || new Map();
+        const report = Array.from(studentGroups.values()).map(student => {
+            const studentIntMap = internshipMap.get(student.studentId) || new Map();
+            const studentRegMap = regularMap.get(student.studentId)    || new Map();
 
-            const dayBreakdown = workingDates.map(date => {
+            // Range requested by user
+            const allDatesInRange = enumerateDates(startDate, endDate);
+            
+            const dayBreakdown = allDatesInRange.map(date => {
                 const intRec = studentIntMap.get(date);
                 const regRec = studentRegMap.get(date);
 
                 if (intRec) {
-                    // Internship GPS/manual record takes priority
+                    // Internship record exists
                     return {
                         date,
                         status: intRec.status,
@@ -1417,31 +1604,43 @@ exports.getPeriodReport = async (req, res) => {
                         checkInTime: intRec.check_in_time || null,
                         checkOutTime: intRec.check_out_time || null
                     };
-                } else if (regRec && regRec.status !== 'Holiday') {
-                    // Fall back to regular college attendance
+                } else if (regRec?.status === 'Holiday') {
+                    // Holiday fallback from college calendar
                     return {
                         date,
-                        status: regRec.status,
-                        source: 'regular',
+                        status: 'Holiday',
+                        source: 'holiday',
                         isManual: false,
-                        markedByName: null,
-                        checkInTime: null,
-                        checkOutTime: null
                     };
                 } else {
-                    return {
-                        date,
-                        status: regRec?.status === 'Holiday' ? 'Holiday' : 'Not Marked',
-                        source: regRec?.status === 'Holiday' ? 'holiday' : 'none',
-                        isManual: false,
-                        markedByName: null,
-                        checkInTime: null,
-                        checkOutTime: null
-                    };
+                    // Check if student was scheduled for internship on this specific date
+                    const schedule = student.assignments.find(asgn => {
+                        const isWithinRange = date >= asgn.start_date && date <= asgn.end_date;
+                        const dayNum = new Date(date).getDay();
+                        const isWorkingDay = asgn.allowedDayNums.has(dayNum);
+                        return isWithinRange && isWorkingDay;
+                    });
+
+                    if (schedule) {
+                        return {
+                            date,
+                            status: 'Not Marked',
+                            source: 'none',
+                            isManual: false,
+                        };
+                    } else {
+                        // Not an internship day, and not a holiday
+                        return {
+                            date,
+                            status: '—', // Or 'Not Required'
+                            source: 'none',
+                            isManual: false,
+                        };
+                    }
                 }
             });
 
-            const countableDay = d => d.status !== 'Holiday';
+            const countableDay = d => d.status !== 'Holiday' && d.status !== '—';
             const totalDays   = dayBreakdown.filter(countableDay).length;
             const presentDays = dayBreakdown.filter(d => d.status === 'Present').length;
             const absentDays  = dayBreakdown.filter(d => d.status === 'Absent').length;
@@ -1450,24 +1649,26 @@ exports.getPeriodReport = async (req, res) => {
                 ? parseFloat(((presentDays / totalDays) * 100).toFixed(2))
                 : 0;
 
+            // Use the first assignment's company info for summary (if merged, maybe show "Multiple")
+            const firstAsgn = student.assignments[0];
+
             return {
-                assignmentId: asgn.assignment_id,
-                studentId: asgn.student_id,
-                internshipId: asgn.internship_id,
-                studentName: asgn.student_name,
-                admissionNumber: asgn.admission_number,
-                pinNo: asgn.pin_no,
-                batch: asgn.batch,
-                course: asgn.course,
-                branch: asgn.branch,
-                college: asgn.college,
-                year: asgn.current_year,
-                semester: asgn.current_semester,
-                companyName: asgn.company_name,
-                companyAddress: asgn.company_address,
-                startDate: asgn.start_date,
-                endDate: asgn.end_date,
-                allowedDays,
+                assignmentId: firstAsgn.assignment_id, // For keying in frontend
+                studentId: student.studentId,
+                studentName: student.studentName,
+                admissionNumber: student.admissionNumber,
+                pinNo: student.pinNo,
+                batch: student.batch,
+                course: student.course,
+                branch: student.branch,
+                college: student.college,
+                year: student.year,
+                semester: student.semester,
+                companyName: student.assignments.length > 1 ? 'Multiple Locations' : firstAsgn.company_name,
+                companyAddress: student.assignments.length > 1 ? '—' : firstAsgn.company_address,
+                startDate: firstAsgn.start_date,
+                endDate: firstAsgn.end_date,
+                allowedDays: firstAsgn.allowedDays,
                 totalDays,
                 presentDays,
                 absentDays,

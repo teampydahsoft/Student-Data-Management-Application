@@ -33,9 +33,16 @@ const getAllAttendanceForDate = async (attendanceDate) => {
         ON ar.student_id = s.id
        AND ar.attendance_date = ?
       WHERE s.student_status = 'Regular'
+      -- EXCLUDE students with active INTERNSHIP assignments for this specific date (respecting allowed_days)
+      AND NOT EXISTS (
+        SELECT 1 FROM internship_assignments ia 
+        WHERE ia.student_id = s.id 
+        AND ? BETWEEN ia.start_date AND ia.end_date
+        AND JSON_CONTAINS(ia.allowed_days, JSON_QUOTE(DATE_FORMAT(?, '%a')))
+      )
     `;
     
-    const params = [attendanceDate];
+    const params = [attendanceDate, attendanceDate, attendanceDate];
     
     // Exclude certain courses (same as attendance page)
     if (EXCLUDED_COURSES.length > 0) {

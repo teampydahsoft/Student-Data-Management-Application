@@ -7851,7 +7851,7 @@ exports.bulkTransferStudents = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Bulk transfer process completed',
+      message: 'Bulk transfer process completed. NOTE: If students with active internships were transferred, please use the "Re-validate Attendance" feature in the Internship Admin panel to ensure their records remain accurate.',
       results,
       summary: { total: totalToProcess, success: successCount, errors: errorCount, skipped: 0 }
     });

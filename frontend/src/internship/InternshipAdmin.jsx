@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../config/api';
 import { toast } from 'react-hot-toast';
-import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText, Lock, BarChart2, Edit3, ShieldAlert, ChevronDown, ChevronUp, Building2, Box, ArrowRight, ChevronLeft } from 'lucide-react';
+import { MapPin, Calendar, Clock, Loader2, Plus, Target, UserCheck, AlertTriangle, Search, X, Navigation, List, Filter, Users, Pen, Trash2, Check, Eye, Download, FileText, Lock, BarChart2, Edit3, ShieldAlert, ChevronDown, ChevronUp, Building2, Box, ArrowRight, ChevronLeft, AlertCircle, RefreshCw } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Circle } from 'react-leaflet';
@@ -106,7 +106,9 @@ const InternshipAdmin = () => {
         course: '',
         branch: '',
         year: '',
-        semester: ''
+        semester: '',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0]
     });
     const [filterOptions, setFilterOptions] = useState({
         locations: [],
@@ -191,6 +193,7 @@ const InternshipAdmin = () => {
     const [markingCell, setMarkingCell] = useState(null); // { assignmentId, date } while saving
     const [periodFilters, setPeriodFilters] = useState({ location: '', batch: '', college: '', course: '', branch: '', year: '', semester: '' });
     const [periodFilterOptions, setPeriodFilterOptions] = useState({ locations: [], batches: [], courses: [], branches: [], years: [], semesters: [], colleges: [] });
+    const [periodViewMode, setPeriodViewMode] = useState('detailed'); // 'detailed', 'abstract', 'grid'
 
     // ── Backdate Marking State (new workflow) ─────────────────────────────────
     const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'Super Admin' || user?.role === 'superadmin';
@@ -405,6 +408,31 @@ const InternshipAdmin = () => {
         }
     };
 
+    const handleRevalidateAttendance = async (locationId = null) => {
+        const confirmMsg = locationId 
+            ? "This will re-check all past attendance records for students assigned to THIS location against the current coordinates. Proceed?"
+            : "This will re-check attendance records matching your current FILTERS against their assigned coordinates. Proceed?";
+        
+        if (!window.confirm(confirmMsg)) return;
+
+        const toastId = toast.loading('Re-validating attendance records...');
+        try {
+            const payload = locationId ? { locationId } : { ...filters };
+            // Ensure dates are present for filter-based re-validation
+            if (!payload.startDate) payload.startDate = '2024-01-01'; // Default start of academic year or similar
+            if (!payload.endDate) payload.endDate = new Date().toISOString().split('T')[0];
+
+            const res = await api.post('/internship/re-validate-attendance', payload);
+            if (res.data.success) {
+                toast.success(res.data.message, { id: toastId });
+                if (activeTab === 'report') fetchReport();
+                if (activeTab === 'period-report') fetchPeriodReport();
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Re-validation failed', { id: toastId });
+        }
+    };
+
     const fetchStudentsForAssignment = async () => {
         try {
             setLoadingStudents(true);
@@ -531,6 +559,50 @@ const InternshipAdmin = () => {
         } finally {
             setLoadingReport(false);
         }
+    };
+    
+    const getAbstractPeriodData = (data) => {
+        if (!data || data.length === 0) return [];
+        const groups = {};
+        data.forEach(student => {
+            const key = `${student.college}|${student.batch}|${student.course}|${student.branch}|${student.year}|${student.semester}`;
+            if (!groups[key]) {
+                groups[key] = {
+                    college: student.college,
+                    batch: student.batch,
+                    course: student.course,
+                    branch: student.branch,
+                    year: student.year,
+                    semester: student.semester,
+                    studentCount: 0,
+                    totalDays: 0,
+                    presentDays: 0,
+                    absentDays: 0,
+                    notMarked: 0
+                };
+            }
+            groups[key].studentCount++;
+            groups[key].totalDays += student.totalDays || 0;
+            groups[key].presentDays += student.presentDays || 0;
+            groups[key].absentDays += student.absentDays || 0;
+            groups[key].notMarked += student.notMarked || 0;
+        });
+
+        return Object.values(groups).map(g => ({
+            ...g,
+            avgWorkingDays: parseFloat((g.totalDays / g.studentCount).toFixed(1)),
+            attendancePercentage: g.totalDays > 0 ? parseFloat(((g.presentDays / g.totalDays) * 100).toFixed(2)) : 0
+        }));
+    };
+
+    const getPeriodDates = (data) => {
+        if (!data || data.length === 0) return [];
+        // Extract all unique dates from all students' dayBreakdowns
+        const allDates = new Set();
+        data.forEach(s => {
+            s.dayBreakdown?.forEach(d => allDates.add(d.date));
+        });
+        return Array.from(allDates).sort();
     };
 
     // ── Period Report handlers ────────────────────────────────────────────────
@@ -907,8 +979,8 @@ const InternshipAdmin = () => {
         });
     };
 
-    const handleAssign = async (e) => {
-        e.preventDefault();
+    const handleAssign = async (e, overwrite = false) => {
+        if (e) e.preventDefault();
         try {
             if (!assignmentData.internshipId) {
                 toast.error('Please select an internship location');
@@ -930,13 +1002,15 @@ const InternshipAdmin = () => {
             const payload = {
                 ...assignmentData,
                 filters: filters,
-                studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : null
+                studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : null,
+                overwrite: overwrite
             };
             const res = await api.post('/internship/assign', payload);
             if (res.data.success) {
                 toast.success(res.data.message);
                 setAvailableStudents([]); // Clear list after success
                 setSelectedStudentIds([]);
+                setConflictModalOpen(false); // Close modal if open
             }
         } catch (error) {
             // backend now returns 400 when no students match the provided filters/ids
@@ -1584,6 +1658,13 @@ const InternshipAdmin = () => {
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" /> Delete
                                                 </button>
+                                                <button
+                                                    onClick={() => handleRevalidateAttendance(loc._id)}
+                                                    className="text-amber-600 hover:text-amber-900 flex items-center gap-1 text-xs font-medium bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200"
+                                                    title="Re-validate all past records for this location"
+                                                >
+                                                    <RefreshCw className="w-3.5 h-3.5" /> Re-validate
+                                                </button>
                                             </td>
                                         </tr>
                                     ))
@@ -1602,6 +1683,21 @@ const InternshipAdmin = () => {
                             <Filter className="w-4 h-4" /> Filter Attendance
                         </h3>
                         <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs font-medium text-gray-500">Date:</label>
+                                <input 
+                                    type="date" 
+                                    className="border rounded-md px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={filters.startDate}
+                                    onChange={e => {
+                                        const newDate = e.target.value;
+                                        setFilters(prev => ({ ...prev, startDate: newDate, endDate: newDate }));
+                                    }}
+                                />
+                            </div>
+                            
+                            <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
+
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.location} onChange={e => handleFilterChange('location', e.target.value)}>
                                 <option value="">All Locations</option>
                                 {filterOptions.locations?.map(loc => <option key={`report-loc-${loc.id}`} value={loc.id}>{loc.companyName}</option>)}
@@ -1635,10 +1731,18 @@ const InternshipAdmin = () => {
                             <button
                                 onClick={handleDayEndReport}
                                 disabled={dayEndReportLoading}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm whitespace-nowrap ml-auto sm:ml-0"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 border border-transparent rounded-lg text-sm font-medium text-white hover:bg-indigo-700 shadow-sm whitespace-nowrap ml-auto sm:ml-0 transition-all font-bold"
                             >
-                                {dayEndReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-indigo-600" />}
+                                {dayEndReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                                 Day End Report
+                            </button>
+                            <button
+                                onClick={() => handleRevalidateAttendance()}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm font-medium text-amber-700 hover:bg-amber-100 shadow-sm whitespace-nowrap transition-all font-bold"
+                                title="Re-check records in this report against assigned location coordinates"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Re-validate Listed
                             </button>
                         </div>
                     </div>
@@ -1780,7 +1884,27 @@ const InternshipAdmin = () => {
                         </div>
                     </div>
 
-                    {/* Stats removed — data shown inline in table */}
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl w-fit">
+                        <button 
+                            onClick={() => setPeriodViewMode('detailed')}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${periodViewMode === 'detailed' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Detailed List
+                        </button>
+                        <button 
+                            onClick={() => setPeriodViewMode('abstract')}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${periodViewMode === 'abstract' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Abstract Summary
+                        </button>
+                        <button 
+                            onClick={() => setPeriodViewMode('grid')}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${periodViewMode === 'grid' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Attendance Grid
+                        </button>
+                    </div>
 
 
                     {/* Report Table */}
@@ -1794,131 +1918,187 @@ const InternshipAdmin = () => {
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 border-b border-gray-200">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Student</th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Company</th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Start Date</th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">End Date</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Days</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">Present</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-red-500 uppercase">Absent</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Not Marked</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase">%</th>
-                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {periodReport.map(row => {
-                                            const isExpanded = expandedRows.has(row.assignmentId);
-                                            return (
-                                            <>
-                                                <tr key={row.assignmentId}
-                                                    className="hover:bg-indigo-50 transition-colors cursor-pointer"
-                                                    onClick={() => toggleRow(row.assignmentId)}>
-                                                    <td className="px-4 py-3">
-                                                        <div className="font-medium text-gray-900 flex items-center gap-1">
-                                                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-indigo-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
-                                                            {row.studentName}
-                                                        </div>
-                                                        <div className="text-xs text-gray-400 ml-5">{row.admissionNumber} • {row.branch}</div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="text-gray-700 text-sm">{row.companyName}</div>
-                                                        <div className="text-xs text-gray-400">{row.allowedDays?.join(', ')}</div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600 text-sm">{row.startDate}</td>
-                                                    <td className="px-4 py-3 text-gray-600 text-sm">{row.endDate}</td>
-                                                    <td className="px-4 py-3 text-center text-sm font-medium">{row.totalDays}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-semibold">{row.presentDays}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-semibold">{row.absentDays}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs">{row.notMarked}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${row.attendancePercentage >= 75 ? 'bg-green-100 text-green-700' : row.attendancePercentage >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                                            {row.attendancePercentage}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center text-gray-400 text-xs">
-                                                        {isExpanded ? '▲' : '▼'}
-                                                    </td>
-                                                </tr>
-                                                {isExpanded && (
-                                                    <tr key={`${row.assignmentId}-expanded`}>
-                                                        <td colSpan={10} className="bg-gray-50 border-b border-gray-200 p-0">
-                                                            <div className="px-6 py-5">
-                                                                {/* Header row */}
-                                                                <div className="flex items-center justify-between mb-3">
-                                                                    <div className="text-sm font-semibold text-gray-700">
-                                                                        Attendance Calendar — {row.studentName}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-3 text-[10px] text-gray-400">
-                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-400 rounded-sm inline-block" /> Present</span>
-                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-400 rounded-sm inline-block" /> Absent</span>
-                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-200 rounded-sm inline-block" /> Not Marked</span>
-                                                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Holiday</span>
-                                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 border border-amber-400 rounded-sm inline-block" /> Manual</span>
-                                                                        <span className="flex items-center gap-1"><span className="w-2 h-2 border border-blue-400 rounded-sm inline-block" /> College Roll-call</span>
-                                                                    </div>
-                                                                </div>
-                                                                {/* Day grid */}
-                                                                <div className="grid gap-1.5" style={{gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))'}}>
-                                                                    {row.dayBreakdown.map(day => {
-                                                                        const dt = new Date(day.date + 'T00:00:00');
-                                                                        const dayName = dt.toLocaleDateString('en-US',{weekday:'short'});
-                                                                        const datePart = day.date.slice(5).replace('-','/');
-                                                                        const isPresent  = day.status === 'Present';
-                                                                        const isAbsent   = day.status === 'Absent';
-                                                                        const isHoliday  = day.status === 'Holiday';
-                                                                        const cellBase = isPresent ? 'bg-green-100 border-green-300 text-green-800'
-                                                                                       : isAbsent  ? 'bg-red-100 border-red-300 text-red-700'
-                                                                                       : isHoliday ? 'bg-blue-50 border-blue-200 text-blue-500'
-                                                                                       : 'bg-white border-gray-200 text-gray-400';
-                                                                        const manualRing = day.isManual ? 'ring-2 ring-amber-400 ring-offset-1' : '';
-                                                                        const regularRing = (!day.isManual && day.source === 'regular') ? 'ring-2 ring-blue-300 ring-offset-1' : '';
-                                                                        const cellKey = `${row.assignmentId}-${day.date}`;
-                                                                        const isMarking = markingCell === cellKey;
-                                                                        
-                                                                        // Check if this specific cell is the SELECTED date to highlight, but marking is allowed for ANY date if unlocked
-                                                                        const isUnlockedBatch = unlockedForEdit && 
-                                                                            String(unlockedForEdit.location) === String(row.internshipId) &&
-                                                                            String(unlockedForEdit.batch) === String(row.batch);
-                                                                        
-                                                                        const isActiveDate = isUnlockedBatch && unlockedForEdit.date === day.date;
-
-                                                                        const unlockedStyles = isUnlockedBatch ? (isActiveDate ? 'ring-4 ring-indigo-500 scale-105 z-10' : 'ring-2 ring-indigo-200') : '';
-
-                                                                        return (
-                                                                            <div key={day.date}
-                                                                                onClick={(e) => { e.stopPropagation(); handleCellMark(row, day, day.status); }}
-                                                                                title={`${day.date} (${day.status})${day.isManual ? ` — Manual by ${day.markedByName}` : day.source === 'regular' ? ' — College roll-call' : ''}${isUnlockedBatch ? ' (UNLOCKED FOR EDITING)' : ''}`}
-                                                                                className={`relative flex flex-col items-center justify-center rounded-lg border p-1.5 text-center transition-all ${cellBase} ${manualRing} ${regularRing} ${unlockedStyles} ${isMarking ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:shadow-md'}`}>
-                                                                                <div className="text-[9px] font-medium opacity-60">{dayName}</div>
-                                                                                <div className="text-[11px] font-bold">{datePart}</div>
-                                                                                <div className={`text-[8px] mt-0.5 font-medium ${
-                                                                                    isPresent ? 'text-green-600' : isAbsent ? 'text-red-500' : isHoliday ? 'text-blue-400' : 'text-gray-300'
-                                                                                }`}>
-                                                                                    {isMarking ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : (isPresent ? '✓' : isAbsent ? '✗' : isHoliday ? 'H' : '—')}
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
+                                {periodViewMode === 'detailed' && (
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 border-b border-gray-200">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Student</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Company</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Start Date</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">End Date</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Days</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">Present</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-red-500 uppercase">Absent</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Not Marked</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase">%</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {periodReport.map(row => {
+                                                const isExpanded = expandedRows.has(row.assignmentId);
+                                                return (
+                                                <React.Fragment key={row.assignmentId}>
+                                                    <tr className="hover:bg-indigo-50 transition-colors cursor-pointer"
+                                                        onClick={() => toggleRow(row.assignmentId)}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-medium text-gray-900 flex items-center gap-1">
+                                                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-indigo-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                                                                {row.studentName}
                                                             </div>
+                                                            <div className="text-xs text-gray-400 ml-5">{row.admissionNumber} • {row.branch}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="text-gray-700 text-sm">{row.companyName}</div>
+                                                            <div className="text-xs text-gray-400">{row.allowedDays?.join(', ')}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600 text-sm">{row.startDate}</td>
+                                                        <td className="px-4 py-3 text-gray-600 text-sm">{row.endDate}</td>
+                                                        <td className="px-4 py-3 text-center text-sm font-medium">{row.totalDays}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-semibold">{row.presentDays}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-semibold">{row.absentDays}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs">{row.notMarked}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${row.attendancePercentage >= 75 ? 'bg-green-100 text-green-700' : row.attendancePercentage >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                                                                {row.attendancePercentage}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center text-gray-400 text-xs">
+                                                            {isExpanded ? '▲' : '▼'}
                                                         </td>
                                                     </tr>
-                                                )}
-                                            </>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                    {isExpanded && (
+                                                        <tr key={`${row.assignmentId}-expanded`}>
+                                                            <td colSpan={10} className="bg-gray-50 border-b border-gray-200 p-0">
+                                                                <div className="px-6 py-5">
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <div className="text-sm font-semibold text-gray-700">Attendance Calendar — {row.studentName}</div>
+                                                                        <div className="flex items-center gap-3 text-[10px] text-gray-400">
+                                                                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-400 rounded-sm inline-block" /> Present</span>
+                                                                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-400 rounded-sm inline-block" /> Absent</span>
+                                                                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-200 rounded-sm inline-block" /> Not Marked</span>
+                                                                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Holiday</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="grid gap-1.5" style={{gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))'}}>
+                                                                        {row.dayBreakdown.map(day => {
+                                                                            const dt = new Date(day.date + 'T00:00:00');
+                                                                            const dayName = dt.toLocaleDateString('en-US',{weekday:'short'});
+                                                                            const isPresent  = day.status === 'Present';
+                                                                            const isAbsent   = day.status === 'Absent';
+                                                                            const isHoliday  = day.status === 'Holiday';
+                                                                            const cellBase = isPresent ? 'bg-green-100 border-green-300 text-green-800' : isAbsent  ? 'bg-red-100 border-red-300 text-red-700' : isHoliday ? 'bg-blue-50 border-blue-200 text-blue-500' : 'bg-white border-gray-200 text-gray-400';
+                                                                            return (
+                                                                                <div key={day.date} onClick={(e) => { e.stopPropagation(); handleCellMark(row, day, day.status); }} className={`relative flex flex-col items-center justify-center rounded-lg border p-1.5 text-center transition-all ${cellBase} cursor-pointer hover:shadow-md`}>
+                                                                                    <div className="text-[9px] font-medium opacity-60">{dayName}</div>
+                                                                                    <div className="text-[11px] font-bold">{day.date.slice(5).replace('-','/')}</div>
+                                                                                    <div className="text-[8px] mt-0.5 font-medium">{isPresent ? '✓' : isAbsent ? '✗' : isHoliday ? 'H' : '—'}</div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+
+                                {periodViewMode === 'abstract' && (
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 border-b border-gray-200">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">College / Program</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Branch</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Year / Sem</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Students</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Avg Work Days</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">Present %</th>
+                                                <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-600 uppercase">Overall %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {getAbstractPeriodData(periodReport).map((row, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-4">
+                                                        <div className="font-bold text-gray-900">{row.college}</div>
+                                                        <div className="text-xs text-indigo-600 font-medium uppercase tracking-wider">{row.course} • {row.batch}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-gray-700 font-medium">{row.branch}</td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        <div className="text-sm font-bold text-gray-700">Y{row.year} • S{row.semester}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 font-bold text-gray-700">{row.studentCount}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center text-gray-600 font-medium">{row.avgWorkingDays}</td>
+                                                    <td className="px-4 py-4 text-center font-bold text-green-600">{row.attendancePercentage}%</td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[100px] mx-auto">
+                                                            <div className={`h-full rounded-full transition-all duration-500 ${row.attendancePercentage >= 75 ? 'bg-green-500' : row.attendancePercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${row.attendancePercentage}%` }} />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+
+                                {periodViewMode === 'grid' && (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs border-collapse">
+                                            <thead className="bg-gray-50 sticky top-0 z-10 border-b">
+                                                <tr>
+                                                    <th className="p-3 text-left border-r bg-gray-50 sticky left-0 z-20 min-w-[200px]">Student Details</th>
+                                                    {getPeriodDates(periodReport).map(date => {
+                                                        const dt = new Date(date + 'T00:00:00');
+                                                        return (
+                                                            <th key={date} className="p-2 border-r text-center whitespace-nowrap min-w-[45px]">
+                                                                <div className="text-[8px] font-black text-gray-400 uppercase leading-none">{dt.toLocaleDateString('en-US',{weekday:'short'})}</div>
+                                                                <div className="text-[10px] font-black">{date.slice(5).replace('-','/')}</div>
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {periodReport.map(student => (
+                                                    <tr key={student.assignmentId} className="hover:bg-gray-50 border-b">
+                                                        <td className="px-3 py-2 border-r bg-white sticky left-0 z-10">
+                                                            <div className="font-black text-gray-900 uppercase truncate max-w-[180px]">{student.studentName}</div>
+                                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">{student.admissionNumber} • {student.branch}</div>
+                                                        </td>
+                                                        {getPeriodDates(periodReport).map(date => {
+                                                            const day = student.dayBreakdown.find(d => d.date === date);
+                                                            const isPresent = day?.status === 'Present';
+                                                            const isAbsent = day?.status === 'Absent';
+                                                            const isHoliday = day?.status === 'Holiday';
+                                                            let color = 'bg-gray-50 text-gray-200';
+                                                            if (isPresent) color = 'bg-green-500 text-white font-black';
+                                                            if (isAbsent) color = 'bg-red-500 text-white font-black';
+                                                            if (isHoliday) color = 'bg-blue-300 text-white font-black';
+                                                            return (
+                                                                <td key={date} className={`p-2 border-r text-center ${color}`}>
+                                                                    {isPresent ? 'P' : isAbsent ? 'A' : isHoliday ? 'H' : '—'}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -2630,55 +2810,82 @@ const InternshipAdmin = () => {
 
             {/* Conflict Modal */}
             {conflictModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[200]">
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 flex flex-col max-h-[80vh]">
-                        <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
-                            <AlertTriangle className="w-6 h-6" />
-                            Assignment Conflicts
-                        </h3>
-                        <button onClick={() => setConflictModalOpen(false)} className="text-gray-500 hover:text-gray-700">
-                            <X className="w-5 h-5" />
-                        </button>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-4">
-                        The following students already have internships overlapping with the selected dates:
-                    </p>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[200] backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden transform transition-all border border-red-100">
+                        <div className="p-6 border-b border-red-100 flex justify-between items-center bg-red-50/50">
+                            <h3 className="text-xl font-bold text-red-700 flex items-center gap-2">
+                                <AlertTriangle className="w-6 h-6" />
+                                Assignment Conflicts
+                            </h3>
+                            <button onClick={() => setConflictModalOpen(false)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-100/50 rounded-xl transition-all">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm flex gap-4 shadow-sm">
+                                <AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="font-bold text-base mb-1">Overlapping assignments detected!</p>
+                                    <p className="opacity-90 leading-relaxed">The students listed below are already assigned to hospitals during this period. Overwriting will move them to the new location and <strong>automatically re-validate their existing attendance records</strong> against the new location's GPS coordinates.</p>
+                                </div>
+                            </div>
 
-                    <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md mb-4">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-gray-50 text-gray-700 font-semibold sticky top-0">
-                                <tr>
-                                    <th className="px-4 py-2 border-b">Student</th>
-                                    <th className="px-4 py-2 border-b">Existing Internship</th>
-                                    <th className="px-4 py-2 border-b">Dates</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {conflictData.map((c, i) => (
-                                    <tr key={i} className="hover:bg-red-50">
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-gray-900">{c.studentName}</div>
-                                            <div className="text-xs text-gray-500">{c.admissionNumber}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-gray-800 font-medium">{c.companyName}</div>
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                                            {new Date(c.startDate).toLocaleDateString()} - <br />{new Date(c.endDate).toLocaleDateString()}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            <div className="space-y-3">
+                                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1">Conflicting Students</div>
+                                <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-inner bg-gray-50/30">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-100/80 text-gray-600 font-bold border-b border-gray-200">
+                                            <tr>
+                                                <th className="px-4 py-3">Student</th>
+                                                <th className="px-4 py-3">Current Location</th>
+                                                <th className="px-4 py-3">Dates</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                            {conflictData.map((c, i) => (
+                                                <tr key={i} className="hover:bg-red-50/30 transition-colors">
+                                                    <td className="px-4 py-4">
+                                                        <div className="font-bold text-gray-900">{c.studentName}</div>
+                                                        <div className="text-xs text-gray-400 font-medium">{c.admissionNumber}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        <div className="text-gray-700 font-semibold">{c.companyName}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-gray-500 text-xs font-medium leading-relaxed">
+                                                        {new Date(c.startDate).toLocaleDateString()} — <br />
+                                                        {new Date(c.endDate).toLocaleDateString()}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
 
-                    <div className="flex justify-end pt-4 border-t border-gray-100">
-                        <button
-                            onClick={() => setConflictModalOpen(false)}
-                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg transition-colors"
-                        >
-                            Close and Review
-                        </button>
+                        <div className="p-6 border-t border-gray-100 flex flex-col sm:flex-row gap-4 bg-gray-50/80">
+                            <button
+                                onClick={() => handleAssign(null, true)}
+                                disabled={loading}
+                                className="flex-[2] bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2 group active:scale-95 disabled:opacity-70"
+                            >
+                                {loading ? (
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-700" />
+                                        <span>Overwrite and Re-validate Attendance</span>
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setConflictModalOpen(false)}
+                                className="flex-1 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-3 px-6 rounded-2xl transition-all active:scale-95"
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
