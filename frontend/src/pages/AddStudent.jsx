@@ -7,6 +7,7 @@ import LoadingAnimation from '../components/LoadingAnimation';
 import SearchableSelect from '../components/SearchableSelect';
 import ManagePreviousCollegesModal from '../components/ManagePreviousCollegesModal';
 import { addressData } from '../data/addressData';
+import { getCourseType, getCertificatesForCourse as getCertificatesForCourseShared } from '../config/certificateConfig';
 
 // Dropdown options for student fields
 const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
@@ -158,48 +159,17 @@ const AddStudent = () => {
 
   // Determine course type (Diploma, UG, or PG) based on course name
   const courseType = useMemo(() => {
-    if (!studentData.course) return null;
-    const courseNameLower = studentData.course.toLowerCase();
-    if (courseNameLower.includes('diploma')) {
-      return 'Diploma';
-    }
-    if (courseNameLower.includes('pg') || courseNameLower.includes('post graduate') || courseNameLower.includes('m.tech') || courseNameLower.includes('mtech')) {
-      return 'PG';
-    }
-    return 'UG';
-  }, [studentData.course]);
+    if (!selectedCourse) return null;
+    return getCourseType(selectedCourse);
+  }, [selectedCourse]);
 
   // Certificate status state - tracks Yes/No for each certificate
   const [certificateStatus, setCertificateStatus] = useState({});
 
   // Get certificates based on course type
   const getCertificatesForCourse = () => {
-    if (courseType === 'Diploma') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' }
-      ];
-    } else if (courseType === 'UG') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' }
-      ];
-    } else if (courseType === 'PG') {
-      return [
-        { key: '10th_tc', label: '10th TC (Transfer Certificate)' },
-        { key: '10th_study', label: '10th Study Certificate' },
-        { key: 'inter_diploma_tc', label: 'Inter/Diploma TC (Transfer Certificate)' },
-        { key: 'inter_diploma_study', label: 'Inter/Diploma Study Certificate' },
-        { key: 'ug_study', label: 'UG Study Certificate' },
-        { key: 'ug_tc', label: 'UG TC (Transfer Certificate)' },
-        { key: 'ug_pc', label: 'UG PC (Provisional Certificate)' },
-        { key: 'ug_cmm', label: 'UG CMM (Consolidated Marks Memo)' },
-        { key: 'ug_od', label: 'UG OD (Original Degree)' }
-      ];
-    }
-    return [];
+    if (!courseType) return [];
+    return getCertificatesForCourseShared(courseType);
   };
 
   // Update certificates_status based on certificate status

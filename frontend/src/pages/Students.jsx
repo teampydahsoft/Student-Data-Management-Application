@@ -1291,10 +1291,19 @@ const Students = () => {
     try {
       const formPromise = api.get('/forms');
       const certPromise = api.get('/settings/certificates');
-      const [formResponse, certResponse] = await Promise.all([formPromise, certPromise]);
+      const coursesPromise = api.get('/courses/options');
+      const [formResponse, certResponse, coursesResponse] = await Promise.all([
+        formPromise,
+        certPromise,
+        coursesPromise
+      ]);
 
       if (formResponse.data?.success) {
         setForms(formResponse.data.data || []);
+      }
+
+      if (coursesResponse.data?.success) {
+        setCoursesWithLevels(coursesResponse.data.data || []);
       }
 
       if (certResponse.data?.success && certResponse.data.data) {
@@ -4741,7 +4750,9 @@ const Students = () => {
                     {/* Certificate Information Section */}
                     {canViewField('certificates_status') && (() => {
                       // Determine course type from student data
-                      const courseType = getCourseType(editData.course || selectedStudent?.course || '');
+                      const selectedCourseName = editData.course || selectedStudent?.course || '';
+                      const selectedCourseObj = coursesWithLevels.find(c => c.name === selectedCourseName);
+                      const courseType = getCourseType(selectedCourseObj || selectedCourseName);
 
                       if (!courseType) return null;
 

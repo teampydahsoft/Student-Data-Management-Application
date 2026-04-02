@@ -337,7 +337,7 @@ exports.unifiedLogin = async (req, res) => {
         const [studentDetails] = await masterPool.query(
           `SELECT s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
             s.course, s.branch, s.college,
-            cb.id as branch_id, col.id as college_id,
+            cb.id as branch_id, col.id as college_id, c.level as course_level,
             CASE
               WHEN
                 (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
@@ -385,6 +385,7 @@ exports.unifiedLogin = async (req, res) => {
             current_year: s.current_year,
             current_semester: s.current_semester,
             course: s.course,
+            course_level: s.course_level,
             branch: s.branch,
             college: s.college,
             branch_id: s.branch_id,
@@ -518,7 +519,7 @@ exports.createSSOSession = async (req, res) => {
       const [studentDetails] = await masterPool.query(
         `SELECT s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
-          cb.id as branch_id, col.id as college_id,
+          cb.id as branch_id, col.id as college_id, c.level as course_level,
           CASE
             WHEN
               (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
@@ -565,6 +566,7 @@ exports.createSSOSession = async (req, res) => {
         current_year: s.current_year,
         current_semester: s.current_semester,
         course: s.course,
+        course_level: s.course_level,
         branch: s.branch,
         college: s.college,
         branch_id: s.branch_id,
@@ -732,7 +734,7 @@ exports.verifyToken = async (req, res) => {
       const [students] = await masterPool.query(
         `SELECT sc.username, s.admission_number, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
-          cb.id as branch_id, col.id as college_id,
+          cb.id as branch_id, col.id as college_id, c.level as course_level,
           CASE
             WHEN
               (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
@@ -782,6 +784,7 @@ exports.verifyToken = async (req, res) => {
         current_year: studentValid.current_year,
         current_semester: studentValid.current_semester,
         course: studentValid.course,
+        course_level: studentValid.course_level,
         branch: studentValid.branch,
         college: studentValid.college,
         branch_id: studentValid.branch_id,

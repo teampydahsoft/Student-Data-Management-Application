@@ -129,7 +129,7 @@ const MyDocuments = () => {
     }
   };
 
-  const courseType = getCourseType(user?.course || '');
+  const courseType = getCourseType(user?.course_level || user?.course || '');
   
   // Use dynamic config if available, otherwise fallback to static config
   const configCerts = React.useMemo(() => {

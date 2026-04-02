@@ -433,24 +433,22 @@ exports.getCertificateSettings = async (req, res) => {
     let config = {
       diploma: [
         { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
-        { id: '10th_study', name: '10th Study Certificate', required: true }
+        { id: '10th_study', name: '10th Study Certificate', required: true },
+        { id: '10th_cert', name: '10th Certificate', required: true }
       ],
       ug: [
-        { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
-        { id: '10th_study', name: '10th Study Certificate', required: true },
+        { id: 'inter_diploma_study', name: '10th/Inter/ Diploma Study Certificate', required: true },
         { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
-        { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true }
+        { id: 'inter_diploma_cert', name: 'Inter/Diploma certificate', required: true },
+        { id: '10th_original', name: '10 Original Certificate', required: true }
       ],
       pg: [
-        { id: '10th_tc', name: '10th TC (Transfer Certificate)', required: true },
-        { id: '10th_study', name: '10th Study Certificate', required: true },
-        { id: 'inter_diploma_tc', name: 'Inter/Diploma TC (Transfer Certificate)', required: true },
-        { id: 'inter_diploma_study', name: 'Inter/Diploma Study Certificate', required: true },
-        { id: 'ug_study', name: 'UG Study Certificate', required: true },
+        { id: 'ug_study', name: 'UG Study Certificate', required: false },
         { id: 'ug_tc', name: 'UG TC (Transfer Certificate)', required: true },
-        { id: 'ug_pc', name: 'UG PC (Provisional Certificate)', required: true },
+        { id: 'ug_cert', name: 'UG (Certificate)', required: true },
         { id: 'ug_cmm', name: 'UG CMM (Consolidated Marks Memo)', required: true },
-        { id: 'ug_od', name: 'UG OD (Original Degree)', required: true }
+        { id: '10th_original', name: '10 original Certificate', required: true },
+        { id: 'inter_diploma_original', name: 'Inter/Diploma Original Certificate', required: true }
       ]
     };
 

@@ -475,6 +475,7 @@ exports.getCourseOptions = async (_req, res) => {
 
     const sanitized = courses.map((course) => ({
       name: course.name,
+      level: course.level || 'ug',
       isActive: course.isActive,
       structure: course.structure,
       metadata: course.metadata || null,

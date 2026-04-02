@@ -420,29 +420,9 @@ const PublicForm = () => {
 
   // Determine course type (Diploma, UG, or PG) based on course name
   const courseType = useMemo(() => {
-    if (!selectedCourseName) return null;
-    const courseNameLower = selectedCourseName.toLowerCase();
-    if (courseNameLower.includes('diploma')) {
-      return 'Diploma';
-    }
-    if (
-      courseNameLower.includes('pg') ||
-      courseNameLower.includes('post graduate') ||
-      courseNameLower.includes('m.tech') ||
-      courseNameLower.includes('mtech') ||
-      courseNameLower.includes('mba') ||
-      courseNameLower.includes('mca') ||
-      courseNameLower.includes('msc') ||
-      courseNameLower.includes('m sc') ||
-      courseNameLower.includes('aqua') ||
-      courseNameLower.includes('m.pharma') ||
-      courseNameLower.includes('m pharma') ||
-      (courseNameLower.includes('pharma') && (courseNameLower.includes('m') || courseNameLower.startsWith('pharma')))
-    ) {
-      return 'PG';
-    }
-    return 'UG';
-  }, [selectedCourseName]);
+    if (!selectedCourseOption) return null;
+    return getCourseType(selectedCourseOption);
+  }, [selectedCourseOption]);
 
   // Get certificates based on course type
   const getCertificatesForCourse = () => {
