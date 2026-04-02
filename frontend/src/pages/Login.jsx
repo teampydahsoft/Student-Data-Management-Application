@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { LogIn, Loader2, Eye, EyeOff, Users, Home, ArrowLeft } from 'lucide-react';
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+import { LogIn, Loader2, Eye, EyeOff, Users, Home, Clock, User, ArrowRight } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import api, { CRM_BACKEND_URL, CRM_FRONTEND_URL } from '../config/api';
@@ -18,6 +17,18 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loginType, setLoginType] = useState('student');
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
 
   // SSO state
   const [isVerifying, setIsVerifying] = useState(false);
@@ -36,7 +47,6 @@ const Login = () => {
 
     setForgotLoading(true);
     try {
-      // Determine endpoint based on selection or context
       const targetUserType = isStudentLogin ? 'student' : userTypeReset;
       const endpoint = targetUserType === 'staff' ? '/auth/rbac/forgot-password' : '/students/forgot-password';
 
@@ -46,7 +56,7 @@ const Login = () => {
         setShowForgotModal(false);
         setForgotMobile('');
       } else {
-        toast.error(response.data.message || 'Failed to clean password');
+        toast.error(response.data.message || 'Failed to send password');
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to send password. Try again.');
@@ -55,7 +65,6 @@ const Login = () => {
     }
   };
 
-  // Determine if this is a student login based on route
   const isStudentLogin = location.pathname.startsWith('/student/login');
 
   const handleSSOLogin = useCallback(async (encryptedToken) => {
@@ -69,13 +78,13 @@ const Login = () => {
       });
       const text = await verifyRes.text();
       if (!text || !text.trim()) {
-        throw new Error(`CRM verify-token returned empty response (status ${verifyRes.status}). Is the CRM backend running?`);
+        throw new Error(`CRM verify-token returned empty response`);
       }
       let verifyResult;
       try {
         verifyResult = JSON.parse(text);
       } catch (parseErr) {
-        throw new Error(`CRM verify-token returned invalid JSON (status ${verifyRes.status}). Check CRM /auth/verify-token.`);
+        throw new Error(`CRM verify-token returned invalid JSON`);
       }
 
       if (!verifyResult.success || !verifyResult.valid) {
@@ -121,8 +130,7 @@ const Login = () => {
     } else {
       setShowLoginForm(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; token from URL
-  }, []);
+  }, [handleSSOLogin]);
 
   useEffect(() => {
     if (isAuthenticated && !isVerifying) {
@@ -143,18 +151,13 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.username || !formData.password) {
       toast.error('Please fill in all fields');
       return;
     }
-
     setLoading(true);
-
     const result = await login(formData.username, formData.password);
-
     setLoading(false);
-
     if (result.success) {
       toast.success('Login successful!');
       navigate(result.redirectPath);
@@ -183,8 +186,16 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-x-hidden relative login-stars-optimized">
-      {/* Home Button - Mobile Only (Desktop has it in the left panel) */}
+    <div
+      className="min-h-screen flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-x-hidden relative login-stars-optimized"
+      style={{
+        backgroundImage: "url('/images/login_background.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: '#f8fafc'
+      }}
+    >
+      {/* Home Button - Mobile Only */}
       <button
         onClick={() => navigate('/', { replace: true })}
         className="lg:hidden absolute top-6 left-6 z-[100] flex items-center justify-center w-11 h-11 bg-white rounded-xl text-primary shadow-lg border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-90 cursor-pointer"
@@ -194,155 +205,162 @@ const Login = () => {
       </button>
 
       {/* Main Card Container */}
-      <div className="w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row lg:min-h-[800px] animate-fade-in-up border border-gray-100">
+      <div className="w-full max-w-4xl bg-white/95 backdrop-blur-sm rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row lg:min-h-[750px] animate-fade-in-up border border-white/20">
 
-        {/* Left Side - Animation Panel */}
-        <div className="hidden lg:flex lg:w-1/2 bg-[#1a2e1d] text-white flex-col justify-center p-12 relative overflow-hidden">
-          {/* Subtle gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent pointer-events-none" />
-
-          {/* Top Content: Home Button replaces Users icon */}
+        {/* Left Side - Illustration Panel (Seamless White Integration) */}
+        <div className="hidden lg:flex lg:w-1/2 bg-white/50 flex-col justify-center relative overflow-visible z-20">
+          {/* Top Content: Home Button */}
           <div className="absolute top-12 left-12 z-[50]">
             <button
               onClick={() => navigate('/', { replace: true })}
-              className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center mb-8 cursor-pointer hover:bg-white/20 hover:scale-110 active:scale-95 transition-all group relative overflow-visible"
+              className="w-12 h-12 bg-white/80 backdrop-blur-md shadow-sm border border-gray-100 rounded-xl flex items-center justify-center cursor-pointer hover:bg-white hover:scale-110 active:scale-95 transition-all group relative overflow-visible"
               title="Return Home"
             >
-              <Home size={22} className="text-white group-hover:rotate-[-10deg] transition-transform" />
-              {/* Tooltip hint on hover */}
-              <span className="absolute -bottom-10 left-0 bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                Go to Landing
-              </span>
+              <Home size={22} className="text-primary group-hover:rotate-[-10deg] transition-transform" />
             </button>
           </div>
 
-          {/* Center Illustration: Lottie Animation */}
-          <div className="relative z-10 flex-1 flex items-center justify-center p-4">
-            <div className="w-full h-full max-w-[1200px] max-h-[850px] transform transition-transform duration-700 hover:scale-[1.02]">
-              <DotLottieReact
-                src="https://lottie.host/04202662-819a-4f50-939b-9f9892114a39/SYoGvGOZHs.lottie"
-                loop
-                autoplay
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+          {/* Bottom-Aligned Illustration: Dynamic Image & Clock */}
+          <div className="absolute inset-0 flex items-end justify-center px-0 pb-0">
+            <div className="relative w-full h-full flex items-center justify-center transform translate-x-[5%]">
+              {/* Main Illustration - Maximized (v5) */}
+              <div className="relative w-full h-full pointer-events-none">
+                <img
+                  src="/images/login_illustration_v5.png"
+                  alt="Login Illustration"
+                  className="w-full h-full object-contain object-bottom opacity-100 scale-[1.5] origin-bottom transition-all duration-700 hover:scale-[1.55]"
+                />
+              </div>
+
+              {/* Dynamic HUD Clock - Higher and more to the left */}
+              <div className="absolute top-[47.5%] left-[37.8%] transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none group hover:scale-110 transition-all duration-700 z-30">
+                <div className="flex flex-col items-center justify-center text-center p-4">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[28px] sm:text-[32px] font-black text-white tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]">
+                      {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).split(' ')[0]}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] font-black text-gray-100 uppercase tracking-[0.15em]">
+                        {currentTime.toLocaleTimeString([], { second: '2-digit', hour12: true }).split(' ')[0]} {currentTime.toLocaleTimeString([], { hour12: true }).split(' ')[1]}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/50 to-transparent my-2 shadow-[0_0_10px_rgba(255,255,255,0.4)]" />
+                  <span className="text-[9px] font-bold text-gray-100 uppercase tracking-[0.35em] drop-shadow-md">
+                    {currentTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
-        <div className="w-full lg:w-1/2 p-6 sm:p-8 lg:p-12 flex flex-col justify-center bg-white relative">
+        {/* Right Side - Login Form (With higher z-index for 3D depth) */}
+        <div className="w-full lg:w-1/2 p-8 sm:p-12 md:p-16 flex flex-col justify-center relative bg-white lg:bg-transparent">
           {/* SSO error banner */}
           {ssoError && (
-            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 relative z-50">
               <p className="text-sm text-amber-800">{ssoError}</p>
-              <a
-                href={CRM_FRONTEND_URL}
-                className="text-sm font-medium text-primary hover:text-primary-dark whitespace-nowrap"
-              >
-                Return to CRM Portal
-              </a>
+              <a href={CRM_FRONTEND_URL} className="text-sm font-medium text-primary hover:text-primary-dark">Return to CRM Portal</a>
             </div>
           )}
 
-          <div className="max-w-sm mx-auto w-full">
-            {/* Branding Logo - Always on top for right side */}
-            <div className="mb-10 flex flex-col items-center">
-              <div className="p-4 bg-primary/5 rounded-3xl border border-primary/10 shadow-sm mb-4 group hover:bg-primary/10 transition-colors">
-                <img
-                  src="/logo.png"
-                  alt="Logo"
-                  className="h-16 w-auto object-contain transition-transform duration-500 group-hover:scale-110"
-                />
+          {/* Form Content Wrapper - Stays above the overlapping illustration - Z-40 */}
+          <div className="relative z-40 w-full max-w-sm mx-auto">
+            <div className="text-center lg:text-left mb-10">
+              <div className="flex justify-center lg:justify-start mb-6">
+                <div className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 group hover:scale-105 transition-all duration-300">
+                  <img src="/logo.png" alt="College Logo" className="h-[70px] w-auto object-contain" />
+                </div>
               </div>
-              <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 leading-tight">
-                  Welcome Back
-                </h2>
-                <p className="text-gray-500 text-xs sm:text-sm font-medium">
-                  Signin to access your portal
-                </p>
-              </div>
+              <h1 className="text-3xl font-black text-gray-900 mb-2 tracking-tight">
+                Welcome Back
+              </h1>
+              <p className="text-gray-500 font-medium text-sm tracking-wide">
+                Signin to access your portal
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Username / Admission No
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Users className="h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
+              <div className="space-y-5">
+                <div className="group">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 group-focus-within:text-primary transition-colors">
+                    Username / Admission No
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Users size={18} className="text-gray-400 group-focus-within:text-primary transition-colors" />
+                    </div>
+                    <input
+                      type="text"
+                      name="username"
+                      required
+                      placeholder="Enter your id"
+                      className="block w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
+                      value={formData.username}
+                      onChange={handleChange}
+                    />
                   </div>
-                  <input
-                    type="text"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    className="block w-full pl-10 pr-3 py-3 bg-neutral-bg/50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    placeholder="Enter Username or Admission No"
-                    disabled={loading}
-                  />
+                </div>
+
+                <div className="group">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 group-focus-within:text-primary transition-colors">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <LogIn size={18} className="text-gray-400 group-focus-within:text-primary transition-colors" />
+                    </div>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      required
+                      placeholder="••••••••"
+                      className="block w-full pl-11 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
+                      value={formData.password}
+                      onChange={handleChange}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={18} className="text-gray-400" /> : <Eye size={18} className="text-gray-400" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Password
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <LogIn className="h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
-                  </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="block w-full pl-10 pr-10 py-3 bg-neutral-bg/50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                    placeholder="Enter your password"
-                    disabled={loading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-12 bg-primary text-white rounded-xl font-black text-base hover:bg-primary-dark hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 group"
+                >
+                  {loading ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </button>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-lg text-sm font-medium text-white bg-primary hover:bg-primary-dark active:bg-primary-dark transition-all transform hover:-translate-y-0.5"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                  </>
-                )}
-              </button>
+              <div className="flex flex-col items-center gap-4 mt-8">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-sm font-bold text-gray-600 hover:text-primary transition-colors"
+                >
+                  Forgot Password?
+                </button>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                  © {new Date().getFullYear()} Student Management System
+                </p>
+              </div>
             </form>
-
-            <div className="mt-8 text-center space-y-4">
-              <button
-                type="button"
-                onClick={() => setShowForgotModal(true)}
-                className="text-sm font-medium text-primary hover:text-primary-dark transition-colors"
-              >
-                Forgot Password?
-              </button>
-
-              <p className="text-xs text-gray-400">
-                © {new Date().getFullYear()} Student Management System
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -353,38 +371,27 @@ const Login = () => {
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in duration-200">
             <button
               onClick={() => setShowForgotModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold"
             >
-              <EyeOff size={20} className="hidden" /> {/* Dummy icon usage to prevent unused err if I removed imports? No, I'll use X if available or text */}
-              <span className="text-xl font-bold">&times;</span>
+              &times;
             </button>
-
             <h3 className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
             <p className="text-sm text-gray-500 mb-4">Enter your registered mobile number. We'll send you a new password via SMS.</p>
 
-            {/* User Type Selection */}
             {!isStudentLogin && (
               <div className="flex gap-4 mb-4">
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="radio"
-                    name="userTypeReset"
-                    checked={userTypeReset === 'student'}
-                    onChange={() => setUserTypeReset('student')}
-                    className="mr-2"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Student</span>
-                </label>
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="radio"
-                    name="userTypeReset"
-                    checked={userTypeReset === 'staff'}
-                    onChange={() => setUserTypeReset('staff')}
-                    className="mr-2"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Staff / Admin</span>
-                </label>
+                {['student', 'staff'].map(type => (
+                  <label key={type} className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="userTypeReset"
+                      checked={userTypeReset === type}
+                      onChange={() => setUserTypeReset(type)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm font-medium text-gray-700 capitalize">{type === 'staff' ? 'Staff / Admin' : type}</span>
+                  </label>
+                ))}
               </div>
             )}
 
@@ -400,20 +407,19 @@ const Login = () => {
                   required
                 />
               </div>
-
               <button
                 type="submit"
                 disabled={forgotLoading}
                 className="w-full bg-primary text-white py-2 rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center gap-2"
               >
-                {forgotLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+                {forgotLoading && <Loader2 className="animate-spin" size={16} />}
                 {forgotLoading ? 'Sending...' : 'Send New Password'}
               </button>
             </form>
           </div>
         </div>
       )}
-    </div >
+    </div>
   );
 };
 
