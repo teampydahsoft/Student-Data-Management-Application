@@ -9,12 +9,15 @@ import {
   AlertTriangle,
   ArrowRight,
   X,
-  Search
+  Search,
+  Settings
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
 import LoadingAnimation from '../components/LoadingAnimation';
 import RejoinModal from '../components/RejoinModal';
+import ProfileUpdateSettingsModal from '../components/Students/ProfileUpdateSettingsModal';
+
 import { SkeletonTable } from '../components/SkeletonLoader';
 import { formatDate } from '../utils/dateUtils';
 import { useStudents, useInvalidateStudents } from '../hooks/useStudents';
@@ -73,8 +76,10 @@ const StudentPromotions = () => {
   const [detectedLeftOutStudents, setDetectedLeftOutStudents] = useState([]);
   const [showRejoinModal, setShowRejoinModal] = useState(false);
   const [rejoinStudent, setRejoinStudent] = useState(null);
+  const [showProfileUpdateSettings, setShowProfileUpdateSettings] = useState(false);
 
   const selectedCount = selectedAdmissionNumbers.size;
+
 
   useEffect(() => {
     fetchQuickFilterOptions();
@@ -775,6 +780,15 @@ const StudentPromotions = () => {
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <button
+            onClick={() => setShowProfileUpdateSettings(true)}
+            className="inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation min-h-[44px] text-sm"
+            title="Configure Student Profile Update Request Fields"
+          >
+            <Settings size={18} className="text-gray-500" />
+            <span className="hidden sm:inline">Settings</span>
+            <span className="sm:hidden text-xs">Settings</span>
+          </button>
+          <button
             onClick={fetchQuickFilterOptions}
             className="inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation min-h-[44px] text-sm"
             disabled={loadingFilters}
@@ -784,6 +798,7 @@ const StudentPromotions = () => {
             <span className="sm:hidden">Refresh</span>
           </button>
         </div>
+
       </div>
 
       {/* Filter Card with Inline Promotion Review */}
@@ -1698,8 +1713,14 @@ const StudentPromotions = () => {
           invalidateStudents();
         }}
       />
+      <ProfileUpdateSettingsModal
+        isOpen={showProfileUpdateSettings}
+        onClose={() => setShowProfileUpdateSettings(false)}
+      />
+
     </div>
   );
+
 };
 
 export default StudentPromotions;

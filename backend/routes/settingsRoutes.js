@@ -43,5 +43,10 @@ router.post('/qr-config', qrConfigController.saveQrConfig);
 router.get('/frozen-batches', settingsController.getFrozenBatches);
 router.put('/frozen-batches', settingsController.updateFrozenBatches);
 
+// Profile update field settings routes
+router.get('/profile-update-fields', settingsController.getProfileUpdateFields);
+router.put('/profile-update-fields', settingsController.updateProfileUpdateFields);
+
 module.exports = router;
+
 

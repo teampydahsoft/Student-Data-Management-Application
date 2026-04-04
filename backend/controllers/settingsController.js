@@ -594,3 +594,80 @@ exports.updateFrozenBatches = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/settings/profile-update-fields
+ * Get enabled fields for student profile update requests during verification
+ */
+exports.getProfileUpdateFields = async (req, res) => {
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['profile_update_config']
+    );
+
+    let config = {
+      enabledFields: []
+    };
+
+    if (settings && settings.length > 0) {
+      try {
+        const storedConfig = JSON.parse(settings[0].value);
+        config = { ...config, ...storedConfig };
+      } catch (e) {
+        console.error('Error parsing profile update settings:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: config
+    });
+  } catch (error) {
+    console.error('Get profile update settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching profile update settings'
+    });
+  }
+};
+
+/**
+ * PUT /api/settings/profile-update-fields
+ * Update enabled fields for student profile update requests during verification
+ */
+exports.updateProfileUpdateFields = async (req, res) => {
+  try {
+    const { enabledFields } = req.body;
+
+    if (!enabledFields || !Array.isArray(enabledFields)) {
+      return res.status(400).json({
+        success: false,
+        message: 'enabledFields must be an array'
+      });
+    }
+
+    const config = { enabledFields };
+    const value = JSON.stringify(config);
+
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) 
+       VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['profile_update_config', value, new Date(), value, new Date()]
+    );
+
+    res.json({
+      success: true,
+      message: 'Profile update settings saved successfully',
+      data: config
+    });
+  } catch (error) {
+    console.error('Update profile update settings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating profile update settings'
+    });
+  }
+};
+

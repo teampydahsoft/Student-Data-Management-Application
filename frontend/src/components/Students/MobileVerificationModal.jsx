@@ -9,6 +9,11 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
     const [otpSent, setOtpSent] = useState(false);
     const [otp, setOtp] = useState('');
     const [timer, setTimer] = useState(0);
+    const [profileUpdateConfig, setProfileUpdateConfig] = useState({ enabledFields: [] });
+    const [availableFields, setAvailableFields] = useState([]);
+    const [fieldValues, setFieldValues] = useState({});
+    const [configLoading, setConfigLoading] = useState(false);
+
 
     // Reset state when type changes or modal opens
     useEffect(() => {
@@ -16,8 +21,40 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
             setOtpSent(false);
             setOtp('');
             setTimer(0);
+            fetchConfigAndFields();
         }
     }, [isOpen, selectedType]);
+
+    const fetchConfigAndFields = async () => {
+        setConfigLoading(true);
+        try {
+            // Fetch enabled fields config
+            const configRes = await api.get('/settings/profile-update-fields');
+            const enabledFields = configRes.data?.data?.enabledFields || [];
+            setProfileUpdateConfig({ enabledFields });
+
+            if (enabledFields.length > 0) {
+                // Fetch field definitions to get labels/types
+                const fieldsRes = await api.get('/rbac/users/student-fields');
+
+                const categories = fieldsRes.data?.data?.categories || [];
+                const allFields = categories.flatMap(cat => cat.fields);
+                setAvailableFields(allFields);
+
+                // Initialize field values from student data
+                const initialValues = {};
+                enabledFields.forEach(fieldKey => {
+                    initialValues[fieldKey] = student[fieldKey] || student.student_data?.[fieldKey] || '';
+                });
+                setFieldValues(initialValues);
+            }
+        } catch (error) {
+            console.error('Failed to fetch profile update config:', error);
+        } finally {
+            setConfigLoading(false);
+        }
+    };
+
 
     // Timer countdown
     useEffect(() => {
@@ -55,18 +92,47 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
 
         try {
             setLoading(true);
+
+            // Check if any profile fields were modified and submit request if needed
+            const modifiedFields = {};
+            let hasChanges = false;
+            profileUpdateConfig.enabledFields.forEach(fieldKey => {
+                const originalValue = student[fieldKey] || student.student_data?.[fieldKey] || '';
+                if (String(fieldValues[fieldKey] || '').trim() !== String(originalValue || '').trim()) {
+                    modifiedFields[fieldKey] = fieldValues[fieldKey];
+                    hasChanges = true;
+                }
+            });
+
+            if (hasChanges) {
+                try {
+                    await api.post('/profile-changes/submit', {
+                        admission_number: student.admission_number,
+                        requested_changes: modifiedFields
+                    });
+                    toast.success('Profile update request submitted');
+                } catch (err) {
+                    // If it's a "already pending" error, we can still proceed with OTP
+                    if (err.response?.data?.message?.includes('already have a pending')) {
+                        console.warn('Pending request already exists');
+                    } else {
+                        throw err; // Re-throw other errors
+                    }
+                }
+            }
+
             const response = await api.post('/students/otp/send', {
                 admissionNumber: student.admission_number,
                 mobileNumber: mobile,
                 type: selectedType,
-                year: student.current_year || '1', // Default or fallback
+                year: student.current_year || '1',
                 semester: student.current_semester || '1'
             });
 
             if (response.data.success) {
                 toast.success('OTP sent successfully');
                 setOtpSent(true);
-                setTimer(60); // 60 seconds cooldown
+                setTimer(60);
             } else {
                 toast.error(response.data.message || 'Failed to send OTP');
             }
@@ -77,6 +143,7 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
             setLoading(false);
         }
     };
+
 
     const handleVerifyOtp = async () => {
         if (!otp || otp.length < 6) {
@@ -214,16 +281,45 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
                             ) : (
                                 <div className="space-y-4">
                                     {!otpSent ? (
-                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center space-y-4">
-                                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                                                <Smartphone size={24} className="text-blue-600" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-gray-600 mb-1">Send OTP to verify</p>
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4">
+                                            <div className="text-center">
+                                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                                    <Smartphone size={24} className="text-blue-600" />
+                                                </div>
+                                                <p className="text-sm text-gray-600 mb-1">Verify your details & send OTP</p>
                                                 <p className="font-semibold text-gray-900 text-lg tracking-wider">
                                                     {maskMobile(getCurrentMobile())}
                                                 </p>
                                             </div>
+
+                                            {/* Dynamic Profile Fields */}
+                                            {profileUpdateConfig.enabledFields.length > 0 && (
+                                                <div className="space-y-3 pt-2 border-t border-gray-200">
+                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Verify / Update Information</p>
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {profileUpdateConfig.enabledFields.map(fieldKey => {
+                                                            const fieldDef = availableFields.find(f => f.key === fieldKey);
+                                                            if (!fieldDef) return null;
+
+                                                            return (
+                                                                <div key={fieldKey} className="flex flex-col gap-1">
+                                                                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                                                                        {fieldDef.label}
+                                                                    </label>
+                                                                    <input
+                                                                        type={fieldDef.type === 'number' ? 'number' : 'text'}
+                                                                        value={fieldValues[fieldKey] || ''}
+                                                                        onChange={(e) => setFieldValues(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                                                                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none shadow-sm"
+                                                                        placeholder={`Enter ${fieldDef.label}`}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <button
                                                 onClick={handleSendOtp}
                                                 disabled={loading || !getCurrentMobile()}
