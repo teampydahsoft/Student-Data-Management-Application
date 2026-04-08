@@ -157,145 +157,6 @@ const AddStudent = () => {
     loadFrozenBatches();
   }, []);
 
-  // Determine course type (Diploma, UG, or PG) based on course name
-  const courseType = useMemo(() => {
-    if (!selectedCourse) return null;
-    return getCourseType(selectedCourse);
-  }, [selectedCourse]);
-
-  // Certificate status state - tracks Yes/No for each certificate
-  const [certificateStatus, setCertificateStatus] = useState({});
-
-  // Get certificates based on course type
-  const getCertificatesForCourse = () => {
-    if (!courseType) return [];
-    return getCertificatesForCourseShared(courseType);
-  };
-
-  // Update certificates_status based on certificate status
-  useEffect(() => {
-    if (!courseType) return;
-    const certificates = getCertificatesForCourse();
-    if (certificates.length === 0) return;
-
-    const allYes = certificates.every(cert => certificateStatus[cert.key] === true);
-    if (allYes && certificates.length > 0) {
-      setStudentData(prev => ({ ...prev, certificates_status: 'Verified' }));
-    } else {
-      setStudentData(prev => ({ ...prev, certificates_status: 'Unverified' }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [certificateStatus, courseType]);
-
-
-  useEffect(() => {
-    const loadCourseConfig = async () => {
-      try {
-        setCourseOptionsLoading(true);
-        // Always use the scoped /courses endpoint to respect user's assigned scope
-        const url = selectedCollegeId
-          ? `/courses?collegeId=${selectedCollegeId}&includeInactive=false`
-          : '/courses?includeInactive=false';
-        const response = await api.get(url);
-        const courseData = response.data.data || [];
-        setCourseOptions(courseData);
-
-        // Auto-select course if only one is available (for scoped users)
-        const activeCourses = courseData.filter((course) => course?.isActive !== false);
-        if (activeCourses.length === 1) {
-          const singleCourse = activeCourses[0];
-          setSelectedCourseName(singleCourse.name);
-          setStudentData((prev) => ({
-            ...prev,
-            course: singleCourse.name
-          }));
-
-          // Also auto-select branch if only one is available
-          const activeBranches = (singleCourse.branches || []).filter((b) => b?.isActive !== false);
-          if (activeBranches.length === 1) {
-            const singleBranch = activeBranches[0];
-            setSelectedBranchName(singleBranch.name);
-            setStudentData((prev) => ({
-              ...prev,
-              branch: singleBranch.name
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load course configuration', error);
-        toast.error(error.response?.data?.message || 'Failed to load course configuration');
-      } finally {
-        setCourseOptionsLoading(false);
-      }
-    };
-
-    loadCourseConfig();
-  }, [selectedCollegeId]);
-
-  // Same endpoint as Students Database page: quick-filters for courses and branches
-  useEffect(() => {
-    if (!studentData.college) {
-      setQuickFilterCourses([]);
-      setQuickFilterBranches([]);
-      return;
-    }
-    const fetchQuickFilterCourses = async () => {
-      try {
-        setQuickFilterCoursesLoading(true);
-        const params = new URLSearchParams();
-        params.append('college', studentData.college);
-        if (studentData.batch) params.append('batch', studentData.batch);
-        if (selectedLevel) params.append('level', selectedLevel);
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setQuickFilterCourses(data.courses || []);
-          setQuickFilterBranches([]);
-        } else {
-          setQuickFilterCourses([]);
-          setQuickFilterBranches([]);
-        }
-      } catch (error) {
-        console.error('Failed to load courses/branches from quick-filters', error);
-        setQuickFilterCourses([]);
-        setQuickFilterBranches([]);
-      } finally {
-        setQuickFilterCoursesLoading(false);
-      }
-    };
-    fetchQuickFilterCourses();
-  }, [studentData.college, studentData.batch, selectedLevel]);
-
-  useEffect(() => {
-    if (!studentData.college || !selectedCourseName) {
-      setQuickFilterBranches((prev) => (prev.length ? [] : prev));
-      return;
-    }
-    const fetchQuickFilterBranches = async () => {
-      try {
-        setQuickFilterBranchesLoading(true);
-        const params = new URLSearchParams();
-        params.append('college', studentData.college);
-        params.append('course', selectedCourseName);
-        if (studentData.batch) params.append('batch', studentData.batch);
-        if (selectedLevel) params.append('level', selectedLevel);
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setQuickFilterBranches(data.branches || []);
-        } else {
-          setQuickFilterBranches([]);
-        }
-      } catch (error) {
-        console.error('Failed to load branches from quick-filters', error);
-        setQuickFilterBranches([]);
-      } finally {
-        setQuickFilterBranchesLoading(false);
-      }
-    };
-    fetchQuickFilterBranches();
-  }, [studentData.college, studentData.batch, selectedLevel, selectedCourseName]);
-
   const availableCourses = useMemo(
     () => {
       let courses = courseOptions.filter((course) => course?.isActive !== false);
@@ -503,6 +364,145 @@ const AddStudent = () => {
 
     generateAdmissionNumber();
   }, [studentData.batch, isAdmissionNumberManual]);
+
+  // Determine course type (Diploma, UG, or PG) based on course name
+  const courseType = useMemo(() => {
+    if (!selectedCourse) return null;
+    return getCourseType(selectedCourse);
+  }, [selectedCourse]);
+
+  // Certificate status state - tracks Yes/No for each certificate
+  const [certificateStatus, setCertificateStatus] = useState({});
+
+  // Get certificates based on course type
+  const getCertificatesForCourse = () => {
+    if (!courseType) return [];
+    return getCertificatesForCourseShared(courseType);
+  };
+
+  // Update certificates_status based on certificate status
+  useEffect(() => {
+    if (!courseType) return;
+    const certificates = getCertificatesForCourse();
+    if (certificates.length === 0) return;
+
+    const allYes = certificates.every(cert => certificateStatus[cert.key] === true);
+    if (allYes && certificates.length > 0) {
+      setStudentData(prev => ({ ...prev, certificates_status: 'Verified' }));
+    } else {
+      setStudentData(prev => ({ ...prev, certificates_status: 'Unverified' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certificateStatus, courseType]);
+
+
+  useEffect(() => {
+    const loadCourseConfig = async () => {
+      try {
+        setCourseOptionsLoading(true);
+        // Always use the scoped /courses endpoint to respect user's assigned scope
+        const url = selectedCollegeId
+          ? `/courses?collegeId=${selectedCollegeId}&includeInactive=false`
+          : '/courses?includeInactive=false';
+        const response = await api.get(url);
+        const courseData = response.data.data || [];
+        setCourseOptions(courseData);
+
+        // Auto-select course if only one is available (for scoped users)
+        const activeCourses = courseData.filter((course) => course?.isActive !== false);
+        if (activeCourses.length === 1) {
+          const singleCourse = activeCourses[0];
+          setSelectedCourseName(singleCourse.name);
+          setStudentData((prev) => ({
+            ...prev,
+            course: singleCourse.name
+          }));
+
+          // Also auto-select branch if only one is available
+          const activeBranches = (singleCourse.branches || []).filter((b) => b?.isActive !== false);
+          if (activeBranches.length === 1) {
+            const singleBranch = activeBranches[0];
+            setSelectedBranchName(singleBranch.name);
+            setStudentData((prev) => ({
+              ...prev,
+              branch: singleBranch.name
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load course configuration', error);
+        toast.error(error.response?.data?.message || 'Failed to load course configuration');
+      } finally {
+        setCourseOptionsLoading(false);
+      }
+    };
+
+    loadCourseConfig();
+  }, [selectedCollegeId]);
+
+  // Same endpoint as Students Database page: quick-filters for courses and branches
+  useEffect(() => {
+    if (!studentData.college) {
+      setQuickFilterCourses([]);
+      setQuickFilterBranches([]);
+      return;
+    }
+    const fetchQuickFilterCourses = async () => {
+      try {
+        setQuickFilterCoursesLoading(true);
+        const params = new URLSearchParams();
+        params.append('college', studentData.college);
+        if (studentData.batch) params.append('batch', studentData.batch);
+        if (selectedLevel) params.append('level', selectedLevel);
+        const response = await api.get(`/students/quick-filters?${params.toString()}`);
+        if (response.data?.success) {
+          const data = response.data.data || {};
+          setQuickFilterCourses(data.courses || []);
+          setQuickFilterBranches([]);
+        } else {
+          setQuickFilterCourses([]);
+          setQuickFilterBranches([]);
+        }
+      } catch (error) {
+        console.error('Failed to load courses/branches from quick-filters', error);
+        setQuickFilterCourses([]);
+        setQuickFilterBranches([]);
+      } finally {
+        setQuickFilterCoursesLoading(false);
+      }
+    };
+    fetchQuickFilterCourses();
+  }, [studentData.college, studentData.batch, selectedLevel]);
+
+  useEffect(() => {
+    if (!studentData.college || !selectedCourseName) {
+      setQuickFilterBranches((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const fetchQuickFilterBranches = async () => {
+      try {
+        setQuickFilterBranchesLoading(true);
+        const params = new URLSearchParams();
+        params.append('college', studentData.college);
+        params.append('course', selectedCourseName);
+        if (studentData.batch) params.append('batch', studentData.batch);
+        if (selectedLevel) params.append('level', selectedLevel);
+        const response = await api.get(`/students/quick-filters?${params.toString()}`);
+        if (response.data?.success) {
+          const data = response.data.data || {};
+          setQuickFilterBranches(data.branches || []);
+        } else {
+          setQuickFilterBranches([]);
+        }
+      } catch (error) {
+        console.error('Failed to load branches from quick-filters', error);
+        setQuickFilterBranches([]);
+      } finally {
+        setQuickFilterBranchesLoading(false);
+      }
+    };
+    fetchQuickFilterBranches();
+  }, [studentData.college, studentData.batch, selectedLevel, selectedCourseName]);
 
 
 
