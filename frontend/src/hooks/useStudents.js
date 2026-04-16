@@ -22,9 +22,17 @@ export const studentKeys = {
  * @param {string} options.search - Search term
  * @param {boolean} options.enabled - Whether the query should run
  */
-export const useStudents = ({ page = 1, pageSize = 25, filters = {}, search = '', enabled = true } = {}) => {
+export const useStudents = ({
+  page = 1,
+  pageSize = 25,
+  filters = {},
+  search = '',
+  sortBy = '',
+  sortOrder = 'asc',
+  enabled = true
+} = {}) => {
   return useQuery({
-    queryKey: studentKeys.list({ page, pageSize, filters, search }),
+    queryKey: studentKeys.list({ page, pageSize, filters, search, sortBy, sortOrder }),
     queryFn: async () => {
       const queryParams = new URLSearchParams();
 
@@ -52,6 +60,11 @@ export const useStudents = ({ page = 1, pageSize = 25, filters = {}, search = ''
 
       if (search && search.trim()) {
         queryParams.append('search', search.trim());
+      }
+
+      if (sortBy && sortBy.trim()) {
+        queryParams.append('sort_by', sortBy.trim());
+        queryParams.append('sort_order', sortOrder === 'desc' ? 'desc' : 'asc');
       }
 
       queryParams.append('limit', pageSize.toString());

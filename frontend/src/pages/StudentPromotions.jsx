@@ -217,6 +217,8 @@ const StudentPromotions = () => {
   } = useStudents({
     page: currentPage,
     pageSize: pageSize,
+    sortBy: 'roll_number',
+    sortOrder: 'asc',
     filters: {
       batch: filters.batch,
       course: filters.course,

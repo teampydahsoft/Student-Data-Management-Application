@@ -2301,6 +2301,8 @@ exports.getAllStudents = async (req, res) => {
       search,
       limit,
       offset = 0,
+      sort_by,
+      sort_order,
       filter_dateFrom,
       filter_dateTo,
       filter_pinNumberStatus,
@@ -2533,7 +2535,21 @@ exports.getAllStudents = async (req, res) => {
       }
     });
 
-    query += ' ORDER BY id DESC';
+    const normalizedSortBy = typeof sort_by === 'string' ? sort_by.trim().toLowerCase() : '';
+    const normalizedSortOrder = typeof sort_order === 'string' ? sort_order.trim().toLowerCase() : 'asc';
+    const safeSortOrder = normalizedSortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    if (normalizedSortBy === 'roll_number') {
+      query += ` ORDER BY
+        CASE WHEN pin_no IS NULL OR TRIM(pin_no) = '' THEN 1 ELSE 0 END ASC,
+        CASE WHEN pin_no REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,
+        CASE WHEN pin_no REGEXP '^[0-9]+$' THEN CAST(pin_no AS UNSIGNED) END ${safeSortOrder},
+        pin_no ${safeSortOrder},
+        admission_number ${safeSortOrder},
+        id ${safeSortOrder}`;
+    } else {
+      query += ' ORDER BY id DESC';
+    }
     if (!fetchAll) {
       query += ' LIMIT ? OFFSET ?';
       params.push(pageSize, pageOffset);
