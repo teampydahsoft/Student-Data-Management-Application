@@ -4,6 +4,7 @@ const { sendBrevoEmail } = require('../utils/emailService');
 const { checkAndSendBirthdayNotifications } = require('./birthdayNotificationService');
 const { createBroadcastNotification } = require('./notificationService');
 const { getNonWorkingDayInfo } = require('./nonWorkingDayService');
+const { getAllNotificationUsers, filterAttendanceByUserScope } = require('./getUserScopeAttendance');
 
 // Helper to check if a form falls due today based on recurrence config
 const isFormDue = (form, today) => {
@@ -449,33 +450,59 @@ const sendDailyAttendanceReports = async () => {
             }
         }
 
-        // 3. Send AO Reports (College Specific)
-        // Fetch active AOs and their colleges
-        const [aos] = await masterPool.query(`
-            SELECT u.email, u.name, c.name as college_name 
-            FROM rbac_users u 
-            JOIN colleges c ON u.college_id = c.id 
-            WHERE u.role = 'college_ao' AND u.is_active = 1
-        `);
+        // 3. Send AO and Principal Reports (College Specific with RBAC Scope)
+        const { principals, aos } = await getAllNotificationUsers();
+        const notificationRecipients = [...principals, ...aos];
 
-        console.log(`ℹ️ Found ${aos.length} active AOs to notify.`);
+        console.log(`ℹ️ Found ${notificationRecipients.length} active AOs and Principals to notify.`);
 
-        for (const ao of aos) {
-            // Filter rows for this AO's college
-            const collegeRows = groupedRows.filter(row => row.college === ao.college_name);
+        for (const user of notificationRecipients) {
+            // Step 1: Filter global rows based on user's authorized access scope
+            const authorizedRows = filterAttendanceByUserScope(groupedRows, user);
 
-            if (collegeRows.length > 0) {
-                const collegeHtml = generateReportHtml(collegeRows, `Day End Attendance Report - ${ao.college_name}`, attendanceDate);
+            if (authorizedRows.length > 0) {
+                // Step 2: Determine if we need to split reports (e.g., PCE Engineering vs PCE Diploma)
+                
+                const isDiplomaRow = (row) => {
+                    const isDiplomaCourse = (row.course || '').toLowerCase().includes('diploma') || 
+                                          (row.course || '').startsWith('DAP') || 
+                                          (row.course || '').startsWith('DAE');
+                    const isPolytechnicCollege = (row.college || '').toLowerCase().includes('polytechnic') || 
+                                               row.college === 'Diploma College';
+                    return isDiplomaCourse || isPolytechnicCollege;
+                };
 
-                console.log(`📧 Sending AO report to ${ao.email} (${ao.college_name})`);
-                await sendBrevoEmail({
-                    to: ao.email,
-                    toName: ao.name || 'AO',
-                    subject: `Day End Attendance Report - ${ao.college_name} - ${attendanceDate}`,
-                    htmlContent: collegeHtml
-                });
+                const diplomaRows = authorizedRows.filter(r => isDiplomaRow(r));
+                const mainstreamRows = authorizedRows.filter(r => !isDiplomaRow(r));
+
+                const sendReport = async (rows, typeLabel) => {
+                    const collegeDisplay = user.collegeNames[0] || 'College';
+                    const titlePrefix = typeLabel ? `${typeLabel} - ` : '';
+                    const html = generateReportHtml(rows, `Day End Attendance Report - ${titlePrefix}${collegeDisplay}`, attendanceDate);
+                    
+                    console.log(`📧 Sending ${typeLabel || 'Regular'} report to ${user.email} (${user.role})`);
+                    await sendBrevoEmail({
+                        to: user.email,
+                        toName: user.name || 'User',
+                        subject: `Day End Attendance Report - ${typeLabel ? typeLabel + ' - ' : ''}${attendanceDate}`,
+                        htmlContent: html
+                    });
+                };
+
+                // Logic for splitting Pydah College of Engineering reports due to heavy strength
+                const hasPceMain = mainstreamRows.some(r => r.college === 'Pydah College of Engineering');
+                const hasAnyDiploma = diplomaRows.length > 0;
+
+                if (hasPceMain && hasAnyDiploma) {
+                    // Send separate emails for Engineering and Diploma/Polytechnic categories
+                    await sendReport(mainstreamRows, 'Engineering');
+                    await sendReport(diplomaRows, 'Diploma');
+                } else {
+                    // Send as one consolidated email if no splitting is needed or if it's only one category
+                    await sendReport(authorizedRows, '');
+                }
             } else {
-                console.log(`⚠️ No data found for AO ${ao.email}'s college (${ao.college_name}), skipping.`);
+                console.log(`⚠️ No data found within scope for ${user.role} ${user.email}, skipping.`);
             }
         }
 

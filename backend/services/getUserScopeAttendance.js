@@ -19,7 +19,7 @@ const parseScopeData = (data) => {
 };
 
 /**
- * Get all active Principals and HODs with their access scopes
+ * Get all active Principals, AOs, and HODs with their access scopes
  */
 const getAllNotificationUsers = async () => {
   try {
@@ -40,14 +40,15 @@ const getAllNotificationUsers = async () => {
           u.all_courses,
           u.all_branches
         FROM rbac_users u
-        WHERE u.role IN (?, ?)
+        WHERE u.role IN (?, ?, ?)
           AND u.is_active = 1
         ORDER BY u.role, u.name
       `,
-      [USER_ROLES.COLLEGE_PRINCIPAL, USER_ROLES.BRANCH_HOD]
+      [USER_ROLES.COLLEGE_PRINCIPAL, USER_ROLES.COLLEGE_AO, USER_ROLES.BRANCH_HOD]
     );
 
     const principals = [];
+    const aos = [];
     const hods = [];
 
     for (const user of users) {
@@ -114,12 +115,14 @@ const getAllNotificationUsers = async () => {
 
       if (user.role === USER_ROLES.COLLEGE_PRINCIPAL) {
         principals.push(userScope);
+      } else if (user.role === USER_ROLES.COLLEGE_AO) {
+        aos.push(userScope);
       } else if (user.role === USER_ROLES.BRANCH_HOD) {
         hods.push(userScope);
       }
     }
 
-    return { principals, hods };
+    return { principals, aos, hods };
   } catch (error) {
     console.error('Error getting notification users:', error);
     throw error;
@@ -134,8 +137,23 @@ const filterAttendanceByUserScope = (attendanceGroups, userScope) => {
     // Check college access
     // If user has no college names specified, they have access to all (shouldn't happen, but handle it)
     if (userScope.collegeNames.length > 0) {
+      const EngineeringCollegeName = 'Pydah College of Engineering';
+      const isEngineeringUser = userScope.collegeNames.includes(EngineeringCollegeName);
+      
+      const isDiplomaGroup = 
+        group.course.toLowerCase().includes('diploma') || 
+        group.course.startsWith('DAP') || 
+        group.course.startsWith('DAE') ||
+        group.college.toLowerCase().includes('polytechnic') || 
+        group.college === 'Diploma College';
+
       if (!userScope.collegeNames.includes(group.college) && group.college !== 'Unknown') {
-        return false;
+        // Special Case: Engineering college users should have access to Diploma/Polytechnic reports
+        if (isEngineeringUser && isDiplomaGroup) {
+          // Allow access to Diploma students for Engineering college users
+        } else {
+          return false;
+        }
       }
     }
 

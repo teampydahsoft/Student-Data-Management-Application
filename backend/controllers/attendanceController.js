@@ -1948,8 +1948,21 @@ exports.markAttendance = async (req, res) => {
     // Group attendance data by college/course
     const groupsByCollegeCourse = new Map();
     for (const group of allAttendanceData) {
-      const college = group.college || 'Unknown';
+      let college = group.college || 'Unknown';
       const course = group.course || 'Unknown';
+
+      // Normalization: Diploma/Polytechnic courses often under separate names but belong to Engineering for reporting
+      const isDiplomaGroup = 
+        course.toLowerCase().includes('diploma') || 
+        course.startsWith('DAP') || 
+        course.startsWith('DAE') ||
+        college.toLowerCase().includes('polytechnic') || 
+        college === 'Diploma College';
+
+      if (isDiplomaGroup && (college !== 'Pydah College of Engineering')) {
+        college = 'Pydah College of Engineering';
+      }
+
       const key = `${college}|${course}`;
 
       if (!groupsByCollegeCourse.has(key)) {
@@ -2156,7 +2169,14 @@ exports.markAttendance = async (req, res) => {
         const DIPLOMA_COURSE_NAME = 'Diploma';
         const SUPER_ADMIN_EMAIL = 'sriram@pydah.edu.in';
 
-        if (college === ENGINEERING_COLLEGE_NAME && course === DIPLOMA_COURSE_NAME) {
+        const isDiplomaMatch = 
+          course.toLowerCase().includes('diploma') || 
+          course.startsWith('DAP') || 
+          course.startsWith('DAE') ||
+          college.toLowerCase().includes('polytechnic') || 
+          college === 'Diploma College';
+
+        if (isDiplomaMatch && (college === ENGINEERING_COLLEGE_NAME || college.toLowerCase().includes('polytechnic') || college === 'Diploma College')) {
           // Check if already sent to avoid duplicates
           const reportKey = `${SUPER_ADMIN_EMAIL}|${ENGINEERING_COLLEGE_NAME}|${DIPLOMA_COURSE_NAME}`;
           if (superAdminEngineeringDiplomaSent.has(reportKey)) {
