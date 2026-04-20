@@ -1,0 +1,26 @@
+{
+    "id": "pydah-student-portal",
+    "name": "Pydah Student Portal",
+    "short_name": "Pydah Student",
+    "description": "Student Portal for managing attendance, fees, and more.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#F8FAFC",
+    "theme_color": "#ffffff",
+    "icons": [
+        {
+            "src": "/logo.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/logo.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

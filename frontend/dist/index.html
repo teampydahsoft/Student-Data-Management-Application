@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Pydah Student Database Management System</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #F8FAFC;
+      overflow: auto;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    #app-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      /* Subtle radial gradient for depth */
+      background: radial-gradient(circle at center, #F0FDFA 0%, #F8FAFC 100%);
+      z-index: 9999;
+      transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+    }
+
+    .loader-content {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .logo-container {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      padding: 15px;
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 20px 40px -10px rgba(42, 183, 169, 0.15);
+      animation: float 3s ease-in-out infinite;
+    }
+
+    .loader-logo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* Modern ring spinner */
+    .spinner-container {
+      position: relative;
+      width: 48px;
+      height: 48px;
+    }
+
+    .loader-spinner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: 3px solid rgba(42, 183, 169, 0.2);
+      border-top-color: #2AB7A9;
+      /* Primary Brand Color */
+      border-radius: 50%;
+      animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    }
+
+    .loader-spinner::after {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      right: -3px;
+      bottom: -3px;
+      border: 3px solid transparent;
+      border-top-color: #FF6B6B;
+      /* Accent Color */
+      border-radius: 50%;
+      opacity: 0.6;
+      animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite reverse;
+    }
+
+    .loading-text {
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      color: #334155;
+      margin-top: 8px;
+      animation: pulse-text 2s ease-in-out infinite;
+    }
+
+    .loading-subtext {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-8px);
+      }
+    }
+
+    @keyframes pulse-text {
+
+      0%,
+      100% {
+        opacity: 0.6;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-2c128254.js"></script>
+  <link rel="stylesheet" href="/assets/index-c6ef06b9.css">
+</head>
+
+<body>
+  <div id="root">
+    <div id="app-loader">
+      <div class="loader-content">
+        <div class="logo-container">
+          <img src="/logo.png" alt="Pydah Group" class="loader-logo" />
+        </div>
+        <div class="spinner-container">
+          <div class="loader-spinner"></div>
+        </div>
+        <div style="text-align: center;">
+          <div class="loading-text">Student Database System</div>
+          <div class="loading-subtext">Preparing your dashboard...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+</body>
+
+</html>
