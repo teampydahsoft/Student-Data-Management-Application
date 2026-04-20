@@ -1,89 +1,86 @@
 name: Deploy to AWS Lightsail
 
 on:
-push:
-branches:
-- main
-- master
-paths:
-- 'backend/**'
-- 'frontend/**'
-- '.github/workflows/deploy-lightsail.yml'
-workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/deploy-lightsail.yml'
+  workflow_dispatch:
 
 jobs:
-deploy:
-name: Deploy Fullstack to Lightsail
-runs-on: ubuntu-latest
+  deploy:
+    name: Deploy Fullstack to Lightsail
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-```
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-  - name: Setup Node.js
-    uses: actions/setup-node@v3
-    with:
-      node-version: '18'
+      - name: Deploy to Lightsail
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: |
+            set -e
 
-  - name: Deploy to Lightsail
-    uses: appleboy/ssh-action@v1.0.0
-    with:
-      host: ${{ secrets.LIGHTSAIL_HOST }}
-      username: ${{ secrets.LIGHTSAIL_USER }}
-      key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
-      script: |
-        set -e
+            echo "🚀 Starting deployment..."
 
-        echo "🚀 Starting deployment..."
+            cd ${{ secrets.LIGHTSAIL_APP_PATH }}
 
-        cd ${{ secrets.LIGHTSAIL_APP_PATH }}
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main || git reset --hard origin/master
 
-        echo "📥 Pulling latest code..."
-        git fetch origin
-        git reset --hard origin/main || git reset --hard origin/master
+            echo "🔧 Deploying backend..."
+            cd backend
+            npm ci --production
+            pm2 restart student-db-backend || pm2 start server.js --name student-db-backend
+            pm2 save
 
-        echo "🔧 Deploying backend..."
-        cd backend
-        npm ci --production
-        pm2 restart student-db-backend || pm2 start server.js --name student-db-backend
-        pm2 save
+            echo "🎨 Deploying frontend..."
+            cd ../frontend
+            npm install
+            export NODE_OPTIONS="--max-old-space-size=1536"
+            npm run build
 
-        echo "🎨 Deploying frontend..."
-        cd ../frontend
-        npm install
-        export NODE_OPTIONS="--max-old-space-size=1536"
-        npm run build
+            echo "🔄 Restarting nginx..."
+            sudo systemctl restart nginx
 
-        echo "🔄 Restarting nginx..."
-        sudo systemctl restart nginx
+            echo "✅ Deployment completed successfully!"
 
-        echo "✅ Deployment completed successfully!"
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: |
+            echo "🔍 Verifying deployment..."
 
-  - name: Verify deployment
-    uses: appleboy/ssh-action@v1.0.0
-    with:
-      host: ${{ secrets.LIGHTSAIL_HOST }}
-      username: ${{ secrets.LIGHTSAIL_USER }}
-      key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
-      script: |
-        echo "🔍 Verifying deployment..."
+            sleep 5
 
-        sleep 5
+            if pm2 list | grep -q "student-db-backend.*online"; then
+              echo "✅ Backend is running"
 
-        if pm2 list | grep -q "student-db-backend.*online"; then
-          echo "✅ Backend is running"
+              if curl -f http://localhost:5000/api > /dev/null 2>&1; then
+                echo "✅ Backend API responding"
+              else
+                echo "⚠️ API not responding properly"
+              fi
+            else
+              echo "❌ Backend failed!"
+              pm2 logs student-db-backend --lines 50 --nostream
+              exit 1
+            fi
 
-          if curl -f http://localhost:5000/api > /dev/null 2>&1; then
-            echo "✅ Backend API responding"
-          else
-            echo "⚠️ API not responding properly"
-          fi
-        else
-          echo "❌ Backend failed!"
-          pm2 logs student-db-backend --lines 50 --nostream
-          exit 1
-        fi
-
-        echo "🎉 Deployment verified!"
-```
+            echo "🎉 Deployment verified!"
