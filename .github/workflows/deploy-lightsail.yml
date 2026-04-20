@@ -37,45 +37,24 @@ steps:
 
         echo "🚀 Starting deployment..."
 
-        # Go to project directory
         cd ${{ secrets.LIGHTSAIL_APP_PATH }}
 
         echo "📥 Pulling latest code..."
         git fetch origin
         git reset --hard origin/main || git reset --hard origin/master
 
-        # ======================
-        # BACKEND DEPLOY
-        # ======================
         echo "🔧 Deploying backend..."
-
         cd backend
-
-        echo "📦 Installing backend dependencies..."
         npm ci --production
-
-        echo "🔄 Restarting backend with PM2..."
         pm2 restart student-db-backend || pm2 start server.js --name student-db-backend
-
         pm2 save
 
-        # ======================
-        # FRONTEND DEPLOY
-        # ======================
         echo "🎨 Deploying frontend..."
-
         cd ../frontend
-
-        echo "📦 Installing frontend dependencies..."
         npm install
-
-        echo "🏗️ Building frontend..."
         export NODE_OPTIONS="--max-old-space-size=1536"
         npm run build
 
-        # ======================
-        # NGINX RESTART
-        # ======================
         echo "🔄 Restarting nginx..."
         sudo systemctl restart nginx
 
@@ -92,7 +71,6 @@ steps:
 
         sleep 5
 
-        # Check backend
         if pm2 list | grep -q "student-db-backend.*online"; then
           echo "✅ Backend is running"
 
