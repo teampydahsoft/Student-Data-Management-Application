@@ -11,7 +11,7 @@ if (rawApiUrl) {
   // Ensure it includes /api
   API_BASE_URL = cleanUrl.endsWith('/api') ? cleanUrl : cleanUrl + '/api';
 } else {
-  API_BASE_URL = 'http://192.168.1.102:5000/api';
+  API_BASE_URL = '/api';
 }
 
 export const API_URL = API_BASE_URL;
@@ -21,7 +21,7 @@ export const CRM_BACKEND_URL = import.meta.env.VITE_CRM_BACKEND_URL || 'http://1
 export const CRM_FRONTEND_URL = import.meta.env.VITE_CRM_FRONTEND_URL || 'http://192.168.1.102:5174';
 
 // Also create a base URL for static files (without /api)
-export const STATIC_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://192.168.1.102:5000';
+export const STATIC_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : '';
 
 // For production, ensure we use the same domain for static files
 export const getStaticFileUrl = (filename) => {
@@ -29,7 +29,7 @@ export const getStaticFileUrl = (filename) => {
   if (filename.startsWith('http')) return filename;
 
   // In production, use the same domain as the API but without /api
-  const baseUrl = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://192.168.1.102:5000';
+  const baseUrl = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : '';
 
   // Handle cross-domain static file serving
   return `${baseUrl}/uploads/${filename}`;
@@ -45,14 +45,7 @@ export const getStaticFileUrlDirect = (filename) => {
   // If it's already a full HTTP URL, return as-is
   if (filename.startsWith('http')) return filename;
 
-  // For file paths, construct the URL
-  // Use proxy approach for production
-  if (rawApiUrl && rawApiUrl.includes('onrender.com')) {
-    // For Render backend, use direct URL construction
-    return `https://pydahsdbms.onrender.com/uploads/${filename}`;
-  }
-
-  return `${rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://192.168.1.102:5000'}/uploads/${filename}`;
+  return `${rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : ''}/uploads/${filename}`;
 };
 
 
