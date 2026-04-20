@@ -19,11 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
       - name: Deploy to Lightsail
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -41,18 +36,26 @@ jobs:
             git fetch origin
             git reset --hard origin/main || git reset --hard origin/master
 
+            # ======================
+            # BACKEND DEPLOY
+            # ======================
             echo "🔧 Deploying backend..."
             cd backend
             npm ci --production
             pm2 restart student-db-backend || pm2 start server.js --name student-db-backend
             pm2 save
 
+            # ======================
+            # FRONTEND DEPLOY
+            # ======================
             echo "🎨 Deploying frontend..."
             cd ../frontend
-            npm install
-            export NODE_OPTIONS="--max-old-space-size=1536"
-            npm run build
 
+            echo "📁 Using pre-built dist (no build on server)..."
+
+            # ======================
+            # NGINX RESTART
+            # ======================
             echo "🔄 Restarting nginx..."
             sudo systemctl restart nginx
 
