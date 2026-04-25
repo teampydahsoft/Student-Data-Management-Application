@@ -221,6 +221,35 @@ app.use("/settings", settingsRoutes);
 app.use("/fees", feeRoutes);
 app.use("/tickets", ticketRoutes);
 app.use("/complaint-categories", complaintCategoryRoutes);
+// When reverse proxy uses e.g. `location /api/ { proxy_pass http://upstream/; }`, Node sees paths
+// without the `/api` prefix. Mirror `/api/*` mounts here so those requests still match.
+app.use("/announcements", require("./routes/announcementRoutes"));
+app.use("/polls", require("./routes/pollRoutes"));
+app.use("/services", serviceRoutes);
+app.use("/certificate-templates", certificateTemplateRoutes);
+app.use("/events", require("./routes/eventRoutes"));
+app.use("/student-history", require("./routes/studentHistoryRoutes"));
+app.use("/sms-templates", require("./routes/smsTemplateRoutes"));
+app.use("/notifications", require("./routes/notificationRoutes"));
+app.use("/feedback-forms", require("./routes/feedbackRoutes"));
+app.use("/push", require("./routes/pushRoutes"));
+app.use("/web-notifications", require("./routes/notificationRoutes"));
+app.use("/clubs", require("./routes/clubRoutes"));
+app.use("/transport", require("./routes/transportRoutes"));
+app.use("/payments", paymentRoutes);
+app.use("/previous-colleges", require("./routes/previousCollegeRoutes"));
+app.use("/faculty", require("./routes/facultyRoutes"));
+app.use("/period-slots", require("./routes/periodSlotsRoutes"));
+app.use("/timetable", require("./routes/timetableRoutes"));
+app.use("/subjects", require("./routes/subjectsRoutes"));
+app.use("/hourly-attendance", require("./routes/hourlyAttendanceRoutes"));
+app.use("/academic-content", require("./routes/academicContentRoutes"));
+app.use("/internal-marks", require("./routes/internalMarksRoutes"));
+app.use("/chat", require("./routes/chatRoutes"));
+app.use("/internship", require("./internship/internshipRoutes"));
+app.use("/profile-changes", require("./routes/profileChangeRoutes"));
+app.use("/certificate-borrow", require("./routes/certificateBorrowRoutes"));
+app.use("/qr", require("./routes/qrRoutes"));
 
 // Root API endpoint
 app.get("/api", (req, res) => {
