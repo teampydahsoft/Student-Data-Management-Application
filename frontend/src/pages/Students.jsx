@@ -36,6 +36,7 @@ import DigitalStudentCard from '../components/DigitalStudentCard';
 import { Link, useLocation } from 'react-router-dom';
 import api, { getStaticFileUrlDirect } from '../config/api';
 import StudentAttendanceTab from '../components/Students/StudentAttendanceTab';
+import ParentEngagementPanel from '../components/Students/ParentEngagementPanel';
 import StudentSmsTab from '../components/Students/StudentSmsTab';
 import toast from 'react-hot-toast';
 import MobileVerificationModal from '../components/Students/MobileVerificationModal';
@@ -3683,6 +3684,12 @@ const Students = () => {
                     >
                       <CreditCard size={16} /> <span className="whitespace-nowrap">ID Card</span>
                     </button>
+                    <button
+                      onClick={() => setActiveStudentTab('parent_activity')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'parent_activity' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                    >
+                      <Eye size={16} /> <span className="whitespace-nowrap">Parent Activity</span>
+                    </button>
                   </div>
                 </div>
 
@@ -4123,6 +4130,10 @@ const Students = () => {
                       </div>
                     );
                   })()}
+
+                  {activeStudentTab === 'parent_activity' && selectedStudent?.id && (
+                    <ParentEngagementPanel studentId={selectedStudent.id} variant="tab" />
+                  )}
 
                   <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">

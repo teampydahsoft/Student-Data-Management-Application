@@ -31,6 +31,7 @@ const complaintCategoryRoutes = require("./routes/complaintCategoryRoutes");
 const serviceRoutes = require("./routes/serviceRoutes");
 const certificateTemplateRoutes = require("./routes/certificateTemplateRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const parentRoutes = require("./routes/parentRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -137,6 +138,7 @@ app.get("/health/db", async (req, res) => {
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/parent", parentRoutes);
 app.use("/api/forms", formRoutes);
 app.use("/api/submissions", submissionRoutes);
 app.use("/api/students", studentRoutes);
@@ -204,6 +206,7 @@ app.use("/api/qr", require("./routes/qrRoutes")); // Public QR verify endpoint
 
 // Legacy route support for direct API access (without /api prefix)
 app.use("/auth", authRoutes);
+app.use("/parent", parentRoutes);
 app.use("/forms", formRoutes);
 app.use("/submissions", submissionRoutes);
 app.use("/students", studentRoutes);

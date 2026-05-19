@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { LogIn, Loader2, Eye, EyeOff, Users, Home, Clock, User, ArrowRight } from 'lucide-react';
+import { LogIn, Loader2, Eye, EyeOff, Users, Home, Clock, User, ArrowRight, Phone, ShieldCheck } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 import api, { CRM_BACKEND_URL, CRM_FRONTEND_URL } from '../config/api';
@@ -9,15 +9,37 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { login, loginFromSSO, isAuthenticated, userType } = useAuthStore();
+  const {
+    login,
+    loginFromSSO,
+    isAuthenticated,
+    userType,
+    sendParentOtp,
+    verifyParentOtp,
+    selectParentStudent
+  } = useAuthStore();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [loginType, setLoginType] = useState('student');
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  const getTabFromPath = () => {
+    if (location.pathname.startsWith('/parent/login')) return 'parent';
+    if (location.pathname.startsWith('/student/login')) return 'student';
+    return 'staff';
+  };
+
+  const [activeTab, setActiveTab] = useState(() => getTabFromPath());
+
+  const [parentMobile, setParentMobile] = useState('');
+  const [parentOtp, setParentOtp] = useState('');
+  const [parentStep, setParentStep] = useState('mobile');
+  const [parentLoading, setParentLoading] = useState(false);
+  const [selectionToken, setSelectionToken] = useState(null);
+  const [linkedStudents, setLinkedStudents] = useState([]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -65,7 +87,23 @@ const Login = () => {
     }
   };
 
-  const isStudentLogin = location.pathname.startsWith('/student/login');
+  const isStudentLogin = activeTab === 'student';
+  const isParentLogin = activeTab === 'parent';
+
+  useEffect(() => {
+    setActiveTab(getTabFromPath());
+  }, [location.pathname]);
+
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setParentStep('mobile');
+    setParentOtp('');
+    setSelectionToken(null);
+    setLinkedStudents([]);
+    if (tab === 'parent') navigate('/parent/login', { replace: true });
+    else if (tab === 'student') navigate('/student/login', { replace: true });
+    else navigate('/login', { replace: true });
+  };
 
   const handleSSOLogin = useCallback(async (encryptedToken) => {
     setIsVerifying(true);
@@ -134,13 +172,83 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated && !isVerifying) {
-      if (userType === 'student' || isStudentLogin) {
+      if (userType === 'parent') {
+        navigate('/parent/dashboard');
+      } else if (userType === 'student' || isStudentLogin) {
         navigate('/student/dashboard');
       } else {
         navigate('/');
       }
     }
   }, [isAuthenticated, navigate, userType, isStudentLogin, isVerifying]);
+
+  const handleParentSendOtp = async (e) => {
+    e.preventDefault();
+    if (!parentMobile.trim()) {
+      toast.error('Enter your registered mobile number');
+      return;
+    }
+    setParentLoading(true);
+    try {
+      const result = await sendParentOtp(parentMobile.trim());
+      if (result.success) {
+        toast.success(result.message || 'OTP sent');
+        setParentStep('otp');
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error('Request timed out or failed. Please try again.');
+    } finally {
+      setParentLoading(false);
+    }
+  };
+
+  const handleParentVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!parentOtp.trim()) {
+      toast.error('Enter the OTP');
+      return;
+    }
+    setParentLoading(true);
+    try {
+      const result = await verifyParentOtp(parentMobile.trim(), parentOtp.trim());
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
+      if (result.requiresSelection) {
+        setSelectionToken(result.selectionToken);
+        setLinkedStudents(result.students || []);
+        setParentStep('select');
+        toast.success('Select your child to continue');
+        return;
+      }
+      toast.success('Login successful!');
+      navigate(result.redirectPath);
+    } catch {
+      toast.error('Verification failed. Please try again.');
+    } finally {
+      setParentLoading(false);
+    }
+  };
+
+  const handleParentSelectStudent = async (studentId) => {
+    setParentLoading(true);
+    try {
+      const result = await selectParentStudent(selectionToken, studentId);
+      if (result.success) {
+        toast.success('Login successful!');
+        navigate(result.redirectPath);
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error('Could not complete login. Please try again.');
+    } finally {
+      setParentLoading(false);
+    }
+  };
 
   const handleChange = (e) => {
     setFormData({
@@ -281,6 +389,120 @@ const Login = () => {
               </p>
             </div>
 
+            <div className="flex p-1 bg-gray-100 rounded-xl mb-6">
+              {[
+                { id: 'staff', label: 'Staff' },
+                { id: 'student', label: 'Student' },
+                { id: 'parent', label: 'Parent' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => switchTab(tab.id)}
+                  className={`flex-1 py-2.5 text-xs font-black rounded-lg transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {isParentLogin ? (
+              <div className="space-y-6">
+                {parentStep === 'mobile' && (
+                  <form onSubmit={handleParentSendOtp} className="space-y-5">
+                    <div className="group">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Parent Mobile Number</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <Phone size={18} className="text-gray-400" />
+                        </div>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="10-digit mobile number"
+                          className="block w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-medium"
+                          value={parentMobile}
+                          onChange={(e) => setParentMobile(e.target.value)}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">Use the mobile number registered as parent contact</p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={parentLoading}
+                      className="w-full h-12 bg-primary text-white rounded-xl font-black flex items-center justify-center gap-2 disabled:opacity-70"
+                    >
+                      {parentLoading ? <Loader2 className="animate-spin" size={20} /> : <>Send OTP <ArrowRight size={18} /></>}
+                    </button>
+                  </form>
+                )}
+
+                {parentStep === 'otp' && (
+                  <form onSubmit={handleParentVerifyOtp} className="space-y-5">
+                    <div className="group">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Enter OTP</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <ShieldCheck size={18} className="text-gray-400" />
+                        </div>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          required
+                          placeholder="6-digit OTP"
+                          className="block w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-medium tracking-widest"
+                          value={parentOtp}
+                          onChange={(e) => setParentOtp(e.target.value.replace(/\D/g, ''))}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={parentLoading}
+                      className="w-full h-12 bg-primary text-white rounded-xl font-black flex items-center justify-center gap-2 disabled:opacity-70"
+                    >
+                      {parentLoading ? <Loader2 className="animate-spin" size={20} /> : <>Verify & Login <ArrowRight size={18} /></>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParentStep('mobile')}
+                      className="w-full text-sm font-bold text-gray-500 hover:text-primary"
+                    >
+                      Change mobile number
+                    </button>
+                  </form>
+                )}
+
+                {parentStep === 'select' && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-bold text-gray-700">Select student</p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {linkedStudents.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={parentLoading}
+                          onClick={() => handleParentSelectStudent(s.id)}
+                          className="w-full text-left p-4 rounded-xl border border-gray-200 hover:border-primary hover:bg-primary/5 transition-all disabled:opacity-60"
+                        >
+                          <p className="font-bold text-gray-900">{s.student_name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{s.admission_number} · {s.course} · {s.branch}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">
+                  Parent session stays active for 15 days
+                </p>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-5">
                 <div className="group">
@@ -361,6 +583,7 @@ const Login = () => {
                 </p>
               </div>
             </form>
+            )}
           </div>
         </div>
       </div>

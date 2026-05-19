@@ -678,20 +678,22 @@ const SemesterTab = ({ semester, semesterSeries }) => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const Attendance = () => {
+const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) => {
     const [loading, setLoading] = useState(true);
     const [historyData, setHistoryData] = useState(null);
     const [activeTab, setActiveTab] = useState('weekly');
 
     useEffect(() => {
-        // initial load only
+        if (logParentView) {
+            api.post('/parent/view-log', { page: 'attendance' }).catch(() => {});
+        }
         fetchAttendanceHistory();
     }, []);
 
     const fetchAttendanceHistory = async (showToast = false) => {
         try {
             setLoading(true);
-            const response = await api.get('/attendance/student', {
+            const response = await api.get(apiPath, {
                 params: { _t: Date.now() }
             });
             if (response.data.success) {

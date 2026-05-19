@@ -12,11 +12,15 @@ import {
 // Re-export for backward compatibility
 export { MODULE_ROUTE_MAP, getModuleKeyForPath };
 
-const resolveDefaultRoute = (user, isStudent = false) => {
+const resolveDefaultRoute = (user, userType = null) => {
   if (!user) return '/login';
 
+  if (userType === 'parent' || user.role === 'parent') {
+    return '/parent/dashboard';
+  }
+
   // Student users go to student dashboard
-  if (isStudent || user.role === 'student' || user.admission_number) {
+  if (userType === 'student' || user.role === 'student' || (user.admission_number && user.role !== 'parent')) {
     return '/student/dashboard';
   }
 
@@ -91,7 +95,7 @@ const useAuthStore = create((set) => {
           };
         }
 
-        const userType = user.role === 'student' ? 'student' : 'admin';
+        const userType = user.role === 'parent' ? 'parent' : (user.role === 'student' ? 'student' : 'admin');
 
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
@@ -99,7 +103,7 @@ const useAuthStore = create((set) => {
         localStorage.removeItem('admin');
 
         set({ user, token, isAuthenticated: true, userType });
-        return { success: true, redirectPath: resolveDefaultRoute(user, userType === 'student') };
+        return { success: true, redirectPath: resolveDefaultRoute(user, userType) };
       } catch (error) {
         console.error('Login error:', error);
         const errorMessage = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
@@ -125,13 +129,77 @@ const useAuthStore = create((set) => {
 
     /** SSO: store token/user from sso-session and return redirect path */
     loginFromSSO: (token, user) => {
-      const userType = user.role === 'student' ? 'student' : 'admin';
+      const userType = user.role === 'parent' ? 'parent' : (user.role === 'student' ? 'student' : 'admin');
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('userType', userType);
       localStorage.removeItem('admin');
       set({ user, token, isAuthenticated: true, userType });
-      return { success: true, redirectPath: resolveDefaultRoute(user, userType === 'student') };
+      return { success: true, redirectPath: resolveDefaultRoute(user, userType) };
+    },
+
+    sendParentOtp: async (mobileNumber) => {
+      try {
+        const response = await api.post('/auth/parent/otp/send', { mobileNumber }, { timeout: 20000 });
+        if (!response.data.success) {
+          return { success: false, message: response.data.message || 'Failed to send OTP' };
+        }
+        return { success: true, message: response.data.message, studentCount: response.data.studentCount };
+      } catch (error) {
+        return {
+          success: false,
+          message: error.response?.data?.message || 'Failed to send OTP'
+        };
+      }
+    },
+
+    verifyParentOtp: async (mobileNumber, otp) => {
+      try {
+        const response = await api.post('/auth/parent/otp/verify', { mobileNumber, otp }, { timeout: 20000 });
+        if (!response.data.success) {
+          return { success: false, message: response.data.message || 'Invalid OTP' };
+        }
+        const data = response.data;
+        if (data.requiresSelection) {
+          return {
+            success: true,
+            requiresSelection: true,
+            selectionToken: data.selectionToken,
+            students: data.students
+          };
+        }
+        const { token, user } = data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('userType', 'parent');
+        set({ user, token, isAuthenticated: true, userType: 'parent' });
+        return { success: true, redirectPath: resolveDefaultRoute(user, 'parent') };
+      } catch (error) {
+        return {
+          success: false,
+          message: error.response?.data?.message || 'Failed to verify OTP'
+        };
+      }
+    },
+
+    selectParentStudent: async (selectionToken, studentId) => {
+      try {
+        const response = await api.post('/auth/parent/select-student', { selectionToken, studentId }, { timeout: 20000 });
+        if (!response.data.success) {
+          return { success: false, message: response.data.message || 'Failed to select student' };
+        }
+        const { token, user } = response.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('userType', 'parent');
+        set({ user, token, isAuthenticated: true, userType: 'parent' });
+        return { success: true, redirectPath: resolveDefaultRoute(user, 'parent') };
+      } catch (error) {
+        return {
+          success: false,
+          message: error.response?.data?.message || 'Failed to complete login'
+        };
+      }
     },
 
     updateUser: (userData) => set((state) => ({
@@ -174,8 +242,7 @@ const useAuthStore = create((set) => {
           localStorage.setItem('user', JSON.stringify(user));
           localStorage.removeItem('admin');
           const persistedType = localStorage.getItem('userType');
-          // If persisted type is missing, infer from role
-          const type = persistedType || (user.role === 'student' ? 'student' : 'admin');
+          const type = persistedType || (user.role === 'parent' ? 'parent' : (user.role === 'student' ? 'student' : 'admin'));
 
           set({ user, isAuthenticated: true, userType: type });
           return true;

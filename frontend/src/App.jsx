@@ -81,11 +81,17 @@ import StudentTimetable from './pages/student/StudentTimetable';
 // Layout
 import AdminLayout from './components/Layout/AdminLayout';
 import StudentLayout from './components/Layout/StudentLayout';
+import ParentLayout from './components/Layout/ParentLayout';
+import ParentDashboard from './pages/parent/Dashboard';
+import ParentProfile from './pages/parent/Profile';
+import ParentAttendance from './pages/parent/Attendance';
+import ParentIdCard from './pages/parent/IdCard';
 
 // Protected Route Component for Admin
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, userType } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" />;
+  if (userType === 'parent') return <Navigate to="/parent/dashboard" replace />;
   if (userType === 'student') return <Navigate to="/student/dashboard" />;
   return children;
 };
@@ -94,14 +100,24 @@ const ProtectedRoute = ({ children }) => {
 const ProtectedStudentRoute = ({ children }) => {
   const { isAuthenticated, userType } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/student/login" />;
+  if (userType === 'parent') return <Navigate to="/parent/dashboard" replace />;
   if (userType === 'admin') return <Navigate to="/" />;
+  return children;
+};
+
+const ProtectedParentRoute = ({ children }) => {
+  const { isAuthenticated, userType } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/parent/login" />;
+  if (userType === 'student') return <Navigate to="/student/dashboard" replace />;
+  if (userType === 'admin') return <Navigate to="/" replace />;
   return children;
 };
 
 // Protected Route Component for Faculty (v2.0)
 const ProtectedFacultyRoute = ({ children }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, userType } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" />;
+  if (userType === 'parent' || user?.role === 'parent') return <Navigate to="/parent/profile" replace />;
   if (user?.role === 'student' || user?.admission_number) return <Navigate to="/student/dashboard" />;
   const isFaculty = user?.role === 'faculty' || user?.role === 'branch_faculty';
   if (!isFaculty) return <Navigate to="/" />;
@@ -114,7 +130,7 @@ function App() {
   const { isAuthenticated, userType } = useAuthStore();
 
   React.useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && userType !== 'parent') {
       const initPush = async () => {
         try {
           const registration = await registerServiceWorker();
@@ -130,7 +146,7 @@ function App() {
       };
       initPush();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, userType]);
 
   return (
     <Router>
@@ -163,6 +179,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/student/login" element={<Login />} />
+        <Route path="/parent/login" element={<Login />} />
         <Route path="/auth-callback" element={<AuthCallback />} />
         <Route path="/form/:formId" element={<PublicForm />} />
         <Route path="/qr/:qrToken" element={<QrStudentView />} />
@@ -172,7 +189,9 @@ function App() {
           path="/"
           element={
             isAuthenticated ? (
-              userType === 'student' ? (
+              userType === 'parent' ? (
+                <Navigate to="/parent/profile" replace />
+              ) : userType === 'student' ? (
                 <Navigate to="/student/dashboard" replace />
               ) : (
                 <AdminLayout />
@@ -253,6 +272,22 @@ function App() {
           <Route path="feedback" element={<StudentFeedback />} />
           <Route path="profile-requests" element={<MyProfileRequests />} />
           <Route path="my-documents" element={<MyDocuments />} />
+        </Route>
+
+        {/* Protected Parent Routes */}
+        <Route
+          path="/parent"
+          element={
+            <ProtectedParentRoute>
+              <ParentLayout />
+            </ProtectedParentRoute>
+          }
+        >
+          <Route index element={<Navigate to="/parent/dashboard" replace />} />
+          <Route path="dashboard" element={<ParentDashboard />} />
+          <Route path="profile" element={<ParentProfile />} />
+          <Route path="attendance" element={<ParentAttendance />} />
+          <Route path="id-card" element={<ParentIdCard />} />
         </Route>
 
         {/* Protected Faculty Routes (v2.0) */}
