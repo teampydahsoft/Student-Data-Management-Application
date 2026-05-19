@@ -49,6 +49,11 @@ import RejoinModal from '../components/RejoinModal';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { SkeletonTable, SkeletonStudentsTable } from '../components/SkeletonLoader';
 import { formatDate } from '../utils/dateUtils';
+import {
+  buildPartialStudentUpdatePayload,
+  cloneStudentFormSnapshot,
+  stripReadonlyStudentPayloadFields
+} from '../utils/studentUpdatePayload';
 import { QRCodeSVG } from 'qrcode.react';
 import { useStudents, useUpdateStudent, useDeleteStudent, useBulkDeleteStudents, useInvalidateStudents } from '../hooks/useStudents';
 import useAuthStore from '../store/authStore';
@@ -262,6 +267,7 @@ const Students = () => {
   const [historySubTab, setHistorySubTab] = useState('remarks');
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
+  const [editBaseline, setEditBaseline] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ student_status: 'Regular', level: '' }); // Default to show only Regular students
   const [colleges, setColleges] = useState([]);
@@ -1737,11 +1743,13 @@ const Students = () => {
       ...(student.student_data?.apaar_id && !student.apaar_id && { apaar_id: student.student_data.apaar_id })
     };
 
+    const cleanedAllFields = stripReadonlyStudentPayloadFields(allFields);
+
     console.log('Student data:', student);
     console.log('All fields being set:', allFields);
 
     const stageSyncedFields = syncStageFields(
-      allFields,
+      cleanedAllFields,
       student.current_year,
       student.current_semester
     );
@@ -1771,6 +1779,7 @@ const Students = () => {
 
     setSelectedStudent(stageSyncedStudent);
     setEditData(stageSyncedFields);
+    setEditBaseline(cloneStudentFormSnapshot(stageSyncedFields));
     setEditRegistrationStatus(student.registration_status || 'pending');
     setEditFeeStatus(student.fee_status || 'pending');
     setPermitEndingDate(student.permit_ending_date || '');
@@ -1864,14 +1873,30 @@ const Students = () => {
         }
       }
 
+      const partialStudentData = buildPartialStudentUpdatePayload(
+        editBaseline || {},
+        synchronizedData,
+        {
+          registrationStatus: editRegistrationStatus,
+          feeStatus: editFeeStatus,
+          originalStudent: selectedStudent
+        }
+      );
+
+      if (Object.keys(partialStudentData).length === 0 && editFeeStatus !== 'permitted') {
+        toast.success('No changes to save');
+        setSavingEdit(false);
+        return;
+      }
+
       await updateStudentMutation.mutateAsync({
         admissionNumber: selectedStudent.admission_number,
         data: {
-          studentData: synchronizedData
+          studentData: partialStudentData
         }
       });
 
-      console.log('Save successful');
+      setEditBaseline(cloneStudentFormSnapshot(synchronizedData));
 
       // Invalidate students query to ensure fresh data
       invalidateStudents();

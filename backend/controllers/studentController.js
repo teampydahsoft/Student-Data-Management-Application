@@ -2897,20 +2897,35 @@ exports.updateStudent = async (req, res) => {
     const { admissionNumber } = req.params;
     const { studentData } = req.body;
 
-    // Fetch existing student to check batch
-    const [existingStudentsBeforeCheck] = await masterPool.query(
-      'SELECT id, batch, pin_no, student_data FROM students WHERE admission_number = ?',
+    if (!studentData || typeof studentData !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Student data is required'
+      });
+    }
+
+    const incomingPhotoProbe =
+      studentData.student_photo || studentData['Student Photo'];
+    const needsPhotoColumn =
+      typeof incomingPhotoProbe === 'string' &&
+      incomingPhotoProbe.startsWith('data:image/');
+
+    const selectColumns = await getStudentUpdateFetchColumns(needsPhotoColumn);
+
+    const [existingStudents] = await masterPool.query(
+      `SELECT ${selectColumns} FROM students WHERE admission_number = ?`,
       [admissionNumber]
     );
 
-    if (existingStudentsBeforeCheck.length === 0) {
+    if (existingStudents.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Student not found'
       });
     }
 
-    const currentStudent = existingStudentsBeforeCheck[0];
+    const existingStudent = existingStudents[0];
+    const currentStudent = existingStudent;
     const currentStudentData = parseJSON(currentStudent.student_data) || {};
     // Extract actual batch from DB column or JSON field
     const studentBatch = currentStudent.batch || currentStudentData.batch || currentStudentData.Batch || currentStudentData.BATCH;
@@ -3002,78 +3017,25 @@ exports.updateStudent = async (req, res) => {
       'updated_at'
     ];
 
-    // Sanitize studentData: remove any protected fields from the input to prevent mass assignment.
-    // This ensures that even the JSON blob (student_data) doesn't get updated with malicious values.
+    // Strip system/metadata fields (often copied into student_data from imports) before merge
     if (studentData && typeof studentData === 'object') {
+      const cleanedIncoming = cleanStudentMetadata(studentData);
+      Object.keys(studentData).forEach((key) => delete studentData[key]);
+      Object.assign(studentData, cleanedIncoming);
+
       const protectedSet = new Set(PROTECTED_COLUMNS);
       Object.keys(studentData).forEach((key) => {
-        // Check if the key maps to a protected column or is itself a protected column name
         const mappedColumn = FIELD_MAPPING[key];
         if (protectedSet.has(mappedColumn) || protectedSet.has(key)) {
-          console.warn(
-            `⚠️ Security: Blocked attempt to update protected field '${key}' (maps to '${mappedColumn || key}') for admission ${admissionNumber}`
-          );
           delete studentData[key];
         }
       });
     }
 
-    // Sanitize studentData for logging (remove large base64 image data)
-    const sanitizedDataForLog = { ...studentData };
-    if (sanitizedDataForLog.student_photo && typeof sanitizedDataForLog.student_photo === 'string') {
-      if (sanitizedDataForLog.student_photo.startsWith('data:image/')) {
-        sanitizedDataForLog.student_photo = '[Base64 Image Data - Removed from log]';
-      }
-    }
-    if (sanitizedDataForLog['Student Photo'] && typeof sanitizedDataForLog['Student Photo'] === 'string') {
-      if (sanitizedDataForLog['Student Photo'].startsWith('data:image/')) {
-        sanitizedDataForLog['Student Photo'] = '[Base64 Image Data - Removed from log]';
-      }
-    }
-
-    console.log('Update request for admission:', admissionNumber);
-    console.log('Received studentData:', JSON.stringify(sanitizedDataForLog, null, 2));
-
-    if (!studentData || typeof studentData !== 'object') {
-      return res.status(400).json({
-        success: false,
-        message: 'Student data is required'
-      });
-    }
-
-    // First, get the current student data to preserve existing individual columns
-    const [existingStudents] = await masterPool.query(
-      'SELECT * FROM students WHERE admission_number = ?',
-      [admissionNumber]
+    const incomingFieldCount = Object.keys(studentData).length;
+    console.log(
+      `Update student ${admissionNumber}: ${incomingFieldCount} field(s) in request`
     );
-
-    if (existingStudents.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
-      });
-    }
-
-    const existingStudent = existingStudents[0];
-
-    // Sanitize existing student data for logging (remove large base64 image data)
-    const sanitizedExisting = { ...existingStudent };
-    if (sanitizedExisting.student_photo && typeof sanitizedExisting.student_photo === 'string') {
-      if (sanitizedExisting.student_photo.startsWith('data:image/')) {
-        sanitizedExisting.student_photo = '[Base64 Image Data - Removed from log]';
-      }
-    }
-    const existingStudentDataParsed = parseJSON(existingStudent.student_data) || {};
-    if (existingStudentDataParsed.student_photo && typeof existingStudentDataParsed.student_photo === 'string') {
-      if (existingStudentDataParsed.student_photo.startsWith('data:image/')) {
-        existingStudentDataParsed.student_photo = '[Base64 Image Data - Removed from log]';
-      }
-    }
-    if (sanitizedExisting.student_data) {
-      sanitizedExisting.student_data = JSON.stringify(existingStudentDataParsed);
-    }
-
-    console.log('Existing student data:', JSON.stringify(sanitizedExisting, null, 2));
 
     // Parse existing student_data to merge with incoming data
     const existingStudentData = cleanStudentMetadata(parseJSON(existingStudent.student_data) || {});
@@ -3175,13 +3137,43 @@ exports.updateStudent = async (req, res) => {
       'certificates_status'
     ]);
 
-    for (const [key, value] of Object.entries(mutableStudentData)) {
-      // Use FIELD_LOOKUP with normalized key for robust column resolution
+    const sideEffectJsonKeys = new Set();
+    if (normalizedNewStudentMobile && normalizedNewStudentMobile !== normalizedOldStudentMobile) {
+      sideEffectJsonKeys.add('is_student_mobile_verified');
+    }
+    if (normalizedNewParentMobile && normalizedNewParentMobile !== normalizedOldParentMobile) {
+      sideEffectJsonKeys.add('is_parent_mobile_verified');
+    }
+
+    const columnKeysToProcess = new Set(Object.keys(incomingStudentData));
+    sideEffectJsonKeys.forEach((k) => columnKeysToProcess.add(k));
+
+    if (
+      Number(resolvedStage.year) !== Number(existingStudent.current_year) ||
+      Number(resolvedStage.semester) !== Number(existingStudent.current_semester)
+    ) {
+      updateFields.push('current_year = ?', 'current_semester = ?');
+      updateValues.push(resolvedStage.year, resolvedStage.semester);
+      updatedColumns.add('current_year');
+      updatedColumns.add('current_semester');
+    }
+
+    for (const key of columnKeysToProcess) {
+      if (!(key in mutableStudentData)) {
+        continue;
+      }
+      const value = mutableStudentData[key];
       const normalizedKey = normalizeHeaderKeyForLookup(key);
       const columnName = FIELD_LOOKUP[normalizedKey];
 
-      // If the field was explicitly sent in THIS request, allow it to be empty (to clear values)
-      const isExplicitUpdate = Object.keys(incomingStudentData).some(k => normalizeHeaderKeyForLookup(k) === normalizedKey);
+      if (columnName === 'current_year' || columnName === 'current_semester') {
+        continue;
+      }
+
+      const isExplicitUpdate =
+        Object.keys(incomingStudentData).some(
+          (k) => normalizeHeaderKeyForLookup(k) === normalizedKey
+        ) || sideEffectJsonKeys.has(key);
 
       const hasNonEmptyValue = value !== undefined && value !== '' && value !== '{}' && value !== null;
       const shouldAllowEmptyUpdate = columnName && (
@@ -3263,10 +3255,20 @@ exports.updateStudent = async (req, res) => {
       delete dataForJson['Student Photo'];
     }
 
-    // Always update the JSON data field
     const serializedStudentData = JSON.stringify(dataForJson);
-    updateFields.push('student_data = ?');
-    updateValues.push(serializedStudentData);
+    const studentDataChanged = !jsonPayloadsEqual(dataForJson, existingStudentData);
+    if (studentDataChanged) {
+      updateFields.push('student_data = ?');
+      updateValues.push(serializedStudentData);
+    }
+
+    if (updateFields.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No changes detected'
+      });
+    }
+
     updateValues.push(admissionNumber);
 
     // Execute the update query
@@ -3382,17 +3384,14 @@ exports.updateStudent = async (req, res) => {
       }
     });
 
-    await updateStagingStudentStage(admissionNumber, resolvedStage, serializedStudentData);
-
-    // Auto-complete check
-    await checkAndAutoCompleteRegistration(admissionNumber);
-
     clearStudentsCache();
 
     res.json({
       success: true,
       message: 'Student data updated successfully'
     });
+
+    runDeferredStudentUpdateTasks(admissionNumber, resolvedStage, serializedStudentData);
 
   } catch (error) {
     console.error('Update student error:', error);
@@ -5646,9 +5645,32 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
+// Cached students table columns (avoids repeated information_schema queries per update)
+const studentsTableColumnCache = { loaded: false, columns: new Set() };
+
+const loadStudentsTableColumns = async () => {
+  if (studentsTableColumnCache.loaded) {
+    return;
+  }
+  try {
+    const [rows] = await masterPool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students'`
+    );
+    studentsTableColumnCache.columns = new Set(rows.map((r) => r.COLUMN_NAME));
+    studentsTableColumnCache.loaded = true;
+  } catch (err) {
+    console.warn('Could not load students table column cache:', err.message);
+  }
+};
+
 // Helper: check if column exists in students table
 const columnExists = async (columnName) => {
   try {
+    await loadStudentsTableColumns();
+    if (studentsTableColumnCache.loaded) {
+      return studentsTableColumnCache.columns.has(columnName);
+    }
     const [rows] = await masterPool.query(
       `SELECT COUNT(*) AS count
        FROM information_schema.COLUMNS
@@ -5659,7 +5681,51 @@ const columnExists = async (columnName) => {
     );
     return Number(rows?.[0]?.count || 0) > 0;
   } catch (_e) {
-    // If we cannot check, default to false to avoid ER_BAD_FIELD_ERROR
+    return false;
+  }
+};
+
+// Core columns present in base schema; optional migration columns added only when they exist
+const STUDENT_UPDATE_FETCH_BASE = [
+  'id', 'admission_number', 'admission_no', 'pin_no', 'batch', 'current_year', 'current_semester',
+  'student_name', 'father_name', 'student_mobile', 'parent_mobile1', 'parent_mobile2',
+  'student_address', 'city_village', 'mandal_name', 'district', 'previous_college',
+  'student_status', 'certificates_status', 'scholar_status', 'course', 'branch', 'stud_type',
+  'gender', 'dob', 'adhar_no', 'caste', 'admission_date', 'remarks', 'student_data'
+];
+
+const STUDENT_UPDATE_FETCH_OPTIONAL = [
+  'college',
+  'fee_status',
+  'registration_status',
+  'permit_ending_date',
+  'permit_remarks'
+];
+
+const getStudentUpdateFetchColumns = async (includePhoto = false) => {
+  await loadStudentsTableColumns();
+  const columns = [...STUDENT_UPDATE_FETCH_BASE];
+
+  if (studentsTableColumnCache.loaded) {
+    STUDENT_UPDATE_FETCH_OPTIONAL.forEach((col) => {
+      if (studentsTableColumnCache.columns.has(col)) {
+        columns.push(col);
+      }
+    });
+    if (includePhoto && studentsTableColumnCache.columns.has('student_photo')) {
+      columns.push('student_photo');
+    }
+  } else if (includePhoto) {
+    columns.push('student_photo');
+  }
+
+  return columns.join(', ');
+};
+
+const jsonPayloadsEqual = (a, b) => {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
     return false;
   }
 };
@@ -5825,11 +5891,13 @@ exports.updateFeeStatus = async (req, res) => {
   }
 };
 
-// Helper: Check for registration auto-completion
+// Helper: Check for registration auto-completion (column-first; JSON sync only when needed)
 const checkAndAutoCompleteRegistration = async (admissionNumber) => {
   try {
     const [rows] = await masterPool.query(
-      'SELECT student_data, certificates_status, fee_status, scholar_status, current_year, current_semester FROM students WHERE admission_number = ?',
+      `SELECT student_data, certificates_status, fee_status, scholar_status,
+              current_year, current_semester, registration_status
+       FROM students WHERE admission_number = ?`,
       [admissionNumber]
     );
 
@@ -5838,73 +5906,89 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
     const student = rows[0];
     const studentData = parseJSON(student.student_data) || {};
 
-    // 1. Verification Check
     const isMobileVerified = studentData.is_student_mobile_verified === true;
     const isParentVerified = studentData.is_parent_mobile_verified === true;
     const verificationCompleted = isMobileVerified && isParentVerified;
 
-    // 2. Certificates Check
-    let certStatus = student.certificates_status || '';
-    const certificatesCompleted = (certStatus && (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed'));
+    const certStatus = student.certificates_status || '';
+    const certificatesCompleted =
+      certStatus &&
+      (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed');
 
-    // 3. Fee Check
-    const feeStatus = student.fee_status || '';
-    const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].includes(feeStatus.toLowerCase());
+    const feeStatus = (student.fee_status || '').toLowerCase();
+    const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].includes(feeStatus);
 
-    // 4. Promotion Check
-    const promotionCompleted = (student.current_year && student.current_semester);
+    const promotionCompleted = student.current_year && student.current_semester;
 
-    // 5. Scholarship Check (MANDATORY - must have a status)
     const scholarStatus = (student.scholar_status || '').trim();
-    const scholarshipCompleted = scholarStatus && scholarStatus !== '' && scholarStatus.toLowerCase() !== 'null' && scholarStatus.toLowerCase() !== 'undefined';
+    const scholarshipCompleted =
+      scholarStatus &&
+      scholarStatus !== '' &&
+      scholarStatus.toLowerCase() !== 'null' &&
+      scholarStatus.toLowerCase() !== 'undefined';
 
     const hasRegColumn = await columnExists('registration_status');
-    const allConditionsMet = verificationCompleted && certificatesCompleted && feeCompleted && promotionCompleted && scholarshipCompleted;
+    const allConditionsMet =
+      verificationCompleted &&
+      certificatesCompleted &&
+      feeCompleted &&
+      promotionCompleted &&
+      scholarshipCompleted;
 
-    // If ALL conditions are met (including scholarship), update registration_status to 'Completed'
-    // Otherwise, reset to 'pending' if it was incorrectly set to 'Completed'
-    if (allConditionsMet) {
-      console.log(`Auto-completing registration for ${admissionNumber}`);
+    const columnReg = (student.registration_status || '').trim();
+    const jsonReg =
+      studentData.registration_status ||
+      studentData['Registration Status'] ||
+      '';
 
-      if (hasRegColumn) {
-        await masterPool.query(
-          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-          ['Completed', admissionNumber]
-        );
+    const syncRegistrationJson = async (status) => {
+      const normalizedJson = String(jsonReg).trim().toLowerCase();
+      const target = status.toLowerCase();
+      if (normalizedJson === target) {
+        return;
       }
-
-      studentData.registration_status = 'Completed';
-      studentData['Registration Status'] = 'Completed';
-
+      studentData.registration_status = status;
+      studentData['Registration Status'] = status;
       await masterPool.query(
         'UPDATE students SET student_data = ? WHERE admission_number = ?',
         [JSON.stringify(studentData), admissionNumber]
       );
-    } else {
-      // Reset to 'pending' if conditions are not met (prevents showing incorrect 'Completed' status)
-      const currentRegStatus = student.registration_status || studentData.registration_status || studentData['Registration Status'] || '';
-      if (currentRegStatus && currentRegStatus.toLowerCase() === 'completed') {
-        console.log(`Resetting registration status to pending for ${admissionNumber} - not all conditions met`);
+      clearStudentsCache();
+    };
 
-        if (hasRegColumn) {
-          await masterPool.query(
-            'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-            ['pending', admissionNumber]
-          );
-        }
-
-        studentData.registration_status = 'pending';
-        studentData['Registration Status'] = 'pending';
-
+    if (allConditionsMet) {
+      if (hasRegColumn && columnReg.toLowerCase() !== 'completed') {
         await masterPool.query(
-          'UPDATE students SET student_data = ? WHERE admission_number = ?',
-          [JSON.stringify(studentData), admissionNumber]
+          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
+          ['Completed', admissionNumber]
         );
+        clearStudentsCache();
       }
+      await syncRegistrationJson('Completed');
+    } else if (columnReg.toLowerCase() === 'completed' || jsonReg.toLowerCase() === 'completed') {
+      if (hasRegColumn) {
+        await masterPool.query(
+          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
+          ['pending', admissionNumber]
+        );
+        clearStudentsCache();
+      }
+      await syncRegistrationJson('pending');
     }
   } catch (err) {
     console.error(`Check auto-complete error for ${admissionNumber}:`, err);
   }
+};
+
+const runDeferredStudentUpdateTasks = (admissionNumber, resolvedStage, serializedStudentData) => {
+  setImmediate(() => {
+    updateStagingStudentStage(admissionNumber, resolvedStage, serializedStudentData).catch((err) => {
+      console.warn(`Deferred staging sync failed for ${admissionNumber}:`, err.message);
+    });
+    checkAndAutoCompleteRegistration(admissionNumber).catch((err) => {
+      console.warn(`Deferred registration auto-complete failed for ${admissionNumber}:`, err.message);
+    });
+  });
 };
 
 // Check and update registration status for expired permits
