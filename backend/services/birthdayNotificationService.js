@@ -31,12 +31,12 @@ const checkAndSendBirthdayNotifications = async () => {
         };
 
         for (const student of students) {
-            const firstName = (student.student_name || '').split(' ')[0] || 'Student';
+            const fullName = (student.student_name || '').trim() || 'Student';
 
             // 1. Push notification
             const notificationPayload = {
                 title: 'Happy Birthday! 🎂',
-                body: `Dear ${firstName}, Happy Birthday! ${BIRTHDAY_WISH}`,
+                body: `Dear ${fullName}, Happy Birthday! ${BIRTHDAY_WISH}`,
                 icon: '/assets/icons/birthday-cake.png',
                 data: { url: '/student/dashboard' }
             };

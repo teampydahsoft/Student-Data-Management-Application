@@ -146,6 +146,8 @@ const PublicForm = () => {
   const [collegesLoading, setCollegesLoading] = useState(true);
   const [academicYears, setAcademicYears] = useState([]);
   const [academicYearsLoading, setAcademicYearsLoading] = useState(true);
+  const [studentQuotas, setStudentQuotas] = useState([]);
+  const [studentQuotasLoading, setStudentQuotasLoading] = useState(true);
   const [selectedCollegeId, setSelectedCollegeId] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
 
@@ -174,11 +176,12 @@ const PublicForm = () => {
     const loadAllData = async () => {
       try {
         // Fetch all data in parallel using Promise.allSettled - use public endpoints
-        const [coursesRes, collegesRes, yearsRes, certRes] = await Promise.allSettled([
+        const [coursesRes, collegesRes, yearsRes, certRes, quotasRes] = await Promise.allSettled([
           api.get('/courses/options'),
           api.get('/colleges/public'),
           api.get('/academic-years/public'),
-          api.get('/settings/certificates')
+          api.get('/settings/certificates'),
+          api.get('/quotas/public')
         ]);
 
         // Process results
@@ -190,6 +193,9 @@ const PublicForm = () => {
         }
         if (yearsRes.status === 'fulfilled') {
           setAcademicYears(yearsRes.value.data.data || []);
+        }
+        if (quotasRes.status === 'fulfilled') {
+          setStudentQuotas(quotasRes.value.data.data || []);
         }
         if (certRes.status === 'fulfilled' && certRes.value.value?.data?.success) {
           setCertificateConfig(certRes.value.value.data.data);
@@ -203,6 +209,7 @@ const PublicForm = () => {
         setCourseOptionsLoading(false);
         setCollegesLoading(false);
         setAcademicYearsLoading(false);
+        setStudentQuotasLoading(false);
       }
     };
 
@@ -1095,20 +1102,27 @@ const PublicForm = () => {
       );
     }
 
-    // Student Type dropdown
-    if (fieldKey.includes('stud_type') || fieldKey.includes('studtype') || fieldLabel.includes('student type')) {
+    // Quota / Student Type dropdown
+    if (
+      fieldKey.includes('stud_type') ||
+      fieldKey.includes('studtype') ||
+      fieldLabel.includes('student type') ||
+      fieldLabel.includes('quota')
+    ) {
       return (
         <select
           value={formData[field.label] || ''}
           onChange={(e) => handleInputChange(field.label, e.target.value, field.type)}
           className={commonClasses}
           required={field.required}
+          disabled={studentQuotasLoading}
         >
-          <option value="">Select Student Type</option>
-          <option value="CONV">CONV</option>
-          <option value="LATER">LATER</option>
-          <option value="LSPOT">LSPOT</option>
-          <option value="MANG">MANG</option>
+          <option value="">Select Quota</option>
+          {studentQuotas.map((quota) => (
+            <option key={quota.id} value={quota.code}>
+              {quota.name}
+            </option>
+          ))}
         </select>
       );
     }

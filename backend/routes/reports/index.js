@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const studentController = require('../../controllers/studentController');
 const categoryReportController = require('../../controllers/reports/categoryReportController');
+const smsReportController = require('../../controllers/reports/smsReportController');
 const authMiddleware = require('../../middleware/auth');
 const { attachUserScope, verifyPermission } = require('../../middleware/rbac');
 const { MODULES } = require('../../constants/rbac');
@@ -43,6 +44,22 @@ router.get(
   verifyPermission(MODULES.REPORTS, 'view_category'),
   attachUserScope,
   categoryReportController.exportCategoryReport
+);
+
+// SMS reports — sent counts and account credits
+router.get(
+  '/sms',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_sms_reports'),
+  attachUserScope,
+  smsReportController.getSmsReport
+);
+router.get(
+  '/sms/logs',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_sms_reports'),
+  attachUserScope,
+  smsReportController.getSmsReportLogs
 );
 
 module.exports = router;

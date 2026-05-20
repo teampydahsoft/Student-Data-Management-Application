@@ -57,6 +57,7 @@ import {
 } from '../utils/studentUpdatePayload';
 import { QRCodeSVG } from 'qrcode.react';
 import { useStudents, useUpdateStudent, useDeleteStudent, useBulkDeleteStudents, useInvalidateStudents } from '../hooks/useStudents';
+import useStudentQuotas from '../hooks/useStudentQuotas';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
 import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
@@ -101,8 +102,6 @@ const SCHOLAR_STATUS_OPTIONS = [
   'rejected from the final year'
 ];
 
-// Student type options
-const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
 
 // Registration status options
 const REGISTRATION_STATUS_OPTIONS = [
@@ -203,6 +202,7 @@ const DetailTile = ({ label, value, icon }) => (
 const Students = () => {
   const location = useLocation();
   const { user } = useAuthStore();
+  const { quotas: studentQuotas } = useStudentQuotas();
   const [bulkPasswordState, setBulkPasswordState] = useState({
     isOpen: false,
     processing: false,
@@ -2643,7 +2643,7 @@ const Students = () => {
                 </select>
               </div>
               <div className="flex flex-col">
-                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Student Type</label>
+                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Quota</label>
                 <select
                   value={filters.stud_type || ''}
                   onChange={(e) => handleFilterChange('stud_type', e.target.value)}
@@ -2879,7 +2879,7 @@ const Students = () => {
                       <>
                         {canViewField('stud_type') && (
                           <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
-                            <div className="font-semibold">Type</div>
+                            <div className="font-semibold">Quota</div>
                           </th>
                         )}
                         {canViewField('caste') && (
@@ -3479,10 +3479,15 @@ const Students = () => {
                             onChange={(e) => updateEditField('stud_type', e.target.value)}
                             className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest border-none outline-none cursor-pointer"
                           >
-                            <option value="">Select Type</option>
-                            {STUDENT_TYPE_OPTIONS.map((type) => (
-                              <option key={type} value={type}>{type}</option>
+                            <option value="">Select Quota</option>
+                            {studentQuotas.map((quota) => (
+                              <option key={quota.id} value={quota.code}>{quota.name}</option>
                             ))}
+                            {editData.stud_type && !studentQuotas.some((quota) => quota.code === (editData.stud_type || selectedStudent?.stud_type)) && (
+                              <option value={editData.stud_type || selectedStudent?.stud_type}>
+                                {editData.stud_type || selectedStudent?.stud_type}
+                              </option>
+                            )}
                           </select>
                         ) : (
                           <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">

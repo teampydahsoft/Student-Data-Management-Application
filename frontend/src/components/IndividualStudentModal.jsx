@@ -3,9 +3,9 @@ import { X, Save, User } from 'lucide-react';
 import api from '../config/api';
 import toast from 'react-hot-toast';
 import LoadingAnimation from './LoadingAnimation';
+import useStudentQuotas from '../hooks/useStudentQuotas';
 
 // Dropdown options for student fields
-const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
 const STUDENT_STATUS_OPTIONS = [
   'Regular',
   'Admission Cancelled',
@@ -19,6 +19,7 @@ const CASTE_OPTIONS = ['OC', 'BC-A', 'BC-B', 'BC-C', 'BC-D', 'BC-E', 'SC', 'ST',
 const CERTIFICATES_STATUS_OPTIONS = ['Submitted', 'Pending', 'Partial', 'Originals Returned', 'Not Required'];
 
 const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false, onSubmitComplete }) => {
+  const { quotas: studentQuotas, loading: studentQuotasLoading } = useStudentQuotas({ publicOnly: true });
   const [loading, setLoading] = useState(false);
   const [colleges, setColleges] = useState([]);
   const [collegesLoading, setCollegesLoading] = useState(true);
@@ -881,21 +882,22 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                       </select>
                     </div>
 
-                    {/* Student Type */}
+                    {/* Quota */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Student Type
+                        Quota
                       </label>
                       <select
                         name="stud_type"
                         value={studentData.stud_type}
                         onChange={handleChange}
+                        disabled={studentQuotasLoading}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                       >
-                        <option value="">Select Student Type</option>
-                        {STUDENT_TYPE_OPTIONS.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
+                        <option value="">Select Quota</option>
+                        {studentQuotas.map((quota) => (
+                          <option key={quota.id} value={quota.code}>
+                            {quota.name}
                           </option>
                         ))}
                       </select>

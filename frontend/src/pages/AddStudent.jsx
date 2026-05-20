@@ -8,9 +8,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import ManagePreviousCollegesModal from '../components/ManagePreviousCollegesModal';
 import { addressData } from '../data/addressData';
 import { getCourseType, getCertificatesForCourse as getCertificatesForCourseShared } from '../config/certificateConfig';
-
-// Dropdown options for student fields
-const STUDENT_TYPE_OPTIONS = ['CONV', 'LATER', 'LSPOT', 'MANG', 'SPOT'];
+import useStudentQuotas from '../hooks/useStudentQuotas';
 const STUDENT_STATUS_OPTIONS = [
   'Regular',
   'Discontinued from the second year',
@@ -29,6 +27,7 @@ const CERTIFICATES_STATUS_OPTIONS = ['Verified', 'Unverified', 'Submitted', 'Pen
 
 const AddStudent = () => {
   const navigate = useNavigate();
+  const { quotas: studentQuotas, loading: studentQuotasLoading } = useStudentQuotas({ publicOnly: true });
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [colleges, setColleges] = useState([]);
@@ -1335,22 +1334,23 @@ const AddStudent = () => {
                 </div>
               </div>
 
-              {/* 7. Student Type */}
+              {/* 7. Quota */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Student Type <span className="text-red-500">*</span>
+                  Quota <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="stud_type"
                   value={studentData.stud_type}
                   onChange={handleChange}
                   required
+                  disabled={studentQuotasLoading}
                   className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
                 >
-                  <option value="">Select Student Type</option>
-                  {STUDENT_TYPE_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
+                  <option value="">Select Quota</option>
+                  {studentQuotas.map((quota) => (
+                    <option key={quota.id} value={quota.code}>
+                      {quota.name}
                     </option>
                   ))}
                 </select>

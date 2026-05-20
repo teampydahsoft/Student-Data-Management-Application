@@ -415,6 +415,28 @@ const resolveParentContact = (student) => {
   );
 };
 
+/** Resolve student's full name for SMS (e.g. birthday wishes). */
+const resolveStudentFullName = (student) => {
+  if (!student) return 'Student';
+
+  let data = student.student_data;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data || '{}');
+    } catch {
+      data = {};
+    }
+  }
+
+  const name =
+    (student.student_name && String(student.student_name).trim()) ||
+    (data &&
+      String(data['Student Name'] || data['student_name'] || '').trim()) ||
+    '';
+
+  return name || 'Student';
+};
+
 /** Resolve student's own mobile for SMS (e.g. birthday wishes to student). */
 const resolveStudentMobile = (student) => {
   if (!student) return '';
@@ -577,7 +599,7 @@ exports.sendAbsenceNotification = async ({
 /**
  * Send birthday SMS to student using template:
  * "Dear {#var#} Happy Birthday! May this year bring success, happiness, and good health. Keep learning and growing. Best wishes from Pydah Group."
- * {#var#} is replaced with student name (or first name).
+ * {#var#} is replaced with the student's full name.
  */
 exports.sendBirthdaySms = async ({ student }) => {
   const logPrefix = `[SMS Birthday] ${student.admission_number || 'unknown'}`;
@@ -592,22 +614,12 @@ exports.sendBirthdaySms = async ({ student }) => {
     };
   }
 
-  let data = student.student_data;
-  if (typeof data === 'string') {
-    try {
-      data = JSON.parse(data || '{}');
-    } catch {
-      data = {};
-    }
-  }
-  const studentName =
-    (student.student_name && student.student_name.split(' ')[0]) ||
-    (data && (data['Student Name'] || data['student_name']));
-  const nameForMessage = (studentName && studentName.split(' ')[0]) || studentName || 'Student';
+  const nameForMessage = resolveStudentFullName(student);
 
   const message = buildAbsenceMessage(BIRTHDAY_SMS_TEMPLATE, [nameForMessage]);
 
   console.log(`${logPrefix} 📱 Sending birthday SMS to ${to}`);
+  console.log(`${logPrefix} 📝 Message: "${message}"`);
   return dispatchSms({
     to,
     message,
@@ -629,8 +641,155 @@ exports.sendBirthdaySms = async ({ student }) => {
 // Generic SMS sending function
 exports.sendSms = dispatchSms;
 
+const SMS_BALANCE_API_URL =
+  process.env.SMS_BALANCE_API_URL ||
+  'http://www.bulksmsapps.com/api/apicheckbalancev2.aspx';
+
+const parseBalanceFromResponse = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  const cleaned = text.split('<!DOCTYPE')[0].split('\n')[0].trim();
+
+  try {
+    const json = JSON.parse(cleaned);
+    const candidates = [
+      json.credits,
+      json.Credits,
+      json.balance,
+      json.Balance,
+      json.credit,
+      json.Credit,
+      json?.Data?.[0]?.Credits,
+      json?.data?.credits
+    ];
+    for (const val of candidates) {
+      if (val !== undefined && val !== null && val !== '') {
+        const num = parseFloat(String(val).replace(/[^\d.-]/g, ''));
+        if (!Number.isNaN(num)) return num;
+      }
+    }
+  } catch {
+    // not JSON
+  }
+
+  // BulkSMSApps: "69409 credit balance"
+  const leadingCredit = cleaned.match(/^([\d,.]+)\s+credit\s+balance/i);
+  if (leadingCredit) {
+    const num = parseFloat(leadingCredit[1].replace(/,/g, ''));
+    if (!Number.isNaN(num)) return num;
+  }
+
+  const labeled = cleaned.match(/(?:balance|credit|available)[\s:=-]+([\d,.]+)/i);
+  if (labeled) {
+    const num = parseFloat(labeled[1].replace(/,/g, ''));
+    if (!Number.isNaN(num)) return num;
+  }
+
+  if (/^\d+(\.\d+)?$/.test(cleaned)) {
+    return parseFloat(cleaned);
+  }
+
+  const numMatch = cleaned.match(/([\d,]+\.?\d*)/);
+  if (numMatch) {
+    const num = parseFloat(numMatch[1].replace(/,/g, ''));
+    if (!Number.isNaN(num)) return num;
+  }
+
+  return null;
+};
+
+/**
+ * Fetch remaining SMS credits from the BulkSMSApps account.
+ */
+exports.getAccountBalance = async () => {
+  if (SMS_TEST_MODE) {
+    return {
+      success: true,
+      credits: null,
+      testMode: true,
+      message: 'Test mode — balance not fetched from provider'
+    };
+  }
+
+  if (!SMS_API_KEY) {
+    return {
+      success: false,
+      credits: null,
+      error: 'SMS API key is not configured'
+    };
+  }
+
+  if (!ensureFetchAvailable()) {
+    return {
+      success: false,
+      credits: null,
+      error: 'Fetch API unavailable'
+    };
+  }
+
+  const balanceUrls = [
+    SMS_BALANCE_API_URL,
+    'http://www.bulksmsapps.com/api/apicheckbalancev2.aspx'
+  ].filter((url, i, arr) => url && arr.indexOf(url) === i);
+
+  let lastError = null;
+
+  for (const baseUrl of balanceUrls) {
+    try {
+      let apiUrl = baseUrl;
+      if (apiUrl.startsWith('https://')) {
+        apiUrl = apiUrl.replace('https://', 'http://');
+      }
+
+      const params = new URLSearchParams();
+      params.append('apikey', SMS_API_KEY);
+
+      const fullUrl = `${apiUrl}?${params.toString()}`;
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/plain, application/json, */*',
+          'User-Agent': 'NodeJS-SMS-Client/1.0'
+        }
+      });
+
+      const text = await response.text();
+      const credits = parseBalanceFromResponse(text);
+
+      if (credits !== null) {
+        return {
+          success: true,
+          credits,
+          rawResponse: text.substring(0, 200),
+          fetchedAt: new Date().toISOString()
+        };
+      }
+
+      const lower = text.toLowerCase();
+      if (
+        lower.includes('invalid') ||
+        lower.includes('unauthorized') ||
+        lower.includes('authentication')
+      ) {
+        lastError = text.substring(0, 200);
+        break;
+      }
+
+      lastError = text.substring(0, 200) || `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error.message || String(error);
+    }
+  }
+
+  return {
+    success: false,
+    credits: null,
+    error: lastError || 'Unable to parse balance from provider response'
+  };
+};
+
 module.exports = {
   sendAbsenceNotification: exports.sendAbsenceNotification,
   sendBirthdaySms: exports.sendBirthdaySms,
-  sendSms: dispatchSms
+  sendSms: dispatchSms,
+  getAccountBalance: exports.getAccountBalance
 };

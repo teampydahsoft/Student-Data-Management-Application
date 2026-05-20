@@ -1,4 +1,5 @@
 const { masterPool, stagingPool } = require('../config/database');
+const { fetchActiveQuotaCodes } = require('./quotaController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { studentsCache } = require('../services/cache');
@@ -4730,6 +4731,14 @@ exports.getFilterOptions = async (req, res) => {
       `SELECT DISTINCT stud_type FROM students ${whereClause} AND stud_type IS NOT NULL AND stud_type <> '' ORDER BY stud_type ASC`,
       params
     );
+    const configuredQuotaCodes = await fetchActiveQuotaCodes();
+    const legacyStudTypes = studTypeRows.map((row) => row.stud_type);
+    const studTypeOptions = configuredQuotaCodes.length > 0
+      ? [
+          ...configuredQuotaCodes,
+          ...legacyStudTypes.filter((code) => !configuredQuotaCodes.includes(code))
+        ]
+      : legacyStudTypes;
     const [studentStatusRows] = await masterPool.query(
       `SELECT DISTINCT student_status FROM students ${whereClause} AND student_status IS NOT NULL AND student_status <> '' ORDER BY student_status ASC`,
       params
@@ -4758,7 +4767,7 @@ exports.getFilterOptions = async (req, res) => {
     res.json({
       success: true,
       data: {
-        stud_type: studTypeRows.map((row) => row.stud_type),
+        stud_type: studTypeOptions,
         student_status: studentStatusRows.map((row) => row.student_status),
         scholar_status: scholarStatusRows.map((row) => row.scholar_status),
         caste: casteRows.map((row) => row.caste),

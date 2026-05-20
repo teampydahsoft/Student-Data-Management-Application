@@ -28,7 +28,8 @@ import {
   Save,
   Lock,
   Unlock,
-  Users
+  Users,
+  Tags
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -330,6 +331,15 @@ const Settings = () => {
   const [editingAcademicYearId, setEditingAcademicYearId] = useState(null);
   const [academicYearDrafts, setAcademicYearDrafts] = useState({});
   const [savingAcademicYearId, setSavingAcademicYearId] = useState(null);
+
+  // Student Quotas state
+  const [studentQuotas, setStudentQuotas] = useState([]);
+  const [quotasLoading, setQuotasLoading] = useState(false);
+  const [creatingQuota, setCreatingQuota] = useState(false);
+  const [newQuota, setNewQuota] = useState({ name: '', code: '' });
+  const [editingQuotaId, setEditingQuotaId] = useState(null);
+  const [quotaDrafts, setQuotaDrafts] = useState({});
+  const [savingQuotaId, setSavingQuotaId] = useState(null);
 
   // Registration Forms state
   const [registrationForms, setRegistrationForms] = useState([]);
@@ -875,6 +885,134 @@ const Settings = () => {
           toast.error(error.response?.data?.message || 'Failed to delete academic year');
         } finally {
           setSavingAcademicYearId(null);
+        }
+      }
+    });
+  };
+
+  const fetchStudentQuotas = async ({ silent = false } = {}) => {
+    try {
+      if (!silent) {
+        setQuotasLoading(true);
+      }
+      const response = await api.get('/quotas?includeInactive=true');
+      setStudentQuotas(response.data.data || []);
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Failed to fetch student quotas', error);
+      if (!silent) {
+        toast.error(error.response?.data?.message || 'Failed to fetch quotas');
+      }
+      return [];
+    } finally {
+      if (!silent) {
+        setQuotasLoading(false);
+      }
+    }
+  };
+
+  const handleCreateQuota = async (event) => {
+    event.preventDefault();
+    const trimmedName = newQuota.name.trim();
+    const trimmedCode = newQuota.code.trim().toUpperCase();
+
+    if (!trimmedName || !trimmedCode) {
+      toast.error('Quota name and code are required');
+      return;
+    }
+
+    try {
+      setCreatingQuota(true);
+      await api.post('/quotas', {
+        name: trimmedName,
+        code: trimmedCode,
+        isActive: true
+      });
+      toast.success('Quota created successfully');
+      setNewQuota({ name: '', code: '' });
+      await fetchStudentQuotas({ silent: true });
+    } catch (error) {
+      console.error('Failed to create quota', error);
+      toast.error(error.response?.data?.message || 'Failed to create quota');
+    } finally {
+      setCreatingQuota(false);
+    }
+  };
+
+  const startEditingQuota = (quota) => {
+    setEditingQuotaId(quota.id);
+    setQuotaDrafts((prev) => ({
+      ...prev,
+      [quota.id]: {
+        name: quota.name,
+        code: quota.code
+      }
+    }));
+  };
+
+  const cancelEditingQuota = () => {
+    setEditingQuotaId(null);
+    setQuotaDrafts({});
+  };
+
+  const saveQuotaEdits = async (quotaId) => {
+    const draft = quotaDrafts[quotaId];
+    if (!draft?.name?.trim() || !draft?.code?.trim()) {
+      toast.error('Quota name and code are required');
+      return;
+    }
+
+    try {
+      setSavingQuotaId(quotaId);
+      await api.put(`/quotas/${quotaId}`, {
+        name: draft.name.trim(),
+        code: draft.code.trim().toUpperCase()
+      });
+      toast.success('Quota updated successfully');
+      setEditingQuotaId(null);
+      setQuotaDrafts({});
+      await fetchStudentQuotas({ silent: true });
+    } catch (error) {
+      console.error('Failed to update quota', error);
+      toast.error(error.response?.data?.message || 'Failed to update quota');
+    } finally {
+      setSavingQuotaId(null);
+    }
+  };
+
+  const toggleQuotaActive = async (quota) => {
+    try {
+      setSavingQuotaId(quota.id);
+      await api.put(`/quotas/${quota.id}`, {
+        isActive: !quota.isActive
+      });
+      toast.success(`Quota ${!quota.isActive ? 'activated' : 'deactivated'}`);
+      await fetchStudentQuotas({ silent: true });
+    } catch (error) {
+      console.error('Failed to toggle quota status', error);
+      toast.error(error.response?.data?.message || 'Failed to update quota status');
+    } finally {
+      setSavingQuotaId(null);
+    }
+  };
+
+  const handleDeleteQuota = (quota) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'quota',
+      item: quota,
+      onConfirm: async () => {
+        try {
+          setSavingQuotaId(quota.id);
+          await api.delete(`/quotas/${quota.id}`);
+          toast.success('Quota deleted successfully');
+          await fetchStudentQuotas({ silent: true });
+          setDeleteModal({ isOpen: false, type: null, item: null, onConfirm: null });
+        } catch (error) {
+          console.error('Failed to delete quota', error);
+          toast.error(error.response?.data?.message || 'Failed to delete quota');
+        } finally {
+          setSavingQuotaId(null);
         }
       }
     });
@@ -1553,6 +1691,7 @@ const Settings = () => {
       await fetchColleges();
       await fetchCourses();
       await fetchAcademicYears();
+      await fetchStudentQuotas();
       await fetchRegistrationForms();
       await fetchCertificateSettings();
       await fetchAllBatches();
@@ -1761,6 +1900,7 @@ const Settings = () => {
   const handleRefresh = async () => {
     await fetchColleges({ silent: true });
     await fetchAcademicYears({ silent: true });
+    await fetchStudentQuotas({ silent: true });
     await fetchRegistrationForms({ silent: true });
     const updatedCourses = await fetchCourses({ silent: true, collegeId: selectedCollegeId });
     if (selectedCourseId && updatedCourses.some((course) => course.id === selectedCourseId)) {
@@ -2345,6 +2485,25 @@ const Settings = () => {
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Registration Form</h2>
                 <p className="text-xs text-gray-500">Student registration form fields</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setActiveSection('quotas')}
+            className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'quotas'
+              ? 'border-violet-500 bg-violet-50 shadow-md'
+              : 'border-gray-200 bg-white hover:border-violet-300 hover:shadow-sm'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-full p-2 ${activeSection === 'quotas' ? 'bg-violet-100 text-violet-600' : 'bg-gray-100 text-gray-600'
+                }`}>
+                <Tags size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Student Quotas</h2>
+                <p className="text-xs text-gray-500">Quota names & codes</p>
               </div>
             </div>
           </button>
@@ -4020,6 +4179,179 @@ const Settings = () => {
           </div>
         )}
 
+        {/* Student Quotas Section */}
+        {activeSection === 'quotas' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div className="border-b border-gray-100 px-4 py-3 bg-slate-50">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Tags size={18} className="text-violet-600" />
+                    Student Quotas
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Manage quota names and codes used in student forms and the students table.
+                  </p>
+                </div>
+                <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-700">
+                  {studentQuotas.length} total
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 border-b border-gray-100">
+              <form onSubmit={handleCreateQuota} className="grid gap-2 sm:grid-cols-[1fr,140px,auto]">
+                <input
+                  type="text"
+                  value={newQuota.name}
+                  onChange={(e) => setNewQuota((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Quota name (e.g. Management Quota)"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+                <input
+                  type="text"
+                  value={newQuota.code}
+                  onChange={(e) => setNewQuota((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                  placeholder="Code (e.g. MANG)"
+                  maxLength={50}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm uppercase focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+                <button
+                  type="submit"
+                  disabled={creatingQuota || !newQuota.name.trim() || !newQuota.code.trim()}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={16} />
+                  Add Quota
+                </button>
+              </form>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">Quota Name</th>
+                    <th className="px-4 py-3">Code</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {quotasLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8">
+                        <SkeletonList count={4} />
+                      </td>
+                    </tr>
+                  ) : studentQuotas.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
+                        No quotas configured yet
+                      </td>
+                    </tr>
+                  ) : (
+                    studentQuotas.map((quota) => {
+                      const isEditing = editingQuotaId === quota.id;
+                      const draft = quotaDrafts[quota.id] || { name: quota.name, code: quota.code };
+
+                      return (
+                        <tr key={quota.id} className="hover:bg-gray-50/80">
+                          <td className="px-4 py-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={draft.name}
+                                onChange={(e) => setQuotaDrafts((prev) => ({
+                                  ...prev,
+                                  [quota.id]: { ...draft, name: e.target.value }
+                                }))}
+                                className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                              />
+                            ) : (
+                              <span className="font-medium text-gray-900">{quota.name}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={draft.code}
+                                onChange={(e) => setQuotaDrafts((prev) => ({
+                                  ...prev,
+                                  [quota.id]: { ...draft, code: e.target.value.toUpperCase() }
+                                }))}
+                                className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm uppercase focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                              />
+                            ) : (
+                              <span className="inline-flex rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-violet-700">
+                                {quota.code}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${quota.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${quota.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
+                              {quota.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={() => saveQuotaEdits(quota.id)}
+                                    disabled={savingQuotaId === quota.id}
+                                    className="rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={cancelEditingQuota}
+                                    className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => startEditingQuota(quota)}
+                                    className="p-1.5 text-gray-400 hover:text-violet-600"
+                                    title="Edit quota"
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => toggleQuotaActive(quota)}
+                                    disabled={savingQuotaId === quota.id}
+                                    className="p-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                                    title={quota.isActive ? 'Deactivate quota' : 'Activate quota'}
+                                  >
+                                    {quota.isActive ? <ToggleRight size={15} className="text-green-500" /> : <ToggleLeft size={15} />}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteQuota(quota)}
+                                    disabled={savingQuotaId === quota.id}
+                                    className="p-1.5 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                                    title="Delete quota"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* College Transfer Section */}
         {activeSection === 'college-transfer' && (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 min-h-[500px]">
@@ -4812,7 +5144,7 @@ const Settings = () => {
           isOpen={deleteModal.isOpen}
           onClose={() => setDeleteModal({ isOpen: false, type: null, item: null, onConfirm: null, affectedStudents: [], totalStudentCount: 0, hasMoreStudents: false, isLoadingStudents: false })}
           onConfirm={deleteModal.onConfirm || (() => { })}
-          title={`Delete ${deleteModal.type === 'college' ? 'College' : deleteModal.type === 'course' ? 'Program' : deleteModal.type === 'academicYear' ? 'Academic Year' : deleteModal.type === 'form' ? 'Form' : 'Branch'}`}
+          title={`Delete ${deleteModal.type === 'college' ? 'College' : deleteModal.type === 'course' ? 'Program' : deleteModal.type === 'academicYear' ? 'Academic Year' : deleteModal.type === 'quota' ? 'Quota' : deleteModal.type === 'form' ? 'Form' : 'Branch'}`}
           itemName={deleteModal.item?.name || deleteModal.item?.yearLabel || deleteModal.item?.form_name}
           itemType={deleteModal.type}
           affectedStudents={deleteModal.affectedStudents || []}

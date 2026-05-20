@@ -163,6 +163,13 @@ const NAV_ITEMS = [
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_category'
       },
+      {
+        path: "/reports/sms",
+        label: "SMS Reports",
+        icon: MessageSquare,
+        permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_sms_reports'
+      },
     ],
   },
   {
