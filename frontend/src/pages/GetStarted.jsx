@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 import {
     GraduationCap,
     ArrowRight,
     CheckCircle,
+    CheckCircle2,
     Smartphone,
     ShieldCheck,
     Zap,
@@ -14,14 +13,160 @@ import {
     BookOpen,
     Calendar,
     ClipboardList,
-    Award
+    Award,
+    Presentation,
+    Target,
+    Clock,
+    FileText,
+    Users,
+    Megaphone,
+    Briefcase,
+    Ticket,
+    Bus,
+    Wallet,
+    MessageSquare,
+    MapPin,
+    FolderOpen,
+    User,
+    BarChart3,
+    Bell,
+    LineChart,
+    BadgeCheck,
+    Building2,
+    Sparkles
 } from 'lucide-react';
+import { SECTION_IMAGES, TRACKING_IMAGES, FEATURE_IMAGES } from '../config/landingImages';
+
+const CRT_FEATURES = [
+    'Campus Recruitment Training (CRT) sessions',
+    'Mock interviews & aptitude preparation',
+    'Placement drives & company notifications',
+    'Track offers, training attendance & cell updates',
+    '#ProudlyPlaced — celebrate every success story'
+];
+
+const TRACKING_HIGHLIGHTS = [
+    { icon: BarChart3, label: 'Attendance', desc: 'Daily & semester %', image: TRACKING_IMAGES.attendance },
+    { icon: FileText, label: 'Registration', desc: 'Semester enrollment', image: TRACKING_IMAGES.registration },
+    { icon: Wallet, label: 'Fee Status', desc: 'Payments & dues', image: TRACKING_IMAGES.fees },
+    { icon: BadgeCheck, label: 'Profile', desc: 'Verified records', image: TRACKING_IMAGES.profile },
+    { icon: Clock, label: 'Timetable', desc: 'Class schedule', image: TRACKING_IMAGES.timetable },
+    { icon: Megaphone, label: 'Notices', desc: 'Announcements & polls', image: TRACKING_IMAGES.notices }
+];
+
+const PORTAL_MODULES = [
+    {
+        category: 'Academic Tracking',
+        tagline: 'Classes, attendance & semester progress',
+        bannerImage: FEATURE_IMAGES.academic.banner,
+        accent: 'from-sky-600/90 to-sky-900/90',
+        chipClass: 'bg-sky-500/15 text-sky-800 border-sky-200',
+        items: [
+            { icon: CheckCircle2, title: 'Attendance Records', desc: 'Daily present/absent status, semester percentage, and holiday-aware calendar.', image: FEATURE_IMAGES.academic.attendance },
+            { icon: Clock, title: 'Class Timetable', desc: 'Period-wise schedule with subjects, labs, and full weekly view.', image: FEATURE_IMAGES.academic.timetable },
+            { icon: FileText, title: 'Semester Registration', desc: 'Enrollment, document upload, status tracking, and registration slip.', image: FEATURE_IMAGES.academic.registration }
+        ]
+    },
+    {
+        category: 'Campus & Community',
+        tagline: 'Stay connected with college life',
+        bannerImage: FEATURE_IMAGES.campus.banner,
+        accent: 'from-violet-600/90 to-violet-900/90',
+        chipClass: 'bg-violet-500/15 text-violet-800 border-violet-200',
+        items: [
+            { icon: Megaphone, title: 'Announcements & Polls', desc: 'Official notices, image announcements, and live student voting.', image: FEATURE_IMAGES.campus.announcements },
+            { icon: Calendar, title: 'Event Calendar', desc: 'Workshops, celebrations, and campus events with full details.', image: FEATURE_IMAGES.campus.events },
+            { icon: Users, title: 'Student Clubs', desc: 'Join clubs, track membership, activities, and dues.', image: FEATURE_IMAGES.campus.clubs }
+        ]
+    },
+    {
+        category: 'Your Student Records',
+        tagline: 'Profile, documents & verified data',
+        bannerImage: FEATURE_IMAGES.records.banner,
+        accent: 'from-emerald-600/90 to-emerald-900/90',
+        chipClass: 'bg-emerald-500/15 text-emerald-800 border-emerald-200',
+        items: [
+            { icon: User, title: 'Profile & Verification', desc: 'Verify your academic profile and photo synced with college records.', image: FEATURE_IMAGES.records.profile },
+            { icon: FolderOpen, title: 'My Documents', desc: 'Certificates, ID proofs, and college-required documents in one vault.', image: FEATURE_IMAGES.records.documents },
+            { icon: ClipboardList, title: 'Profile Change Requests', desc: 'Request detail updates and track admin approval in real time.', image: FEATURE_IMAGES.records.profileRequests }
+        ]
+    },
+    {
+        category: 'Services & Finance',
+        tagline: 'Certificates, fees, transport & internship',
+        bannerImage: FEATURE_IMAGES.services.banner,
+        accent: 'from-cyan-600/90 to-cyan-900/90',
+        chipClass: 'bg-cyan-500/15 text-cyan-800 border-cyan-200',
+        items: [
+            { icon: Briefcase, title: 'Digital Services', desc: 'Study conduct, custodian, TC certificates with live status tracking.', image: FEATURE_IMAGES.services.digitalServices },
+            { icon: Wallet, title: 'Fee Management', desc: 'Fee status, payment history, and clearance linked to registration.', image: FEATURE_IMAGES.services.fees },
+            { icon: Bus, title: 'Transport', desc: 'Bus routes, pickup points, and transport allocation.', image: FEATURE_IMAGES.services.transport },
+            { icon: MapPin, title: 'Internship Tracking', desc: 'Assignment, company details, and progress when assigned.', image: FEATURE_IMAGES.services.internship }
+        ]
+    },
+    {
+        category: 'Support & Feedback',
+        tagline: 'Help desk & college feedback',
+        bannerImage: FEATURE_IMAGES.support.banner,
+        accent: 'from-rose-600/90 to-rose-900/90',
+        chipClass: 'bg-rose-500/15 text-rose-800 border-rose-200',
+        items: [
+            { icon: Ticket, title: 'Maintenance & Support', desc: 'Raise campus tickets and track resolution from the help desk.', image: FEATURE_IMAGES.support.maintenance },
+            { icon: MessageSquare, title: 'Feedback Forms', desc: 'Submit course and faculty feedback through configured forms.', image: FEATURE_IMAGES.support.feedback }
+        ]
+    }
+];
+
+const fadeUp = {
+    hidden: { opacity: 0, y: 28 },
+    visible: (i = 0) => ({
+        opacity: 1,
+        y: 0,
+        transition: { duration: 0.55, delay: i * 0.08, ease: 'easeOut' }
+    })
+};
+
+const FeatureCard = ({ item, index }) => {
+    const Icon = item.icon;
+    return (
+        <motion.article
+            custom={index}
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: '-40px' }}
+            className="group relative flex flex-col overflow-hidden rounded-2xl sm:rounded-3xl bg-white border border-border-light/80 shadow-lg shadow-primary/5 hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:-translate-y-1"
+        >
+            <div className="relative aspect-[16/11] sm:aspect-[16/10] overflow-hidden">
+                <img
+                    src={item.image}
+                    alt={item.title}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/85 via-primary/25 to-transparent" />
+                <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm flex items-center justify-center shadow-lg border border-white/50">
+                    <Icon size={22} className="text-primary" />
+                </div>
+                <h4 className="absolute bottom-4 left-4 right-4 text-lg sm:text-xl font-bold text-white leading-tight drop-shadow-md">
+                    {item.title}
+                </h4>
+            </div>
+            <div className="p-5 sm:p-6 flex-1 flex flex-col">
+                <p className="text-text-secondary text-sm leading-relaxed flex-1">{item.desc}</p>
+                <div className="mt-4 pt-4 border-t border-border-light/60 flex items-center gap-2 text-primary font-semibold text-sm group-hover:gap-3 transition-all">
+                    <span>Included in portal</span>
+                    <CheckCircle size={16} className="text-accent" />
+                </div>
+            </div>
+        </motion.article>
+    );
+};
 
 const GetStarted = () => {
     const navigate = useNavigate();
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-    // Monitoring browser online/offline status
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);
@@ -33,320 +178,424 @@ const GetStarted = () => {
         };
     }, []);
 
-
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.2
-            }
-        }
-    };
-
-    const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
-        visible: {
-            opacity: 1,
-            y: 0,
-            transition: { duration: 0.5, ease: "easeOut" }
-        }
-    };
-
-    const features = [
-        {
-            icon: <BookOpen className="text-accent" size={24} />,
-            title: "Academic Tracking",
-            description: "Monitor your grades, semesters, and overall academic performance in real-time."
-        },
-        {
-            icon: <Calendar className="text-accent" size={24} />,
-            title: "Attendance Management",
-            description: "Keep track of your daily attendance and never miss a requirement."
-        },
-        {
-            icon: <Smartphone className="text-accent" size={24} />,
-            title: "Mobile First",
-            description: "Access your student portal anywhere, anytime, on any device."
-        },
-        {
-            icon: <ClipboardList className="text-accent" size={24} />,
-            title: "Service Requests",
-            description: "Apply for certificates, bonafides, and other services with ease."
-        }
-    ];
+    const totalModules = PORTAL_MODULES.reduce((n, c) => n + c.items.length, 0);
 
     return (
-        <div className="min-h-screen bg-secondary font-body selection:bg-accent/30">
-            {/* Online Status Toast (Subtle) */}
+        <div className="min-h-screen w-full overflow-x-hidden bg-secondary font-body selection:bg-accent/30">
             {!isOnline && (
-                <div className="fixed bottom-4 left-4 z-[100] bg-red-500 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 animate-bounce">
+                <div className="fixed bottom-4 left-4 z-[100] bg-red-500 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2">
                     <div className="w-2 h-2 bg-white rounded-full animate-ping" />
                     Offline Mode
                 </div>
             )}
 
-            {/* Navigation */}
-            <nav className="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-md border-b border-border-light px-6 py-4 flex justify-between items-center">
+            {/* Nav — full width */}
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-border-light px-4 sm:px-8 lg:px-12 xl:px-16 py-4 flex justify-between items-center">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-                    <div className="p-1 px-3 bg-primary/5 rounded-xl border border-primary/10 shadow-sm flex items-center justify-center">
-                        <img
-                            src="/logo.png"
-                            alt="Logo"
-                            className="h-10 w-auto object-contain"
-                            onError={(e) => e.target.style.display = 'none'}
-                        />
+                    <div className="p-1 px-3 bg-primary/5 rounded-xl border border-primary/10 shadow-sm">
+                        <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-lg sm:text-xl font-bold text-primary tracking-tight leading-tight">Pydah Group</span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-accent uppercase tracking-[0.15em] sm:tracking-[0.2em] leading-tight">Student Portal</span>
+                        <span className="text-lg sm:text-xl font-bold text-primary tracking-tight">Pydah Group</span>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-accent uppercase tracking-[0.2em]">Student Portal</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-4">
-                    <button
-                        onClick={() => navigate('/login')}
-                        className="hidden sm:flex items-center gap-2 text-primary font-semibold hover:text-primary-light transition-all"
-                    >
-                        <LogIn size={18} />
-                        <span>Login</span>
+                    <button onClick={() => navigate('/login')} className="hidden sm:flex items-center gap-2 text-primary font-semibold hover:text-primary-light">
+                        <LogIn size={18} /> Login
                     </button>
-                    <button
-                        onClick={() => navigate('/login')}
-                        className="bg-primary text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold hover:bg-primary-dark transition-all shadow-md active:scale-95"
-                    >
+                    <button onClick={() => navigate('/login')} className="bg-primary text-white px-5 sm:px-7 py-2.5 rounded-xl font-semibold hover:bg-primary-dark shadow-lg active:scale-95">
                         Get Started
                     </button>
                 </div>
             </nav>
 
-            {/* Hero Section */}
-            <section className="relative pt-24 sm:pt-32 pb-16 sm:pb-20 px-4 sm:px-6 max-w-7xl mx-auto overflow-hidden">
-                <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Hero — content left, campus photo right */}
+            <section className="relative w-full pt-[4.5rem] flex flex-col lg:flex-row lg:items-stretch lg:min-h-[calc(100vh-4.5rem)] lg:max-h-[920px] bg-secondary overflow-hidden">
+                {/* Left: copy & actions */}
+                <div className="relative z-10 w-full lg:w-[46%] xl:w-[44%] 2xl:w-[42%] flex flex-col justify-center px-4 sm:px-8 lg:px-10 xl:px-14 2xl:px-16 py-10 sm:py-12 lg:py-14 shrink-0">
                     <motion.div
-                        initial="hidden"
-                        animate="visible"
-                        variants={containerVariants}
-                        className="z-10"
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="w-full max-w-xl"
                     >
-                        <motion.h1
-                            variants={itemVariants}
-                            className="text-5xl lg:text-7xl font-bold text-primary mb-6 leading-[1.1]"
-                        >
-                            Empower Your <span className="text-accent">Academic</span> Journey
-                        </motion.h1>
-                        <motion.p
-                            variants={itemVariants}
-                            className="text-lg text-text-secondary mb-8 max-w-xl leading-relaxed"
-                        >
-                            The ultimate platform for students to manage their academic life, track progress, and stay connected with the campus ecosystem. All in one place.
-                        </motion.p>
-                        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4">
-                            <button
-                                onClick={() => navigate('/login')}
-                                className="group bg-primary text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-primary-dark transition-all shadow-xl flex items-center justify-center gap-2 hover:gap-4 active:scale-95"
-                            >
-                                Launch Portal
-                                <ArrowRight size={20} className="transition-all" />
+                        <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-bold uppercase tracking-[0.2em] mb-5 sm:mb-6">
+                            <LineChart size={14} className="text-accent" />
+                            Unified Student Tracking
+                        </span>
+                        <h1 className="text-3xl sm:text-4xl xl:text-5xl 2xl:text-6xl font-bold text-primary leading-[1.1] mb-5 sm:mb-6">
+                            Track <span className="text-accent">Everything</span> About Your Student Life
+                        </h1>
+                        <p className="text-base sm:text-lg text-text-secondary mb-6 sm:mb-8 leading-relaxed">
+                            One portal for attendance, fees, registration, documents, timetable, clubs, events, certificates, transport, internship, and support — linked to your admission number.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                            <button onClick={() => navigate('/login')} className="group bg-primary text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-base sm:text-lg hover:bg-primary-dark shadow-xl flex items-center justify-center gap-2 active:scale-95">
+                                Launch Portal <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                             </button>
-                            <button
-                                className="px-8 py-4 rounded-2xl font-bold text-lg text-primary border-2 border-primary/10 hover:bg-primary/5 transition-all flex items-center justify-center gap-2"
-                            >
-                                Watch Demo
+                            <button onClick={() => document.getElementById('portal-features')?.scrollIntoView({ behavior: 'smooth' })} className="px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-base sm:text-lg text-primary border-2 border-primary/15 hover:bg-primary/5 bg-white/50">
+                                Explore Features
                             </button>
-                        </motion.div>
-
-
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
-                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                        className="relative"
-                    >
-                        <div className="absolute inset-0 bg-accent/20 blur-[120px] rounded-full" />
-                        <div className="relative bg-white p-2 sm:p-4 rounded-[2.5rem] shadow-2xl border-8 border-primary/5 overflow-hidden group flex items-center justify-center min-h-[400px] bg-gradient-to-br from-primary/5 to-accent/5">
-                            <img
-                                src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=1000"
-                                alt="Students"
-                                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-primary/60 via-transparent to-transparent opacity-80" />
-                            <div className="absolute top-8 left-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20 animate-float">
-                                <div className="w-10 h-10 bg-success/20 rounded-full flex items-center justify-center">
-                                    <CheckCircle className="text-success" size={20} />
-                                </div>
-                                <div>
-                                    <p className="text-xs font-bold text-text-primary">Profile Verified</p>
-                                    <p className="text-[10px] text-text-secondary">Official Student Acc</p>
-                                </div>
-                            </div>
-                            <div className="absolute bottom-12 right-12 bg-primary/95 backdrop-blur-md p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/10 animate-float delay-300">
-                                <div className="w-10 h-10 bg-accent/20 rounded-full flex items-center justify-center">
-                                    <Award className="text-accent" size={20} />
-                                </div>
-                                <div>
-                                    <p className="text-xs font-bold text-white">9.2 CGPA</p>
-                                    <p className="text-[10px] text-accent/80">Semester Dean's List</p>
-                                </div>
-                            </div>
                         </div>
                     </motion.div>
                 </div>
+
+                {/* Right: campus photo + overlays */}
+                <div className="relative w-full lg:flex-1 flex items-stretch min-h-[320px] sm:min-h-[400px] lg:min-h-0 p-4 sm:p-6 lg:p-8 lg:pl-2 xl:pl-4">
+                    <div className="relative w-full flex-1 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/60 ring-1 ring-primary/10 bg-primary/5">
+                        <img
+                            src={SECTION_IMAGES.hero}
+                            alt="Pydah Group of Institutions — Education and Beyond"
+                            className="absolute inset-0 w-full h-full object-cover object-center"
+                            fetchPriority="high"
+                        />
+                        <div className="absolute inset-y-0 left-0 w-24 sm:w-32 bg-gradient-to-r from-secondary/90 to-transparent pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-primary/50 via-transparent to-primary/10 pointer-events-none" />
+
+                        {/* Institution badge */}
+                        <div className="absolute top-4 left-4 sm:top-5 sm:left-5 z-10 max-w-[200px] sm:max-w-[240px]">
+                            <div className="bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                        <Building2 size={16} className="text-primary" />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-accent uppercase tracking-widest leading-tight">Pydah Group</p>
+                                </div>
+                                <p className="text-sm sm:text-base font-bold text-primary italic leading-snug">Education &amp; Beyond</p>
+                                <p className="text-[10px] text-text-secondary mt-1 flex items-center gap-1">
+                                    <Sparkles size={10} className="text-accent shrink-0" />
+                                    NAAC accredited institution
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Attendance — top right */}
+                        <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50 min-w-[120px]">
+                            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">Attendance</p>
+                            <p className="text-2xl sm:text-3xl font-bold text-primary leading-none mt-0.5">87.4%</p>
+                            <p className="text-[10px] text-accent font-semibold mt-1">Semester average</p>
+                        </div>
+
+                        {/* Bottom status row */}
+                        <div className="absolute bottom-4 left-4 right-4 sm:bottom-5 sm:left-5 sm:right-5 z-10 flex flex-wrap gap-2 sm:gap-3 justify-between items-end">
+                            <div className="bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50 flex items-center gap-3">
+                                <div className="w-10 h-10 bg-success/20 rounded-full flex items-center justify-center shrink-0">
+                                    <CheckCircle className="text-success" size={20} />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-primary">Profile Verified</p>
+                                    <p className="text-[10px] text-text-secondary">College database sync</p>
+                                </div>
+                            </div>
+                            <div className="bg-accent text-primary px-4 py-3 rounded-2xl font-bold text-sm shadow-xl border border-accent-dark/20">
+                                {totalModules}+ Portal Modules
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
-            {/* Stats Section */}
-            <section className="bg-primary py-20">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-                        {[
-                            { label: "Active Students", val: "5,000+" },
-                            { label: "Course Modules", val: "120+" },
-                            { label: "Total Requests", val: "15k+" },
-                            { label: "Uptime", val: "99.9%" }
-                        ].map((stat, i) => (
+            {/* Tracking strip — full width photo cards */}
+            <section className="w-full bg-white border-y border-border-light py-6 sm:py-8">
+                <div className="w-full px-3 sm:px-6 lg:px-10 xl:px-14">
+                    <p className="text-center text-xs font-bold text-accent uppercase tracking-[0.25em] mb-5">What you can track instantly</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                        {TRACKING_HIGHLIGHTS.map(({ icon: Icon, label, desc, image }, i) => (
                             <motion.div
-                                key={i}
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.1 }}
+                                key={label}
+                                custom={i}
+                                variants={fadeUp}
+                                initial="hidden"
+                                whileInView="visible"
                                 viewport={{ once: true }}
+                                className="group relative aspect-[4/5] sm:aspect-[3/4] rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-shadow cursor-default"
                             >
-                                <h3 className="text-4xl font-bold text-accent mb-2">{stat.val}</h3>
-                                <p className="text-accent-light text-sm tracking-wide uppercase font-semibold opacity-80">{stat.label}</p>
+                                <img src={image} alt={label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/40 to-primary/10" />
+                                <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-white">
+                                    <Icon size={18} className="text-accent mb-2" />
+                                    <p className="font-bold text-sm leading-tight">{label}</p>
+                                    <p className="text-[10px] text-white/75 mt-0.5">{desc}</p>
+                                </div>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Features Grid */}
-            <section className="py-32 px-6 max-w-7xl mx-auto">
-                <div className="text-center mb-20">
-                    <motion.h2
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        className="text-4xl md:text-5xl font-bold text-primary mb-6"
-                    >
-                        Tailored for Your <span className="text-accent">Success</span>
-                    </motion.h2>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ delay: 0.1 }}
-                        className="text-text-secondary max-w-2xl mx-auto text-lg"
-                    >
-                        Everything you need to navigate your college years effectively, built into a single, intuitive interface.
-                    </motion.p>
-                </div>
-
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {features.map((feature, i) => (
-                        <motion.div
-                            key={i}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: i * 0.1 }}
-                            className="bg-white p-8 rounded-3xl border border-border-light shadow-sm hover:shadow-xl transition-all duration-300 group hover:-translate-y-2"
-                        >
-                            <div className="w-14 h-14 bg-accent/5 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-accent group-hover:text-white transition-colors duration-300">
-                                {feature.icon}
-                            </div>
-                            <h4 className="text-xl font-bold text-primary mb-3">{feature.title}</h4>
-                            <p className="text-text-secondary text-sm leading-relaxed">{feature.description}</p>
+            {/* Stats — full width with campus life background */}
+            <section className="relative w-full py-16 sm:py-20 overflow-hidden">
+                <img
+                    src={SECTION_IMAGES.statsBackground}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover object-center"
+                    loading="lazy"
+                    aria-hidden
+                />
+                <div className="absolute inset-0 bg-primary/92" />
+                <div className="relative z-10 w-full px-4 sm:px-8 lg:px-12 xl:px-16 grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
+                    {[
+                        { label: 'Portal Modules', val: `${totalModules}+` },
+                        { label: 'Active Students', val: '5,000+' },
+                        { label: 'Service Requests', val: '15k+' },
+                        { label: 'Uptime', val: '99.9%' }
+                    ].map((stat, i) => (
+                        <motion.div key={stat.label} custom={i} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
+                            <h3 className="text-4xl sm:text-5xl font-bold text-accent mb-2">{stat.val}</h3>
+                            <p className="text-accent-light text-xs sm:text-sm uppercase tracking-widest font-semibold opacity-85">{stat.label}</p>
                         </motion.div>
                     ))}
                 </div>
             </section>
 
-            {/* Security Section */}
-            <section className="bg-white py-24 border-y border-border-light overflow-hidden">
-                <div className="max-w-7xl mx-auto px-6 flex flex-col lg:flex-row items-center gap-16">
-                    <div className="flex-1">
-                        <div className="w-16 h-16 bg-primary/5 rounded-2xl flex items-center justify-center mb-8">
-                            <ShieldCheck className="text-primary" size={32} />
+            {/* CRT & Placements Training Portal */}
+            <section id="crt-training" className="w-full scroll-mt-20 bg-white">
+                <div className="relative w-full aspect-[1905/736] max-h-[min(58vh,736px)] min-h-[220px] sm:min-h-[300px]">
+                    <img
+                        src={SECTION_IMAGES.crtPlacements}
+                        alt="Pydah Placements and Training Cell — Proudly Placed"
+                        className="absolute inset-0 w-full h-full object-cover object-center"
+                        loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-primary/50 via-primary/20 to-primary/85" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-end sm:justify-center text-center px-4 sm:px-8 pb-8 sm:pb-0">
+                        <motion.p
+                            initial={{ opacity: 0, y: 12 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="text-white/95 text-sm sm:text-lg md:text-xl font-medium italic max-w-3xl mb-3 sm:mb-4 drop-shadow-md"
+                        >
+                            Where your journey towards employability begins!!
+                        </motion.p>
+                        <motion.h2
+                            initial={{ opacity: 0, y: 16 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="text-2xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight drop-shadow-lg mb-2"
+                        >
+                            Placements &amp; Training Cell
+                        </motion.h2>
+                        <motion.span
+                            initial={{ opacity: 0 }}
+                            whileInView={{ opacity: 1 }}
+                            viewport={{ once: true }}
+                            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/25 text-white text-xs sm:text-sm font-bold uppercase tracking-widest"
+                        >
+                            <Award size={16} className="text-accent" />
+                            #ProudlyPlaced · Pydah Group
+                        </motion.span>
+                    </div>
+                </div>
+
+                <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-14 sm:py-20 bg-secondary">
+                    <div className="w-full grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+                        <motion.div
+                            initial={{ opacity: 0, x: -24 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }}
+                            className="order-2 lg:order-1"
+                        >
+                            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-bold uppercase tracking-[0.2em] mb-5">
+                                <Presentation size={14} className="text-accent" />
+                                CRT Training Portal
+                            </span>
+                            <h3 className="text-3xl sm:text-4xl font-bold text-primary mb-4 leading-tight">
+                                Campus Recruitment Training, <span className="text-accent">Built for You</span>
+                            </h3>
+                            <p className="text-text-secondary text-base sm:text-lg leading-relaxed mb-6">
+                                Interactive CRT sessions, placement drives, and employability tracking — from classroom training to your first offer letter, managed through the student portal ecosystem.
+                            </p>
+                            <ul className="space-y-3 mb-8">
+                                {CRT_FEATURES.map((text) => (
+                                    <li key={text} className="flex items-start gap-3 text-primary font-medium text-sm sm:text-base">
+                                        <div className="w-6 h-6 bg-accent/25 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                                            <Target size={14} className="text-accent-dark" />
+                                        </div>
+                                        {text}
+                                    </li>
+                                ))}
+                            </ul>
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="inline-flex items-center gap-2 bg-primary text-white px-8 py-4 rounded-2xl font-bold text-base hover:bg-primary-dark shadow-xl active:scale-95"
+                            >
+                                Access Student Portal
+                                <ArrowRight size={18} />
+                            </button>
+                        </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, x: 24 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }}
+                            className="order-1 lg:order-2 relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-4 border-white aspect-[954/660] max-h-[520px] w-full"
+                        >
+                            <img
+                                src={SECTION_IMAGES.crtTraining}
+                                alt="CRT training session at Pydah Group"
+                                className="absolute inset-0 w-full h-full object-cover object-center"
+                                loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-primary/40 via-transparent to-transparent" />
+                            <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6">
+                                <div className="bg-white/95 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 border border-white/50 shadow-lg">
+                                    <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">Live CRT Session</p>
+                                    <p className="text-sm sm:text-base font-bold text-primary">Interactive training &amp; placement prep</p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Features — full width category bands */}
+            <section id="portal-features" className="w-full scroll-mt-20">
+                <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-16 sm:py-24 text-center">
+                    <p className="text-accent font-bold text-sm uppercase tracking-[0.25em] mb-3">What the portal can do</p>
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold text-primary mb-5">
+                        Every Feature, <span className="text-accent">One Dashboard</span>
+                    </h2>
+                    <p className="text-text-secondary max-w-3xl mx-auto text-base sm:text-lg">
+                        Premium modules with real photos — attendance to certificates, all tracked from your admission record.
+                    </p>
+                </div>
+
+                {PORTAL_MODULES.map((group, gi) => (
+                    <div
+                        key={group.category}
+                        className={`w-full py-14 sm:py-20 ${gi % 2 === 0 ? 'bg-secondary' : 'bg-white'}`}
+                    >
+                        <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20">
+                            {/* Category banner — full width */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                className="relative w-full h-44 sm:h-56 md:h-64 lg:h-72 rounded-2xl sm:rounded-3xl overflow-hidden mb-10 sm:mb-12 shadow-2xl"
+                            >
+                                <img src={group.bannerImage} alt={group.category} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                                <div className={`absolute inset-0 bg-gradient-to-r ${group.accent}`} />
+                                <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10 md:p-12">
+                                    <span className={`inline-flex self-start items-center gap-2 px-3 py-1 rounded-lg border text-xs font-bold uppercase tracking-widest mb-3 ${group.chipClass} bg-white/90`}>
+                                        <BookOpen size={14} /> Module group
+                                    </span>
+                                    <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1">{group.category}</h3>
+                                    <p className="text-white/85 text-sm sm:text-base max-w-xl">{group.tagline}</p>
+                                </div>
+                            </motion.div>
+
+                            <div className={`grid gap-5 sm:gap-6 lg:gap-8 ${
+                                group.items.length === 4
+                                    ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'
+                                    : group.items.length === 2
+                                        ? 'grid-cols-1 md:grid-cols-2 max-w-5xl'
+                                        : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
+                            }`}>
+                                {group.items.map((item, ii) => (
+                                    <FeatureCard key={item.title} item={item} index={ii} />
+                                ))}
+                            </div>
                         </div>
-                        <h2 className="text-4xl font-bold text-primary mb-6">Your Data is Secure and Private</h2>
-                        <p className="text-text-secondary text-lg mb-8 leading-relaxed italic">
-                            "We prioritize the privacy and security of our student data above all else. Our systems use industry-standard encryption and security protocols."
+                    </div>
+                ))}
+
+                {/* Notifications — full width image panel */}
+                <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-16 sm:py-20">
+                    <motion.div
+                        initial={{ opacity: 0, y: 24 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        className="relative w-full min-h-[320px] sm:min-h-[380px] rounded-3xl overflow-hidden shadow-2xl"
+                    >
+                        <img src={SECTION_IMAGES.notifications} alt="Push notifications on student devices" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-primary/95 via-primary/80 to-primary/50" />
+                        <div className="relative z-10 p-8 sm:p-12 lg:p-16 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-10">
+                            <div className="max-w-xl">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Bell className="text-accent" size={24} />
+                                    <span className="text-accent font-bold text-sm uppercase tracking-widest">Real-time updates</span>
+                                </div>
+                                <h3 className="text-2xl sm:text-4xl font-bold text-white mb-4">Push notifications & live sync</h3>
+                                <p className="text-white/80 text-sm sm:text-base leading-relaxed">
+                                    Alerts for announcements, registration deadlines, fee reminders, certificate status, and attendance — synced instantly to your record.
+                                </p>
+                            </div>
+                            <ul className="grid sm:grid-cols-2 gap-3 lg:max-w-md shrink-0">
+                                {['Daily attendance', 'Registration alerts', 'Certificate ready', 'Announcement popups', 'Poll reminders', 'Mobile PWA'].map((text) => (
+                                    <li key={text} className="flex items-center gap-2 text-white text-sm font-medium bg-white/10 backdrop-blur-sm px-4 py-2.5 rounded-xl border border-white/15">
+                                        <CheckCircle size={16} className="text-accent shrink-0" /> {text}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </motion.div>
+                </div>
+            </section>
+
+            {/* Security — full width split with image */}
+            <section className="w-full bg-white py-16 sm:py-24 overflow-hidden">
+                <div className="w-full flex flex-col lg:flex-row min-h-[480px]">
+                    <div className="w-full lg:w-1/2 px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-12 lg:py-16 flex flex-col justify-center">
+                        <div className="w-14 h-14 bg-primary/5 rounded-2xl flex items-center justify-center mb-6">
+                            <ShieldCheck className="text-primary" size={30} />
+                        </div>
+                        <h2 className="text-3xl sm:text-4xl font-bold text-primary mb-4">Secure, Private & Always Available</h2>
+                        <p className="text-text-secondary text-base sm:text-lg mb-8 leading-relaxed">
+                            Admission-linked accounts with encrypted documents and role-based access — students, parents, and faculty each see only what they should.
                         </p>
                         <ul className="space-y-4">
                             {[
-                                "End-to-end encryption for all documents",
-                                "Advanced role-based access control",
-                                "Real-time backup and disaster recovery",
-                                "Compliance with educational data privacy norms"
-                            ].map((text, i) => (
-                                <li key={i} className="flex items-center gap-3 text-primary font-medium">
-                                    <div className="w-5 h-5 bg-accent/20 rounded-full flex items-center justify-center">
-                                        <CheckCircle className="text-accent" size={14} />
+                                'Profile verification against college database',
+                                'Encrypted document uploads & downloads',
+                                'Role-based access control',
+                                'Phone, tablet & desktop (PWA)'
+                            ].map((text) => (
+                                <li key={text} className="flex items-center gap-3 text-primary font-medium">
+                                    <div className="w-6 h-6 bg-accent/25 rounded-full flex items-center justify-center shrink-0">
+                                        <CheckCircle className="text-accent-dark" size={14} />
                                     </div>
                                     {text}
                                 </li>
                             ))}
                         </ul>
                     </div>
-                    <div className="flex-1 relative">
-                        <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
-                        <div className="relative grid grid-cols-2 gap-4">
-                            <div className="space-y-4 pt-12">
-                                <div className="bg-secondary p-6 rounded-3xl shadow-lg border border-border-light">
-                                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
-                                        <Zap className="text-primary" size={20} />
-                                    </div>
-                                    <p className="font-bold text-primary">Fast Performance</p>
+                    <div className="relative w-full lg:w-1/2 min-h-[300px] lg:min-h-auto">
+                        <img src={SECTION_IMAGES.security} alt="Secure Pydah campus" className="absolute inset-0 w-full h-full object-cover object-center" loading="lazy" />
+                        <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-l from-white via-transparent to-transparent lg:from-white" />
+                        <div className="absolute bottom-6 left-6 right-6 lg:bottom-12 lg:left-12 grid grid-cols-2 gap-3 max-w-md">
+                            {[
+                                { icon: Zap, label: 'Fast' },
+                                { icon: Smartphone, label: 'Mobile' },
+                                { icon: GraduationCap, label: 'Academic' },
+                                { icon: Award, label: 'Verified' }
+                            ].map(({ icon: Icon, label }) => (
+                                <div key={label} className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-lg border border-white/50 flex items-center gap-3">
+                                    <Icon size={20} className="text-primary" />
+                                    <span className="font-bold text-primary text-sm">{label}</span>
                                 </div>
-                                <div className="bg-white p-6 rounded-3xl shadow-lg border border-border-light">
-                                    <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center mb-4">
-                                        <ShieldCheck className="text-success" size={20} />
-                                    </div>
-                                    <p className="font-bold text-primary">Biometric Sync</p>
-                                </div>
-                            </div>
-                            <div className="space-y-4">
-                                <div className="bg-white p-6 rounded-3xl shadow-lg border border-border-light">
-                                    <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center mb-4">
-                                        <Smartphone className="text-accent" size={20} />
-                                    </div>
-                                    <p className="font-bold text-primary">Native Feel</p>
-                                </div>
-                                <div className="bg-secondary p-6 rounded-3xl shadow-lg border border-border-light">
-                                    <div className="w-10 h-10 bg-info/10 rounded-xl flex items-center justify-center mb-4">
-                                        <Calendar className="text-info" size={20} />
-                                    </div>
-                                    <p className="font-bold text-primary">Smart Alerts</p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* CTA Section */}
-            <section className="py-32 px-6">
-                <div className="max-w-5xl mx-auto bg-primary rounded-[3rem] p-12 lg:p-20 text-center relative overflow-hidden shadow-2xl">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 blur-[80px] rounded-full" />
-                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent-light/10 blur-[80px] rounded-full" />
-
-                    <div className="relative z-10">
-                        <h2 className="text-4xl md:text-6xl font-bold text-white mb-8">Ready to Start Your Digital Campus Life?</h2>
-                        <p className="text-accent-light text-xl mb-12 max-w-2xl mx-auto opacity-90 leading-relaxed">
-                            Join thousands of students and faculty members who are already using our platform to make campus life seamless.
+            {/* CTA — full width */}
+            <section className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-16 sm:py-24">
+                <div className="relative w-full rounded-3xl sm:rounded-[2.5rem] overflow-hidden shadow-2xl min-h-[360px] flex items-center justify-center">
+                    <img src={SECTION_IMAGES.cta} alt="Pydah students — join the portal" className="absolute inset-0 w-full h-full object-cover object-center" loading="lazy" />
+                    <div className="absolute inset-0 bg-primary/88" />
+                    <div className="relative z-10 text-center px-6 py-14 sm:py-20 max-w-4xl mx-auto">
+                        <h2 className="text-3xl sm:text-5xl font-bold text-white mb-6">Ready to Track Your Campus Life?</h2>
+                        <p className="text-accent-light text-base sm:text-xl mb-10 opacity-95 leading-relaxed">
+                            Log in with your admission number — {totalModules}+ modules waiting for you.
                         </p>
-                        <div className="flex flex-col sm:flex-row gap-6 justify-center">
-                            <button
-                                onClick={() => navigate('/login')}
-                                className="bg-accent text-primary px-10 py-5 rounded-2xl font-bold text-xl hover:bg-accent-light transition-all shadow-xl active:scale-95"
-                            >
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <button onClick={() => navigate('/login')} className="bg-accent text-primary px-10 py-4 rounded-2xl font-bold text-lg hover:bg-accent-light shadow-xl active:scale-95">
                                 Login as Student
                             </button>
-                            <button
-                                onClick={() => navigate('/login')}
-                                className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-10 py-5 rounded-2xl font-bold text-xl hover:bg-white/20 transition-all active:scale-95"
-                            >
+                            <button onClick={() => navigate('/login')} className="bg-white/15 backdrop-blur text-white border border-white/30 px-10 py-4 rounded-2xl font-bold text-lg hover:bg-white/25 active:scale-95">
                                 Faculty Access
                             </button>
                         </div>
@@ -354,25 +603,17 @@ const GetStarted = () => {
                 </div>
             </section>
 
-            {/* Footer */}
-            <footer className="bg-white border-t border-border-light py-12 px-6">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <footer className="w-full bg-white border-t border-border-light py-10 px-4 sm:px-8 lg:px-12 xl:px-16">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-3">
-                        <img
-                            src="/logo.png"
-                            alt="Logo"
-                            className="h-8 w-auto object-contain"
-                            onError={(e) => e.target.style.display = 'none'}
-                        />
-                        <span className="text-lg font-bold text-primary tracking-tight">Student Portal</span>
+                        <img src="/logo.png" alt="Logo" className="h-8 w-auto" onError={(e) => { e.target.style.display = 'none'; }} />
+                        <span className="text-lg font-bold text-primary">Student Portal</span>
                     </div>
-                    <p className="text-text-secondary text-sm">
-                        © {new Date().getFullYear()} Pydah Group of Institutions. All rights reserved.
-                    </p>
-                    <div className="flex items-center gap-6">
-                        <a href="#" className="text-text-secondary hover:text-primary transition-colors text-sm font-medium">Privacy Policy</a>
-                        <a href="#" className="text-text-secondary hover:text-primary transition-colors text-sm font-medium">Terms of Service</a>
-                        <a href="#" className="text-text-secondary hover:text-primary transition-colors text-sm font-medium">Contact Us</a>
+                    <p className="text-text-secondary text-sm">© {new Date().getFullYear()} Pydah Group of Institutions.</p>
+                    <div className="flex gap-6 text-sm text-text-secondary">
+                        <a href="#" className="hover:text-primary">Privacy</a>
+                        <a href="#" className="hover:text-primary">Terms</a>
+                        <a href="#" className="hover:text-primary">Contact</a>
                     </div>
                 </div>
             </footer>

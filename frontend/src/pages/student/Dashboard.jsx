@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
+import StudentPortalHomeFeatures from '../../components/student/StudentPortalHomeFeatures';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import { serviceService } from '../../services/serviceService';
@@ -481,6 +482,16 @@ const Dashboard = () => {
                     </div>
                 </div>
 
+                <div className="rounded-2xl p-4 sm:p-5 lg:p-6 bg-white border border-sky-100 min-h-[280px]">
+                    <SkeletonBox height="h-6" width="w-48" className="mb-4" />
+                    <SkeletonBox height="h-4" width="w-full max-w-lg" className="mb-6" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                            <SkeletonBox key={i} height="h-28" width="w-full" className="rounded-xl" />
+                        ))}
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-6">
                     {[1, 2, 3].map((i) => (
                         <div key={i} className={`rounded-xl lg:rounded-2xl p-4 lg:p-5 bg-white shadow-md border border-slate-100 flex flex-col justify-center min-h-[100px] lg:min-h-[7.5rem] ${i === 3 ? 'col-span-2 lg:col-span-1' : ''}`}>
@@ -731,9 +742,12 @@ const Dashboard = () => {
                             </h1>
                             {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-8 h-8" />}
                         </div>
-                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1 mb-3 lg:mb-4">
+                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1 mb-2 lg:mb-3">
                             <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.15em] px-1 text-white/80">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
                         </div>
+                        <p className="text-[11px] sm:text-xs text-white/75 font-medium max-w-xl text-center md:text-left leading-relaxed">
+                            Your command center — attendance, fees, registration, documents, clubs, events, and services in one place.
+                        </p>
 
                         {/* Status / Quick Action Row */}
                         {!isProfileVerified ? (
@@ -784,6 +798,18 @@ const Dashboard = () => {
                     </div>
                 )}
             </header>
+
+            {/* Portal capabilities — feature showcase */}
+            <StudentPortalHomeFeatures
+                isEnabled={isEnabled}
+                ticketAppUrl={ticketAppUrl}
+                snapshot={{
+                    attendancePct: attendanceStats?.percentage,
+                    registrationLabel,
+                    feeStatusLabel: isEnabled('fees') ? feeStatusLabel : null,
+                    isProfileVerified
+                }}
+            />
 
             {/* Top Stats Row: Attendance + Registration (inline on lg) */}
             <div className={`grid grid-cols-2 gap-3 lg:gap-4 ${
