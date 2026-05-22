@@ -9,9 +9,38 @@ const STUDENT_PASSWORD_RESET_SMS_TEMPLATE_ID =
   process.env.STUDENT_PASSWORD_RESET_SMS_TEMPLATE_ID || '1707176526611076697';
 
 /**
+ * Resolve login username for a student.
+ * - Default: admission number (used in SMS and student_credentials.username).
+ * - If a distinct PIN is assigned (not equal to admission), use PIN instead.
+ */
+function resolveStudentLoginUsername({ pinNo, admissionNumber, admissionNo }) {
+  const pin = String(pinNo || '').trim();
+  const admission = String(admissionNumber || '').trim();
+  const admissionAlt = String(admissionNo || '').trim();
+  const loginAdmission = admission || admissionAlt;
+
+  if (!loginAdmission) {
+    return null;
+  }
+
+  const pinMatchesAdmission =
+    pin &&
+    (pin === admission ||
+      pin === admissionAlt ||
+      (admission && pin.toLowerCase() === admission.toLowerCase()) ||
+      (admissionAlt && pin.toLowerCase() === admissionAlt.toLowerCase()));
+
+  if (pin && !pinMatchesAdmission) {
+    return pin;
+  }
+
+  return loginAdmission;
+}
+
+/**
  * Generate and store student login credentials
- * Username: PIN number OR mobile number (prefer PIN)
- * Password: First 4 letters of student name + last 4 digits of mobile number
+ * Username: admission number (default) OR distinct PIN when assigned
+ * Password: random 8-character alphanumeric
  * 
  * @param {number} studentId - Student ID from students table
  * @param {string} admissionNumber - Student admission number
@@ -21,7 +50,15 @@ const STUDENT_PASSWORD_RESET_SMS_TEMPLATE_ID =
  * @param {boolean} isPasswordReset - Whether this is a password reset (default: false for account creation)
  * @returns {Promise<{success: boolean, username?: string, error?: string}>}
  */
-async function generateStudentCredentials(studentId, admissionNumber, pinNo, studentName, studentMobile, isPasswordReset = false) {
+async function generateStudentCredentials(
+  studentId,
+  admissionNumber,
+  pinNo,
+  studentName,
+  studentMobile,
+  isPasswordReset = false,
+  admissionNo = null
+) {
   try {
     // Validate required fields
     if (!studentMobile || studentMobile.trim() === '') {
@@ -32,15 +69,14 @@ async function generateStudentCredentials(studentId, admissionNumber, pinNo, stu
       return { success: false, error: 'Student name is required' };
     }
 
-    // Generate username: PIN number OR mobile number
-    let username = '';
-    if (pinNo && pinNo.trim() !== '') {
-      username = pinNo.trim();
-    } else if (studentMobile && studentMobile.trim() !== '') {
-      // Use only digits from mobile number
-      username = studentMobile.replace(/\D/g, '');
-    } else {
-      return { success: false, error: 'No PIN or mobile number available' };
+    const username = resolveStudentLoginUsername({
+      pinNo,
+      admissionNumber,
+      admissionNo
+    });
+
+    if (!username) {
+      return { success: false, error: 'Admission number is required for username' };
     }
 
     // Generate random alphanumeric password (8 characters)
@@ -127,7 +163,7 @@ async function generateStudentCredentials(studentId, admissionNumber, pinNo, stu
 async function generateCredentialsByAdmissionNumber(admissionNumber, isPasswordReset = false) {
   try {
     const [students] = await masterPool.query(`
-      SELECT id, admission_number, pin_no, student_name, student_mobile
+      SELECT id, admission_number, admission_no, pin_no, student_name, student_mobile
       FROM students
       WHERE admission_number = ? OR admission_no = ?
       LIMIT 1
@@ -144,7 +180,8 @@ async function generateCredentialsByAdmissionNumber(admissionNumber, isPasswordR
       student.pin_no,
       student.student_name,
       student.student_mobile,
-      isPasswordReset
+      isPasswordReset,
+      student.admission_no
     );
   } catch (error) {
     console.error('Error generating credentials by admission number:', error);
@@ -153,6 +190,7 @@ async function generateCredentialsByAdmissionNumber(admissionNumber, isPasswordR
 }
 
 module.exports = {
+  resolveStudentLoginUsername,
   generateStudentCredentials,
   generateCredentialsByAdmissionNumber
 };

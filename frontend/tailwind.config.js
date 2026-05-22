@@ -46,6 +46,20 @@ export default {
         error: '#EF476F',             // Errors and invalid states
         info: '#118AB2',              // Info states
 
+        // Student portal — fresh, friendly palette
+        portal: {
+          sky: '#0EA5E9',
+          'sky-dark': '#0284C7',
+          'sky-light': '#E0F2FE',
+          indigo: '#6366F1',
+          'indigo-dark': '#4F46E5',
+          teal: '#14B8A6',
+          'teal-dark': '#0D9488',
+          violet: '#8B5CF6',
+          surface: '#F8FAFC',
+          card: '#FFFFFF',
+        },
+
         // Legacy colors for backward compatibility
         navy: {
           50: '#f8fafc',

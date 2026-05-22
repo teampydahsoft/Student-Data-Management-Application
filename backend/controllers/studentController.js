@@ -3570,7 +3570,7 @@ exports.resetStudentPassword = async (req, res) => {
 
     // Get student data
     const [students] = await masterPool.query(
-      `SELECT id, admission_number, pin_no, student_name, student_mobile
+      `SELECT id, admission_number, admission_no, pin_no, student_name, student_mobile
        FROM students
        WHERE admission_number = ? OR admission_no = ?
        LIMIT 1`,
@@ -3594,7 +3594,8 @@ exports.resetStudentPassword = async (req, res) => {
       student.pin_no,
       student.student_name,
       student.student_mobile,
-      true // isPasswordReset = true
+      true, // isPasswordReset = true
+      student.admission_no
     );
 
     if (!credResult.success) {

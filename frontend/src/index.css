@@ -6,6 +6,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Student portal — guaranteed visible colors (solid backgrounds) */
+@layer components {
+    .student-header-banner {
+        @apply bg-sky-600 text-white;
+    }
+    .student-header-banner--verified {
+        @apply bg-indigo-600 text-white;
+    }
+    .student-stat-today {
+        @apply bg-sky-500 text-white;
+    }
+    .student-stat-today--present {
+        @apply bg-teal-500 text-white;
+    }
+    .student-stat-today--absent {
+        @apply bg-rose-500 text-white;
+    }
+    .student-stat-today--holiday {
+        @apply bg-amber-500 text-white;
+    }
+    .student-stat-progress {
+        @apply bg-indigo-600 text-white;
+    }
+    .student-stat-registration-pending {
+        @apply bg-violet-600 text-white;
+    }
+    .student-stat-registration-done {
+        @apply bg-teal-600 text-white;
+    }
+    .student-stat-fees {
+        @apply bg-cyan-600 text-white;
+    }
+}
+
 /* Custom animations for progress */
 @keyframes shimmer {
     0% {

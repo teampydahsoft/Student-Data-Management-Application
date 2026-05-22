@@ -62,15 +62,14 @@ async function createStudentCredentials() {
           continue;
         }
 
-        // Generate username: PIN number OR mobile number
-        let username = '';
-        if (student.pin_no && student.pin_no.trim() !== '') {
-          username = student.pin_no.trim();
-        } else if (student.student_mobile && student.student_mobile.trim() !== '') {
-          // Use only digits from mobile number
-          username = student.student_mobile.replace(/\D/g, '');
-        } else {
-          console.log(`⚠️  Skipping student ${student.admission_number || student.id}: No PIN or mobile number`);
+        const { resolveStudentLoginUsername } = require('../utils/studentCredentials');
+        const username = resolveStudentLoginUsername({
+          pinNo: student.pin_no,
+          admissionNumber: student.admission_number,
+          admissionNo: student.admission_no
+        });
+        if (!username) {
+          console.log(`⚠️  Skipping student ${student.admission_number || student.id}: No admission number for username`);
           skippedCount++;
           continue;
         }
