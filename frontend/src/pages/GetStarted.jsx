@@ -210,52 +210,97 @@ const GetStarted = () => {
                 </div>
             </nav>
 
-            {/* Hero — content left, campus photo right */}
-            <section className="relative w-full pt-[4.5rem] flex flex-col lg:flex-row lg:items-stretch lg:min-h-[calc(100vh-4.5rem)] lg:max-h-[920px] bg-secondary overflow-hidden">
-                {/* Left: copy & actions */}
-                <div className="relative z-10 w-full lg:w-[46%] xl:w-[44%] 2xl:w-[42%] flex flex-col justify-center px-4 sm:px-8 lg:px-10 xl:px-14 2xl:px-16 py-10 sm:py-12 lg:py-14 shrink-0">
-                    <motion.div
-                        initial={{ opacity: 0, y: 16 }}
+            {/* Hero — mobile: text left + photo right; desktop: split columns */}
+            <section className="relative w-full pt-[4.5rem] lg:flex lg:flex-row lg:items-stretch lg:min-h-[calc(100vh-4.5rem)] lg:max-h-[920px] bg-secondary overflow-hidden">
+                <div className="relative z-10 w-full lg:w-[46%] xl:w-[44%] 2xl:w-[42%] flex flex-col justify-center px-4 sm:px-6 lg:px-10 xl:px-14 2xl:px-16 py-6 sm:py-8 lg:py-14 shrink-0">
+                    {/* Full-width badge on mobile so label is not clipped beside photo */}
+                    <motion.span
+                        initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="w-full max-w-xl"
+                        transition={{ duration: 0.4 }}
+                        className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-[10px] sm:text-xs font-bold uppercase tracking-wide sm:tracking-[0.2em] mb-3 sm:mb-6 w-fit max-w-full lg:hidden"
                     >
-                        <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-bold uppercase tracking-[0.2em] mb-5 sm:mb-6">
-                            <LineChart size={14} className="text-accent" />
-                            Unified Student Tracking
-                        </span>
-                        <h1 className="text-3xl sm:text-4xl xl:text-5xl 2xl:text-6xl font-bold text-primary leading-[1.1] mb-5 sm:mb-6">
-                            Track <span className="text-accent">Everything</span> About Your Student Life
-                        </h1>
-                        <p className="text-base sm:text-lg text-text-secondary mb-6 sm:mb-8 leading-relaxed">
-                            One portal for attendance, fees, registration, documents, timetable, clubs, events, certificates, transport, internship, and support — linked to your admission number.
-                        </p>
+                        <LineChart size={12} className="text-accent shrink-0" aria-hidden />
+                        <span className="leading-snug">Unified Student Tracking</span>
+                    </motion.span>
 
-                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                            <button onClick={() => navigate('/login')} className="group bg-primary text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-base sm:text-lg hover:bg-primary-dark shadow-xl flex items-center justify-center gap-2 active:scale-95">
-                                Launch Portal <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                            </button>
-                            <button onClick={() => document.getElementById('portal-features')?.scrollIntoView({ behavior: 'smooth' })} className="px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-base sm:text-lg text-primary border-2 border-primary/15 hover:bg-primary/5 bg-white/50">
-                                Explore Features
-                            </button>
+                    <div className="flex flex-row gap-3 sm:gap-5 items-start lg:block">
+                        {/* Copy — always left */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5 }}
+                            className="flex-1 min-w-0 lg:max-w-xl"
+                        >
+                            <span className="hidden lg:inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-bold uppercase tracking-[0.2em] mb-6">
+                                <LineChart size={14} className="text-accent shrink-0" aria-hidden />
+                                Unified Student Tracking
+                            </span>
+                            <h1 className="text-[1.35rem] leading-[1.15] sm:text-3xl md:text-4xl xl:text-5xl 2xl:text-6xl font-bold text-primary mb-3 sm:mb-6">
+                                Track <span className="text-accent">Everything</span> About Your Student Life
+                            </h1>
+                            <p className="text-sm sm:text-base lg:text-lg text-text-secondary mb-4 sm:mb-8 leading-relaxed hidden sm:block">
+                                One portal for attendance, fees, registration, documents, timetable, clubs, events, certificates, transport, internship, and support — linked to your admission number.
+                            </p>
+                            <p className="text-xs text-text-secondary mb-4 leading-relaxed sm:hidden">
+                                Attendance, fees, registration, documents &amp; more — linked to your admission number.
+                            </p>
+
+                            <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-4">
+                                <button onClick={() => navigate('/login')} className="group bg-primary text-white px-5 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-lg hover:bg-primary-dark shadow-xl flex items-center justify-center gap-2 active:scale-95">
+                                    Launch Portal <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                </button>
+                                <button onClick={() => document.getElementById('portal-features')?.scrollIntoView({ behavior: 'smooth' })} className="px-5 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-lg text-primary border-2 border-primary/15 hover:bg-primary/5 bg-white/80">
+                                    Explore Features
+                                </button>
+                            </div>
+                        </motion.div>
+
+                        {/* Mobile / tablet: campus photo — right of text */}
+                        <div className="w-[38%] max-w-[148px] sm:w-[42%] sm:max-w-[200px] shrink-0 lg:hidden">
+                            <div className="relative aspect-[3/4] rounded-xl sm:rounded-2xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-primary/10">
+                                <img
+                                    src={SECTION_IMAGES.hero}
+                                    alt="Pydah Group campus"
+                                    className="absolute inset-0 w-full h-full object-cover object-[center_25%]"
+                                    fetchPriority="high"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-primary/40 via-transparent to-transparent pointer-events-none" />
+                            </div>
+                            <p className="mt-2 text-[9px] font-bold text-accent uppercase tracking-wider text-center leading-tight">
+                                Education &amp; Beyond
+                            </p>
                         </div>
-                    </motion.div>
+                    </div>
+
+                    {/* Mobile stats — below row, not on photo */}
+                    <div className="mt-4 grid grid-cols-3 gap-2 lg:hidden">
+                        <div className="bg-white border border-border-light rounded-xl px-2.5 py-2 text-center shadow-sm">
+                            <p className="text-[8px] font-bold text-text-secondary uppercase tracking-wider">Attendance</p>
+                            <p className="text-base font-bold text-primary leading-tight">87.4%</p>
+                        </div>
+                        <div className="bg-white border border-border-light rounded-xl px-2.5 py-2 flex flex-col items-center justify-center shadow-sm">
+                            <CheckCircle className="text-success mb-0.5" size={16} />
+                            <p className="text-[8px] font-bold text-primary leading-tight">Verified</p>
+                        </div>
+                        <div className="bg-accent/90 text-primary rounded-xl px-2.5 py-2 flex items-center justify-center text-center font-bold text-[10px] sm:text-xs shadow-sm">
+                            {totalModules}+ Modules
+                        </div>
+                    </div>
                 </div>
 
-                {/* Right: campus photo + overlays */}
-                <div className="relative w-full lg:flex-1 flex items-stretch min-h-[320px] sm:min-h-[400px] lg:min-h-0 p-4 sm:p-6 lg:p-8 lg:pl-2 xl:pl-4">
-                    <div className="relative w-full flex-1 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/60 ring-1 ring-primary/10 bg-primary/5">
+                {/* Desktop: large campus photo + overlays */}
+                <div className="relative hidden lg:flex lg:flex-1 items-stretch min-h-0 p-8 lg:pl-2 xl:pl-4">
+                    <div className="relative w-full flex-1 rounded-3xl overflow-hidden shadow-2xl border border-white/60 ring-1 ring-primary/10 bg-primary/5">
                         <img
                             src={SECTION_IMAGES.hero}
                             alt="Pydah Group of Institutions — Education and Beyond"
-                            className="absolute inset-0 w-full h-full object-cover object-center"
+                            className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
                             fetchPriority="high"
                         />
-                        <div className="absolute inset-y-0 left-0 w-24 sm:w-32 bg-gradient-to-r from-secondary/90 to-transparent pointer-events-none" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-primary/50 via-transparent to-primary/10 pointer-events-none" />
+                        <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-secondary/90 to-transparent pointer-events-none" />
 
-                        {/* Institution badge */}
-                        <div className="absolute top-4 left-4 sm:top-5 sm:left-5 z-10 max-w-[200px] sm:max-w-[240px]">
+                        <div className="absolute top-5 left-5 z-10 max-w-[240px]">
                             <div className="bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50">
                                 <div className="flex items-center gap-2 mb-1.5">
                                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -263,7 +308,7 @@ const GetStarted = () => {
                                     </div>
                                     <p className="text-[10px] font-bold text-accent uppercase tracking-widest leading-tight">Pydah Group</p>
                                 </div>
-                                <p className="text-sm sm:text-base font-bold text-primary italic leading-snug">Education &amp; Beyond</p>
+                                <p className="text-base font-bold text-primary italic leading-snug">Education &amp; Beyond</p>
                                 <p className="text-[10px] text-text-secondary mt-1 flex items-center gap-1">
                                     <Sparkles size={10} className="text-accent shrink-0" />
                                     NAAC accredited institution
@@ -271,15 +316,13 @@ const GetStarted = () => {
                             </div>
                         </div>
 
-                        {/* Attendance — top right */}
-                        <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50 min-w-[120px]">
+                        <div className="absolute top-5 right-5 z-10 bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50 min-w-[120px]">
                             <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">Attendance</p>
-                            <p className="text-2xl sm:text-3xl font-bold text-primary leading-none mt-0.5">87.4%</p>
+                            <p className="text-3xl font-bold text-primary leading-none mt-0.5">87.4%</p>
                             <p className="text-[10px] text-accent font-semibold mt-1">Semester average</p>
                         </div>
 
-                        {/* Bottom status row */}
-                        <div className="absolute bottom-4 left-4 right-4 sm:bottom-5 sm:left-5 sm:right-5 z-10 flex flex-wrap gap-2 sm:gap-3 justify-between items-end">
+                        <div className="absolute bottom-5 left-5 right-5 z-10 flex gap-3 justify-between items-end">
                             <div className="bg-white/95 backdrop-blur-md rounded-2xl px-4 py-3 shadow-xl border border-white/50 flex items-center gap-3">
                                 <div className="w-10 h-10 bg-success/20 rounded-full flex items-center justify-center shrink-0">
                                     <CheckCircle className="text-success" size={20} />
