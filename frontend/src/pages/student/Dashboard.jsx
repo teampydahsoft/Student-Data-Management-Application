@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
-import StudentPortalHomeFeatures from '../../components/student/StudentPortalHomeFeatures';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import { serviceService } from '../../services/serviceService';
@@ -482,16 +481,6 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                <div className="rounded-2xl p-4 sm:p-5 lg:p-6 bg-white border border-sky-100 min-h-[280px]">
-                    <SkeletonBox height="h-6" width="w-48" className="mb-4" />
-                    <SkeletonBox height="h-4" width="w-full max-w-lg" className="mb-6" />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {[1, 2, 3, 4, 5, 6].map((i) => (
-                            <SkeletonBox key={i} height="h-28" width="w-full" className="rounded-xl" />
-                        ))}
-                    </div>
-                </div>
-
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-6">
                     {[1, 2, 3].map((i) => (
                         <div key={i} className={`rounded-xl lg:rounded-2xl p-4 lg:p-5 bg-white shadow-md border border-slate-100 flex flex-col justify-center min-h-[100px] lg:min-h-[7.5rem] ${i === 3 ? 'col-span-2 lg:col-span-1' : ''}`}>
@@ -705,7 +694,7 @@ const Dashboard = () => {
                 <div className={`absolute top-0 right-0 w-48 lg:w-64 h-48 lg:h-64 rounded-full -mr-16 lg:-mr-24 -mt-16 lg:-mt-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-white/10' : (isProfileVerified ? 'bg-emerald-500/10' : 'bg-white/10')}`}></div>
                 <div className={`absolute bottom-0 left-0 w-32 lg:w-48 h-32 lg:h-48 rounded-full -ml-16 lg:-ml-24 -mb-16 lg:-mb-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-black/5' : (isProfileVerified ? 'bg-emerald-500/5' : 'bg-black/5')}`}></div>
 
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-4 lg:gap-5">
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-5">
                     {/* Profile Photo with Status Badge */}
                     <div className="relative group shrink-0">
                         <div className={`h-16 w-16 sm:h-20 sm:w-20 lg:h-[4.5rem] lg:w-[4.5rem] rounded-xl lg:rounded-2xl p-1 transition-all duration-300 shadow-lg ${isBirthday ? 'bg-white/30' : 'bg-white/20'}`}>
@@ -728,88 +717,50 @@ const Dashboard = () => {
                                 <BadgeCheck className="text-white w-5 h-5 lg:w-6 lg:h-6" />
                             </div>
                         ) : (
-                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-xl lg:rounded-2xl shadow-2xl border-2 border-white animate-bounce">
+                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-xl lg:rounded-2xl shadow-2xl border-2 border-white">
                                 <ShieldAlert className="text-white w-4 h-4 lg:w-5 lg:h-5" />
                             </div>
                         )}
                     </div>
 
                     {/* Text Content */}
-                    <div className="flex-1 text-center md:text-left">
+                    <div className="flex-1 min-w-0 text-center md:text-left">
                         <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-2 mb-2">
                             <h1 className="text-2xl sm:text-3xl lg:text-[1.75rem] font-black tracking-tight leading-tight text-white">
                                 {isBirthday ? 'Happy Birthday, ' : 'Welcome back, '}<span className={isBirthday ? 'text-amber-100' : 'text-white/90'}>{displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}</span>!
                             </h1>
                             {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-8 h-8" />}
                         </div>
-                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1 mb-2 lg:mb-3">
+                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1">
                             <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.15em] px-1 text-white/80">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
                         </div>
-                        <p className="text-[11px] sm:text-xs text-white/75 font-medium max-w-xl text-center md:text-left leading-relaxed">
-                            Your command center — attendance, fees, registration, documents, clubs, events, and services in one place.
-                        </p>
-
-                        {/* Status / Quick Action Row */}
-                        {!isProfileVerified ? (
-                            <div className="inline-flex items-center gap-3 p-1.5 sm:p-2 pr-4 sm:pr-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl animate-in fade-in slide-in-from-left-4 duration-500">
-                                <span className="bg-amber-400 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 sm:py-1 rounded-xl uppercase tracking-widest shadow-sm">Critical</span>
-                                <p className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white">Please verify your profile to fix database errors.</p>
-                            </div>
-                        ) : (
-                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-full animate-in fade-in slide-in-from-left-4 duration-500">
+                        {isProfileVerified && (
+                            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-full">
                                 <BadgeCheck size={12} className="text-emerald-400" />
                                 <span className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-400">Verified Account</span>
                             </div>
                         )}
                     </div>
 
-                    {/* CTA Section - Hidden or small on mobile */}
-                    <div className="shrink-0 w-full md:w-auto hidden sm:block">
+                    {/* Right-side action */}
+                    <div className="shrink-0 w-full sm:w-auto flex justify-end sm:self-center">
                         {isProfileVerified ? (
-                            <div className={`flex flex-col items-center md:items-end gap-1 p-3 lg:p-4 rounded-xl border backdrop-blur-md transition-all duration-300 ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'}`}>
-                                <div className="flex items-center gap-2">
-                                    <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-500'}`} />
-                                    <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-500'}`}>Status</span>
-                                </div>
-                                <p className={`text-[11px] lg:text-[13px] font-bold ${isBirthday ? 'text-white/80' : 'text-emerald-500/50'}`}>Data Synchronized</p>
+                            <div className={`hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur-md ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'}`}>
+                                <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-500'}`} />
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-500'}`}>Synced</span>
                             </div>
                         ) : (
                             <button
                                 onClick={() => setShowVerifyProfile(true)}
-                                className={`w-full md:w-auto flex items-center justify-center gap-2 px-5 py-2.5 lg:px-6 lg:py-3 rounded-xl font-black text-xs lg:text-sm active:scale-95 shadow-md uppercase tracking-widest ${isBirthday ? 'bg-white text-orange-600' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
+                                className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-xs active:scale-[0.98] shadow-lg uppercase tracking-widest whitespace-nowrap transition-colors ${isBirthday ? 'bg-white text-orange-600 hover:bg-orange-50' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
                             >
-                                <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-700" />
+                                <RefreshCw className="w-4 h-4 shrink-0" />
                                 Verify Profile
                             </button>
                         )}
                     </div>
                 </div>
-
-                {/* Mobile verify CTA — visible below sm breakpoint */}
-                {!isProfileVerified && (
-                    <div className="sm:hidden mt-4 relative z-10">
-                        <button
-                            onClick={() => setShowVerifyProfile(true)}
-                            className={`w-full flex items-center justify-center gap-3 px-6 py-4 rounded-[1.5rem] font-black text-[12px] active:scale-95 shadow-2xl uppercase tracking-widest ${isBirthday ? 'bg-white text-orange-600' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Verify Profile
-                        </button>
-                    </div>
-                )}
             </header>
-
-            {/* Portal capabilities — feature showcase */}
-            <StudentPortalHomeFeatures
-                isEnabled={isEnabled}
-                ticketAppUrl={ticketAppUrl}
-                snapshot={{
-                    attendancePct: attendanceStats?.percentage,
-                    registrationLabel,
-                    feeStatusLabel: isEnabled('fees') ? feeStatusLabel : null,
-                    isProfileVerified
-                }}
-            />
 
             {/* Top Stats Row: Attendance + Registration (inline on lg) */}
             <div className={`grid grid-cols-2 gap-3 lg:gap-4 ${

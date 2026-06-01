@@ -243,6 +243,231 @@ const defaultCourseForm = {
   yearSemesterConfig: [], // Array of {year: number, semesters: number}
   isActive: true
 };
+
+const courseUsesPerYearConfig = (course) =>
+  Array.isArray(course?.yearSemesterConfig) && course.yearSemesterConfig.length > 0;
+
+const formatCourseStructureSummary = (course) => {
+  const years = course?.totalYears ?? 0;
+  if (courseUsesPerYearConfig(course)) {
+    const perYear = course.yearSemesterConfig
+      .map((y) => `Y${y.year}: ${y.semesters} sem`)
+      .join(' · ');
+    return `${years}yr · ${perYear}`;
+  }
+  return `${years}yr · ${course?.semestersPerYear ?? 2} sem/year`;
+};
+
+const buildYearSemesterConfigForYears = (totalYears, defaultSemesters, existingConfig = []) => {
+  return Array.from({ length: totalYears }, (_, index) => {
+    const year = index + 1;
+    const existing =
+      existingConfig.find((c) => Number(c.year) === year) || existingConfig[index];
+    return {
+      year,
+      semesters:
+        existing && Number(existing.semesters) > 0
+          ? Number(existing.semesters)
+          : defaultSemesters
+    };
+  });
+};
+
+const buildCourseDraftFromCourse = (course) => {
+  const totalYears = Number(course.totalYears) || 4;
+  const semestersPerYear = Number(course.semestersPerYear) || 2;
+  const usePerYearConfig = courseUsesPerYearConfig(course);
+  return {
+    name: course.name,
+    code: course.code || '',
+    level: course.level || 'ug',
+    collegeId: course.collegeId,
+    totalYears,
+    semestersPerYear,
+    usePerYearConfig,
+    yearSemesterConfig: usePerYearConfig
+      ? course.yearSemesterConfig.map((y) => ({
+        year: Number(y.year),
+        semesters: Number(y.semesters)
+      }))
+      : buildYearSemesterConfigForYears(totalYears, semestersPerYear)
+  };
+};
+
+const buildCourseAcademicUpdates = (draft) => {
+  const totalYears = Number(draft.totalYears);
+  if (!totalYears || totalYears <= 0) {
+    return { error: 'Total years must be greater than zero' };
+  }
+
+  const usePerYear = Boolean(draft.usePerYearConfig);
+  if (!usePerYear) {
+    const semestersPerYear = Number(draft.semestersPerYear);
+    if (!semestersPerYear || semestersPerYear <= 0) {
+      return { error: 'Semesters per year must be greater than zero' };
+    }
+    return {
+      updates: {
+        totalYears,
+        semestersPerYear,
+        yearSemesterConfig: null
+      }
+    };
+  }
+
+  const config = draft.yearSemesterConfig;
+  if (!Array.isArray(config) || config.length !== totalYears) {
+    return { error: `Please configure semesters for all ${totalYears} years` };
+  }
+
+  const validConfig = config.filter(
+    (entry) =>
+      entry &&
+      Number.isFinite(Number(entry.year)) &&
+      Number.isFinite(Number(entry.semesters)) &&
+      Number(entry.semesters) > 0
+  );
+  if (validConfig.length !== totalYears) {
+    return { error: 'Invalid year semester configuration. Please check all years are configured.' };
+  }
+
+  const semestersPerYear = Number(draft.semestersPerYear) || 2;
+  return {
+    updates: {
+      totalYears,
+      semestersPerYear,
+      yearSemesterConfig: validConfig.map((entry) => ({
+        year: Number(entry.year),
+        semesters: Number(entry.semesters)
+      }))
+    }
+  };
+};
+
+const CourseAcademicStructureFields = ({ value, onChange, idPrefix = 'course' }) => {
+  const totalYears = value.totalYears ?? 4;
+  const semestersPerYear = value.semestersPerYear ?? 2;
+  const usePerYearConfig = Boolean(value.usePerYearConfig);
+  const yearSemesterConfig = value.yearSemesterConfig || [];
+  const checkboxId = `${idPrefix}-usePerYearConfig`;
+
+  const handleTotalYearsChange = (rawYears) => {
+    const years = parseInt(rawYears, 10) || 1;
+    const defaultSemesters = parseInt(semestersPerYear, 10) || 2;
+    onChange({
+      totalYears: years,
+      yearSemesterConfig: usePerYearConfig
+        ? buildYearSemesterConfigForYears(years, defaultSemesters, yearSemesterConfig)
+        : []
+    });
+  };
+
+  const handlePerYearToggle = (checked) => {
+    if (checked) {
+      const years = parseInt(totalYears, 10) || 4;
+      const defaultSemesters = parseInt(semestersPerYear, 10) || 2;
+      onChange({
+        usePerYearConfig: true,
+        yearSemesterConfig: buildYearSemesterConfigForYears(
+          years,
+          defaultSemesters,
+          yearSemesterConfig
+        )
+      });
+      return;
+    }
+    onChange({ usePerYearConfig: false });
+  };
+
+  return (
+    <>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Total Years <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={totalYears}
+          onChange={(e) => handleTotalYearsChange(e.target.value)}
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+          required
+        />
+      </div>
+
+      {!usePerYearConfig && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Semesters Per Year <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={4}
+            value={semestersPerYear}
+            onChange={(e) => onChange({ semestersPerYear: e.target.value })}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            required
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Same number of semesters for all years. Promotion advances by semester, then year.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="checkbox"
+          id={checkboxId}
+          checked={usePerYearConfig}
+          onChange={(e) => handlePerYearToggle(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+        />
+        <label htmlFor={checkboxId} className="text-sm text-gray-700 cursor-pointer">
+          Configure semesters per year (e.g. Year 1: 1 sem → promotes directly to Year 2)
+        </label>
+      </div>
+
+      {usePerYearConfig && yearSemesterConfig.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className="mb-3 text-sm font-medium text-gray-700">Semesters per year</div>
+          <div className="space-y-3">
+            {yearSemesterConfig.map((yearConfig, index) => (
+              <div
+                key={`year-${yearConfig.year}-${index}`}
+                className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
+              >
+                <span className="w-20 text-sm font-medium text-gray-700">
+                  Year {yearConfig.year}:
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={4}
+                  value={yearConfig.semesters ?? 2}
+                  onChange={(e) => {
+                    const semesters = parseInt(e.target.value, 10) || 1;
+                    const config = [...yearSemesterConfig];
+                    if (config[index]) {
+                      config[index] = { ...config[index], semesters };
+                    }
+                    onChange({ yearSemesterConfig: config });
+                  }}
+                  className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                />
+                <span className="text-sm text-gray-600">semester(s)</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-gray-500">
+            When a year has only 1 semester, promotion moves the student to the next year (not another semester in the same year).
+          </p>
+        </div>
+      )}
+    </>
+  );
+};
 const FREEZABLE_FIELDS = [
   {
     group: 'Personal Information', fields: [
@@ -1796,67 +2021,29 @@ const Settings = () => {
       return;
     }
 
-    if (!newCourse.totalYears || Number(newCourse.totalYears) <= 0) {
-      toast.error('Total years must be greater than zero');
+    const academicResult = buildCourseAcademicUpdates(newCourse);
+    if (academicResult.error) {
+      toast.error(academicResult.error);
       return;
     }
 
-    if (!newCourse.usePerYearConfig) {
-      if (!newCourse.semestersPerYear || Number(newCourse.semestersPerYear) <= 0) {
-        toast.error('Semesters per year must be greater than zero');
-        return;
-      }
-    } else {
-      // Validate per-year configuration
-      if (!newCourse.yearSemesterConfig || newCourse.yearSemesterConfig.length === 0) {
-        toast.error('Please configure semesters for each year');
-        return;
-      }
-      const totalYears = Number(newCourse.totalYears);
-      if (newCourse.yearSemesterConfig.length !== totalYears) {
-        toast.error(`Please configure semesters for all ${totalYears} years`);
-        return;
-      }
+    const { semestersPerYear } = academicResult.updates;
+    if (!semestersPerYear || semestersPerYear <= 0 || semestersPerYear > 4) {
+      toast.error('Semesters per year must be between 1 and 4');
+      return;
     }
 
     try {
       setCreatingCourse(true);
-
-      // Ensure semestersPerYear is always a valid number (backend requires it)
-      const semestersPerYearValue = newCourse.usePerYearConfig
-        ? (Number(newCourse.semestersPerYear) || 2) // Default to 2 if not set when using per-year config
-        : Number(newCourse.semestersPerYear);
-
-      if (!semestersPerYearValue || semestersPerYearValue <= 0 || semestersPerYearValue > 4) {
-        toast.error('Semesters per year must be between 1 and 4');
-        setCreatingCourse(false);
-        return;
-      }
 
       const payload = {
         name: newCourse.name.trim(),
         code: newCourse.code.trim(),
         level: newCourse.level || 'ug',
         collegeId: collegeIdToUse,
-        totalYears: Number(newCourse.totalYears),
-        semestersPerYear: semestersPerYearValue,
-        isActive: newCourse.isActive
+        isActive: newCourse.isActive,
+        ...academicResult.updates
       };
-
-      // Add per-year configuration if enabled
-      if (newCourse.usePerYearConfig && newCourse.yearSemesterConfig && Array.isArray(newCourse.yearSemesterConfig) && newCourse.yearSemesterConfig.length > 0) {
-        // Validate each year config has required fields
-        const validConfig = newCourse.yearSemesterConfig.filter(config =>
-          config && typeof config.year === 'number' && typeof config.semesters === 'number'
-        );
-        if (validConfig.length === Number(newCourse.totalYears)) {
-          payload.yearSemesterConfig = validConfig;
-        } else {
-          toast.error('Invalid year semester configuration. Please check all years are configured.');
-          setCreatingCourse(false);
-          return;
-        }
-      }
 
       const response = await api.post('/courses', payload);
       toast.success('Program created successfully');
@@ -2005,14 +2192,7 @@ const Settings = () => {
     setEditingCourseId(course.id);
     setCourseDrafts((prev) => ({
       ...prev,
-      [course.id]: {
-        name: course.name,
-        code: course.code || '',
-        level: course.level || 'ug',
-        collegeId: course.collegeId,
-        totalYears: course.totalYears,
-        semestersPerYear: course.semestersPerYear
-      }
+      [course.id]: buildCourseDraftFromCourse(course)
     }));
   };
 
@@ -2042,13 +2222,9 @@ const Settings = () => {
       return;
     }
 
-    if (!draft.totalYears || Number(draft.totalYears) <= 0) {
-      toast.error('Total years must be greater than zero');
-      return;
-    }
-
-    if (!draft.semestersPerYear || Number(draft.semestersPerYear) <= 0) {
-      toast.error('Semesters per year must be greater than zero');
+    const academicResult = buildCourseAcademicUpdates(draft);
+    if (academicResult.error) {
+      toast.error(academicResult.error);
       return;
     }
 
@@ -2058,8 +2234,7 @@ const Settings = () => {
         name: draft.name.trim(),
         code: draft.code.trim(),
         level: draft.level || 'ug',
-        totalYears: Number(draft.totalYears),
-        semestersPerYear: Number(draft.semestersPerYear)
+        ...academicResult.updates
       };
 
       // Include collegeId if it was changed
@@ -2828,7 +3003,7 @@ const Settings = () => {
                                       {course.name}
                                     </span>
                                     <span className="text-xs text-gray-500 truncate block">
-                                      {course.level ? course.level.toUpperCase() : 'UG'} · {course.totalYears}yr · {course.semestersPerYear}sem
+                                      {course.level ? course.level.toUpperCase() : 'UG'} · {formatCourseStructureSummary(course)}
                                     </span>
                                   </div>
                                 </div>
@@ -2891,7 +3066,7 @@ const Settings = () => {
                               <div className="flex items-center justify-between">
                                 <div>
                                   <h4 className="font-bold text-gray-900 text-[13px]">{selectedCourse.name} - Branches</h4>
-                                  <p className="text-[10px] text-gray-500">{selectedCourse.totalYears}y · {selectedCourse.semestersPerYear}sem</p>
+                                  <p className="text-[10px] text-gray-500">{formatCourseStructureSummary(selectedCourse)}</p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                   <select
@@ -4799,30 +4974,16 @@ const Settings = () => {
                     <option value="pg">PG (Postgraduate)</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Years</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={courseDrafts[editingCourseId]?.totalYears || ''}
-                      onChange={(e) => setCourseDrafts(prev => ({ ...prev, [editingCourseId]: { ...prev[editingCourseId], totalYears: e.target.value } }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Semesters/Year</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={4}
-                      value={courseDrafts[editingCourseId]?.semestersPerYear || ''}
-                      onChange={(e) => setCourseDrafts(prev => ({ ...prev, [editingCourseId]: { ...prev[editingCourseId], semestersPerYear: e.target.value } }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
+                <CourseAcademicStructureFields
+                  idPrefix="edit-course"
+                  value={courseDrafts[editingCourseId] || {}}
+                  onChange={(patch) =>
+                    setCourseDrafts((prev) => ({
+                      ...prev,
+                      [editingCourseId]: { ...prev[editingCourseId], ...patch }
+                    }))
+                  }
+                />
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
@@ -5498,135 +5659,11 @@ const Settings = () => {
                 </p>
               </div>
 
-              {/* Total Years */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Total Years <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={newCourse.totalYears}
-                  onChange={(e) => {
-                    const years = parseInt(e.target.value) || 1;
-                    setNewCourse((prev) => {
-                      const defaultSemesters = parseInt(prev.semestersPerYear) || 2;
-                      let config;
-                      if (prev.usePerYearConfig) {
-                        if (prev.yearSemesterConfig && prev.yearSemesterConfig.length > 0) {
-                          config = Array.from({ length: years }, (_, i) => {
-                            const existing = prev.yearSemesterConfig[i];
-                            return existing || { year: i + 1, semesters: defaultSemesters };
-                          });
-                        } else {
-                          config = Array.from({ length: years }, (_, i) => ({
-                            year: i + 1,
-                            semesters: defaultSemesters
-                          }));
-                        }
-                      } else {
-                        config = [];
-                      }
-                      return { ...prev, totalYears: years, yearSemesterConfig: config };
-                    });
-                  }}
-                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                  required
-                />
-              </div>
-
-              {/* Semesters Per Year (if not using per-year config) */}
-              {!newCourse.usePerYearConfig && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Semesters Per Year <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    value={newCourse.semestersPerYear}
-                    onChange={(e) => setNewCourse((prev) => ({ ...prev, semestersPerYear: e.target.value }))}
-                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Same number of semesters for all years
-                  </p>
-                </div>
-              )}
-
-              {/* Per-year configuration toggle */}
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="modalUsePerYearConfig"
-                  checked={newCourse.usePerYearConfig}
-                  onChange={(e) => {
-                    const usePerYear = e.target.checked;
-                    setNewCourse((prev) => {
-                      if (usePerYear) {
-                        const totalYears = parseInt(prev.totalYears) || 4;
-                        const defaultSemesters = parseInt(prev.semestersPerYear) || 2;
-                        let config = prev.yearSemesterConfig && prev.yearSemesterConfig.length === totalYears
-                          ? [...prev.yearSemesterConfig]
-                          : Array.from({ length: totalYears }, (_, i) => ({
-                            year: i + 1,
-                            semesters: defaultSemesters
-                          }));
-                        return { ...prev, usePerYearConfig: true, yearSemesterConfig: config };
-                      } else {
-                        return { ...prev, usePerYearConfig: false };
-                      }
-                    });
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                />
-                <label htmlFor="modalUsePerYearConfig" className="text-sm text-gray-700 cursor-pointer">
-                  Configure semesters per year (e.g., Diploma Year 1: 1 sem, Year 2-3: 2 sems)
-                </label>
-              </div>
-
-              {/* Per-year semester configuration table */}
-              {newCourse.usePerYearConfig && newCourse.yearSemesterConfig && Array.isArray(newCourse.yearSemesterConfig) && newCourse.yearSemesterConfig.length > 0 && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                  <div className="mb-3 text-sm font-medium text-gray-700">Semesters per Year:</div>
-                  <div className="space-y-3">
-                    {newCourse.yearSemesterConfig.map((yearConfig, index) => {
-                      if (!yearConfig || typeof yearConfig.year !== 'number' || typeof yearConfig.semesters !== 'number') {
-                        return null;
-                      }
-                      return (
-                        <div key={`year-${yearConfig.year}-${index}`} className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 p-3">
-                          <span className="w-20 text-sm font-medium text-gray-700">Year {yearConfig.year}:</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={4}
-                            value={yearConfig.semesters || 2}
-                            onChange={(e) => {
-                              const semesters = parseInt(e.target.value) || 1;
-                              setNewCourse((prev) => {
-                                if (!prev.yearSemesterConfig || !Array.isArray(prev.yearSemesterConfig)) {
-                                  return prev;
-                                }
-                                const config = [...prev.yearSemesterConfig];
-                                if (config[index]) {
-                                  config[index] = { ...config[index], semesters };
-                                }
-                                return { ...prev, yearSemesterConfig: config };
-                              });
-                            }}
-                            className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                          />
-                          <span className="text-sm text-gray-600">semester(s)</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <CourseAcademicStructureFields
+                idPrefix="add-course"
+                value={newCourse}
+                onChange={(patch) => setNewCourse((prev) => ({ ...prev, ...patch }))}
+              />
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
@@ -5864,9 +5901,7 @@ const CourseCard = ({ course, isSelected, onSelect }) => {
         <span className="text-sm font-semibold text-gray-900">{course.name}</span>
         <StatusBadge isActive={course.isActive} />
       </div>
-      <p className="mt-1.5 text-sm text-gray-600">
-        {course.totalYears} years · {course.semestersPerYear} semesters/year
-      </p>
+      <p className="mt-1.5 text-sm text-gray-600">{formatCourseStructureSummary(course)}</p>
       <p className="mt-1.5 text-xs text-gray-500">{activeBranches} active branches</p>
     </button>
   );

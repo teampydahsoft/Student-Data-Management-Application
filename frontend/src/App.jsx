@@ -62,6 +62,7 @@ import Transport from './pages/student/Transport';
 import InternshipStudent from './internship/InternshipStudent';
 import MyProfileRequests from './pages/student/MyProfileRequests';
 import MyDocuments from './pages/student/MyDocuments';
+import StudentVersantTests from './pages/student/VersantTests';
 
 
 // Faculty Pages (v2.0)
@@ -274,6 +275,7 @@ function App() {
           <Route path="feedback" element={<StudentFeedback />} />
           <Route path="profile-requests" element={<MyProfileRequests />} />
           <Route path="my-documents" element={<MyDocuments />} />
+          <Route path="versant-tests" element={<StudentVersantTests />} />
         </Route>
 
         {/* Protected Parent Routes */}

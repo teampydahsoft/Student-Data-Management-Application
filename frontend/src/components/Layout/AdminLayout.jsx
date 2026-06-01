@@ -32,7 +32,6 @@ import {
   Briefcase,
   ArrowLeftRight,
   Wrench,
-  GraduationCap,
   Building2,
   Database,
   UserPlus,
