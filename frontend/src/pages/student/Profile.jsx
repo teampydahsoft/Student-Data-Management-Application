@@ -263,7 +263,7 @@ const Profile = () => {
                 </div>
 
                 {/* Grid Skeleton */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 pb-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 pb-2">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <div key={i} className="bg-white rounded-xl shadow border border-gray-100 p-4 h-64 flex flex-col gap-4">
                             <div className="flex items-center gap-3 border-b border-gray-50 pb-2">
@@ -295,99 +295,112 @@ const Profile = () => {
         return status;
     };
 
+    const profileActionBtn =
+        'inline-flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 w-full px-2 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-[8px] sm:text-[10px] font-black uppercase tracking-wide sm:tracking-widest shadow-lg transition-all hover:-translate-y-0.5 active:scale-95 whitespace-nowrap';
+
     return (
-        <div className="space-y-6 lg:space-y-8 flex flex-col p-1 w-full max-w-full overflow-x-hidden bg-[#F8FAFC]">
-            {/* Premium Header Section */}
-            <div className="relative mb-2 shrink-0">
-                <div className="h-40 lg:h-48 rounded-[2.5rem] bg-white shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative">
-                    <div className="absolute inset-0 bg-[#F1F5F9]/30"></div>
-                    <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-50/50 rounded-full blur-3xl"></div>
-                    <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-emerald-50/50 rounded-full blur-3xl"></div>
+        <div className="space-y-5 sm:space-y-6 lg:space-y-8 flex flex-col p-1 sm:p-2 w-full max-w-full overflow-x-hidden bg-slate-100/80">
+            {/* Header */}
+            <div className="relative mb-1 shrink-0">
+                <div className="h-28 sm:h-36 lg:h-44 rounded-2xl sm:rounded-[2.5rem] bg-gradient-to-br from-indigo-500 via-violet-500 to-emerald-500 shadow-xl overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/40 to-emerald-600/30" />
+                    <div className="absolute -top-16 -right-16 w-64 h-64 bg-white/10 rounded-full blur-2xl" />
+                    <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full blur-2xl" />
                 </div>
 
-                <div className="max-w-7xl mx-auto px-6 lg:px-10 -mt-20 lg:-mt-24 relative z-10">
-                    <div className="bg-white/80 backdrop-blur-xl rounded-[3rem] shadow-2xl shadow-indigo-100/50 border border-white/50 p-6 lg:p-8 flex flex-col md:flex-row items-center md:items-end gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-
-                        {/* Profile Image */}
-                        <div className="relative group shrink-0">
-                            <div className="h-32 w-32 lg:h-40 lg:w-40 rounded-[2.5rem] border-[6px] border-white bg-white shadow-2xl overflow-hidden flex items-center justify-center relative z-10 transform -rotate-3 group-hover:rotate-0 transition-all duration-500">
-                                {displayData.student_photo ? (
-                                    <img
-                                        src={displayData.student_photo}
-                                        alt={displayData.student_name}
-                                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                    />
-                                ) : (
-                                    <User size={64} className="text-gray-200" />
-                                )}
+                <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-10 -mt-16 sm:-mt-20 lg:-mt-24 relative z-10">
+                    <div className="bg-white rounded-2xl sm:rounded-[2.5rem] shadow-2xl shadow-slate-300/40 border border-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col gap-5 sm:gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 sm:gap-6 lg:gap-8 min-w-0">
+                            {/* Profile Image */}
+                            <div className="relative group shrink-0">
+                                <div className="h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 rounded-2xl sm:rounded-[2rem] border-4 border-white bg-white shadow-xl overflow-hidden flex items-center justify-center">
+                                    {displayData.student_photo ? (
+                                        <img
+                                            src={displayData.student_photo}
+                                            alt={displayData.student_name}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <User size={48} className="text-gray-200 sm:w-16 sm:h-16" />
+                                    )}
+                                </div>
+                                <div className="absolute bottom-1 right-1 z-20">
+                                    {getCertificateStatus().toLowerCase().includes('verified') ? (
+                                        <div className="bg-green-500 text-white p-1 rounded-full border-2 border-white shadow-sm" title="Verified Student">
+                                            <Shield size={14} fill="currentColor" />
+                                        </div>
+                                    ) : (
+                                        <div className="bg-yellow-500 text-white p-1 rounded-full border-2 border-white shadow-sm" title="Verification Pending">
+                                            <Clock size={14} />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div className="absolute bottom-2 right-2 z-20 transform translate-x-1 translate-y-1">
-                                {getCertificateStatus().toLowerCase().includes('verified') ? (
-                                    <div className="bg-green-500 text-white p-1.5 rounded-full border-[3px] border-white shadow-sm" title="Verified Student">
-                                        <Shield size={16} fill="currentColor" />
+
+                            {/* Name & Details */}
+                            <div className="flex-1 min-w-0 text-center sm:text-left pb-0 sm:pb-1 w-full">
+                                <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 leading-tight tracking-tight mb-1 break-words">
+                                    {displayData.student_name || user.name}
+                                </h1>
+                                <span className="font-extrabold text-indigo-600 tracking-widest text-xs sm:text-sm">
+                                    {displayData.admission_number || user.admission_number}
+                                </span>
+
+                                <div className="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 mt-3">
+                                    <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-2 ${getCertificateStatus().toLowerCase().includes('verified')
+                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                        : 'bg-amber-50 text-amber-600 border-amber-100'
+                                        }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full mr-2 ${getCertificateStatus().toLowerCase().includes('verified') ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                        {getCertificateStatus()}
+                                    </span>
+                                    <span className="inline-flex items-center px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-black text-slate-600 bg-slate-50 border-2 border-slate-100 uppercase tracking-widest">
+                                        {displayData.stud_type || getStudentData('StudType') || 'Student'} Core
+                                    </span>
+                                </div>
+
+                                <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4 text-[11px] sm:text-xs text-slate-600 font-bold bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 w-full sm:w-max max-w-full">
+                                    <div className="flex items-center justify-center sm:justify-start gap-2 min-w-0">
+                                        <Book size={14} className="text-indigo-500 shrink-0" />
+                                        <span className="truncate">{displayData.college || getStudentData('College') || '—'}</span>
                                     </div>
-                                ) : (
-                                    <div className="bg-yellow-500 text-white p-1.5 rounded-full border-[3px] border-white shadow-sm" title="Verification Pending">
-                                        <Clock size={16} />
+                                    <div className="flex items-center justify-center sm:justify-start gap-2">
+                                        <Hash size={14} className="text-emerald-500 shrink-0" />
+                                        <span className="truncate">{displayData.course || getStudentData('Program') || '—'}</span>
                                     </div>
-                                )}
+                                    <div className="flex items-center justify-center sm:justify-start gap-2">
+                                        <Calendar size={14} className="text-amber-500 shrink-0" />
+                                        <span>Year {displayData.current_year || getStudentData('Year') || '—'} / Sem {displayData.current_semester || getStudentData('Semister') || '—'}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Name & Details */}
-                        <div className="flex-1 text-center md:text-left pb-2">
-                            <h1 className="text-3xl lg:text-4xl font-black text-slate-900 leading-tight tracking-tight mb-1">{displayData.student_name || user.name}</h1>
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-slate-400">
-                                <span className="font-extrabold text-indigo-600 tracking-widest text-sm">{displayData.admission_number || user.admission_number}</span>
-                            </div>
-
-                            <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
-                                <span className={`inline-flex items-center px-4 py-1.5 rounded-xl text-[10px] lg:text-xs font-black uppercase tracking-widest shadow-md border-2 ${getCertificateStatus().toLowerCase().includes('verified')
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                    : 'bg-amber-50 text-amber-600 border-amber-100'
-                                    }`}>
-                                    <span className={`w-2 h-2 rounded-full mr-2.5 ${getCertificateStatus().toLowerCase().includes('verified') ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`}></span>
-                                    {getCertificateStatus()}
-                                </span>
-                                <span className="inline-flex items-center px-4 py-1.5 rounded-xl text-[10px] lg:text-xs font-black text-slate-600 bg-slate-50 border-2 border-slate-100 uppercase tracking-widest shadow-sm">
-                                    {displayData.stud_type || getStudentData('StudType') || 'Student'} Core
-                                </span>
-                            </div>
-
-                            {/* NEW: Display Academic Snapshot below the badges */}
-                            {/* Academic Snapshot */}
-                            <div className="mt-6 flex flex-col md:flex-row md:items-center gap-3 lg:gap-6 text-xs text-slate-600 font-bold bg-white/50 p-4 rounded-2xl border border-white/80 w-full md:w-max shadow-sm italic">
-                                <div className="flex items-center gap-2.5"><Book size={16} className="text-indigo-500" /> {displayData.college || getStudentData('College') || '—'}</div>
-                                <div className="flex items-center gap-2.5"><Hash size={16} className="text-emerald-500" /> {displayData.course || getStudentData('Program') || '—'}</div>
-                                <div className="flex items-center gap-2.5"><Calendar size={16} className="text-amber-500" /> Year {displayData.current_year || getStudentData('Year') || '—'} / Sem {displayData.current_semester || getStudentData('Semister') || '—'}</div>
-                            </div>
-                        </div>
-
-                        {/* Digital ID Card button + Change Password + Verify Profile */}
-                        {/* Actions */}
-                        <div className="w-full md:w-auto mt-4 md:mt-0 flex flex-wrap items-center justify-center md:justify-end gap-3 self-center">
+                        {/* Actions — always one horizontal row */}
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full min-w-0 border-t border-slate-100 pt-4 sm:pt-5">
                             <button
                                 type="button"
                                 onClick={() => setShowVerifyProfile(true)}
-                                className="inline-flex items-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all hover:-translate-y-1 active:scale-95"
+                                className={`${profileActionBtn} bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/80`}
                             >
-                                <CheckCircle size={20} />
-                                Authenticate
+                                <CheckCircle size={16} className="shrink-0 sm:w-5 sm:h-5" />
+                                <span className="truncate">Authenticate</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setShowIdCardModal(true)}
-                                className="inline-flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-100 transition-all hover:-translate-y-1 active:scale-95"
+                                className={`${profileActionBtn} bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200/80`}
                             >
-                                <CreditCard size={20} />
-                                Digital ID
+                                <CreditCard size={16} className="shrink-0 sm:w-5 sm:h-5" />
+                                <span className="truncate">Digital ID</span>
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setShowChangePassModal(true)}
-                                className="inline-flex items-center gap-2 px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 transition-all hover:-translate-y-1 active:scale-95"
+                                className={`${profileActionBtn} bg-slate-900 hover:bg-slate-800 text-white shadow-slate-300/80`}
                             >
-                                <Lock size={20} />
-                                Security
+                                <Lock size={16} className="shrink-0 sm:w-5 sm:h-5" />
+                                <span className="truncate">Security</span>
                             </button>
                         </div>
                     </div>
@@ -395,14 +408,14 @@ const Profile = () => {
             </div>
 
             {/* Content Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0 pb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 flex-1 min-h-0 pb-2">
                 {/* Personal Information */}
-                <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-500 flex flex-col min-w-0 group">
-                    <div className="flex items-center gap-4 mb-6 shrink-0 border-b border-slate-50 pb-4">
-                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
-                            <User size={24} />
+                <div className="bg-blue-50/90 rounded-2xl sm:rounded-[2rem] shadow-lg shadow-blue-100/60 border border-blue-100 p-5 sm:p-6 lg:p-7 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex flex-col min-w-0 group">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 shrink-0 border-b border-blue-100/80 pb-3 sm:pb-4">
+                        <div className="p-2.5 sm:p-3 bg-blue-600 text-white rounded-xl sm:rounded-2xl shadow-md shadow-blue-200">
+                            <User size={22} />
                         </div>
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">Personal</h2>
+                        <h2 className="text-xs sm:text-sm font-black text-blue-900 uppercase tracking-widest">Personal</h2>
                     </div>
 
                     <div className="space-y-1 flex-1">
@@ -415,12 +428,12 @@ const Profile = () => {
                 </div>
 
                 {/* Contact & Address */}
-                <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-500 flex flex-col min-w-0 group">
-                    <div className="flex items-center gap-4 mb-6 shrink-0 border-b border-slate-50 pb-4">
-                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl group-hover:bg-amber-600 group-hover:text-white transition-all duration-500">
-                            <MapPin size={24} />
+                <div className="bg-amber-50/90 rounded-2xl sm:rounded-[2rem] shadow-lg shadow-amber-100/60 border border-amber-100 p-5 sm:p-6 lg:p-7 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex flex-col min-w-0 group">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 shrink-0 border-b border-amber-100/80 pb-3 sm:pb-4">
+                        <div className="p-2.5 sm:p-3 bg-amber-500 text-white rounded-xl sm:rounded-2xl shadow-md shadow-amber-200">
+                            <MapPin size={22} />
                         </div>
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">Connect</h2>
+                        <h2 className="text-xs sm:text-sm font-black text-amber-900 uppercase tracking-widest">Connect</h2>
                     </div>
 
                     <div className="space-y-1 flex-1">
@@ -435,12 +448,12 @@ const Profile = () => {
                 </div>
 
                 {/* Academic Information */}
-                <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-500 flex flex-col min-w-0 group">
-                    <div className="flex items-center gap-4 mb-6 shrink-0 border-b border-slate-50 pb-4">
-                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500">
-                            <Book size={24} />
+                <div className="bg-emerald-50/90 rounded-2xl sm:rounded-[2rem] shadow-lg shadow-emerald-100/60 border border-emerald-100 p-5 sm:p-6 lg:p-7 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex flex-col min-w-0 group">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 shrink-0 border-b border-emerald-100/80 pb-3 sm:pb-4">
+                        <div className="p-2.5 sm:p-3 bg-emerald-600 text-white rounded-xl sm:rounded-2xl shadow-md shadow-emerald-200">
+                            <Book size={22} />
                         </div>
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">Academic</h2>
+                        <h2 className="text-xs sm:text-sm font-black text-emerald-900 uppercase tracking-widest">Academic</h2>
                     </div>
 
                     <div className="space-y-1 flex-1">
@@ -456,12 +469,12 @@ const Profile = () => {
                 </div>
 
                 {/* Additional Details */}
-                <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-500 flex flex-col min-w-0 group">
-                    <div className="flex items-center gap-4 mb-6 shrink-0 border-b border-slate-50 pb-4">
-                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
-                            <Shield size={24} />
+                <div className="bg-violet-50/90 rounded-2xl sm:rounded-[2rem] shadow-lg shadow-violet-100/60 border border-violet-100 p-5 sm:p-6 lg:p-7 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex flex-col min-w-0 group sm:col-span-2 xl:col-span-1">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 shrink-0 border-b border-violet-100/80 pb-3 sm:pb-4">
+                        <div className="p-2.5 sm:p-3 bg-violet-600 text-white rounded-xl sm:rounded-2xl shadow-md shadow-violet-200">
+                            <Shield size={22} />
                         </div>
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest">Metadata</h2>
+                        <h2 className="text-xs sm:text-sm font-black text-violet-900 uppercase tracking-widest">Metadata</h2>
                     </div>
 
                     <div className="space-y-1 flex-1">
@@ -630,9 +643,9 @@ const Profile = () => {
 };
 
 const InfoItem = ({ label, value }) => (
-    <div className="flex flex-col border-b border-dashed border-gray-100 py-2 last:border-0 last:pb-0 hover:bg-gray-50 transition-colors rounded-lg px-2 -mx-2">
-        <dt className="text-[10px] lg:text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 min-w-0 truncate">{label}</dt>
-        <dd className="text-gray-900 font-semibold text-sm truncate leading-tight min-w-0" title={value?.toString()}>
+    <div className="flex flex-col border-b border-dashed border-slate-200/70 py-2 last:border-0 last:pb-0 hover:bg-white/50 transition-colors rounded-lg px-2 -mx-2">
+        <dt className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 min-w-0 truncate">{label}</dt>
+        <dd className="text-slate-900 font-semibold text-sm break-words leading-tight min-w-0" title={value?.toString()}>
             {value || 'N/A'}
         </dd>
     </div>
