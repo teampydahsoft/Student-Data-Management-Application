@@ -286,21 +286,7 @@ async function findVersantStudentUserId(db, identifiers) {
 /**
  * Load PIN / admission / login username from SDMS (MySQL) for Versant lookup.
  */
-async function resolveSdmsStudentIdentifiers({ studentId, admissionNumber, username }) {
-  const [rows] = await masterPool.query(
-    `SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
-            s.batch, s.course, s.branch,
-            sc.username AS login_username
-     FROM students s
-     LEFT JOIN student_credentials sc ON sc.student_id = s.id
-     WHERE s.id = ? OR s.admission_number = ? OR sc.username = ?
-     LIMIT 1`,
-    [studentId, admissionNumber, username || admissionNumber],
-  );
-
-  if (!rows.length) return null;
-
-  const row = rows[0];
+function mapSdmsStudentRow(row, username) {
   const searchKeys = uniqueStrings([
     row.pin_no,
     row.admission_number,
@@ -315,12 +301,43 @@ async function resolveSdmsStudentIdentifiers({ studentId, admissionNumber, usern
     admissionNumber: row.admission_number,
     admissionNo: row.admission_no,
     pinNo: row.pin_no,
-    batch: row.batch,
-    course: row.course,
-    branch: row.branch,
+    batch: row.batch ?? null,
+    course: row.course ?? null,
+    branch: row.branch ?? null,
     loginUsername: row.login_username,
     searchKeys,
   };
+}
+
+async function resolveSdmsStudentIdentifiers({ studentId, admissionNumber, username }) {
+  const params = [studentId, admissionNumber, username || admissionNumber];
+  const baseSql = `
+     SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
+            sc.username AS login_username
+     FROM students s
+     LEFT JOIN student_credentials sc ON sc.student_id = s.id
+     WHERE s.id = ? OR s.admission_number = ? OR sc.username = ?
+     LIMIT 1`;
+
+  try {
+    const [rows] = await masterPool.query(
+      `SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
+              s.batch, s.course, s.branch,
+              sc.username AS login_username
+       FROM students s
+       LEFT JOIN student_credentials sc ON sc.student_id = s.id
+       WHERE s.id = ? OR s.admission_number = ? OR sc.username = ?
+       LIMIT 1`,
+      params,
+    );
+    if (!rows.length) return null;
+    return mapSdmsStudentRow(rows[0], username);
+  } catch (err) {
+    if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+    const [rows] = await masterPool.query(baseSql, params);
+    if (!rows.length) return null;
+    return mapSdmsStudentRow(rows[0], username);
+  }
 }
 
 async function enrichFiltersFromSdms(filters) {
@@ -369,9 +386,16 @@ async function findTestIdsByName(db, testName) {
   return tests.map((t) => t._id);
 }
 
+function buildStudentIdMatch(studentUserId) {
+  const oid = toObjectIdSafe(studentUserId);
+  const sid = String(studentUserId);
+  if (oid) return { $in: [oid, sid] };
+  return sid;
+}
+
 function buildMatchStage({ studentUserId, testType, moduleId, fromDate, toDate, testIds }) {
   const match = {};
-  if (studentUserId) match.student_id = studentUserId;
+  if (studentUserId) match.student_id = buildStudentIdMatch(studentUserId);
   if (testType) match.test_type = testType;
   if (moduleId) match.module_id = moduleId;
   if (testIds?.length) match.test_id = { $in: testIds };
@@ -565,61 +589,62 @@ function uniqueObjectIds(ids) {
   return out;
 }
 
-function pushAssignmentValueMatches(or, field, value) {
-  if (value === null || value === undefined || value === '') return;
-  const s = String(value).trim();
-  if (!s) return;
-  or.push({ [field]: value }, { [field]: s });
-  or.push({ [`${field}s`]: value }, { [`${field}s`]: s });
-  or.push({ [`assigned_to.${field}`]: value }, { [`assigned_to.${field}`]: s });
-  or.push({ [`target.${field}`]: value }, { [`target.${field}`]: s });
-  or.push({ [`assignment.${field}`]: value }, { [`assignment.${field}`]: s });
-}
-
-function buildStudentIdentityMatchOr(userOid, profile) {
+function buildCoreStudentIdOr(userOid) {
   const uidStr = userOid.toString();
-  const or = [
+  return [
     { student_id: userOid },
     { user_id: userOid },
-    { student_user_id: userOid },
     { student_id: uidStr },
     { user_id: uidStr },
-    { assigned_student_ids: userOid },
-    { assigned_student_ids: uidStr },
-    { student_ids: userOid },
-    { student_ids: uidStr },
-    { assigned_users: userOid },
-    { user_ids: userOid },
-    { eligible_students: userOid },
-    { eligible_students: uidStr },
-    { participants: userOid },
-    { participants: uidStr },
-    { assigned_to: userOid },
-    { assigned_to: uidStr },
+    { assigned_student_ids: { $in: [userOid, uidStr] } },
+    { student_ids: { $in: [userOid, uidStr] } },
+    { assigned_users: { $in: [userOid, uidStr] } },
+    { user_ids: { $in: [userOid, uidStr] } },
     { 'assigned_to.user_id': userOid },
     { 'assigned_to.student_id': userOid },
   ];
-
-  if (profile) {
-    pushAssignmentValueMatches(or, 'roll_number', profile.roll_number);
-    pushAssignmentValueMatches(or, 'pin_no', profile.pin_no);
-    pushAssignmentValueMatches(or, 'admission_number', profile.admission_number);
-    pushAssignmentValueMatches(or, 'admission_no', profile.admission_no);
-    pushAssignmentValueMatches(or, 'batch_id', profile.batch_id);
-    pushAssignmentValueMatches(or, 'campus_id', profile.campus_id);
-    pushAssignmentValueMatches(or, 'course_id', profile.course_id);
-    pushAssignmentValueMatches(or, 'course', profile.course);
-    pushAssignmentValueMatches(or, 'batch', profile.batch);
-    pushAssignmentValueMatches(or, 'branch', profile.branch);
-    pushAssignmentValueMatches(or, 'college_id', profile.college_id);
-    pushAssignmentValueMatches(or, 'rds_student_id', profile.rds_student_id);
-  }
-
-  return or;
 }
 
-function buildOnlineTestAssignmentOr(userOid, profile) {
-  return buildStudentIdentityMatchOr(userOid, profile);
+function buildScopeTestQueries(userOid, profile) {
+  const uidStr = userOid.toString();
+  const queries = [{ $or: buildCoreStudentIdOr(userOid) }];
+
+  const addScope = (field, value) => {
+    if (value === null || value === undefined || value === '') return;
+    const s = String(value).trim();
+    if (!s) return;
+    queries.push({ [field]: s });
+    if (field.endsWith('_id')) {
+      const base = field.replace(/_id$/, '');
+      if (base && base !== field) queries.push({ [base]: s });
+    } else {
+      queries.push({ [`${field}_id`]: s });
+    }
+  };
+
+  if (profile) {
+    addScope('batch_id', profile.batch_id || profile.batch);
+    addScope('campus_id', profile.campus_id);
+    addScope('course_id', profile.course_id || profile.course);
+    addScope('branch', profile.branch);
+    addScope('roll_number', profile.roll_number || profile.pin_no);
+    addScope('pin_no', profile.pin_no || profile.roll_number);
+  }
+
+  queries.push(
+    { assigned_student_ids: { $in: [userOid, uidStr] } },
+    { student_ids: { $in: [userOid, uidStr] } },
+  );
+
+  return queries;
+}
+
+function activeTestFilter() {
+  return {
+    status: { $nin: INACTIVE_TEST_STATUSES },
+    is_deleted: { $ne: true },
+    deleted: { $ne: true },
+  };
 }
 
 function isInactiveTestDoc(doc) {
@@ -637,24 +662,31 @@ function isPracticeOnlyTest(doc) {
 }
 
 function getTestScheduleBounds(doc) {
-  const nested = doc.schedule || doc.scheduling || doc.time_window;
-  const merged =
-    nested && typeof nested === 'object'
-      ? {
-          ...doc,
-          start_date: doc.start_date || nested.start_date || nested.start,
-          start_time: doc.start_time || nested.start_time || nested.start,
-          end_date: doc.end_date || nested.end_date || nested.end,
-          end_time: doc.end_time || nested.end_time || nested.end,
-          scheduled_at: doc.scheduled_at || nested.scheduled_at,
-          due_date: doc.due_date || nested.due_date,
-          deadline: doc.deadline || nested.deadline,
-        }
-      : doc;
-  return {
-    startIso: resolveVersantScheduleStart(merged),
-    endIso: resolveVersantScheduleEnd(merged),
-  };
+  try {
+    const nested = doc.schedule || doc.scheduling || doc.time_window;
+    const merged =
+      nested && typeof nested === 'object' && !Array.isArray(nested)
+        ? {
+            ...doc,
+            start_date: doc.start_date || nested.start_date || nested.start,
+            start_time: doc.start_time || nested.start_time || nested.start,
+            end_date: doc.end_date || nested.end_date || nested.end,
+            end_time: doc.end_time || nested.end_time || nested.end,
+            scheduled_at: doc.scheduled_at || nested.scheduled_at,
+            due_date: doc.due_date || nested.due_date,
+            deadline: doc.deadline || nested.deadline,
+          }
+        : doc;
+    return {
+      startIso: resolveVersantScheduleStart(merged),
+      endIso: resolveVersantScheduleEnd(merged),
+    };
+  } catch {
+    return {
+      startIso: resolveVersantScheduleStart(doc),
+      endIso: resolveVersantScheduleEnd(doc),
+    };
+  }
 }
 
 function classifyTestAvailability(doc, now = new Date()) {
@@ -719,7 +751,7 @@ function formatPendingRow(doc, source, overrides = {}) {
   const status = overrides.status || availabilityInfo.status || normalized.status || 'pending';
 
   return {
-    id: normalized._id,
+    id: normalized._id != null ? String(normalized._id) : null,
     source,
     test_id: normalized.test_id || normalized._id || null,
     test_name: normalized.test_name || normalized.name || null,
@@ -758,8 +790,8 @@ async function loadVersantStudentProfile(db, userOid) {
   return db.collection('students').findOne({ user_id: userOid });
 }
 
-async function fetchAssignmentRecords(db, userOid, profile) {
-  const matchOr = buildStudentIdentityMatchOr(userOid, profile);
+async function fetchAssignmentRecords(db, userOid) {
+  const matchOr = buildCoreStudentIdOr(userOid);
   const results = [];
 
   for (const collName of ASSIGNMENT_COLLECTIONS) {
@@ -767,12 +799,16 @@ async function fetchAssignmentRecords(db, userOid, profile) {
       const coll = db.collection(collName);
       const count = await coll.estimatedDocumentCount();
       if (!count) continue;
-      const docs = await coll.find({ $or: matchOr }).sort({ assigned_at: -1, created_at: -1 }).limit(100).toArray();
+      const docs = await coll
+        .find({ $or: matchOr })
+        .sort({ assigned_at: -1, created_at: -1 })
+        .limit(50)
+        .toArray();
       for (const doc of docs) {
         results.push({ ...doc, _assignmentCollection: collName });
       }
-    } catch {
-      /* optional collection */
+    } catch (err) {
+      console.warn(`Versant: skip assignment collection ${collName}:`, err.message);
     }
   }
 
@@ -780,19 +816,8 @@ async function fetchAssignmentRecords(db, userOid, profile) {
 }
 
 async function fetchAssignedOnlineTests(db, userOid, profile, doneTestIds) {
-  const assignmentOr = buildOnlineTestAssignmentOr(userOid, profile);
-  if (!assignmentOr.length) return [];
-
+  const scopeQueries = buildScopeTestQueries(userOid, profile);
   const now = new Date();
-  const query = {
-    $and: [
-      { $or: assignmentOr },
-      {
-        $nor: [{ status: { $in: INACTIVE_TEST_STATUSES } }, { is_deleted: true }, { deleted: true }],
-      },
-    ],
-  };
-
   const merged = [];
   const seenIds = new Set();
 
@@ -800,19 +825,31 @@ async function fetchAssignedOnlineTests(db, userOid, profile, doneTestIds) {
     try {
       const coll = db.collection(collName);
       if ((await coll.estimatedDocumentCount()) === 0) continue;
-      const docs = await coll
-        .find(query)
-        .sort({ start_date: -1, scheduled_at: -1, created_at: -1, _id: -1 })
-        .limit(150)
-        .toArray();
-      for (const doc of docs) {
-        const tid = doc._id?.toString();
-        if (!tid || seenIds.has(tid)) continue;
-        seenIds.add(tid);
-        merged.push(doc);
+
+      for (const scopeQuery of scopeQueries) {
+        let docs = [];
+        try {
+          docs = await coll
+            .find({ $and: [scopeQuery, activeTestFilter()] })
+            .sort({ created_at: -1, _id: -1 })
+            .limit(40)
+            .toArray();
+        } catch (err) {
+          console.warn(`Versant: tests query failed (${collName}):`, err.message);
+          continue;
+        }
+
+        for (const doc of docs) {
+          const tid = doc._id?.toString();
+          if (!tid || seenIds.has(tid)) continue;
+          seenIds.add(tid);
+          merged.push(doc);
+        }
+        if (merged.length >= 80) break;
       }
-    } catch {
-      /* optional collection */
+      if (merged.length >= 80) break;
+    } catch (err) {
+      console.warn(`Versant: skip tests collection ${collName}:`, err.message);
     }
   }
 
@@ -830,43 +867,50 @@ async function fetchAssignedOnlineTests(db, userOid, profile, doneTestIds) {
  * Tests not yet completed: in-progress attempts, assignments, and scheduled/available online tests.
  */
 async function fetchPendingTestsForStudent(db, studentUserId, sdms = null) {
-  const oid = toObjectIdSafe(studentUserId);
-  if (!oid) return [];
+  try {
+    const oid = toObjectIdSafe(studentUserId);
+    if (!oid) return [];
 
-  const versantProfile = normalizeDocument(await loadVersantStudentProfile(db, oid)) || {};
-  const profile = {
-    ...versantProfile,
-    roll_number: versantProfile.roll_number || sdms?.pinNo,
-    pin_no: versantProfile.pin_no || sdms?.pinNo,
-    admission_number: versantProfile.admission_number || sdms?.admissionNumber,
-    admission_no: versantProfile.admission_no || sdms?.admissionNo,
-    batch_id: versantProfile.batch_id || sdms?.batch,
-    batch: versantProfile.batch || sdms?.batch,
-    course_id: versantProfile.course_id || sdms?.course,
-    course: versantProfile.course || sdms?.course,
-    branch: versantProfile.branch || sdms?.branch,
-  };
+    const versantProfile = normalizeDocument(await loadVersantStudentProfile(db, oid)) || {};
+    const profile = {
+      ...versantProfile,
+      roll_number: versantProfile.roll_number || sdms?.pinNo,
+      pin_no: versantProfile.pin_no || sdms?.pinNo,
+      admission_number: versantProfile.admission_number || sdms?.admissionNumber,
+      admission_no: versantProfile.admission_no || sdms?.admissionNo,
+      batch_id: versantProfile.batch_id || sdms?.batch,
+      batch: versantProfile.batch || sdms?.batch,
+      course_id: versantProfile.course_id || sdms?.course,
+      course: versantProfile.course || sdms?.course,
+      branch: versantProfile.branch || sdms?.branch,
+    };
 
-  const [attempts, completedTestIds, completedAttemptTestIds, assignments, assignedOnlineTests] =
-    await Promise.all([
-      db
-        .collection('student_test_attempts')
-        .find({
-          student_id: oid,
-          status: { $nin: COMPLETED_ATTEMPT_STATUSES },
-        })
-        .sort({ start_time: -1, updated_at: -1, _id: -1 })
-        .limit(50)
-        .toArray(),
-      db.collection('test_results').distinct('test_id', { student_id: oid }),
-      db
-        .collection('student_test_attempts')
-        .find({ student_id: oid, status: { $in: ['completed', 'complete'] } })
-        .project({ test_id: 1 })
-        .toArray(),
-      fetchAssignmentRecords(db, oid, profile),
-      fetchAssignedOnlineTests(db, oid, profile, new Set()),
-    ]);
+    const studentIdMatch = buildStudentIdMatch(oid);
+
+    const [attempts, completedTestIds, completedAttemptTestIds, assignments, assignedOnlineTests] =
+      await Promise.all([
+        db
+          .collection('student_test_attempts')
+          .find({
+            student_id: studentIdMatch,
+            status: { $nin: COMPLETED_ATTEMPT_STATUSES },
+          })
+          .sort({ updated_at: -1, _id: -1 })
+          .limit(50)
+          .toArray(),
+        db.collection('test_results').distinct('test_id', { student_id: studentIdMatch }),
+        db
+          .collection('student_test_attempts')
+          .find({
+            student_id: studentIdMatch,
+            status: { $in: ['completed', 'complete'] },
+          })
+          .project({ test_id: 1 })
+          .limit(500)
+          .toArray(),
+        fetchAssignmentRecords(db, oid),
+        fetchAssignedOnlineTests(db, oid, profile, new Set()),
+      ]);
 
   const doneTestIds = new Set([
     ...completedTestIds.map((id) => id.toString()),
@@ -960,8 +1004,12 @@ async function fetchPendingTestsForStudent(db, studentUserId, sdms = null) {
     pending.push(formatPendingRow(normalized, 'tests', availabilityInfo));
   }
 
-  pending.sort((a, b) => pendingSortKey(a).localeCompare(pendingSortKey(b)));
-  return pending;
+    pending.sort((a, b) => pendingSortKey(a).localeCompare(pendingSortKey(b)));
+    return pending;
+  } catch (err) {
+    console.error('Versant fetchPendingTestsForStudent error:', err);
+    return [];
+  }
 }
 
 /**
@@ -1097,15 +1145,17 @@ async function getMyStudentTestResults(sdmsContext, filters = {}) {
     };
   }
 
+  const versantUserId = toObjectIdSafe(versantMatch.userId) || versantMatch.userId;
+
   const [result, pending] = await Promise.all([
     getStudentTestResults({
       ...filters,
-      studentUserId: versantMatch.userId,
+      studentUserId: versantUserId,
       rollNumber: '',
       pinNo: '',
       admissionNumber: '',
     }),
-    fetchPendingTestsForStudent(db, versantMatch.userId, sdms),
+    fetchPendingTestsForStudent(db, versantUserId, sdms),
   ]);
 
   return {

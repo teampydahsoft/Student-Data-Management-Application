@@ -180,7 +180,7 @@ exports.getMyTestResults = async (req, res) => {
     );
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error('Versant my test results error:', error);
+    console.error('Versant my test results error:', error?.stack || error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch your test results',
