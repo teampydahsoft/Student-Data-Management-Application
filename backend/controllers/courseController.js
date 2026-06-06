@@ -151,6 +151,9 @@ const formatCourse = (courseRow, branchRows = []) => {
         : courseRow.year_semester_config)
       : null,
     metadata: courseRow.metadata ? JSON.parse(courseRow.metadata) : null,
+    feeQrImageUrl: courseRow.fee_qr_image
+      ? `/api/courses/${courseRow.id}/fee-qr`
+      : null,
     structure: buildStructure(courseRow),
     branches
   };
@@ -1505,6 +1508,98 @@ exports.updateBranch = async (req, res) => {
           ? 'Branch with the same code already exists for this course'
           : 'Branch with the same name or code already exists for this course')
         : 'Failed to update branch'
+    });
+  }
+};
+
+/**
+ * POST /api/courses/:courseId/upload-fee-qr
+ * Upload fee payment QR image for a course (stored in database)
+ */
+exports.uploadFeeQr = async (req, res) => {
+  try {
+    const courseId = parseInt(req.params.courseId, 10);
+
+    if (!courseId || Number.isNaN(courseId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid course ID'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const [existingCourse] = await masterPool.query(
+      'SELECT id FROM courses WHERE id = ? LIMIT 1',
+      [courseId]
+    );
+
+    if (!existingCourse || existingCourse.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    await masterPool.execute(
+      'UPDATE courses SET fee_qr_image = ?, fee_qr_image_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [req.file.buffer, req.file.mimetype, courseId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Fee QR uploaded successfully',
+      feeQrImageUrl: `/api/courses/${courseId}/fee-qr`
+    });
+  } catch (error) {
+    console.error('uploadFeeQr error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload fee QR'
+    });
+  }
+};
+
+/**
+ * GET /api/courses/:courseId/fee-qr
+ * Get fee payment QR image for a course
+ */
+exports.getFeeQr = async (req, res) => {
+  try {
+    const courseId = parseInt(req.params.courseId, 10);
+
+    if (!courseId || Number.isNaN(courseId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid course ID'
+      });
+    }
+
+    const [rows] = await masterPool.execute(
+      'SELECT fee_qr_image, fee_qr_image_type FROM courses WHERE id = ?',
+      [courseId]
+    );
+
+    if (rows.length === 0 || !rows[0].fee_qr_image) {
+      return res.status(404).json({
+        success: false,
+        message: 'Fee QR not found'
+      });
+    }
+
+    res.set('Content-Type', rows[0].fee_qr_image_type || 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(rows[0].fee_qr_image);
+  } catch (error) {
+    console.error('getFeeQr error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve fee QR'
     });
   }
 };

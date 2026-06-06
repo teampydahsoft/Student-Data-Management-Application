@@ -29,7 +29,8 @@ import {
   Lock,
   Unlock,
   Users,
-  Tags
+  Tags,
+  Upload
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -290,8 +291,17 @@ const buildCourseDraftFromCourse = (course) => {
         year: Number(y.year),
         semesters: Number(y.semesters)
       }))
-      : buildYearSemesterConfigForYears(totalYears, semestersPerYear)
+      : buildYearSemesterConfigForYears(totalYears, semestersPerYear),
+    feeQrImageUrl: course.feeQrImageUrl || null,
+    feeQrFile: null,
+    feeQrPreview: null
   };
+};
+
+const getApiAssetUrl = (relativePath) => {
+  if (!relativePath) return null;
+  const baseURL = (api.defaults.baseURL || '/api').replace(/\/api$/, '');
+  return `${baseURL}${relativePath}`;
 };
 
 const buildCourseAcademicUpdates = (draft) => {
@@ -2240,6 +2250,14 @@ const Settings = () => {
       // Include collegeId if it was changed
       if (draft.collegeId !== undefined) {
         updates.collegeId = draft.collegeId;
+      }
+
+      if (draft.feeQrFile) {
+        const formData = new FormData();
+        formData.append('feeQr', draft.feeQrFile);
+        await api.post(`/courses/${courseId}/upload-fee-qr`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       }
 
       await api.put(`/courses/${courseId}`, updates);
@@ -4984,6 +5002,56 @@ const Settings = () => {
                     }))
                   }
                 />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fee Payment QR
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Upload a QR code image for fee payments for this program.
+                  </p>
+                  {(courseDrafts[editingCourseId]?.feeQrPreview || courseDrafts[editingCourseId]?.feeQrImageUrl) && (
+                    <div className="mb-3 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <img
+                        src={
+                          courseDrafts[editingCourseId]?.feeQrPreview
+                            || getApiAssetUrl(courseDrafts[editingCourseId]?.feeQrImageUrl)
+                        }
+                        alt="Fee payment QR preview"
+                        className="h-24 w-24 rounded-md border border-gray-200 bg-white object-contain"
+                      />
+                      <div className="text-xs text-gray-500">
+                        {courseDrafts[editingCourseId]?.feeQrFile
+                          ? 'New QR selected. Save to upload.'
+                          : 'Current saved QR for this program.'}
+                      </div>
+                    </div>
+                  )}
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-600 transition-colors hover:border-purple-400 hover:bg-purple-50">
+                    <Upload size={16} className="text-purple-600" />
+                    <span>{courseDrafts[editingCourseId]?.feeQrImageUrl || courseDrafts[editingCourseId]?.feeQrFile ? 'Replace QR Image' : 'Upload QR Image'}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (!file.type.startsWith('image/')) {
+                          toast.error('Please upload an image file');
+                          return;
+                        }
+                        setCourseDrafts((prev) => ({
+                          ...prev,
+                          [editingCourseId]: {
+                            ...prev[editingCourseId],
+                            feeQrFile: file,
+                            feeQrPreview: URL.createObjectURL(file)
+                          }
+                        }));
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button

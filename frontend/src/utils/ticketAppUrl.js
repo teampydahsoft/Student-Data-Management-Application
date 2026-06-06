@@ -1,5 +1,21 @@
-export const TICKET_APP_URL =
-  import.meta.env.VITE_TICKET_APP_URL || 'https://ticket-maintenance-backend.pydah.edu.in';
+const HOSTED_TICKET_APP_URL = 'https://ticket-maintenance-backend.pydah.edu.in';
+const LOCAL_TICKET_APP_URL = 'http://localhost:5174';
+
+const isLocalhostUrl = (url) =>
+  !url || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url);
+
+/** Resolve ticket app base URL — never use localhost in production builds. */
+export const resolveTicketAppUrl = (rawUrl = import.meta.env.VITE_TICKET_APP_URL) => {
+  if (import.meta.env.PROD) {
+    if (isLocalhostUrl(rawUrl)) {
+      return HOSTED_TICKET_APP_URL;
+    }
+    return rawUrl || HOSTED_TICKET_APP_URL;
+  }
+  return rawUrl || LOCAL_TICKET_APP_URL;
+};
+
+export const TICKET_APP_URL = resolveTicketAppUrl();
 
 export const TICKET_APP_STUDENT_PATHS = ['/student/my-tickets', '/student/raise-ticket'];
 

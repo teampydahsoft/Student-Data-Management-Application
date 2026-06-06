@@ -4,12 +4,19 @@ const router = express.Router();
 const courseController = require('../controllers/courseController');
 const authMiddleware = require('../middleware/auth');
 const { attachUserScope } = require('../middleware/rbac');
+const upload = require('../config/uploadConfig');
 
 // Public configuration route (used by forms and public consumers)
 router.get('/options', courseController.getCourseOptions);
 
+// Public fee QR image route (used by student fee pages and img tags)
+router.get('/:courseId/fee-qr', courseController.getFeeQr);
+
 // All routes below require admin authentication
 router.use(authMiddleware);
+
+// Fee QR upload (require auth)
+router.post('/:courseId/upload-fee-qr', upload.single('feeQr'), courseController.uploadFeeQr);
 
 // Apply scope filtering for listing routes
 router.get('/', attachUserScope, courseController.getCourses);

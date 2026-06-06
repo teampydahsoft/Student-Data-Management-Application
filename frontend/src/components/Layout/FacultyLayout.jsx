@@ -21,7 +21,6 @@ import {
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 
-const TICKET_APP_URL = import.meta.env.VITE_TICKET_APP_URL || 'https://ticket-maintenance-backend.pydah.edu.in';
 const NAV_ITEMS = [
   { path: '/faculty/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/faculty/attendance', icon: CalendarCheck, label: 'Post Attendance' },
