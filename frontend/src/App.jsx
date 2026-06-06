@@ -50,8 +50,7 @@ import StudentDashboard from './pages/student/Dashboard';
 import StudentProfile from './pages/student/Profile';
 import SemesterRegistration from './pages/student/SemesterRegistration';
 
-import RaiseTicket from './pages/student/RaiseTicket';
-import MyTickets from './pages/student/MyTickets';
+import TicketAppRedirect from './components/student/TicketAppRedirect';
 import StudentAnnouncements from './pages/student/StudentAnnouncements';
 import StudentFeedback from './pages/student/StudentFeedback';
 import StudentAttendance from './pages/student/Attendance';
@@ -260,8 +259,8 @@ function App() {
           <Route path="profile" element={<StudentProfile />} />
 
           <Route path="semester-registration" element={<SemesterRegistration />} />
-          <Route path="raise-ticket" element={<RaiseTicket />} />
-          <Route path="my-tickets" element={<MyTickets />} />
+          <Route path="raise-ticket" element={<TicketAppRedirect />} />
+          <Route path="my-tickets" element={<TicketAppRedirect />} />
           <Route path="announcements" element={<StudentAnnouncements />} />
           <Route path="events" element={<StudentCalendar />} />
           <Route path="attendance" element={<StudentAttendance />} />

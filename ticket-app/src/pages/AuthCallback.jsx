@@ -42,9 +42,16 @@ const AuthCallback = () => {
 
                         toast.success('Signed in from Portal');
 
-                        // Redirect based on role
-                        if (userType === 'student') {
-                            navigate('/student/dashboard', { replace: true });
+                        const redirect = searchParams.get('redirect');
+                        const safeRedirect =
+                            redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+                                ? redirect
+                                : null;
+
+                        if (safeRedirect) {
+                            navigate(safeRedirect, { replace: true });
+                        } else if (userType === 'student') {
+                            navigate('/student/my-tickets', { replace: true });
                         } else {
                             navigate('/dashboard', { replace: true });
                         }

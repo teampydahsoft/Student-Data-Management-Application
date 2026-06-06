@@ -53,3 +53,6 @@ coverage/
 
 # Debug
 .node_repl_history
+
+# SSH keys (never commit)
+*.pem

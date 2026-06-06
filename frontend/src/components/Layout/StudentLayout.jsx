@@ -51,6 +51,7 @@ import NotificationIcon from '../Notifications/NotificationIcon';
 import InstallPrompt from '../PWA/InstallPrompt';
 import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../../services/pushService';
 import RegistrationPendingModal from '../RegistrationPendingModal';
+import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -204,26 +205,6 @@ const StudentLayout = ({ children }) => {
         toast.success('Logged out successfully');
         navigate('/student/login');
     };
-
-    const getTicketAppUrl = (path) => {
-        const token = localStorage.getItem('token');
-        let userStr = localStorage.getItem('user');
-
-        // Remove large fields (like student_photo) to prevent HTTP 431 Header Too Large errors
-        try {
-            const userObj = JSON.parse(userStr);
-            if (userObj) {
-                const { student_photo, ...safeUser } = userObj;
-                userStr = JSON.stringify(safeUser);
-            }
-        } catch (e) {
-            console.error('Error parsing user object for SSO', e);
-        }
-
-        return `${TICKET_APP_URL}/auth-callback?token=${token}&user=${encodeURIComponent(userStr)}&redirect=${path}`;
-    };
-
-    const TICKET_APP_URL = import.meta.env.VITE_TICKET_APP_URL || 'https://pydahsdms-tickets.vercel.app';
 
     const navItems = [
         { icon: RiHome4Line, activeIcon: RiHome4Fill, label: 'Dashboard', path: '/student/dashboard' },

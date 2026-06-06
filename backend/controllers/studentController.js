@@ -15,6 +15,12 @@ const {
 const { getScopeConditionString } = require('../utils/scoping');
 const { otpCache } = require('../services/cache'); // Import otpCache
 const smsService = require('../services/smsService'); // Import smsService
+const {
+  OTP_PE_ID,
+  SEMESTER_OTP_SMS_TEMPLATE_ID,
+  buildSemesterRegistrationOtpMessage,
+  sendOtpSms
+} = require('../utils/otpSmsTemplates');
 
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
@@ -5546,15 +5552,13 @@ exports.sendOtp = async (req, res) => {
     const cacheKey = `otp:${admissionNumber}:${mobileNumber}`;
     otpCache.set(cacheKey, otp);
 
-    // Send SMS
-    // Template: Your {#var#} OTP for {#var#} Semester Registration is {#var#}. Valid for 5 minutes -Pydah College
-    // Template ID: 1707176605569953063
-    const message = `Your ${type || 'Student'} OTP for ${year}-${semester} Semester Registration is ${otp}. Valid for 5 minutes -Pydah College`;
-    await smsService.sendSms({
+    const message = buildSemesterRegistrationOtpMessage(otp, { type, year, semester });
+    await sendOtpSms(smsService, {
       to: mobileNumber,
-      message: message,
-      templateId: '1707176605569953063',
-      peId: process.env.OTP_PE_ID
+      message,
+      templateId: SEMESTER_OTP_SMS_TEMPLATE_ID,
+      peId: OTP_PE_ID,
+      meta: { template: 'semester_registration_otp' }
     });
 
     console.log(`[OTP] Sent ${otp} to ${mobileNumber} for ${admissionNumber}`);

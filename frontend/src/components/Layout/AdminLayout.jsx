@@ -55,8 +55,7 @@ import {
   USER_ROLES,
 } from "../../constants/rbac";
 import toast from "react-hot-toast";
-
-const TICKET_APP_URL = import.meta.env.VITE_TICKET_APP_URL || 'https://pydahsdms-tickets.vercel.app';
+import { getTicketAppUrl } from "../../utils/ticketAppUrl";
 
 const NAV_ITEMS = [
   {
@@ -238,25 +237,6 @@ const AdminLayout = () => {
     logout();
     toast.success("Logged out successfully");
     navigate("/login");
-  };
-
-  const getTicketAppUrl = (path) => {
-    const token = localStorage.getItem('token');
-    let userStr = localStorage.getItem('user');
-
-    // Remove large fields (like student_photo) to prevent HTTP 431 Header Too Large errors
-    try {
-      const userObj = JSON.parse(userStr);
-      if (userObj) {
-        // Filter out photo or other large fields
-        const { student_photo, ...safeUser } = userObj;
-        userStr = JSON.stringify(safeUser);
-      }
-    } catch (e) {
-      console.error('Error parsing user object for SSO', e);
-    }
-
-    return `${TICKET_APP_URL}/auth-callback?token=${token}&user=${encodeURIComponent(userStr)}&redirect=${path}`;
   };
 
   // Get allowed modules based on user role and permissions

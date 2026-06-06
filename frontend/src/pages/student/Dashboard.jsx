@@ -8,6 +8,7 @@ import api from '../../config/api';
 import { serviceService } from '../../services/serviceService';
 import clubService from '../../services/clubService';
 import { toast } from 'react-hot-toast';
+import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 
 const Dashboard = () => {
     const { user, token } = useAuthStore(); // Get token for SSO
@@ -20,12 +21,7 @@ const Dashboard = () => {
         return layoutSettings[key] !== false;
     };
 
-    // Ticket App SSO URL
-    const ticketAppUrl = useMemo(() => {
-        const baseUrl = import.meta.env.VITE_TICKET_APP_URL || 'https://pydahsdms-tickets.vercel.app';
-        if (!token) return `${baseUrl}/student`;
-        return `${baseUrl}/auth-callback?token=${token}&role=student&from=portal`;
-    }, [token]);
+    const ticketAppUrl = useMemo(() => getTicketAppUrl('/student/my-tickets'), [token]);
     const [loading, setLoading] = useState(true);
 
     // Additional Data States

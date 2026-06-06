@@ -3,6 +3,12 @@ const { masterPool } = require('../config/database');
 const { otpCache } = require('../services/cache');
 const smsService = require('../services/smsService');
 const { normalizeMobile, mobilesMatch, STUDENT_SELECT_FIELDS } = require('../utils/parentAuth');
+const {
+  OTP_PE_ID,
+  PARENT_OTP_SMS_TEMPLATE_ID,
+  buildParentPortalOtpMessage,
+  sendOtpSms
+} = require('../utils/otpSmsTemplates');
 
 const OTP_SEND_LIMIT = 5;
 const OTP_SEND_WINDOW_MS = 60 * 60 * 1000;
@@ -113,11 +119,12 @@ const recordParentLogin = async (studentId, parentMobile) => {
 };
 
 const sendSmsInBackground = (mobileNumber, message) => {
-  smsService.sendSms({
+  sendOtpSms(smsService, {
     to: mobileNumber,
     message,
-    templateId: '1707176605569953063',
-    peId: process.env.OTP_PE_ID
+    templateId: PARENT_OTP_SMS_TEMPLATE_ID,
+    peId: OTP_PE_ID,
+    meta: { template: 'parent_portal_otp' }
   }).catch((err) => {
     console.error('[Parent OTP] Background SMS failed:', err.message);
   });
@@ -165,7 +172,7 @@ exports.sendParentOtp = async (req, res) => {
       }))
     });
 
-    const message = `Your Parent Portal OTP is ${otp}. Valid for 5 minutes -Pydah College`;
+    const message = buildParentPortalOtpMessage(otp);
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Parent OTP] ${normalizeMobile(mobileNumber)} => ${otp} (${students.length} student(s))`);
