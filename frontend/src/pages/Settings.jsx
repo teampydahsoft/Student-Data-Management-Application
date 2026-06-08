@@ -4960,9 +4960,9 @@ const Settings = () => {
 
         {/* Edit Course Modal */}
         {editingCourseId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Pencil size={18} className="text-purple-600" />
                   Edit Program
@@ -4974,7 +4974,7 @@ const Settings = () => {
                   <X size={20} />
                 </button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Program Name *</label>
                   <input
@@ -5075,7 +5075,7 @@ const Settings = () => {
                   </label>
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
                   onClick={() => setEditingCourseId(null)}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -5098,7 +5098,7 @@ const Settings = () => {
         {viewBatchStudentsModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-gray-200">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                     <Users size={24} className="text-blue-600" />
@@ -5670,11 +5670,11 @@ const Settings = () => {
           }}
         >
           <div
-            className="w-full max-w-2xl rounded-lg bg-white shadow-2xl max-h-[90vh] overflow-y-auto relative"
+            className="w-full max-w-2xl rounded-lg bg-white shadow-2xl max-h-[90vh] flex flex-col relative"
             onClick={(e) => e.stopPropagation()}
             style={{ zIndex: 10000 }}
           >
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Add New Program</h3>
                 {selectedCollege && (
@@ -5694,7 +5694,8 @@ const Settings = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateCourse} className="p-6 space-y-4">
+            <form onSubmit={handleCreateCourse} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {/* Program Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -5754,9 +5755,10 @@ const Settings = () => {
                 value={newCourse}
                 onChange={(patch) => setNewCourse((prev) => ({ ...prev, ...patch }))}
               />
+              </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+              <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
                 <button
                   type="button"
                   onClick={() => {
