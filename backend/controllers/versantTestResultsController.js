@@ -165,6 +165,96 @@ function getSdmsContextFromRequest(req) {
   };
 }
 
+exports.getMyLinkStatus = async (req, res) => {
+  try {
+    if (!isVersantConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'MONGODB_URI is not configured',
+      });
+    }
+
+    const { sdms, versantMatch } = await versantTestResultsService.resolveVersantUserIdForSdmsStudent(
+      getSdmsContextFromRequest(req),
+    );
+
+    if (!sdms) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student record not found in SDMS',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        linked: Boolean(versantMatch),
+        sdms: {
+          admission_number: sdms.admissionNumber,
+          pin_no: sdms.pinNo,
+          login_username: sdms.loginUsername,
+          student_name: sdms.studentName,
+          tried_keys: sdms.searchKeys,
+        },
+        versantMatch: versantMatch
+          ? {
+              matchField: versantMatch.matchField,
+              roll: versantMatch.versantRoll,
+              pin: versantMatch.versantPin,
+              admission: versantMatch.versantAdmission,
+            }
+          : null,
+        message: versantMatch
+          ? 'CRT training profile linked via PIN/admission number.'
+          : 'No CRT profile found. Ensure your PIN or admission number matches your CRT login.',
+      },
+    });
+  } catch (error) {
+    console.error('CRT link status error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to check CRT link status',
+    });
+  }
+};
+
+exports.getStudentLinkReport = async (req, res) => {
+  try {
+    if (!isVersantConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'MONGODB_URI is not configured',
+      });
+    }
+
+    const { batch, course, limit, unlinkedOnly } = req.query;
+    const report = await versantTestResultsService.analyzeSdmsCrtLinks({
+      batch: batch || null,
+      course: course || null,
+      limit: limit ? parseInt(limit, 10) : null,
+    });
+
+    const students =
+      unlinkedOnly === 'true'
+        ? report.students.filter((s) => !s.crtLinked)
+        : report.students;
+
+    res.json({
+      success: true,
+      data: {
+        summary: report.summary,
+        students,
+      },
+    });
+  } catch (error) {
+    console.error('CRT student link report error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate CRT link report',
+    });
+  }
+};
+
 exports.getMyTestResults = async (req, res) => {
   try {
     if (!isVersantConfigured()) {

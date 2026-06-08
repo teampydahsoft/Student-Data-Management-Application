@@ -1335,6 +1335,78 @@ async function exportStudentTestResults(filters = {}) {
   return data;
 }
 
+/**
+ * Compare SDMS Regular students with CRT MongoDB profiles (PIN / admission / login username).
+ */
+async function analyzeSdmsCrtLinks({ batch, course, limit } = {}) {
+  let query = `
+    SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
+           s.batch, s.course, s.branch,
+           (SELECT sc.username FROM student_credentials sc WHERE sc.student_id = s.id ORDER BY sc.id LIMIT 1) AS login_username
+    FROM students s
+    WHERE s.student_status = 'Regular'
+  `;
+  const params = [];
+  if (batch) {
+    query += ' AND s.batch = ?';
+    params.push(batch);
+  }
+  if (course) {
+    query += ' AND s.course = ?';
+    params.push(course);
+  }
+  query += ' ORDER BY s.batch, s.student_name ASC';
+  if (limit && limit > 0) {
+    query += ' LIMIT ?';
+    params.push(limit);
+  }
+
+  const [rows] = await masterPool.query(query, params);
+  const db = await getVersantDb();
+
+  const students = [];
+  let linked = 0;
+  let withCredentials = 0;
+
+  for (const row of rows) {
+    const sdms = mapSdmsStudentRow(row, row.login_username);
+    const versantMatch = await findVersantStudentUserId(db, sdms.searchKeys);
+    const crtLinked = Boolean(versantMatch);
+    const hasCredentials = Boolean(row.login_username);
+    if (crtLinked) linked += 1;
+    if (hasCredentials) withCredentials += 1;
+
+    students.push({
+      studentId: row.id,
+      admissionNumber: row.admission_number,
+      admissionNo: row.admission_no,
+      pinNo: row.pin_no,
+      studentName: row.student_name,
+      batch: row.batch,
+      course: row.course,
+      branch: row.branch,
+      loginUsername: row.login_username || null,
+      hasCredentials,
+      crtLinked,
+      crtMatchField: versantMatch?.matchField || null,
+      crtRoll: versantMatch?.versantRoll || null,
+      triedKeys: sdms.searchKeys,
+    });
+  }
+
+  const total = students.length;
+  return {
+    summary: {
+      total,
+      linked,
+      unlinked: total - linked,
+      withCredentials,
+      withoutCredentials: total - withCredentials,
+    },
+    students,
+  };
+}
+
 module.exports = {
   getStudentTestResults,
   getMyStudentTestResults,
@@ -1344,4 +1416,5 @@ module.exports = {
   resolveSdmsStudentIdentifiers,
   findVersantStudentUserId,
   resolveVersantUserIdForSdmsStudent,
+  analyzeSdmsCrtLinks,
 };

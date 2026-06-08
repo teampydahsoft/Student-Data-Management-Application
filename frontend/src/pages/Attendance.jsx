@@ -209,7 +209,14 @@ const Attendance = () => {
     present: 0,
     absent: 0,
     marked: 0,
-    unmarked: 0
+    unmarked: 0,
+    pending: 0
+  });
+  const [attendanceGate, setAttendanceGate] = useState({
+    isBlocked: false,
+    previousDate: null,
+    pendingCount: 0,
+    message: null
   });
   const pageSizeOptions = [10, 25, 50, 100];
   const [smsResults, setSmsResults] = useState([]);
@@ -647,7 +654,8 @@ const Attendance = () => {
     // Also check if there are students that need to be saved (not yet marked)
     // A student needs to be saved if they don't have an initial status (not yet marked in DB)
     const hasUnmarkedStudents = students.some((student) => {
-      return initialStatusMap[student.id] === undefined;
+      const initial = initialStatusMap[student.id];
+      return initial === undefined || initial === 'pending';
     });
 
     return hasStatusChanges || hasUnmarkedStudents;
@@ -793,13 +801,28 @@ const Attendance = () => {
     [calendarInfo.attendanceStatus, attendanceDate]
   );
   const isToday = attendanceDate === todayKey;
-  const editingLocked =
-    nonWorkingDayDetails.isNonWorkingDay || !isToday;
+  const isResolvingPreviousPending = Boolean(
+    attendanceGate?.previousDate && attendanceDate === attendanceGate.previousDate
+  );
+  const canEditAttendanceDate = useMemo(() => {
+    if (nonWorkingDayDetails.isNonWorkingDay) return false;
+    if (isToday) return !attendanceGate?.isBlocked;
+    if (isResolvingPreviousPending) return true;
+    return false;
+  }, [
+    nonWorkingDayDetails.isNonWorkingDay,
+    isToday,
+    attendanceGate?.isBlocked,
+    isResolvingPreviousPending
+  ]);
+  const editingLocked = !canEditAttendanceDate;
   const editingLockReason = nonWorkingDayDetails.isNonWorkingDay
     ? 'Attendance is disabled on holidays.'
-    : !isToday
-      ? 'Attendance can only be recorded for today.'
-      : null;
+    : attendanceGate?.isBlocked && isToday
+      ? attendanceGate.message || 'Complete previous day pending attendance before marking today.'
+      : !isToday && !isResolvingPreviousPending
+        ? 'Attendance can only be recorded for today or the previous pending day.'
+        : null;
 
   // Show holiday alert when date is a holiday (show every time page loads on a holiday)
   useEffect(() => {
@@ -1585,6 +1608,26 @@ const Attendance = () => {
       setTotalStudents(total);
       setAttendanceStatistics(finalStatistics);
 
+      const gateInfo = response.data?.data?.attendanceGate || {
+        isBlocked: false,
+        previousDate: null,
+        pendingCount: 0,
+        message: null
+      };
+      setAttendanceGate(gateInfo);
+
+      if (
+        gateInfo.isBlocked &&
+        gateInfo.previousDate &&
+        attendanceDate === formatDateInput(new Date())
+      ) {
+        setAttendanceDate(gateInfo.previousDate);
+        toast(
+          gateInfo.message || `Please complete pending attendance from ${gateInfo.previousDate} before marking today.`,
+          { icon: '⚠️', duration: 6000 }
+        );
+      }
+
       // Always set current page to the page we just loaded
       setCurrentPage(pageToUse);
       setSmsResults([]);
@@ -1806,6 +1849,19 @@ const Attendance = () => {
   }, [filters.studentName, filters.parentMobile]);
 
   const handleFilterChange = (field, value) => {
+    if (field === 'course' && value && value !== filters.course) {
+      const leftCount = attendanceStatistics.unmarked || 0;
+      if (filters.course && leftCount > 0) {
+        toast(
+          `${leftCount} student(s) in "${filters.course}" still need attendance marked. Please complete marking before switching course.`,
+          {
+            icon: '⚠️',
+            duration: 5000
+          }
+        );
+      }
+    }
+
     setFilters((prev) => {
       const newFilters = {
         ...prev,
@@ -2116,9 +2172,22 @@ const Attendance = () => {
     setCalendarViewMonthKey(newMonthKey);
   };
 
+  const handleAttendanceDateChange = (date) => {
+    if (!date) return;
+    const today = formatDateInput(new Date());
+    if (date === today && attendanceGate?.isBlocked && attendanceGate?.previousDate) {
+      toast.error(
+        attendanceGate.message || `Please complete pending attendance from ${attendanceGate.previousDate} before marking today.`,
+        { duration: 6000 }
+      );
+      return;
+    }
+    setAttendanceDate(date);
+  };
+
   const handleCalendarDateSelect = (date) => {
     if (!date) return;
-    setAttendanceDate(date);
+    handleAttendanceDateChange(date);
     const nextMonthKey = getMonthKeyFromDate(date);
     if (nextMonthKey && nextMonthKey !== calendarViewMonthKey) {
       setCalendarViewMonthKey(nextMonthKey);
@@ -2437,6 +2506,11 @@ const Attendance = () => {
       toast.success(successMessage);
     } catch (error) {
       console.error('Attendance save failed:', error);
+      const gateData = error.response?.data?.data?.attendanceGate;
+      if (gateData?.isBlocked && gateData?.previousDate) {
+        setAttendanceGate(gateData);
+        setAttendanceDate(gateData.previousDate);
+      }
       toast.error(error.response?.data?.message || error.message || 'Unable to save attendance');
     } finally {
       setSaving(false);
@@ -2681,7 +2755,7 @@ const Attendance = () => {
           <input
             type="date"
             value={attendanceDate}
-            onChange={(e) => setAttendanceDate(e.target.value)}
+            onChange={(e) => handleAttendanceDateChange(e.target.value)}
             className="flex-1 sm:flex-none rounded-md border border-gray-300 px-3 py-2.5 sm:py-2 text-base sm:text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation min-h-[44px]"
           />
           <button
@@ -3443,6 +3517,16 @@ const Attendance = () => {
             </button>
           </div>
         </div>
+        {isResolvingPreviousPending && (
+          <div className="px-4 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>
+                {attendanceGate?.message || `Complete pending attendance from ${attendanceGate?.previousDate} before today's attendance can be opened.`}
+              </span>
+            </div>
+          </div>
+        )}
         {editingLocked && (
           <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 text-sm text-gray-600">
             {editingLockReason || 'Attendance is read-only for this date.'}
@@ -3650,10 +3734,11 @@ const Attendance = () => {
                                     const hasDbRecord = student.attendanceStatus !== null;
                                     const statusChanged = statusMap[student.id] !== initialStatusMap[student.id];
                                     const justSaved = lastUpdatedAt !== null;
+                                    const isPendingStatus = status === 'pending';
 
                                     // Show marked state if saved or has existing record that wasn't changed
                                     const isHoliday = status === 'holiday';
-                                    const showMarked = justSaved || (hasDbRecord && !statusChanged);
+                                    const showMarked = justSaved || (hasDbRecord && !statusChanged && !isPendingStatus);
 
                                     if (showMarked && !statusChanged) {
                                       return (
@@ -3702,7 +3787,9 @@ const Attendance = () => {
                                       <div className="flex items-center gap-1.5">
                                         <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${status === 'holiday'
                                           ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                                          : status === 'present'
+                                          : status === 'pending'
+                                            ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                            : status === 'present'
                                             ? 'bg-green-50 text-green-600 border border-green-100'
                                             : 'bg-red-50 text-red-600 border border-red-100'
                                           }`}>
@@ -3715,6 +3802,11 @@ const Attendance = () => {
                                                   <span className="text-[8px] font-normal italic opacity-80 mt-0.5 block">{student.holidayReason}</span>
                                                 )}
                                               </div>
+                                            </>
+                                          ) : status === 'pending' ? (
+                                            <>
+                                              <Clock size={12} />
+                                              Pending
                                             </>
                                           ) : status === 'present' ? (
                                             <>
@@ -3744,7 +3836,7 @@ const Attendance = () => {
                                               className="w-3.5 h-3.5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                             />
                                             <span className={`text-[10px] font-bold ${editingLocked ? 'text-gray-400' : 'text-gray-600'}`}>
-                                              Absent
+                                              {status === 'pending' ? 'Mark' : 'Absent'}
                                             </span>
                                           </label>
                                         )}
@@ -3878,7 +3970,8 @@ const Attendance = () => {
                   const hasDbRecord = student.attendanceStatus !== null;
                   const statusChanged = statusMap[student.id] !== initialStatusMap[student.id];
                   const justSaved = lastUpdatedAt !== null;
-                  const showMarked = justSaved || (hasDbRecord && !statusChanged);
+                  const isPendingStatus = status === 'pending';
+                  const showMarked = justSaved || (hasDbRecord && !statusChanged && !isPendingStatus);
 
                   return (
                     <div
@@ -3953,12 +4046,14 @@ const Attendance = () => {
                             </div>
                           ) : (
                             <div className="flex flex-col gap-2">
-                              <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${status === 'present'
+                              <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${status === 'pending'
+                                ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                : status === 'present'
                                 ? 'bg-green-50 text-green-600 border border-green-100'
                                 : 'bg-red-50 text-red-600 border border-red-100'
                                 }`}>
-                                {status === 'present' ? <Check size={16} /> : <X size={16} />}
-                                {status === 'present' ? 'Present' : 'Absent'}
+                                {status === 'pending' ? <Clock size={16} /> : status === 'present' ? <Check size={16} /> : <X size={16} />}
+                                {status === 'pending' ? 'Pending Attendance' : status === 'present' ? 'Present' : 'Absent'}
                               </div>
                               <label className="flex items-center gap-2 cursor-pointer touch-manipulation min-h-[44px]">
                                 <input
@@ -3975,7 +4070,7 @@ const Attendance = () => {
                                   className="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50"
                                 />
                                 <span className={`text-sm ${editingLocked ? 'text-gray-400' : 'text-gray-700'}`}>
-                                  Mark as Absent
+                                  {status === 'pending' ? 'Mark Attendance' : 'Mark as Absent'}
                                 </span>
                               </label>
                             </div>

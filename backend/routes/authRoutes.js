@@ -20,6 +20,7 @@ router.post('/parent/select-student', parentAuthController.selectParentStudent);
 
 // Protected routes
 router.get('/verify', authMiddleware, authController.verifyToken);
+router.get('/crt-sso', authMiddleware, authController.getCrtSsoUrl);
 router.post('/change-password', authMiddleware, authController.changePassword);
 router.put('/profile', authMiddleware, authController.updateProfile);
 router.get('/profile/stats', authMiddleware, attachUserScope, rbacUserController.getStudentStats);

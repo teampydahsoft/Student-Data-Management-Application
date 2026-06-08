@@ -106,13 +106,17 @@ const getAllAttendanceForDate = async (attendanceDate) => {
       }
     }
 
+    const FINALIZED_STATUSES = new Set(['present', 'absent', 'holiday']);
+
     // Convert to array and calculate statistics
     const result = Array.from(groups.values()).map(group => {
       const totalStudents = group.students.length;
-      const markedCount = group.attendanceRecords.length;
-      const presentCount = group.attendanceRecords.filter(r => r.status === 'present').length;
-      const absentCount = group.attendanceRecords.filter(r => r.status === 'absent').length;
-      const unmarkedCount = totalStudents - markedCount;
+      const finalizedRecords = group.attendanceRecords.filter((r) => FINALIZED_STATUSES.has(r.status));
+      const markedCount = finalizedRecords.length;
+      const presentCount = finalizedRecords.filter(r => r.status === 'present').length;
+      const absentCount = finalizedRecords.filter(r => r.status === 'absent').length;
+      const pendingCount = group.attendanceRecords.filter(r => r.status === 'pending').length;
+      const unmarkedCount = Math.max(0, totalStudents - markedCount);
       const attendancePercentage = totalStudents > 0 
         ? ((presentCount / totalStudents) * 100).toFixed(2) 
         : '0.00';
@@ -123,6 +127,7 @@ const getAllAttendanceForDate = async (attendanceDate) => {
           totalStudents,
           markedCount,
           unmarkedCount,
+          pendingCount,
           presentCount,
           absentCount,
           attendancePercentage: parseFloat(attendancePercentage)

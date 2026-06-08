@@ -322,11 +322,12 @@ exports.unifiedLogin = async (req, res) => {
     // First query ONLY the credentials table which is small and indexed.
     // Avoids massive JOIN with students table for every login attempt.
     const [credentials] = await masterPool.query(
-      `SELECT id, student_id, admission_number, username, password_hash 
-       FROM student_credentials 
-       WHERE username = ? OR admission_number = ? 
+      `SELECT sc.id, sc.student_id, sc.admission_number, sc.username, sc.password_hash
+       FROM student_credentials sc
+       JOIN students s ON s.id = sc.student_id
+       WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?
        LIMIT 1`,
-      [username, username]
+      [username, username, username, username, username]
     );
 
     if (credentials && credentials.length > 0) {
@@ -335,7 +336,7 @@ exports.unifiedLogin = async (req, res) => {
       if (studentCred.password_hash && await bcrypt.compare(password, studentCred.password_hash)) {
         // Validation Passed! NOW fetch the heavy student profile details.
         const [studentDetails] = await masterPool.query(
-          `SELECT s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
+          `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
             s.course, s.branch, s.college,
             cb.id as branch_id, col.id as college_id, c.level as course_level,
             CASE
@@ -360,6 +361,7 @@ exports.unifiedLogin = async (req, res) => {
           const token = jwt.sign({
             id: studentCred.student_id,
             admissionNumber: studentCred.admission_number,
+            pinNo: s.pin_no || studentCred.username,
             role: 'student',
             college_id: s.college_id,
             branch_id: s.branch_id
@@ -380,6 +382,8 @@ exports.unifiedLogin = async (req, res) => {
 
           const user = {
             admission_number: studentCred.admission_number,
+            pin_no: s.pin_no,
+            batch: s.batch,
             username: studentCred.username,
             name: s.student_name,
             current_year: s.current_year,
@@ -1098,5 +1102,67 @@ exports.getStudentLoginStats = async (req, res) => {
   } catch (error) {
     console.error('Get login stats error:', error);
     res.status(500).json({ success: false, message: 'Server error getting stats' });
+  }
+};
+
+/**
+ * Issue a short-lived HS256 JWT for CRT workspace SSO.
+ * CRT expects: GET https://crt.pydahsoft.in/sso?token=<jwt>
+ * Claims: exp + pin_no | admission_number | username (and optional name).
+ */
+exports.getCrtSsoUrl = async (req, res) => {
+  try {
+    const authUser = req.user || req.admin;
+    if (!authUser || authUser.role !== 'student') {
+      return res.status(403).json({
+        success: false,
+        message: 'CRT SSO is only available for students'
+      });
+    }
+
+    const [rows] = await masterPool.query(
+      `SELECT s.pin_no, s.admission_number, s.student_name, sc.username
+       FROM students s
+       LEFT JOIN student_credentials sc ON sc.student_id = s.id
+       WHERE s.id = ?
+       LIMIT 1`,
+      [authUser.id]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const student = rows[0];
+    const pinNo = student.pin_no ? String(student.pin_no).trim() : '';
+    const admissionNumber = student.admission_number ? String(student.admission_number).trim() : '';
+    const username = student.username ? String(student.username).trim() : '';
+
+    if (!pinNo && !admissionNumber && !username) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student has no PIN, admission number, or username for CRT SSO'
+      });
+    }
+
+    const payload = {};
+    if (pinNo) payload.pin_no = pinNo;
+    if (admissionNumber) payload.admission_number = admissionNumber;
+    if (username) payload.username = username;
+    if (student.student_name) payload.name = student.student_name;
+
+    const expiresIn = process.env.CRT_SSO_TOKEN_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '24h';
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      algorithm: 'HS256',
+      expiresIn
+    });
+
+    const crtBaseUrl = (process.env.CRT_APP_URL || 'https://crt.pydahsoft.in').replace(/\/$/, '');
+    const url = `${crtBaseUrl}/sso?token=${encodeURIComponent(token)}`;
+
+    return res.json({ success: true, url });
+  } catch (err) {
+    console.error('CRT SSO error:', err);
+    res.status(500).json({ success: false, message: 'Failed to create CRT SSO link' });
   }
 };

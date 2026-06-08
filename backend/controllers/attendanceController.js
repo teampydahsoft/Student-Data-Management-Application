@@ -8,6 +8,7 @@ const { getAllAttendanceForDate, areAllBatchesMarked, areAllBatchesMarkedForColl
 const {
   getNonWorkingDayInfo,
   getNonWorkingDaysForRange,
+  getPreviousWorkingDay,
   clearCache
 } = require('../services/nonWorkingDayService');
 const { listCustomHolidays } = require('../services/customHolidayService');
@@ -118,6 +119,135 @@ const resolveParentEmail = (student) => {
 };
 
 const VALID_STATUSES = new Set(['present', 'absent', 'holiday']);
+const FINALIZED_STATUSES = new Set(['present', 'absent', 'holiday']);
+const UNRESOLVED_ATTENDANCE_CLAUSE = `(ar.id IS NULL OR ar.status = 'pending')`;
+const FINALIZED_ATTENDANCE_CLAUSE = `ar.status IN ('present', 'absent', 'holiday')`;
+
+const countUnresolvedAttendance = async ({
+  attendanceDate,
+  batch,
+  course,
+  branch,
+  currentYear,
+  currentSemester,
+  userScope
+}) => {
+  let query = `
+    SELECT COUNT(DISTINCT s.id) AS pending_count
+    FROM students s
+    LEFT JOIN attendance_records ar
+      ON ar.student_id = s.id
+     AND ar.attendance_date = ?
+    WHERE s.student_status = 'Regular'
+      AND ${UNRESOLVED_ATTENDANCE_CLAUSE}
+  `;
+  const params = [attendanceDate];
+
+  if (course) {
+    query += ' AND s.course = ?';
+    params.push(course);
+  }
+  if (batch) {
+    query += ' AND s.batch = ?';
+    params.push(batch);
+  }
+  if (branch) {
+    query += ' AND s.branch = ?';
+    params.push(branch);
+  }
+  if (currentYear) {
+    const parsedYear = parseInt(currentYear, 10);
+    if (!Number.isNaN(parsedYear)) {
+      query += ' AND s.current_year = ?';
+      params.push(parsedYear);
+    }
+  }
+  if (currentSemester) {
+    const parsedSemester = parseInt(currentSemester, 10);
+    if (!Number.isNaN(parsedSemester)) {
+      query += ' AND s.current_semester = ?';
+      params.push(parsedSemester);
+    }
+  }
+
+  if (userScope) {
+    const { scopeCondition, params: scopeParams } = getScopeConditionString(userScope, 's');
+    if (scopeCondition) {
+      query += ` AND ${scopeCondition}`;
+      params.push(...scopeParams);
+    }
+  }
+
+  const [rows] = await masterPool.query(query, params);
+  return parseInt(rows?.[0]?.pending_count || 0, 10);
+};
+
+const buildAttendanceGate = async ({
+  attendanceDate,
+  batch,
+  course,
+  branch,
+  currentYear,
+  currentSemester,
+  userScope
+}) => {
+  const todayDate = getDateOnlyString();
+  if (attendanceDate !== todayDate) {
+    return {
+      isBlocked: false,
+      previousDate: null,
+      pendingCount: 0,
+      message: null
+    };
+  }
+
+  const previousWorkingDay = await getPreviousWorkingDay(todayDate);
+  if (!previousWorkingDay) {
+    return {
+      isBlocked: false,
+      previousDate: null,
+      pendingCount: 0,
+      message: null
+    };
+  }
+
+  // Page-level gate applies when a batch is selected (attendance is tracked per batch).
+  if (!batch) {
+    return {
+      isBlocked: false,
+      previousDate: previousWorkingDay,
+      pendingCount: 0,
+      message: null
+    };
+  }
+
+  const pendingCount = await countUnresolvedAttendance({
+    attendanceDate: previousWorkingDay,
+    batch,
+    course,
+    branch,
+    currentYear,
+    currentSemester,
+    userScope
+  });
+
+  if (pendingCount <= 0) {
+    return {
+      isBlocked: false,
+      previousDate: previousWorkingDay,
+      pendingCount: 0,
+      message: null
+    };
+  }
+
+  const scopeLabel = course ? `batch ${batch} (${course})` : `batch ${batch}`;
+  return {
+    isBlocked: true,
+    previousDate: previousWorkingDay,
+    pendingCount,
+    message: `${pendingCount} student(s) in ${scopeLabel} still have pending attendance from ${previousWorkingDay}. Please complete that first before marking today's attendance.`
+  };
+};
 
 
 const parseStudentData = (data) => {
@@ -592,15 +722,17 @@ exports.getAttendance = async (req, res) => {
     const { attendanceStatus } = req.query;
     if (attendanceStatus) {
       if (attendanceStatus === 'unmarked') {
-        query += ' AND ar.id IS NULL';
+        query += ` AND ${UNRESOLVED_ATTENDANCE_CLAUSE}`;
       } else if (attendanceStatus === 'marked') {
-        query += ' AND ar.id IS NOT NULL';
+        query += ` AND ${FINALIZED_ATTENDANCE_CLAUSE}`;
       } else if (attendanceStatus === 'present') {
         query += " AND ar.status = 'present'";
       } else if (attendanceStatus === 'absent') {
         query += " AND ar.status = 'absent'";
       } else if (attendanceStatus === 'holiday') {
         query += " AND ar.status = 'holiday'";
+      } else if (attendanceStatus === 'pending') {
+        query += " AND ar.status = 'pending'";
       }
     }
 
@@ -742,15 +874,17 @@ exports.getAttendance = async (req, res) => {
 
     if (attendanceStatus) {
       if (attendanceStatus === 'unmarked') {
-        countQuery += ' AND ar.id IS NULL';
+        countQuery += ` AND ${UNRESOLVED_ATTENDANCE_CLAUSE}`;
       } else if (attendanceStatus === 'marked') {
-        countQuery += ' AND ar.id IS NOT NULL';
+        countQuery += ` AND ${FINALIZED_ATTENDANCE_CLAUSE}`;
       } else if (attendanceStatus === 'present') {
         countQuery += " AND ar.status = 'present'";
       } else if (attendanceStatus === 'absent') {
         countQuery += " AND ar.status = 'absent'";
       } else if (attendanceStatus === 'holiday') {
         countQuery += " AND ar.status = 'holiday'";
+      } else if (attendanceStatus === 'pending') {
+        countQuery += " AND ar.status = 'pending'";
       }
     }
 
@@ -768,7 +902,9 @@ exports.getAttendance = async (req, res) => {
         COUNT(DISTINCT s.id) AS total_students,
         COUNT(DISTINCT CASE WHEN ar.status = 'present' THEN s.id END) AS present_count,
         COUNT(DISTINCT CASE WHEN ar.status = 'absent' THEN s.id END) AS absent_count,
-        COUNT(DISTINCT CASE WHEN ar.id IS NOT NULL THEN s.id END) AS marked_count
+        COUNT(DISTINCT CASE WHEN ar.status = 'pending' THEN s.id END) AS pending_count,
+        COUNT(DISTINCT CASE WHEN ${FINALIZED_ATTENDANCE_CLAUSE} THEN s.id END) AS marked_count,
+        COUNT(DISTINCT CASE WHEN ${UNRESOLVED_ATTENDANCE_CLAUSE} THEN s.id END) AS unresolved_count
       FROM students s
       LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
       WHERE 1=1 AND s.student_status = 'Regular'
@@ -891,16 +1027,29 @@ exports.getAttendance = async (req, res) => {
     const statisticsTotal = parseInt(statsRow.total_students || 0, 10);
     const presentCount = parseInt(statsRow.present_count || 0, 10);
     const absentCount = parseInt(statsRow.absent_count || 0, 10);
+    const pendingCount = parseInt(statsRow.pending_count || 0, 10);
     const markedCount = parseInt(statsRow.marked_count || 0, 10);
-    const unmarkedCount = Math.max(0, statisticsTotal - markedCount);
+    const unresolvedCount = parseInt(statsRow.unresolved_count || 0, 10);
+    const unmarkedCount = Math.max(0, unresolvedCount);
 
     const statistics = {
       total: total,
       present: presentCount,
       absent: absentCount,
+      pending: pendingCount,
       marked: markedCount,
       unmarked: unmarkedCount
     };
+
+    const attendanceGate = await buildAttendanceGate({
+      attendanceDate,
+      batch,
+      course,
+      branch,
+      currentYear,
+      currentSemester,
+      userScope: req.userScope
+    });
 
     // Apply pagination to data query
     if (parsedLimit && parsedLimit > 0) {
@@ -981,7 +1130,8 @@ exports.getAttendance = async (req, res) => {
         date: attendanceDate,
         students,
         holiday: holidayInfo,
-        statistics
+        statistics,
+        attendanceGate
       },
       pagination: {
         total,
@@ -1286,6 +1436,38 @@ exports.markAttendance = async (req, res) => {
       });
     }
 
+    const todayDate = getDateOnlyString();
+    const shouldSendSms = normalizedDate === todayDate;
+
+    if (normalizedDate === todayDate) {
+      const previousWorkingDay = await getPreviousWorkingDay(todayDate);
+      if (previousWorkingDay) {
+        const batchesToCheck = [...new Set(studentRows.map((row) => row.batch).filter(Boolean))];
+        for (const batchName of batchesToCheck) {
+          const pendingCount = await countUnresolvedAttendance({
+            attendanceDate: previousWorkingDay,
+            batch: batchName,
+            userScope: req.userScope
+          });
+          if (pendingCount > 0) {
+            await connection.rollback();
+            return res.status(409).json({
+              success: false,
+              message: `${pendingCount} student(s) in batch ${batchName} still have pending attendance from ${previousWorkingDay}. Please complete that first before marking today's attendance.`,
+              data: {
+                attendanceGate: {
+                  isBlocked: true,
+                  previousDate: previousWorkingDay,
+                  pendingCount,
+                  batch: batchName
+                }
+              }
+            });
+          }
+        }
+      }
+    }
+
     const [existingRows] = await connection.query(
       `
         SELECT id, student_id, status
@@ -1364,7 +1546,7 @@ exports.markAttendance = async (req, res) => {
 
         updatedCount += 1;
 
-        if (record.status === 'absent') {
+        if (record.status === 'absent' && shouldSendSms) {
           smsQueue.push({ student, attendanceDate: normalizedDate });
         }
       } else {
@@ -1430,7 +1612,7 @@ exports.markAttendance = async (req, res) => {
 
         insertedCount += 1;
 
-        if (record.status === 'absent') {
+        if (record.status === 'absent' && shouldSendSms) {
           smsQueue.push({ student, attendanceDate: normalizedDate });
         }
       }
@@ -2777,8 +2959,22 @@ exports.retrySms = async (req, res) => {
       console.warn('Failed to load attendance notification settings:', error);
     }
 
-    // Send SMS
+    // Send SMS only for current day absences
     const normalizedDate = attendanceDate || getDateOnlyString();
+    const todayDate = getDateOnlyString();
+    if (normalizedDate !== todayDate) {
+      return res.json({
+        success: false,
+        data: {
+          studentId: student.id,
+          success: false,
+          skipped: true,
+          reason: 'sms_only_for_current_day'
+        },
+        message: 'SMS notifications are only sent for current day absences.'
+      });
+    }
+
     const result = await sendAbsenceNotification({
       student: {
         ...student,

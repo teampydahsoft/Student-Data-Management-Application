@@ -5333,11 +5333,11 @@ exports.login = async (req, res) => {
 
     // Find student credential
     const [credentials] = await masterPool.query(
-      `SELECT sc.*, s.admission_number, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, s.course, s.branch, s.college
+      `SELECT sc.*, s.admission_number, s.admission_no, s.pin_no, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, s.course, s.branch, s.college, s.batch
        FROM student_credentials sc
        JOIN students s ON sc.student_id = s.id
-       WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ?`,
-      [username, username, username]
+       WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?`,
+      [username, username, username, username, username]
     );
 
     if (credentials.length === 0) {
@@ -5371,6 +5371,7 @@ exports.login = async (req, res) => {
       {
         id: studentValid.student_id,
         admissionNumber: studentValid.admission_number,
+        pinNo: studentValid.pin_no || studentValid.username,
         role: 'student'
       },
       process.env.JWT_SECRET,
@@ -5380,6 +5381,7 @@ exports.login = async (req, res) => {
     // Filter sensitive data
     const user = {
       admission_number: studentValid.admission_number,
+      pin_no: studentValid.pin_no,
       username: studentValid.username,
       name: studentValid.student_name,
       current_year: studentValid.current_year,

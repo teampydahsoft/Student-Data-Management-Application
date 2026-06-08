@@ -58,12 +58,12 @@ async function main() {
   }
 
   try {
-    console.log('Updating attendance_records.status enum to include holiday...');
+    console.log('Updating attendance_records.status enum to include holiday and pending...');
     await connection.query(`
       ALTER TABLE attendance_records
-      MODIFY COLUMN status ENUM('present','absent','holiday') NOT NULL;
+      MODIFY COLUMN status ENUM('present','absent','holiday','pending') NOT NULL;
     `);
-    console.log('Done. status now accepts present, absent, holiday.');
+    console.log('Done. status now accepts present, absent, holiday, pending.');
   } finally {
     await connection.end();
   }

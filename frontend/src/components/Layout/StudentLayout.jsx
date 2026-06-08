@@ -52,6 +52,7 @@ import InstallPrompt from '../PWA/InstallPrompt';
 import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../../services/pushService';
 import RegistrationPendingModal from '../RegistrationPendingModal';
 import { getTicketAppUrl } from '../../utils/ticketAppUrl';
+import { navigateToCrtApp } from '../../utils/crtAppUrl';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -212,7 +213,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiGroupLine, activeIcon: RiGroupFill, label: 'Clubs', path: '/student/clubs' },
         { icon: RiCalendarEventLine, activeIcon: RiCalendarEventFill, label: 'Event Calendar', path: '/student/events' },
         { icon: RiCheckboxCircleLine, activeIcon: RiCheckboxCircleFill, label: 'Attendance', path: '/student/attendance' },
-        { icon: RiBookOpenLine, activeIcon: RiBookOpenFill, label: 'CRT Tests', path: '/student/versant-tests' },
+        { icon: RiBookOpenLine, activeIcon: RiBookOpenFill, label: 'CRT Scores', path: '/student/versant-tests' },
         { icon: RiMapPinLine, activeIcon: RiMapPinFill, label: 'Internship', path: '/student/internship' },
         { icon: RiCalendar2Line, activeIcon: RiCalendar2Fill, label: 'Time Table', path: '/student/timetable' },
         { icon: RiFileList3Line, activeIcon: RiFileList3Fill, label: 'Sem Registration', path: '/student/semester-registration' },
@@ -367,7 +368,39 @@ const StudentLayout = ({ children }) => {
                         ))}
                     </nav>
 
-
+                    {/* Workspace — external apps linked via SDMS login (PIN / admission) */}
+                    <div className="px-3 pb-2">
+                        <button
+                            type="button"
+                            onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
+                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-[12px] font-bold transition-all ${workspaceDropdownOpen ? 'bg-sky-50 text-sky-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
+                        >
+                            <span className="flex items-center gap-2">
+                                <RiFolderLine size={18} />
+                                Workspace
+                            </span>
+                            <RiArrowDownSLine size={16} className={`transition-transform ${workspaceDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {workspaceDropdownOpen && (
+                            <div className="mt-1 ml-2 pl-4 border-l-2 border-sky-200 space-y-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => navigateToCrtApp('/student/dashboard')}
+                                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-semibold text-gray-600 hover:bg-sky-50 hover:text-sky-700 transition-colors text-left"
+                                >
+                                    <RiBookOpenLine size={16} />
+                                    CRT Training Portal
+                                </button>
+                                <a
+                                    href={getTicketAppUrl('/student/my-tickets')}
+                                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-semibold text-gray-600 hover:bg-sky-50 hover:text-sky-700 transition-colors"
+                                >
+                                    <RiTicketLine size={16} />
+                                    Maintenance
+                                </a>
+                            </div>
+                        )}
+                    </div>
 
                     {/* User Info Card */}
                     <div

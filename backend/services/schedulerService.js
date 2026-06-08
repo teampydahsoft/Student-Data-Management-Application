@@ -260,13 +260,13 @@ const generateReportHtml = (rows, title, attendanceDate) => {
 };
 
 /**
- * Mark pending (unmarked) students as present for the given date.
+ * Mark pending (unmarked) students as pending attendance for the given date.
  * - Excluded courses and excluded students (attendance_config) are NOT touched; they remain as-is.
  * - Only Regular + in-scope students (i.e. not in excluded courses / excluded students) who are
- *   still pending (no attendance_record for this date) are marked present.
+ *   still unmarked (no attendance_record for this date) are marked pending.
  * Runs before sending 4 PM reports.
  */
-const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, excludedStudents) => {
+const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, excludedStudents) => {
     try {
         // Excluded courses: we never touch them; students in these courses are left unchanged.
         let excludeCourseClause = '';
@@ -281,11 +281,11 @@ const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, exc
             params.push(...excludedStudents);
         }
 
-        // Only: Regular + in-scope (non-excluded) + pending (no record for this date) → mark present.
+        // Only: Regular + in-scope (non-excluded) + unmarked (no record for this date) → mark pending.
         // marked_by NULL = system/4PM auto-mark.
         const [result] = await masterPool.query(
             `INSERT INTO attendance_records (student_id, admission_number, attendance_date, \`year\`, semester, status, marked_by)
-             SELECT s.id, s.admission_number, ?, s.current_year, s.current_semester, 'present', NULL
+             SELECT s.id, s.admission_number, ?, s.current_year, s.current_semester, 'pending', NULL
              FROM students s
              LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
              WHERE s.student_status = 'Regular'
@@ -297,7 +297,7 @@ const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, exc
 
         const affected = result.affectedRows || 0;
         if (affected > 0) {
-            console.log(`✅ Marked ${affected} pending student(s) as present for ${attendanceDate} before sending reports.`);
+            console.log(`✅ Marked ${affected} unmarked student(s) as pending attendance for ${attendanceDate} before sending reports.`);
         }
         return affected;
     } catch (err) {
@@ -317,7 +317,7 @@ const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, exc
             // Same rule: only Regular + in-scope + pending; excluded courses/students untouched
             const [result] = await masterPool.query(
                 `INSERT INTO attendance_records (student_id, admission_number, attendance_date, status, marked_by)
-                 SELECT s.id, s.admission_number, ?, 'present', NULL
+                 SELECT s.id, s.admission_number, ?, 'pending', NULL
                  FROM students s
                  LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
                  WHERE s.student_status = 'Regular'
@@ -328,7 +328,7 @@ const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, exc
             );
             const affected = result.affectedRows || 0;
             if (affected > 0) {
-                console.log(`✅ Marked ${affected} pending student(s) as present for ${attendanceDate} (no year/semester).`);
+                console.log(`✅ Marked ${affected} unmarked student(s) as pending attendance for ${attendanceDate} (no year/semester).`);
             }
             return affected;
         }
@@ -339,7 +339,7 @@ const markPendingStudentsAsPresent = async (attendanceDate, excludedCourses, exc
 /**
  * Send Daily Attendance Reports (Super Admin + AOs)
  * Runs at 4 PM IST.
- * Before sending: marks any pending (unmarked) students as present for the day.
+ * Before sending: marks any unmarked students as pending attendance for the day.
  * Sends global report to all active users with role super_admin (by email).
  */
 const sendDailyAttendanceReports = async () => {
@@ -365,18 +365,18 @@ const sendDailyAttendanceReports = async () => {
             console.warn('Failed to fetch attendance config for daily report:', err);
         }
 
-        // 0.5. Mark pending students as present before sending reports
+        // 0.5. Mark unmarked students as pending attendance before sending reports
         // Skip auto-marking on Sundays and holidays (non-working days)
         try {
             const nonWorkingInfo = await getNonWorkingDayInfo(attendanceDate);
             if (nonWorkingInfo && nonWorkingInfo.isNonWorkingDay) {
                 const reasons = (nonWorkingInfo.reasons || []).join(', ') || 'non-working day';
-                console.log(`⏭️ Skipping auto-present marking for ${attendanceDate} — it is a ${reasons}.`);
+                console.log(`⏭️ Skipping auto-pending marking for ${attendanceDate} — it is a ${reasons}.`);
             } else {
-                await markPendingStudentsAsPresent(attendanceDate, excludedCourses, excludedStudents);
+                await markPendingStudentsAsPending(attendanceDate, excludedCourses, excludedStudents);
             }
         } catch (err) {
-            console.error('❌ Failed to mark pending students as present:', err);
+            console.error('❌ Failed to mark unmarked students as pending attendance:', err);
             // Continue to send reports with current data
         }
 
@@ -393,6 +393,7 @@ const sendDailyAttendanceReports = async () => {
                 SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END) AS present,
                 SUM(CASE WHEN ar.status = 'absent' THEN 1 ELSE 0 END) AS absent,
                 SUM(CASE WHEN ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
+                SUM(CASE WHEN ar.status = 'pending' OR ar.id IS NULL THEN 1 ELSE 0 END) AS pending,
                 DATE_FORMAT(MAX(ar.updated_at), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
               FROM students s
               LEFT JOIN attendance_records ar 

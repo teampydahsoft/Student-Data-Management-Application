@@ -56,6 +56,7 @@ import {
 } from "../../constants/rbac";
 import toast from "react-hot-toast";
 import { getTicketAppUrl } from "../../utils/ticketAppUrl";
+import { navigateToCrtApp } from "../../utils/crtAppUrl";
 
 const NAV_ITEMS = [
   {
@@ -540,6 +541,16 @@ const AdminLayout = () => {
                         <Ticket size={14} className="text-gray-400" />
                         <span>Maintenance Management</span>
                       </a>
+                    )}
+                    {isFullAccessRole(user?.role) && (
+                      <button
+                        type="button"
+                        onClick={() => navigateToCrtApp('/admin/dashboard')}
+                        className="w-full flex items-center rounded-md transition-all duration-200 gap-2 px-2 py-1.5 text-[11px] font-medium text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1 min-h-[32px] text-left"
+                      >
+                        <Briefcase size={14} className="text-gray-400" />
+                        <span>CRT Training Portal</span>
+                      </button>
                     )}
                   </div>
                 )}

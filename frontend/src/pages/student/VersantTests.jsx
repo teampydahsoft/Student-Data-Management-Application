@@ -18,6 +18,7 @@ import { RiBookOpenLine } from 'react-icons/ri';
 import toast from 'react-hot-toast';
 import api from '../../config/api';
 import useAuthStore from '../../store/authStore';
+import { navigateToCrtApp } from '../../utils/crtAppUrl';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 
 /** Prefer server-formatted IST string from API; fallback to ISO / test name date. */
@@ -545,26 +546,42 @@ const VersantTests = () => {
         )}
       </div>
 
-      {linkInfo && !linkInfo.linked && (
-        <div className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 border border-amber-100 text-center">
-          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle size={32} />
+        {linkInfo && !linkInfo.linked && (
+          <div className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 border border-amber-100 text-center">
+            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle size={32} />
+            </div>
+            <h3 className="text-lg font-black text-slate-900">No CRT scores found yet</h3>
+            <p className="text-slate-500 mt-2 max-w-md mx-auto text-sm leading-relaxed">
+              {message ||
+                'We could not match your portal account to CRT training records. Your PIN or roll number in the student database should match your CRT login.'}
+            </p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-4">
+              PIN: {linkInfo.sdms?.pin_no || user?.pin_no || user?.username || '—'} · Admission:{' '}
+              {linkInfo.sdms?.admission_number || user?.admission_number || '—'}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigateToCrtApp('/student/dashboard')}
+              className="inline-flex items-center justify-center gap-2 mt-6 px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
+            >
+              Open CRT Training Portal
+            </button>
           </div>
-          <h3 className="text-lg font-black text-slate-900">No CRT scores found yet</h3>
-          <p className="text-slate-500 mt-2 max-w-md mx-auto text-sm leading-relaxed">
-            {message ||
-              'We could not match your portal account to CRT training records. Your PIN or roll number in the student database should match your CRT login.'}
-          </p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-4">
-            PIN: {linkInfo.sdms?.pin_no || user?.username || '—'} · Admission:{' '}
-            {linkInfo.sdms?.admission_number || user?.admission_number || '—'}
-          </p>
-        </div>
-      )}
+        )}
 
-      {linkInfo?.linked && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {linkInfo?.linked && (
+          <>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => navigateToCrtApp('/student/dashboard')}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                Open CRT Training Portal
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white p-5 sm:p-6 rounded-[1.75rem] shadow-lg shadow-amber-200/30 border border-amber-100">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
                 Pending tests

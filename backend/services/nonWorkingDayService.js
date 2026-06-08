@@ -174,9 +174,38 @@ const clearCache = () => {
   monthCache.clear();
 };
 
+const shiftDateString = (dateStr, days) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+  return `${cursor.getUTCFullYear()}-${pad(cursor.getUTCMonth() + 1)}-${pad(cursor.getUTCDate())}`;
+};
+
+/**
+ * Returns the most recent working day strictly before the supplied date.
+ */
+const getPreviousWorkingDay = async (dateInput, countryCode = DEFAULT_COUNTRY) => {
+  const normalizedDate = normalizeDate(dateInput);
+  if (!normalizedDate) {
+    throw new Error('Invalid date supplied');
+  }
+
+  let cursor = normalizedDate;
+  for (let i = 0; i < 21; i += 1) {
+    cursor = shiftDateString(cursor, -1);
+    const info = await getNonWorkingDayInfo(cursor, countryCode);
+    if (!info.isNonWorkingDay) {
+      return cursor;
+    }
+  }
+
+  return null;
+};
+
 module.exports = {
   getNonWorkingDayInfo,
   getNonWorkingDaysForRange,
+  getPreviousWorkingDay,
   clearCache
 };
 
