@@ -17,7 +17,7 @@ env:
 
 jobs:
   build-frontend:
-    name: Build frontend (CI — not on 1GB server)
+    name: Build frontend (CI)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
