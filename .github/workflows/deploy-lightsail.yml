@@ -11,79 +11,135 @@ on:
       - '.github/workflows/deploy-lightsail.yml'
   workflow_dispatch:
 
+env:
+  NODE_VERSION: '20'
+  PM2_APP_NAME: sdbms
+
 jobs:
-  deploy:
-    name: Deploy Fullstack to Lightsail
+  build-frontend:
+    name: Build frontend (CI — not on 1GB server)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Deploy to Lightsail
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Pack dist
+        run: tar -czf frontend-dist.tar.gz -C frontend dist
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend-dist.tar.gz
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Lightsail
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Upload dist archive to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          source: frontend-dist.tar.gz
+          target: /tmp/
+
+      - name: Deploy backend + frontend on server
+        uses: appleboy/ssh-action@v1.0.7
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            APP="${{ secrets.LIGHTSAIL_APP_PATH }}"
+            if [ -z "$APP" ]; then
+              APP="$HOME/Student-Data-Management-Application"
+            fi
+            PM2_APP="${{ env.PM2_APP_NAME }}"
+
+            echo "==> Pull latest code"
+            cd "$APP"
+            git fetch origin
+            git reset --hard origin/master 2>/dev/null || git reset --hard origin/main
+
+            echo "==> Deploy frontend dist (built in GitHub Actions)"
+            cd "$APP/frontend"
+            if [ -d dist ]; then
+              mv dist "dist.old.$(date +%Y%m%d%H%M%S)"
+            fi
+            tar -xzf /tmp/frontend-dist.tar.gz -C "$APP/frontend"
+            rm -f /tmp/frontend-dist.tar.gz
+            test -f dist/index.html
+
+            echo "==> Backend install"
+            cd "$APP/backend"
+            npm ci --omit=dev
+
+            echo "==> DB migrations (safe to re-run)"
+            node scripts/updateAttendanceStatusEnum.js || true
+
+            echo "==> PM2 restart ($PM2_APP)"
+            pm2 delete student-db-backend 2>/dev/null || true
+            if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
+              pm2 restart "$PM2_APP" --update-env
+            else
+              pm2 start ecosystem.config.js --only "$PM2_APP" --update-env
+            fi
+            pm2 save
+
+            echo "==> Nginx reload"
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "==> Health"
+            sleep 3
+            curl -fsS http://127.0.0.1:5000/health
+            echo
+            curl -fsSk https://127.0.0.1/api/health -H 'Host: sdms.pydah.edu.in'
+            echo
+            pm2 list
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.7
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           script: |
             set -e
-
-            echo "🚀 Starting deployment..."
-
-            cd ${{ secrets.LIGHTSAIL_APP_PATH }}
-
-            echo "📥 Pulling latest code..."
-            git fetch origin
-            git reset --hard origin/main || git reset --hard origin/master
-
-            # ======================
-            # BACKEND DEPLOY
-            # ======================
-            echo "🔧 Deploying backend..."
-            cd backend
-            npm ci --production
-            pm2 restart student-db-backend || pm2 start server.js --name student-db-backend
-            pm2 save
-
-            # ======================
-            # FRONTEND DEPLOY
-            # ======================
-            echo "🎨 Deploying frontend..."
-            cd ../frontend
-
-            echo "📁 Using pre-built dist (no build on server)..."
-
-            # ======================
-            # NGINX RESTART
-            # ======================
-            echo "🔄 Restarting nginx..."
-            sudo systemctl restart nginx
-
-            echo "✅ Deployment completed successfully!"
-
-      - name: Verify deployment
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.LIGHTSAIL_HOST }}
-          username: ${{ secrets.LIGHTSAIL_USER }}
-          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
-          script: |
-            echo "🔍 Verifying deployment..."
-
-            sleep 5
-
-            if pm2 list | grep -q "student-db-backend.*online"; then
-              echo "✅ Backend is running"
-
-              if curl -f http://localhost:5000/api > /dev/null 2>&1; then
-                echo "✅ Backend API responding"
-              else
-                echo "⚠️ API not responding properly"
-              fi
-            else
-              echo "❌ Backend failed!"
-              pm2 logs student-db-backend --lines 50 --nostream
+            PM2_APP="${{ env.PM2_APP_NAME }}"
+            if ! pm2 list | grep -q "$PM2_APP.*online"; then
+              echo "Backend not online"
+              pm2 logs "$PM2_APP" --lines 40 --nostream
               exit 1
             fi
-
-            echo "🎉 Deployment verified!"
+            curl -fsS http://127.0.0.1:5000/health >/dev/null
+            echo "Deployment verified"
