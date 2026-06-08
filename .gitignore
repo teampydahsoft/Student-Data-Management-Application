@@ -1,0 +1,6 @@
+# SSH keys — never commit
+*.pem
+LightsailDefaultKey*
+
+# Local deploy artifacts
+frontend/dist.tar.gz
