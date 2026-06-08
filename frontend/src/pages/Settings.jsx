@@ -45,6 +45,8 @@ import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettin
 import { isFullAccessRole } from '../constants/rbac';
 import { hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
 import { formatDateToLocalISO } from '../utils/dateUtils';
+import TargetSelector from '../components/TargetSelector';
+import { emptyHolidayTargets, formatHolidayScope } from '../utils/holidayTargeting';
 
 // Field categorization function (same as PublicForm.jsx)
 const BASIC_FIELDS = [
@@ -1012,6 +1014,7 @@ const Settings = () => {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [localHolidayTitle, setLocalHolidayTitle] = useState('');
   const [localHolidayDescription, setLocalHolidayDescription] = useState('');
+  const [holidayTargetForm, setHolidayTargetForm] = useState(emptyHolidayTargets());
   const calendarCacheRef = useRef(new Map());
 
   const user = useAuthStore((state) => state.user);
@@ -1847,25 +1850,35 @@ const Settings = () => {
   const handleCalendarDateSelect = (date) => {
     if (!date) return;
     setSelectedCalendarDate(date);
-    // Load holiday details for the selected date
-    const customHoliday = calendarViewData?.customHolidays?.find(h => h.date === date);
-    if (customHoliday) {
-      setLocalHolidayTitle(customHoliday.title || '');
-      setLocalHolidayDescription(customHoliday.description || '');
-    } else {
-      setLocalHolidayTitle('');
-      setLocalHolidayDescription('');
-    }
+    setLocalHolidayTitle('');
+    setLocalHolidayDescription('');
+    setHolidayTargetForm(emptyHolidayTargets());
   };
 
-  const handleCreateInstituteHoliday = async ({ date, title, description }) => {
+  const handleCreateInstituteHoliday = async ({
+    date,
+    title,
+    description,
+    target_college,
+    target_batch,
+    target_course,
+    target_branch,
+    target_year,
+    target_semester
+  }) => {
     if (!date) return;
     setCalendarMutationLoading(true);
     try {
       const response = await api.post('/calendar/custom-holidays', {
         date,
         title,
-        description
+        description,
+        target_college,
+        target_batch,
+        target_course,
+        target_branch,
+        target_year,
+        target_semester
       });
 
       if (!response.data?.success) {
@@ -1881,6 +1894,9 @@ const Settings = () => {
       });
 
       toast.success('Institute holiday saved');
+      setLocalHolidayTitle('');
+      setLocalHolidayDescription('');
+      setHolidayTargetForm(emptyHolidayTargets());
     } catch (error) {
       console.error('Failed to save custom holiday:', error);
       toast.error(error.response?.data?.message || error.message || 'Unable to save holiday');
@@ -1889,16 +1905,16 @@ const Settings = () => {
     }
   };
 
-  const handleRemoveInstituteHoliday = async (date) => {
-    if (!date) return;
+  const handleRemoveInstituteHoliday = async (holidayId) => {
+    if (!holidayId) return;
     setCalendarMutationLoading(true);
     try {
-      const response = await api.delete(`/calendar/custom-holidays/${date}`);
+      const response = await api.delete(`/calendar/custom-holidays/${holidayId}`);
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to remove holiday');
       }
 
-      const monthKey = getMonthKeyFromDate(date);
+      const monthKey = calendarViewMonthKey || getMonthKeyFromDate(selectedCalendarDate);
 
       await fetchCalendarMonth(monthKey, {
         applyToModal: activeSection === 'calendar' && monthKey === calendarViewMonthKey,
@@ -3419,85 +3435,91 @@ const Settings = () => {
                 {/* Holiday Management (Admin Only) */}
                 {isAdmin && selectedCalendarDate && (() => {
                   const data = calendarViewData || { customHolidays: [] };
-                  const customHoliday = (data.customHolidays || []).find(h => h.date?.split('T')[0] === selectedCalendarDate);
+                  const holidaysForDate = (data.customHolidays || []).filter(
+                    (holiday) => holiday.date?.split('T')[0] === selectedCalendarDate
+                  );
 
                   return (
                     <div className="border-b border-gray-200 pb-4 space-y-3">
-                      {!customHoliday ? (
-                        <>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                              Holiday Title
-                            </label>
-                            <input
-                              type="text"
-                              value={localHolidayTitle}
-                              onChange={(e) => setLocalHolidayTitle(e.target.value)}
-                              placeholder="e.g. Founders' Day"
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
-                              disabled={calendarMutationLoading}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                              Notes (visible to staff)
-                            </label>
-                            <textarea
-                              value={localHolidayDescription}
-                              onChange={(e) => setLocalHolidayDescription(e.target.value)}
-                              placeholder="Optional: add a note for this holiday"
-                              rows={3}
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors resize-none"
-                              disabled={calendarMutationLoading}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!selectedCalendarDate) return;
-                              await handleCreateInstituteHoliday({
-                                date: selectedCalendarDate,
-                                title: localHolidayTitle || 'Holiday',
-                                description: localHolidayDescription
-                              });
-                              setLocalHolidayTitle('');
-                              setLocalHolidayDescription('');
-                            }}
-                            disabled={calendarMutationLoading}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
-                          >
-                            {calendarMutationLoading ? (
-                              <>
-                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                Saving…
-                              </>
-                            ) : (
-                              'Save Institute Holiday'
-                            )}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await handleRemoveInstituteHoliday(selectedCalendarDate);
-                            setLocalHolidayTitle('');
-                            setLocalHolidayDescription('');
-                            setSelectedCalendarDate(null);
-                          }}
-                          disabled={calendarMutationLoading}
-                          className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {calendarMutationLoading ? (
-                            <>
-                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-                              Removing…
-                            </>
-                          ) : (
-                            'Remove Institute Holiday'
-                          )}
-                        </button>
+                      {holidaysForDate.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-gray-700">Holidays on this date</div>
+                          {holidaysForDate.map((holiday) => (
+                            <div key={holiday.id || `${holiday.date}-${holiday.title}`} className="rounded-md border border-purple-100 bg-purple-50 p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="text-sm font-semibold text-purple-900">{holiday.title || 'Institute Holiday'}</div>
+                                  {holiday.description && (
+                                    <div className="mt-1 text-xs text-purple-700">{holiday.description}</div>
+                                  )}
+                                  <div className="mt-1 text-[11px] text-purple-600">{formatHolidayScope(holiday)}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveInstituteHoliday(holiday.id)}
+                                  disabled={calendarMutationLoading || !holiday.id}
+                                  className="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                          Holiday Title
+                        </label>
+                        <input
+                          type="text"
+                          value={localHolidayTitle}
+                          onChange={(e) => setLocalHolidayTitle(e.target.value)}
+                          placeholder="e.g. Founders' Day"
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors"
+                          disabled={calendarMutationLoading}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                          Notes (visible to staff)
+                        </label>
+                        <textarea
+                          value={localHolidayDescription}
+                          onChange={(e) => setLocalHolidayDescription(e.target.value)}
+                          placeholder="Optional: add a note for this holiday"
+                          rows={3}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors resize-none"
+                          disabled={calendarMutationLoading}
+                        />
+                      </div>
+
+                      <TargetSelector formData={holidayTargetForm} setFormData={setHolidayTargetForm} />
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedCalendarDate) return;
+                          await handleCreateInstituteHoliday({
+                            date: selectedCalendarDate,
+                            title: localHolidayTitle || 'Holiday',
+                            description: localHolidayDescription,
+                            ...holidayTargetForm
+                          });
+                        }}
+                        disabled={calendarMutationLoading}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                      >
+                        {calendarMutationLoading ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            Saving…
+                          </>
+                        ) : (
+                          'Save Institute Holiday'
+                        )}
+                      </button>
                     </div>
                   );
                 })()}

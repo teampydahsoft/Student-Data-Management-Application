@@ -41,6 +41,12 @@ import api, { getStaticFileUrlDirect } from '../config/api';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { SkeletonTable, SkeletonAttendanceTable } from '../components/SkeletonLoader';
 import HolidayCalendarModal from '../components/Attendance/HolidayCalendarModal';
+import {
+  findGlobalCustomHoliday,
+  findMatchingCustomHoliday,
+  getCustomHolidaysForDate,
+  isGlobalHolidayTarget as isGlobalHolidayTargetCheck
+} from '../utils/holidayTargeting';
 import AttendanceSettingsModal from '../components/Attendance/AttendanceSettingsModal';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
@@ -586,11 +592,38 @@ const Attendance = () => {
     return fallback;
   };
 
-  const effectiveStatus = (studentId, isNonWorkingDay = false) => {
+  const resolveCustomHolidaysForDate = () => {
+    if (!attendanceDate) return [];
+    const calendarMatches = getCustomHolidaysForDate(calendarInfo.customHolidays, attendanceDate);
+    if (calendarMatches.length > 0) return calendarMatches;
+    return (
+      selectedDateHolidayInfo?.customHolidays ||
+      (selectedDateHolidayInfo?.customHoliday ? [selectedDateHolidayInfo.customHoliday] : [])
+    );
+  };
+
+  const effectiveStatus = (studentId, isGlobalHoliday = false) => {
     const status = statusMap[studentId];
     if (status) return status.toLowerCase();
-    // Default to 'holiday' on non-working days (Sundays, public/custom holidays)
-    return isNonWorkingDay ? 'holiday' : 'present';
+
+    if (isGlobalHoliday) return 'holiday';
+
+    const student = students.find((entry) => entry.id === studentId);
+    if (student) {
+      const studentScopedHoliday = findMatchingCustomHoliday(resolveCustomHolidaysForDate(), {
+        student: {
+          college: student.college,
+          batch: student.batch,
+          course: student.course,
+          branch: student.branch,
+          currentYear: student.currentYear || student.current_year,
+          currentSemester: student.currentSemester || student.current_semester
+        }
+      });
+      if (studentScopedHoliday) return 'holiday';
+    }
+
+    return 'present';
   };
 
   // Use statistics from API (based on total students, not just current page)
@@ -695,20 +728,22 @@ const Attendance = () => {
     return [];
   }, [attendanceDate, calendarInfo.publicHolidays, selectedDateHolidayInfo]);
 
-  const customHolidayForDate = useMemo(() => {
-    if (!attendanceDate) {
-      return null;
-    }
-    const calendarMatch = Array.isArray(calendarInfo.customHolidays)
-      ? calendarInfo.customHolidays.find((holiday) => holiday.date === attendanceDate)
-      : null;
-
-    if (calendarMatch) {
-      return calendarMatch;
-    }
-
-    return selectedDateHolidayInfo?.customHoliday || null;
+  const customHolidaysForDate = useMemo(() => {
+    if (!attendanceDate) return [];
+    const calendarMatches = getCustomHolidaysForDate(calendarInfo.customHolidays, attendanceDate);
+    if (calendarMatches.length > 0) return calendarMatches;
+    return selectedDateHolidayInfo?.customHolidays || (selectedDateHolidayInfo?.customHoliday ? [selectedDateHolidayInfo.customHoliday] : []);
   }, [attendanceDate, calendarInfo.customHolidays, selectedDateHolidayInfo]);
+
+  const globalCustomHolidayForDate = useMemo(
+    () => findGlobalCustomHoliday(customHolidaysForDate),
+    [customHolidaysForDate]
+  );
+
+  const customHolidayForDate = useMemo(
+    () => findMatchingCustomHoliday(customHolidaysForDate, { filters }) || globalCustomHolidayForDate,
+    [customHolidaysForDate, filters, globalCustomHolidayForDate]
+  );
 
   const nonWorkingDayDetails = useMemo(() => {
     const reasons = [];
@@ -746,13 +781,16 @@ const Attendance = () => {
 
     return {
       isNonWorkingDay:
-        selectedDateIsSunday || publicHolidayMatches.length > 0 || !!customHolidayForDate,
+        selectedDateIsSunday || publicHolidayMatches.length > 0 || !!globalCustomHolidayForDate,
+      isGlobalHoliday:
+        selectedDateIsSunday || publicHolidayMatches.length > 0 || !!globalCustomHolidayForDate,
       reasons,
       holidays: publicHolidayMatches,
       customHoliday: customHolidayForDate,
+      customHolidays: customHolidaysForDate,
       backend: selectedDateHolidayInfo
     };
-  }, [selectedDateIsSunday, publicHolidayMatches, customHolidayForDate, selectedDateHolidayInfo]);
+  }, [selectedDateIsSunday, publicHolidayMatches, customHolidayForDate, customHolidaysForDate, globalCustomHolidayForDate, selectedDateHolidayInfo]);
 
   const upcomingHolidays = useMemo(() => {
     const todayKey = attendanceDate || formatDateInput(new Date());
@@ -834,18 +872,17 @@ const Attendance = () => {
     // Check multiple sources for holiday status
     // Priority: selectedDateHolidayInfo (from attendance API) > nonWorkingDayDetails > calendarInfo
     const isHoliday =
+      selectedDateHolidayInfo?.isGlobalNonWorkingDay ||
       selectedDateHolidayInfo?.isNonWorkingDay ||
-      !!selectedDateHolidayInfo?.customHoliday ||
       !!selectedDateHolidayInfo?.publicHoliday ||
-      nonWorkingDayDetails.isNonWorkingDay ||
+      nonWorkingDayDetails.isGlobalHoliday ||
       selectedDateIsSunday ||
-      !!customHolidayForDate ||
       publicHolidayMatches.length > 0;
 
     // Show alert if it's a holiday and attendance data has loaded
     // Don't wait for calendar data if we have holiday info from attendance API
-    const hasHolidayInfoFromAPI = !!selectedDateHolidayInfo?.isNonWorkingDay ||
-      !!selectedDateHolidayInfo?.customHoliday ||
+    const hasHolidayInfoFromAPI = !!selectedDateHolidayInfo?.isGlobalNonWorkingDay ||
+      !!selectedDateHolidayInfo?.isNonWorkingDay ||
       !!selectedDateHolidayInfo?.publicHoliday;
     const calendarReady = hasHolidayInfoFromAPI || calendarMonthLoaded || calendarInfo.month === calendarMonthKey;
 
@@ -1438,6 +1475,12 @@ const Attendance = () => {
         fullResponse: response.data
       });
 
+      const apiHolidayInfo = response.data?.data?.holiday || {};
+      const holidaysForStudentMapping = apiHolidayInfo.customHolidays?.length
+        ? apiHolidayInfo.customHolidays
+        : (apiHolidayInfo.customHoliday ? [apiHolidayInfo.customHoliday] : customHolidaysForDate);
+      const hasPublicHolidayForDate = Boolean(apiHolidayInfo.publicHoliday || publicHolidayMatches.length > 0);
+
       const fetchedStudents = (response.data.data?.students || []).map((student) => {
         // Parse student_data if present to derive statuses
         let parsedData = {};
@@ -1463,22 +1506,32 @@ const Attendance = () => {
           ? regRaw.trim()
           : regRaw;
 
-        // Check if the selected date is a Sunday (non-working day)
         const selectedDateObj = new Date(`${attendanceDate}T00:00:00`);
-        const isSundayDate = selectedDateObj.getDay() === 0;
+        const isSundayDate = apiHolidayInfo.isSunday ?? selectedDateObj.getDay() === 0;
+        const studentScopedHoliday = findMatchingCustomHoliday(holidaysForStudentMapping, {
+          student: {
+            college: student.college,
+            batch: student.batch,
+            course: student.course,
+            branch: student.branch,
+            currentYear: student.currentYear || student.current_year,
+            currentSemester: student.currentSemester || student.current_semester
+          }
+        });
+        const isStudentHolidayDate = isSundayDate || hasPublicHolidayForDate || !!studentScopedHoliday;
 
-        // If student has attendanceStatus, use it; otherwise default based on day type
-        // On Sundays, default to 'holiday'; on regular days, default to 'present'
         const status = student.attendanceStatus
           ? student.attendanceStatus.toLowerCase()
-          : isSundayDate ? 'holiday' : 'present';
+          : isStudentHolidayDate ? 'holiday' : 'present';
 
         // Enhanced holiday reason mapping - ensure we get it from multiple possible sources
         let holidayReason = student.holiday_reason || null;
 
-        // If no holiday_reason from main query, try to get it from student_data as fallback
         if (!holidayReason && parsedData && parsedData.holiday_reason) {
           holidayReason = parsedData.holiday_reason;
+        }
+        if (!holidayReason && studentScopedHoliday?.title) {
+          holidayReason = studentScopedHoliday.title;
         }
 
         // Debug: Log holiday data for investigation
@@ -2194,14 +2247,30 @@ const Attendance = () => {
     }
   };
 
-  const handleCreateInstituteHoliday = async ({ date, title, description }) => {
+  const handleCreateInstituteHoliday = async ({
+    date,
+    title,
+    description,
+    target_college,
+    target_batch,
+    target_course,
+    target_branch,
+    target_year,
+    target_semester
+  }) => {
     if (!date) return;
     setCalendarMutationLoading(true);
     try {
       const response = await api.post('/calendar/custom-holidays', {
         date,
         title,
-        description
+        description,
+        target_college,
+        target_batch,
+        target_course,
+        target_branch,
+        target_year,
+        target_semester
       });
 
       if (!response.data?.success) {
@@ -2246,12 +2315,15 @@ const Attendance = () => {
           savedHoliday.title ? `Institute holiday: ${savedHoliday.title}` : 'Institute holiday'
         );
 
+        const isGlobalSavedHoliday = isGlobalHolidayTargetCheck(savedHoliday);
         setSelectedDateHolidayInfo({
           date: savedHoliday.date,
-          isNonWorkingDay: true,
+          isNonWorkingDay: isGlobalSavedHoliday,
+          isGlobalNonWorkingDay: isGlobalSavedHoliday,
           isSunday: selectedDateIsSunday,
           publicHoliday: selectedDateHolidayInfo?.publicHoliday || null,
           customHoliday: savedHoliday,
+          customHolidays: [...customHolidaysForDate, savedHoliday],
           reasons
         });
       }
@@ -2263,16 +2335,16 @@ const Attendance = () => {
     }
   };
 
-  const handleRemoveInstituteHoliday = async (date) => {
-    if (!date) return;
+  const handleRemoveInstituteHoliday = async (holidayId) => {
+    if (!holidayId) return;
     setCalendarMutationLoading(true);
     try {
-      const response = await api.delete(`/calendar/custom-holidays/${date}`);
+      const response = await api.delete(`/calendar/custom-holidays/${holidayId}`);
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to remove holiday');
       }
 
-      const monthKey = getMonthKeyFromDate(date);
+      const monthKey = getMonthKeyFromDate(attendanceDate);
 
       await fetchCalendarMonth(monthKey, {
         applyToHeader: monthKey === calendarMonthKey,
@@ -2282,7 +2354,7 @@ const Attendance = () => {
 
       toast.success('Institute holiday removed');
 
-      if (attendanceDate === date) {
+      if (attendanceDate) {
         const reasons = [];
         if (selectedDateIsSunday) {
           reasons.push('Sunday');
@@ -2300,11 +2372,13 @@ const Attendance = () => {
         setSelectedDateHolidayInfo(
           isStillHoliday
             ? {
-              date,
+              date: attendanceDate,
               isNonWorkingDay: true,
+              isGlobalNonWorkingDay: true,
               isSunday: selectedDateIsSunday,
               publicHoliday: selectedDateHolidayInfo?.publicHoliday || null,
               customHoliday: null,
+              customHolidays: [],
               reasons
             }
             : null
@@ -4378,7 +4452,7 @@ const Attendance = () => {
       }
       {/* Holiday Alert Modal - Shows for both Public and Institute Holidays */}
       {
-        showHolidayAlert && (nonWorkingDayDetails.isNonWorkingDay || customHolidayForDate || publicHolidayMatches.length > 0 || selectedDateIsSunday) && (
+        showHolidayAlert && (nonWorkingDayDetails.isGlobalHoliday || publicHolidayMatches.length > 0 || selectedDateIsSunday) && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-3 py-6">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
               <div className="flex items-start gap-4">

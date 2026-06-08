@@ -61,7 +61,7 @@ jobs:
           name: frontend-dist
 
       - name: Upload dist archive to server
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
@@ -70,7 +70,7 @@ jobs:
           target: /tmp/
 
       - name: Deploy backend + frontend on server
-        uses: appleboy/ssh-action@v1.0.7
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
@@ -79,10 +79,7 @@ jobs:
           command_timeout: 15m
           script: |
             set -euo pipefail
-            APP="${{ secrets.LIGHTSAIL_APP_PATH }}"
-            if [ -z "$APP" ]; then
-              APP="$HOME/Student-Data-Management-Application"
-            fi
+            APP="/home/ec2-user/Student-Data-Management-Application"
             PM2_APP="${{ env.PM2_APP_NAME }}"
 
             echo "==> Pull latest code"
@@ -128,7 +125,7 @@ jobs:
             pm2 list
 
       - name: Verify deployment
-        uses: appleboy/ssh-action@v1.0.7
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}

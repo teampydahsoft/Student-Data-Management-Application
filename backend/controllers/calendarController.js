@@ -1,18 +1,23 @@
 const { getHolidaysForMonth } = require('../services/holidayService');
 const {
   listCustomHolidays,
-  upsertCustomHoliday,
+  saveCustomHoliday,
   deleteCustomHoliday,
+  deleteCustomHolidayById,
   normalizeDate
 } = require('../services/customHolidayService');
 const {
   getNonWorkingDayInfo,
-  getNonWorkingDaysForRange,
   clearCache
 } = require('../services/nonWorkingDayService');
 const { getAttendanceStatusForRange } = require('../services/attendanceStatusService');
 const { masterPool } = require('../config/database');
 const { sendNotificationToUser } = require('./pushController');
+const {
+  buildStudentWhereClause,
+  isGlobalTarget,
+  extractTargetsFromBody
+} = require('../services/targetingService');
 
 const padMonth = (value) => String(value).padStart(2, '0');
 
@@ -59,6 +64,58 @@ const buildSundaysForMonth = (year, month) => {
   }
 
   return sundays;
+};
+
+const revokeAttendanceForHoliday = async (holiday) => {
+  const normalizedDate = normalizeDate(holiday?.date);
+  if (!normalizedDate) return 0;
+
+  const holidayReason = (holiday.title && holiday.title.trim())
+    ? holiday.title.trim()
+    : 'Institute Holiday';
+  const targets = extractTargetsFromBody(holiday);
+  const { conditions, params } = buildStudentWhereClause(targets, 's');
+
+  let query = `
+    UPDATE attendance_records ar
+    INNER JOIN students s ON s.id = ar.student_id
+    SET ar.status = 'holiday', ar.holiday_reason = ?
+    WHERE ar.attendance_date = ?
+      AND ar.status IN ('present', 'absent')
+  `;
+  const queryParams = [holidayReason, normalizedDate];
+
+  if (conditions.length > 0) {
+    query += ` AND ${conditions.join(' AND ')}`;
+    queryParams.push(...params);
+  }
+
+  const [revokeResult] = await masterPool.query(query, queryParams);
+  return revokeResult.affectedRows;
+};
+
+const cleanupAttendanceForHoliday = async (holiday) => {
+  const normalizedDate = normalizeDate(holiday?.date);
+  if (!normalizedDate) return 0;
+
+  const targets = extractTargetsFromBody(holiday);
+  const { conditions, params } = buildStudentWhereClause(targets, 's');
+
+  let query = `
+    DELETE ar FROM attendance_records ar
+    INNER JOIN students s ON s.id = ar.student_id
+    WHERE ar.attendance_date = ?
+      AND ar.status = 'holiday'
+  `;
+  const queryParams = [normalizedDate];
+
+  if (conditions.length > 0) {
+    query += ` AND ${conditions.join(' AND ')}`;
+    queryParams.push(...params);
+  }
+
+  const [cleanupResult] = await masterPool.query(query, queryParams);
+  return cleanupResult.affectedRows;
 };
 
 exports.getNonWorkingDays = async (req, res) => {
@@ -120,7 +177,7 @@ exports.getNonWorkingDays = async (req, res) => {
 
     const sundaySet = new Set(sundayList);
     const publicHolidaySet = new Set(publicHolidays.map((holiday) => holiday.date));
-    const customHolidaySet = new Set(customHolidays.map((holiday) => holiday.date));
+    const customHolidayDateSet = new Set(customHolidays.map((holiday) => holiday.date));
 
     const attendanceStatus = {};
     const attendanceCounts = {};
@@ -133,7 +190,7 @@ exports.getNonWorkingDays = async (req, res) => {
       const countsData = attendanceCountsMap.get(dateIso);
       const hasRecords = countsData && countsData.total > 0;
       const isHoliday =
-        sundaySet.has(dateIso) || publicHolidaySet.has(dateIso) || customHolidaySet.has(dateIso);
+        sundaySet.has(dateIso) || publicHolidaySet.has(dateIso) || customHolidayDateSet.has(dateIso);
 
       let status = 'upcoming';
       if (isHoliday) {
@@ -147,7 +204,6 @@ exports.getNonWorkingDays = async (req, res) => {
       }
 
       attendanceStatus[dateIso] = status;
-      // Include counts for each date
       if (countsData) {
         attendanceCounts[dateIso] = {
           present: countsData.present,
@@ -157,9 +213,6 @@ exports.getNonWorkingDays = async (req, res) => {
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
-
-    console.log(`[Calendar] Sending response with ${Object.keys(attendanceCounts).length} dates with counts`);
-    console.log(`[Calendar] Sample counts:`, Object.entries(attendanceCounts).slice(0, 3));
 
     res.json({
       success: true,
@@ -213,35 +266,20 @@ exports.getCustomHolidays = async (req, res) => {
   }
 };
 
-// Helper: Notify all students about new activity/holiday
-const notifyAllStudents = async (holiday) => {
-  try {
-    // Fetch all regular students
-    const [students] = await masterPool.query("SELECT id FROM students WHERE student_status = 'Regular'");
-
-    if (students.length === 0) return;
-
-    const payload = {
-      title: `New Activity: ${holiday.title}`,
-      body: `${holiday.description ? holiday.description.substring(0, 50) + '...' : 'Check activity calendar.'}`,
-      icon: '/icon-192x192.png',
-      data: {
-        url: 'https://pydahgroup.com/student/calendar'
-      }
-    };
-
-    // Send notifications
-    const promises = students.map(student => sendNotificationToUser(student.id, payload));
-    await Promise.allSettled(promises);
-    console.log(`Activity notifications sent to ${students.length} students.`);
-  } catch (error) {
-    console.error('Failed to send activity notifications:', error);
-  }
-};
-
 exports.saveCustomHoliday = async (req, res) => {
   try {
-    const { date, title, description } = req.body || {};
+    const {
+      id,
+      date,
+      title,
+      description,
+      target_college,
+      target_batch,
+      target_course,
+      target_branch,
+      target_year,
+      target_semester
+    } = req.body || {};
     const createdBy = req.admin?.id || req.user?.id || null;
 
     if (!date) {
@@ -251,39 +289,31 @@ exports.saveCustomHoliday = async (req, res) => {
       });
     }
 
-    const holiday = await upsertCustomHoliday({
+    const holiday = await saveCustomHoliday({
+      id,
       date,
       title,
       description,
-      createdBy
+      createdBy,
+      target_college,
+      target_batch,
+      target_course,
+      target_branch,
+      target_year,
+      target_semester
     });
 
-    // Clear holiday cache to reflect changes immediately
     clearCache();
 
-    // Revoke any existing attendance records for this date:
-    // Convert all present/absent records to 'holiday' status so that
-    // students who were already marked are not incorrectly counted.
-    const holidayReason = (title && title.trim()) ? title.trim() : 'Institute Holiday';
-    const normalizedDate = normalizeDate(date);
-    if (normalizedDate) {
-      const [revokeResult] = await masterPool.query(
-        `UPDATE attendance_records
-         SET status = 'holiday', holiday_reason = ?
-         WHERE attendance_date = ? AND status IN ('present', 'absent')`,
-        [holidayReason, normalizedDate]
-      );
-      console.log(`[Holiday] Revoked ${revokeResult.affectedRows} attendance record(s) for ${normalizedDate} → holiday`);
-    }
+    const revokedCount = await revokeAttendanceForHoliday(holiday);
+    console.log(
+      `[Holiday] Revoked ${revokedCount} attendance record(s) for ${holiday.date} → holiday (${isGlobalTarget(holiday) ? 'all students' : 'scoped'})`
+    );
 
     res.json({
       success: true,
       data: holiday
     });
-
-    // Send Notification
-    // notifyAllStudents({ title, description }).catch(err => console.error(err));
-
   } catch (error) {
     console.error('Failed to save custom holiday:', error);
     res.status(500).json({
@@ -295,35 +325,43 @@ exports.saveCustomHoliday = async (req, res) => {
 
 exports.deleteCustomHoliday = async (req, res) => {
   try {
-    const { date } = req.params;
-    if (!date) {
+    const { id } = req.params;
+    if (!id) {
       return res.status(400).json({
         success: false,
-        message: 'Holiday date is required'
+        message: 'Holiday id is required'
       });
     }
 
-    const deleted = await deleteCustomHoliday(date);
+    let deletedHoliday = null;
+    if (String(id).match(/^\d+$/)) {
+      deletedHoliday = await deleteCustomHolidayById(Number(id));
+    } else {
+      const deleted = await deleteCustomHoliday(id);
+      if (deleted) {
+        deletedHoliday = { date: normalizeDate(id) };
+      }
+    }
 
-    // Clear holiday cache to reflect changes immediately
+    if (!deletedHoliday) {
+      return res.status(404).json({
+        success: false,
+        message: 'Holiday not found'
+      });
+    }
+
     clearCache();
 
-    // Remove attendance records that were set to 'holiday' when this
-    // institute holiday was saved, so the day reverts to "not marked".
-    // (We cannot safely restore the original present/absent values.)
-    const normalizedDate = normalizeDate(date);
-    if (normalizedDate) {
-      const [cleanupResult] = await masterPool.query(
-        `DELETE FROM attendance_records
-         WHERE attendance_date = ? AND status = 'holiday'`,
-        [normalizedDate]
+    if (deletedHoliday.id || deletedHoliday.date) {
+      const removedCount = await cleanupAttendanceForHoliday(deletedHoliday);
+      console.log(
+        `[Holiday] Removed ${removedCount} holiday attendance record(s) for ${deletedHoliday.date}`
       );
-      console.log(`[Holiday] Removed ${cleanupResult.affectedRows} holiday attendance record(s) for ${normalizedDate}`);
     }
 
     res.json({
       success: true,
-      data: { deleted }
+      data: { deleted: true, holiday: deletedHoliday }
     });
   } catch (error) {
     console.error('Failed to delete custom holiday:', error);
@@ -333,4 +371,3 @@ exports.deleteCustomHoliday = async (req, res) => {
     });
   }
 };
-

@@ -3,6 +3,11 @@ const {
   listCustomHolidays,
   normalizeDate
 } = require('./customHolidayService');
+const {
+  isGlobalTarget,
+  matchesStudent,
+  matchesFilters
+} = require('./targetingService');
 
 const DEFAULT_COUNTRY = (process.env.HOLIDAY_COUNTRY || 'IN').toUpperCase();
 
@@ -46,6 +51,34 @@ const getMonthDateRange = (year, month) => {
   return { start, end };
 };
 
+const groupCustomHolidaysByDate = (customHolidays = []) => {
+  const map = new Map();
+  customHolidays.forEach((holiday) => {
+    const existing = map.get(holiday.date) || [];
+    existing.push(holiday);
+    map.set(holiday.date, existing);
+  });
+  return map;
+};
+
+const findGlobalCustomHoliday = (customHolidays = []) =>
+  customHolidays.find((holiday) => isGlobalTarget(holiday)) || null;
+
+const findMatchingCustomHoliday = (customHolidays = [], context = {}) => {
+  const { student, filters } = context;
+  if (!Array.isArray(customHolidays) || customHolidays.length === 0) return null;
+
+  if (student) {
+    return customHolidays.find((holiday) => matchesStudent(student, holiday)) || null;
+  }
+
+  if (filters) {
+    return customHolidays.find((holiday) => matchesFilters(filters, holiday)) || null;
+  }
+
+  return findGlobalCustomHoliday(customHolidays) || customHolidays[0] || null;
+};
+
 const buildMonthData = async (year, month, countryCode = DEFAULT_COUNTRY) => {
   const monthKey = getMonthKey(year, month);
   const cacheEntry = monthCache.get(monthKey);
@@ -64,16 +97,15 @@ const buildMonthData = async (year, month, countryCode = DEFAULT_COUNTRY) => {
   const publicHolidayMap = new Map(
     (publicHolidays || []).map((holiday) => [holiday.date, holiday])
   );
-  const customHolidayMap = new Map(
-    (customHolidays || []).map((holiday) => [holiday.date, holiday])
-  );
+  const customHolidaysByDate = groupCustomHolidaysByDate(customHolidays || []);
   const sundaySet = new Set(sundayList);
 
   const monthData = {
     key: monthKey,
     countryCode,
     publicHolidayMap,
-    customHolidayMap,
+    customHolidaysByDate,
+    customHolidays,
     sundaySet,
     fetchedAt: new Date().toISOString()
   };
@@ -86,7 +118,13 @@ const buildMonthData = async (year, month, countryCode = DEFAULT_COUNTRY) => {
   return monthData;
 };
 
-const getNonWorkingDayInfo = async (dateInput, countryCode = DEFAULT_COUNTRY) => {
+const getNonWorkingDayInfo = async (dateInput, optionsOrCountry = DEFAULT_COUNTRY) => {
+  const options =
+    typeof optionsOrCountry === 'string'
+      ? { countryCode: optionsOrCountry }
+      : { countryCode: DEFAULT_COUNTRY, ...optionsOrCountry };
+
+  const { countryCode = DEFAULT_COUNTRY, student = null, filters = null } = options;
   const normalizedDate = normalizeDate(dateInput);
   if (!normalizedDate) {
     throw new Error('Invalid date supplied');
@@ -96,22 +134,47 @@ const getNonWorkingDayInfo = async (dateInput, countryCode = DEFAULT_COUNTRY) =>
   const monthData = await buildMonthData(year, month, countryCode);
 
   const publicHoliday = monthData.publicHolidayMap.get(normalizedDate) || null;
-  const customHoliday = monthData.customHolidayMap.get(normalizedDate) || null;
+  const customHolidaysForDate = monthData.customHolidaysByDate.get(normalizedDate) || [];
+  const globalCustomHoliday = findGlobalCustomHoliday(customHolidaysForDate);
+  const matchingCustomHoliday = findMatchingCustomHoliday(customHolidaysForDate, {
+    student,
+    filters
+  });
   const isSunday = monthData.sundaySet.has(normalizedDate);
 
   const reasons = [];
   if (isSunday) reasons.push('Sunday');
   if (publicHoliday) reasons.push(publicHoliday.localName || publicHoliday.name || 'Public holiday');
-  if (customHoliday) reasons.push(customHoliday.title || 'Institute holiday');
+  if (globalCustomHoliday) reasons.push(globalCustomHoliday.title || 'Institute holiday');
+  else if (matchingCustomHoliday) {
+    reasons.push(matchingCustomHoliday.title || 'Institute holiday');
+  }
+
+  const isGlobalNonWorkingDay = Boolean(isSunday || publicHoliday || globalCustomHoliday);
+  const isStudentHoliday = Boolean(
+    isGlobalNonWorkingDay ||
+      (student && matchingCustomHoliday && !isGlobalNonWorkingDay)
+  );
 
   return {
     date: normalizedDate,
-    isNonWorkingDay: Boolean(isSunday || publicHoliday || customHoliday),
+    isNonWorkingDay: student ? isStudentHoliday : isGlobalNonWorkingDay,
+    isGlobalNonWorkingDay,
     isSunday,
     publicHoliday,
-    customHoliday,
+    customHoliday: matchingCustomHoliday || globalCustomHoliday,
+    customHolidays: customHolidaysForDate,
+    globalCustomHoliday,
     reasons
   };
+};
+
+const getStudentHolidayOnDate = async (dateInput, student, countryCode = DEFAULT_COUNTRY) => {
+  const info = await getNonWorkingDayInfo(dateInput, { countryCode, student });
+  if (!info.isNonWorkingDay) return null;
+  return info.customHoliday || (info.isSunday || info.publicHoliday
+    ? { title: info.reasons.join(', '), isGlobal: true }
+    : null);
 };
 
 const getNonWorkingDaysForRange = async (startDate, endDate, countryCode = DEFAULT_COUNTRY) => {
@@ -152,11 +215,12 @@ const getNonWorkingDaysForRange = async (startDate, endDate, countryCode = DEFAU
       }
     });
 
-    monthData.customHolidayMap.forEach((holiday, date) => {
+    monthData.customHolidaysByDate.forEach((holidays, date) => {
       if (date >= normalizedStart && date <= normalizedEnd) {
         detailMap.set(date, {
           ...(detailMap.get(date) || {}),
-          customHoliday: holiday
+          customHolidays: holidays,
+          customHoliday: findGlobalCustomHoliday(holidays) || holidays[0] || null
         });
       }
     });
@@ -194,7 +258,7 @@ const getPreviousWorkingDay = async (dateInput, countryCode = DEFAULT_COUNTRY) =
   for (let i = 0; i < 21; i += 1) {
     cursor = shiftDateString(cursor, -1);
     const info = await getNonWorkingDayInfo(cursor, countryCode);
-    if (!info.isNonWorkingDay) {
+    if (!info.isGlobalNonWorkingDay) {
       return cursor;
     }
   }
@@ -204,8 +268,9 @@ const getPreviousWorkingDay = async (dateInput, countryCode = DEFAULT_COUNTRY) =
 
 module.exports = {
   getNonWorkingDayInfo,
+  getStudentHolidayOnDate,
   getNonWorkingDaysForRange,
   getPreviousWorkingDay,
+  findMatchingCustomHoliday,
   clearCache
 };
-

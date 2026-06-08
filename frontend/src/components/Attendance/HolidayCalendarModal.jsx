@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, CalendarDays, AlertTriangle, CheckCircle } from 'lucide-react';
+import TargetSelector from '../TargetSelector';
+import { emptyHolidayTargets, formatHolidayScope } from '../../utils/holidayTargeting';
 
 const MONTH_NAMES = [
   'January',
@@ -145,6 +147,7 @@ const HolidayCalendarModal = ({
 }) => {
   const [localTitle, setLocalTitle] = useState('');
   const [localDescription, setLocalDescription] = useState('');
+  const [holidayTargetForm, setHolidayTargetForm] = useState(emptyHolidayTargets());
 
   const data = calendarData || {
     sundays: [],
@@ -168,14 +171,14 @@ const HolidayCalendarModal = ({
     return map;
   }, [data.publicHolidays]);
 
-  const customHolidayMap = useMemo(() => {
+  const customHolidaysByDate = useMemo(() => {
     const map = new Map();
     (data.customHolidays || []).forEach((holiday) => {
-      // Normalize date to YYYY-MM-DD format for consistent matching
       const normalizedDate = normalizeDateToIST(holiday.date);
-      if (normalizedDate) {
-        map.set(normalizedDate, holiday);
-      }
+      if (!normalizedDate) return;
+      const existing = map.get(normalizedDate) || [];
+      existing.push(holiday);
+      map.set(normalizedDate, existing);
     });
     return map;
   }, [data.customHolidays]);
@@ -194,17 +197,18 @@ const HolidayCalendarModal = ({
     // Normalize selected date to YYYY-MM-DD format for consistent matching
     const normalizedSelectedDate = selectedDate.split('T')[0];
     const publicHoliday = publicHolidayMap.get(normalizedSelectedDate);
-    const customHoliday = customHolidayMap.get(normalizedSelectedDate);
+    const customHolidays = customHolidaysByDate.get(normalizedSelectedDate) || [];
     const isSunday = sundaySet.has(normalizedSelectedDate);
     const status = attendanceStatusMap.get(normalizedSelectedDate) || null;
 
     return {
       publicHoliday,
-      customHoliday,
+      customHolidays,
+      customHoliday: customHolidays[0] || null,
       isSunday,
       status
     };
-  }, [selectedDate, publicHolidayMap, customHolidayMap, sundaySet, attendanceStatusMap]);
+  }, [selectedDate, publicHolidayMap, customHolidaysByDate, sundaySet, attendanceStatusMap]);
 
   const monthLabel = useMemo(() => {
     const parts = parseMonthKey(monthKey);
@@ -233,14 +237,9 @@ const HolidayCalendarModal = ({
     if (!onSelectDate) return;
     onSelectDate(cell.isoDate);
 
-    const customHoliday = customHolidayMap.get(cell.isoDate);
-    if (customHoliday) {
-      setLocalTitle(customHoliday.title || '');
-      setLocalDescription(customHoliday.description || '');
-    } else {
-      setLocalTitle('');
-      setLocalDescription('');
-    }
+    setLocalTitle('');
+    setLocalDescription('');
+    setHolidayTargetForm(emptyHolidayTargets());
   };
 
   useEffect(() => {
@@ -250,29 +249,27 @@ const HolidayCalendarModal = ({
       return;
     }
 
-    const customHoliday = customHolidayMap.get(selectedDate);
-    if (customHoliday) {
-      setLocalTitle(customHoliday.title || '');
-      setLocalDescription(customHoliday.description || '');
-    } else {
-      setLocalTitle('');
-      setLocalDescription('');
-    }
-  }, [selectedDate, customHolidayMap]);
+    setLocalTitle('');
+    setLocalDescription('');
+    setHolidayTargetForm(emptyHolidayTargets());
+  }, [selectedDate]);
 
   const handleCreateHoliday = () => {
     if (!selectedDate || !onCreateHoliday) return;
-    const payload = {
+    onCreateHoliday({
       date: selectedDate,
       title: localTitle || 'Holiday',
-      description: localDescription
-    };
-    onCreateHoliday(payload);
+      description: localDescription,
+      ...holidayTargetForm
+    });
+    setLocalTitle('');
+    setLocalDescription('');
+    setHolidayTargetForm(emptyHolidayTargets());
   };
 
-  const handleRemoveHoliday = () => {
-    if (!selectedDate || !onRemoveHoliday) return;
-    onRemoveHoliday(selectedDate);
+  const handleRemoveHoliday = (holidayId) => {
+    if (!holidayId || !onRemoveHoliday) return;
+    onRemoveHoliday(holidayId);
   };
 
   if (!isOpen) return null;
@@ -343,8 +340,9 @@ const HolidayCalendarModal = ({
                 const isSelected = selectedDate === cell.isoDate;
                 const isSunday = sundaySet.has(cell.isoDate);
                 const publicHoliday = publicHolidayMap.get(cell.isoDate);
-                const customHoliday = customHolidayMap.get(cell.isoDate);
-                const isHoliday = Boolean(publicHoliday || customHoliday || isSunday);
+                const customHolidaysForCell = customHolidaysByDate.get(cell.isoDate) || [];
+                const customHoliday = customHolidaysForCell[0] || null;
+                const isHoliday = Boolean(publicHoliday || customHolidaysForCell.length > 0 || isSunday);
                 const statusInfo = status && STATUS_META[status];
 
                 // Determine cell background color based on day type
@@ -610,74 +608,84 @@ const HolidayCalendarModal = ({
 
                 {isAdmin && (
                   <div className="space-y-3">
-                    {/* Only show holiday form if the date is NOT already an institute holiday */}
-                    {!selectedHolidayDetails?.customHoliday ? (
-                      <>
-                        <div>
-                          <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
-                            Holiday title
-                          </label>
-                          <input
-                            type="text"
-                            value={localTitle}
-                            onChange={(event) => setLocalTitle(event.target.value)}
-                            placeholder="e.g. Founders\' Day"
-                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={mutationLoading}
-                          />
+                    {(selectedHolidayDetails?.customHolidays || []).length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Holidays on this date
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
-                            Notes (visible to staff)
-                          </label>
-                          <textarea
-                            value={localDescription}
-                            onChange={(event) => setLocalDescription(event.target.value)}
-                            placeholder="Optional: add a note for this holiday"
-                            rows={3}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={mutationLoading}
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={handleCreateHoliday}
-                            disabled={mutationLoading}
-                            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                        {(selectedHolidayDetails.customHolidays || []).map((holiday) => (
+                          <div
+                            key={holiday.id || `${holiday.date}-${holiday.title}`}
+                            className="rounded-lg border border-purple-100 bg-purple-50 p-3"
                           >
-                            {mutationLoading ? (
-                              <>
-                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                Saving…
-                              </>
-                            ) : (
-                              'Save Institute Holiday'
-                            )}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      /* Show remove button if already an institute holiday */
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleRemoveHoliday}
-                          disabled={mutationLoading}
-                          className="inline-flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {mutationLoading ? (
-                            <>
-                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-                              Removing…
-                            </>
-                          ) : (
-                            'Remove Institute Holiday'
-                          )}
-                        </button>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-semibold text-purple-900">{holiday.title || 'Institute Holiday'}</div>
+                                {holiday.description && (
+                                  <div className="mt-1 text-xs text-purple-700">{holiday.description}</div>
+                                )}
+                                <div className="mt-1 text-[11px] text-purple-600">{formatHolidayScope(holiday)}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveHoliday(holiday.id)}
+                                disabled={mutationLoading || !holiday.id}
+                                className="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                        Holiday title
+                      </label>
+                      <input
+                        type="text"
+                        value={localTitle}
+                        onChange={(event) => setLocalTitle(event.target.value)}
+                        placeholder="e.g. Founders' Day"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={mutationLoading}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                        Notes (visible to staff)
+                      </label>
+                      <textarea
+                        value={localDescription}
+                        onChange={(event) => setLocalDescription(event.target.value)}
+                        placeholder="Optional: add a note for this holiday"
+                        rows={3}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={mutationLoading}
+                      />
+                    </div>
+
+                    <TargetSelector formData={holidayTargetForm} setFormData={setHolidayTargetForm} />
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCreateHoliday}
+                        disabled={mutationLoading}
+                        className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                      >
+                        {mutationLoading ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            Saving…
+                          </>
+                        ) : (
+                          'Save Institute Holiday'
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -761,7 +769,7 @@ const HolidayCalendarModal = ({
                       ))}
                       {(data.customHolidays || []).map((holiday) => (
                         <div
-                          key={`custom-${holiday.date}`}
+                          key={`custom-${holiday.id || holiday.date}-${holiday.title}`}
                           className="flex items-start gap-2 rounded-lg border border-purple-100 bg-purple-50 p-2 text-purple-700"
                         >
                           <div className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-purple-400" />
@@ -777,6 +785,7 @@ const HolidayCalendarModal = ({
                             {holiday.description && (
                               <div className="text-xs text-purple-600">{holiday.description}</div>
                             )}
+                            <div className="text-[11px] text-purple-600">{formatHolidayScope(holiday)}</div>
                           </div>
                         </div>
                       ))}

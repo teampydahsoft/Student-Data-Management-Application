@@ -7,6 +7,7 @@ const { sendAttendanceReportNotifications } = require('../services/attendanceNot
 const { getAllAttendanceForDate, areAllBatchesMarked, areAllBatchesMarkedForCollege, areAllBatchesMarkedForCollegeCourseBranch } = require('../services/getAllAttendanceForDate');
 const {
   getNonWorkingDayInfo,
+  getStudentHolidayOnDate,
   getNonWorkingDaysForRange,
   getPreviousWorkingDay,
   clearCache
@@ -542,20 +543,6 @@ exports.getAttendance = async (req, res) => {
       });
     }
 
-    let holidayInfo = null;
-    try {
-      holidayInfo = await getNonWorkingDayInfo(attendanceDate);
-    } catch (error) {
-      holidayInfo = {
-        date: attendanceDate,
-        isNonWorkingDay: false,
-        isSunday: false,
-        publicHoliday: null,
-        customHoliday: null,
-        reasons: []
-      };
-    }
-
     const {
       batch,
       currentYear,
@@ -564,9 +551,35 @@ exports.getAttendance = async (req, res) => {
       parentMobile,
       course,
       branch,
+      college,
       limit,
       offset
     } = req.query;
+
+    let holidayInfo = null;
+    try {
+      holidayInfo = await getNonWorkingDayInfo(attendanceDate, {
+        filters: {
+          college: college || null,
+          batch: batch || null,
+          course: course || null,
+          branch: branch || null,
+          currentYear: currentYear || null,
+          currentSemester: currentSemester || null
+        }
+      });
+    } catch (error) {
+      holidayInfo = {
+        date: attendanceDate,
+        isNonWorkingDay: false,
+        isGlobalNonWorkingDay: false,
+        isSunday: false,
+        publicHoliday: null,
+        customHoliday: null,
+        customHolidays: [],
+        reasons: []
+      };
+    }
 
     let query = `
       SELECT
@@ -591,6 +604,7 @@ exports.getAttendance = async (req, res) => {
         s.batch,
         s.course,
         s.branch,
+        s.college,
         ar.id AS attendance_record_id,
         ar.status AS attendance_status,
         ar.holiday_reason,
@@ -1115,6 +1129,7 @@ exports.getAttendance = async (req, res) => {
         batch: row.batch || studentData.Batch || null,
         course: courseValue,
         branch: branchValue,
+        college: row.college || studentData.College || studentData.college || null,
         currentYear: row.current_year || studentData['Current Academic Year'] || null,
         currentSemester: row.current_semester || studentData['Current Semester'] || null,
         attendanceStatus: row.attendance_status || null,
@@ -1359,11 +1374,13 @@ exports.markAttendance = async (req, res) => {
     }))
     .filter((record) => Number.isInteger(record.studentId) && VALID_STATUSES.has(record.status));
 
-  let isHolidayDate = false;
+  let globalHolidayInfo = null;
   try {
-    const holidayInfo = await getNonWorkingDayInfo(normalizedDate);
-    isHolidayDate = Boolean(holidayInfo?.isNonWorkingDay);
-    if (isHolidayDate && normalizedRecords.some((r) => r.status !== 'holiday')) {
+    globalHolidayInfo = await getNonWorkingDayInfo(normalizedDate);
+    if (
+      globalHolidayInfo?.isGlobalNonWorkingDay &&
+      normalizedRecords.some((r) => r.status !== 'holiday')
+    ) {
       return res.status(400).json({
         success: false,
         message: 'On no class work days, only no class work status can be recorded'
@@ -1434,6 +1451,22 @@ exports.markAttendance = async (req, res) => {
         success: false,
         message: `Students not found: ${missingStudents.join(', ')}`
       });
+    }
+
+    if (!globalHolidayInfo?.isGlobalNonWorkingDay) {
+      for (const record of normalizedRecords) {
+        const student = studentMap.get(record.studentId);
+        if (!student) continue;
+
+        const studentHoliday = await getStudentHolidayOnDate(normalizedDate, student);
+        if (studentHoliday && record.status !== 'holiday') {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Student ${student.student_name || record.studentId} has no class work on this date. Only holiday status can be recorded.`
+          });
+        }
+      }
     }
 
     const todayDate = getDateOnlyString();
