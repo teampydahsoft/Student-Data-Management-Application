@@ -6,7 +6,7 @@ const { masterPool } = require('../config/database');
  */
 exports.getSemesters = async (req, res) => {
   try {
-    const { collegeId, courseId, academicYearId, semester } = req.query;
+    const { collegeId, courseId, academicYearId, semester, batch } = req.query;
     
     // Batch = student joined year (selected when creating). Academic year = working days/session (2026-2027).
     // Students can join any year (lateral entry). Use stored batch directly - not derived from students lookup.
@@ -53,6 +53,11 @@ exports.getSemesters = async (req, res) => {
     if (semester) {
       query += ' AND s.semester_number = ?';
       params.push(semester);
+    }
+
+    if (batch) {
+      query += ' AND s.batch = ?';
+      params.push(String(batch).trim());
     }
     
     query += ' ORDER BY s.start_date DESC, s.course_id, s.year_of_study, s.semester_number';

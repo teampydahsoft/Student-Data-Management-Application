@@ -34,6 +34,17 @@ const {
   processAttendanceData,
   getHolidayInfoForRange
 } = require('../services/attendancePercentageService');
+const {
+  resolveSemesterCalendarForFilters,
+  getSemesterCalendarVisibilityClause,
+  validateStudentAttendanceDate
+} = require('../services/semesterCalendarService');
+
+const applySemesterCalendarFilter = (query, params, attendanceDate) => {
+  const { sql, params: clauseParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+  params.push(...clauseParams);
+  return query + sql;
+};
 
 // Helper function to replace template variables
 const replaceTemplateVariables = (template, variables) => {
@@ -178,6 +189,8 @@ const countUnresolvedAttendance = async ({
       params.push(...scopeParams);
     }
   }
+
+  query = applySemesterCalendarFilter(query, params, attendanceDate);
 
   const [rows] = await masterPool.query(query, params);
   return parseInt(rows?.[0]?.pending_count || 0, 10);
@@ -750,6 +763,8 @@ exports.getAttendance = async (req, res) => {
       }
     }
 
+    query = applySemesterCalendarFilter(query, params, attendanceDate);
+
     query += ' ORDER BY s.student_name ASC';
 
     // Build count query for pagination - use same WHERE clause but count distinct students
@@ -902,6 +917,8 @@ exports.getAttendance = async (req, res) => {
       }
     }
 
+    countQuery = applySemesterCalendarFilter(countQuery, countParams, attendanceDate);
+
     const parsedLimit = limit ? parseInt(limit, 10) : null;
     const parsedOffset = offset ? parseInt(offset, 10) : 0;
 
@@ -1034,6 +1051,8 @@ exports.getAttendance = async (req, res) => {
       statsParams.push(mobileLike, mobileLike, mobileLike, mobileLike);
     }
 
+    statsQuery = applySemesterCalendarFilter(statsQuery, statsParams, attendanceDate);
+
     // Execute single optimized stats query
     const [statsRows] = await masterPool.query(statsQuery, statsParams);
     const statsRow = statsRows[0] || {};
@@ -1064,6 +1083,20 @@ exports.getAttendance = async (req, res) => {
       currentSemester,
       userScope: req.userScope
     });
+
+    let semesterCalendar = { configured: false, startDate: null, endDate: null };
+    try {
+      semesterCalendar = await resolveSemesterCalendarForFilters({
+        college: college || null,
+        course: course || null,
+        batch: batch || null,
+        currentYear: currentYear || null,
+        currentSemester: currentSemester || null,
+        attendanceDate
+      });
+    } catch (calendarError) {
+      console.warn('Failed to resolve semester calendar for attendance:', calendarError.message || calendarError);
+    }
 
     // Apply pagination to data query
     if (parsedLimit && parsedLimit > 0) {
@@ -1146,7 +1179,9 @@ exports.getAttendance = async (req, res) => {
         students,
         holiday: holidayInfo,
         statistics,
-        attendanceGate
+        attendanceGate,
+        semesterCalendar,
+        semesterCalendarEnforced: true
       },
       pagination: {
         total,
@@ -1464,6 +1499,15 @@ exports.markAttendance = async (req, res) => {
           return res.status(400).json({
             success: false,
             message: `Student ${student.student_name || record.studentId} has no class work on this date. Only holiday status can be recorded.`
+          });
+        }
+
+        const semesterCheck = await validateStudentAttendanceDate(student, normalizedDate);
+        if (semesterCheck.configured && !semesterCheck.allowed) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Attendance for ${student.student_name || record.studentId} can only be marked between ${semesterCheck.startDate} and ${semesterCheck.endDate} (Academic Calendar semester dates).`
           });
         }
       }

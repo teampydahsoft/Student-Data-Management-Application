@@ -402,7 +402,7 @@ exports.getFooterImage = async (req, res) => {
  */
 exports.createCollege = async (req, res) => {
   try {
-    const { name, code, isActive, metadata } = req.body;
+    const { name, code, address, isActive, metadata } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -421,6 +421,7 @@ exports.createCollege = async (req, res) => {
     const college = await collegeService.createCollege({
       name,
       code,
+      address,
       isActive: isActive !== undefined ? isActive : true,
       metadata
     });
@@ -462,11 +463,12 @@ exports.updateCollege = async (req, res) => {
       });
     }
 
-    const { name, code, isActive, metadata } = req.body;
+    const { name, code, address, isActive, metadata } = req.body;
 
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (code !== undefined) updates.code = code;
+    if (address !== undefined) updates.address = address;
     if (isActive !== undefined) updates.isActive = isActive;
     if (metadata !== undefined) updates.metadata = metadata;
 

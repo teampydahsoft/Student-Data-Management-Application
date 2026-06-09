@@ -7,6 +7,7 @@ const serializeCollegeRow = (row) => ({
   id: row.id,
   name: row.name,
   code: row.code || null,
+  address: row.address || null,
   isActive: row.is_active === 1 || row.is_active === true,
   metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
   header_image_url: row.header_image ? `/api/colleges/${row.id}/header-image` : null,
@@ -148,12 +149,13 @@ const isCollegeCodeUnique = async (code, excludeId = null) => {
  * @param {Object} collegeData - College data
  * @param {string} collegeData.name - College name (required)
  * @param {string} collegeData.code - College code (optional)
+ * @param {string} collegeData.address - College address (optional)
  * @param {boolean} collegeData.isActive - Active status (default: true)
  * @param {Object} collegeData.metadata - Metadata JSON (optional)
  * @returns {Promise<Object>} Created college object
  */
 const createCollege = async (collegeData) => {
-  const { name, code = null, isActive = true, metadata = null } = collegeData;
+  const { name, code = null, address = null, isActive = true, metadata = null } = collegeData;
 
   if (!name || !name.trim()) {
     throw new Error('College name is required');
@@ -176,11 +178,12 @@ const createCollege = async (collegeData) => {
 
   try {
     const [result] = await masterPool.query(
-      `INSERT INTO colleges (name, code, is_active, metadata) 
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO colleges (name, code, address, is_active, metadata) 
+       VALUES (?, ?, ?, ?, ?)`,
       [
         name.trim(),
         code.trim(),
+        address && address.trim() ? address.trim() : null,
         isActive ? 1 : 0,
         metadata ? JSON.stringify(metadata) : null
       ]
@@ -235,6 +238,12 @@ const updateCollege = async (collegeId, updates) => {
     newCollegeName = updates.name.trim();
     updateFields.push('name = ?');
     updateValues.push(newCollegeName);
+  }
+
+  // Handle address update
+  if (updates.address !== undefined) {
+    updateFields.push('address = ?');
+    updateValues.push(updates.address && updates.address.trim() ? updates.address.trim() : null);
   }
 
   // Handle code update

@@ -735,7 +735,7 @@ exports.downloadCertificate = async (req, res) => {
     // Fetch request with service and student details
     const query = `
             SELECT sr.*, s.name as service_name, s.template_type, s.template_config, st.*,
-            c.name as college_name, c.metadata as college_metadata
+            c.name as college_name, c.metadata as college_metadata, c.address as college_address
             FROM service_requests sr
             JOIN services s ON sr.service_id = s.id
             JOIN students st ON sr.student_id = st.id
@@ -777,6 +777,7 @@ exports.downloadCertificate = async (req, res) => {
       name: request.college_name || "College",
       phone: "",
       website: "",
+      address: request.college_address || "",
     };
     if (request.college_metadata) {
       try {
@@ -786,6 +787,9 @@ exports.downloadCertificate = async (req, res) => {
             : request.college_metadata;
         collegeDetails = { ...collegeDetails, ...meta };
       } catch (e) {}
+    }
+    if (request.college_address && !collegeDetails.address) {
+      collegeDetails.address = request.college_address;
     }
 
     // Generate PDF based on template type
@@ -1002,6 +1006,9 @@ exports.previewTemplate = async (req, res) => {
       if (target) {
         collegeDetails.name = target.name;
         collegeDetails.college_name = target.name;
+        if (target.address) {
+          collegeDetails.address = target.address;
+        }
         if (target.metadata) {
           const meta =
             typeof target.metadata === "string"

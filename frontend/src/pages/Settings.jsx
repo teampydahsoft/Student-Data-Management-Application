@@ -536,7 +536,7 @@ const Settings = () => {
   const [editingCollegeId, setEditingCollegeId] = useState(null);
   const [savingCollegeId, setSavingCollegeId] = useState(null);
   const [creatingCollege, setCreatingCollege] = useState(false);
-  const [newCollege, setNewCollege] = useState({ name: '', code: '', isActive: true });
+  const [newCollege, setNewCollege] = useState({ name: '', code: '', address: '', isActive: true });
   const [isAddCollegeModalOpen, setIsAddCollegeModalOpen] = useState(false);
   const [collegeDrafts, setCollegeDrafts] = useState({});
 
@@ -1545,7 +1545,7 @@ const Settings = () => {
 
   // College management functions
   const resetNewCollege = () => {
-    setNewCollege({ name: '', code: '', isActive: true });
+    setNewCollege({ name: '', code: '', address: '', isActive: true });
     setIsAddCollegeModalOpen(false);
   };
 
@@ -1566,6 +1566,7 @@ const Settings = () => {
       const response = await api.post('/colleges', {
         name: newCollege.name.trim(),
         code: newCollege.code.trim(),
+        address: newCollege.address?.trim() || null,
         isActive: newCollege.isActive !== undefined ? newCollege.isActive : true
       });
 
@@ -1614,6 +1615,9 @@ const Settings = () => {
           return;
         }
         updates.code = draft.code.trim();
+      }
+      if (draft.address !== undefined) {
+        updates.address = draft.address?.trim() || null;
       }
 
       await api.put(`/colleges/${collegeId}`, updates);
@@ -1716,7 +1720,8 @@ const Settings = () => {
       ...prev,
       [college.id]: {
         name: college.name,
-        code: college.code || ''
+        code: college.code || '',
+        address: college.address || ''
       }
     }));
   };
@@ -4938,6 +4943,16 @@ const Settings = () => {
                     maxLength={10}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                  <textarea
+                    value={collegeDrafts[editingCollegeId]?.address || ''}
+                    onChange={(e) => updateCollegeDraft(editingCollegeId, 'address', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                    placeholder="College address (used on certificates and reports)"
+                    rows={3}
+                  />
+                </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
@@ -5483,6 +5498,20 @@ const Settings = () => {
                 </p>
               </div>
 
+              {/* College Address */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Address
+                </label>
+                <textarea
+                  value={newCollege.address}
+                  onChange={(e) => setNewCollege((prev) => ({ ...prev, address: e.target.value }))}
+                  placeholder="College address (used on certificates and reports)"
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                  rows={3}
+                />
+              </div>
+
               {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
@@ -5896,6 +5925,13 @@ const CollegeCard = ({
             required
             maxLength={10}
           />
+          <textarea
+            value={draft?.address ?? college.address ?? ''}
+            onChange={(e) => onUpdateDraft('address', e.target.value)}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-colors resize-none"
+            placeholder="College address"
+            rows={2}
+          />
           <div className="flex gap-2">
             <button
               onClick={onSave}
@@ -5926,6 +5962,9 @@ const CollegeCard = ({
               </div>
             </button>
           </div>
+          {college.address && (
+            <p className="mb-1 text-xs text-gray-500 line-clamp-2">{college.address}</p>
+          )}
           <p className="mb-3 text-xs text-gray-500">{coursesCount || 0} courses</p>
           <div className="flex flex-wrap gap-2">
             <button

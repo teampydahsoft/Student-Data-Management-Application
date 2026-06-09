@@ -224,6 +224,12 @@ const Attendance = () => {
     pendingCount: 0,
     message: null
   });
+  const [semesterCalendar, setSemesterCalendar] = useState({
+    configured: false,
+    startDate: null,
+    endDate: null
+  });
+  const [semesterCalendarEnforced, setSemesterCalendarEnforced] = useState(false);
   const pageSizeOptions = [10, 25, 50, 100];
   const [smsResults, setSmsResults] = useState([]);
   const [smsStatusMap, setSmsStatusMap] = useState({}); // Map studentId to SMS status
@@ -842,13 +848,21 @@ const Attendance = () => {
   const isResolvingPreviousPending = Boolean(
     attendanceGate?.previousDate && attendanceDate === attendanceGate.previousDate
   );
+  const isOutsideSemesterCalendar = useMemo(() => {
+    if (!semesterCalendar?.configured || !attendanceDate) return false;
+    const { startDate, endDate } = semesterCalendar;
+    if (!startDate || !endDate) return false;
+    return attendanceDate < startDate || attendanceDate > endDate;
+  }, [semesterCalendar, attendanceDate]);
   const canEditAttendanceDate = useMemo(() => {
     if (nonWorkingDayDetails.isNonWorkingDay) return false;
+    if (isOutsideSemesterCalendar) return false;
     if (isToday) return !attendanceGate?.isBlocked;
     if (isResolvingPreviousPending) return true;
     return false;
   }, [
     nonWorkingDayDetails.isNonWorkingDay,
+    isOutsideSemesterCalendar,
     isToday,
     attendanceGate?.isBlocked,
     isResolvingPreviousPending
@@ -856,11 +870,13 @@ const Attendance = () => {
   const editingLocked = !canEditAttendanceDate;
   const editingLockReason = nonWorkingDayDetails.isNonWorkingDay
     ? 'Attendance is disabled on holidays.'
-    : attendanceGate?.isBlocked && isToday
-      ? attendanceGate.message || 'Complete previous day pending attendance before marking today.'
-      : !isToday && !isResolvingPreviousPending
-        ? 'Attendance can only be recorded for today or the previous pending day.'
-        : null;
+    : isOutsideSemesterCalendar
+      ? `Selected date is outside the semester period (${formatFriendlyDate(semesterCalendar.startDate)} – ${formatFriendlyDate(semesterCalendar.endDate)}). Configure dates in Settings → Academic Calendar.`
+      : attendanceGate?.isBlocked && isToday
+        ? attendanceGate.message || 'Complete previous day pending attendance before marking today.'
+        : !isToday && !isResolvingPreviousPending
+          ? 'Attendance can only be recorded for today or the previous pending day.'
+          : null;
 
   // Show holiday alert when date is a holiday (show every time page loads on a holiday)
   useEffect(() => {
@@ -1036,6 +1052,18 @@ const Attendance = () => {
     setSmsStatusMap(cacheEntry.smsStatusMap || {});
     setLastUpdatedAt(null);
     setSelectedDateHolidayInfo(cacheEntry.holidayInfo || null);
+    setSemesterCalendar(cacheEntry.semesterCalendar || {
+      configured: false,
+      startDate: null,
+      endDate: null
+    });
+    setSemesterCalendarEnforced(Boolean(cacheEntry.semesterCalendarEnforced));
+    setAttendanceGate(cacheEntry.attendanceGate || {
+      isBlocked: false,
+      previousDate: null,
+      pendingCount: 0,
+      message: null
+    });
   };
 
   // Helper function to extract holiday reason from grouped data
@@ -1668,6 +1696,12 @@ const Attendance = () => {
         message: null
       };
       setAttendanceGate(gateInfo);
+      setSemesterCalendar(response.data?.data?.semesterCalendar || {
+        configured: false,
+        startDate: null,
+        endDate: null
+      });
+      setSemesterCalendarEnforced(Boolean(response.data?.data?.semesterCalendarEnforced));
 
       if (
         gateInfo.isBlocked &&
@@ -1699,6 +1733,13 @@ const Attendance = () => {
         attendanceStatistics: finalStatistics,
         smsStatusMap: newSmsStatusMap,
         holidayInfo: response.data?.data?.holiday || null,
+        semesterCalendar: response.data?.data?.semesterCalendar || {
+          configured: false,
+          startDate: null,
+          endDate: null
+        },
+        semesterCalendarEnforced: Boolean(response.data?.data?.semesterCalendarEnforced),
+        attendanceGate: gateInfo,
         timestamp: Date.now()
       });
       // Keep cache size bounded
@@ -3601,6 +3642,23 @@ const Attendance = () => {
             </div>
           </div>
         )}
+        {semesterCalendarEnforced && (
+          <div className="px-4 py-2 border-b border-blue-100 bg-blue-50 text-xs text-blue-800">
+            {semesterCalendar?.configured && !isOutsideSemesterCalendar ? (
+              <>
+                Semester period: {formatFriendlyDate(semesterCalendar.startDate)} – {formatFriendlyDate(semesterCalendar.endDate)} (Academic Calendar).
+                Only students whose semester includes this date are shown.
+              </>
+            ) : (
+              <>
+                Students are shown only on dates within their saved semester calendar (Settings → Academic Calendar).
+                {isOutsideSemesterCalendar && semesterCalendar?.configured && (
+                  <> Selected date is outside {formatFriendlyDate(semesterCalendar.startDate)} – {formatFriendlyDate(semesterCalendar.endDate)}.</>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {editingLocked && (
           <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 text-sm text-gray-600">
             {editingLockReason || 'Attendance is read-only for this date.'}
@@ -3619,7 +3677,9 @@ const Attendance = () => {
                 ? 'No pending students found. All students are marked.'
                 : pendingFilter === 'marked'
                   ? 'No marked students found.'
-                  : 'No students found for the selected filters.'}
+                  : semesterCalendarEnforced && (isOutsideSemesterCalendar || semesterCalendar?.configured)
+                    ? 'No students for this date. The selected date may be outside the semester period configured in Academic Calendar.'
+                    : 'No students found for the selected filters.'}
             </p>
             {pendingFilter !== 'all' && (
               <button
