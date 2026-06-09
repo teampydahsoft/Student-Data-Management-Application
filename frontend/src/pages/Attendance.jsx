@@ -4,7 +4,6 @@ import {
   CalendarCheck,
   CalendarDays,
   Calendar,
-  Clock,
   Loader2,
   Search,
   Filter,
@@ -241,10 +240,13 @@ const Attendance = () => {
   const attendanceCache = useRef(new Map());
   const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes cache for faster re-renders
   const pendingRequestRef = useRef(null);
+  const previousDayPendingPopupShownRef = useRef(false);
+  const todayPreviousPendingWarnedRef = useRef(false);
   const searchEffectInitialized = useRef(false);
   const filterOptionsCacheRef = useRef(new Map());
   const FILTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache for filter options
   const [dayEndReportOpen, setDayEndReportOpen] = useState(false);
+  const [dayEndReportMode, setDayEndReportMode] = useState('day-end'); // day-end | previous-pending
   const [dayEndReportLoading, setDayEndReportLoading] = useState(false);
   const [dayEndReportData, setDayEndReportData] = useState(null);
   const [dayEndGrouped, setDayEndGrouped] = useState([]);
@@ -610,7 +612,12 @@ const Attendance = () => {
 
   const effectiveStatus = (studentId, isGlobalHoliday = false) => {
     const status = statusMap[studentId];
-    if (status) return status.toLowerCase();
+    if (status) {
+      const normalized = status.toLowerCase();
+      // Pending/unmarked students count as present unless explicitly marked absent
+      if (normalized === 'pending') return 'present';
+      return normalized;
+    }
 
     if (isGlobalHoliday) return 'holiday';
 
@@ -857,14 +864,13 @@ const Attendance = () => {
   const canEditAttendanceDate = useMemo(() => {
     if (nonWorkingDayDetails.isNonWorkingDay) return false;
     if (isOutsideSemesterCalendar) return false;
-    if (isToday) return !attendanceGate?.isBlocked;
+    if (isToday) return true;
     if (isResolvingPreviousPending) return true;
     return false;
   }, [
     nonWorkingDayDetails.isNonWorkingDay,
     isOutsideSemesterCalendar,
     isToday,
-    attendanceGate?.isBlocked,
     isResolvingPreviousPending
   ]);
   const editingLocked = !canEditAttendanceDate;
@@ -872,9 +878,7 @@ const Attendance = () => {
     ? 'Attendance is disabled on holidays.'
     : isOutsideSemesterCalendar
       ? `Selected date is outside the semester period (${formatFriendlyDate(semesterCalendar.startDate)} – ${formatFriendlyDate(semesterCalendar.endDate)}). Configure dates in Settings → Academic Calendar.`
-      : attendanceGate?.isBlocked && isToday
-        ? attendanceGate.message || 'Complete previous day pending attendance before marking today.'
-        : !isToday && !isResolvingPreviousPending
+      : !isToday && !isResolvingPreviousPending
           ? 'Attendance can only be recorded for today or the previous pending day.'
           : null;
 
@@ -1082,6 +1086,103 @@ const Attendance = () => {
     return null;
   };
 
+  const applyDayEndSummaryToState = (summary, reportDate, {
+    previewFilter = 'all',
+    filtersSnapshot = {},
+    mode = 'day-end'
+  } = {}) => {
+    const totalStudents = summary.totalStudents || 0;
+    const dailyArray = Array.isArray(summary.daily) ? summary.daily : Object.values(summary.daily || {});
+    const safeDaily = (dailyArray || []).filter((d) => d && typeof d === 'object');
+    const presentToday = Number(
+      safeDaily.find((d) => d.status === 'present')?.count ?? summary.daily?.present ?? 0
+    ) || 0;
+    const absentToday = Number(
+      safeDaily.find((d) => d.status === 'absent')?.count ?? summary.daily?.absent ?? 0
+    ) || 0;
+    const holidayToday = Number(
+      safeDaily.find((d) => d.status === 'holiday')?.count ?? summary.daily?.holiday ?? 0
+    ) || 0;
+    const markedToday = presentToday + absentToday + holidayToday;
+    const unmarkedToday = Math.max(0, totalStudents - markedToday);
+
+    const groupedData = summary.groupedSummary || [];
+    const pendingBatches = groupedData.filter((row) => (row.pendingToday || 0) > 0);
+
+    setDayEndGrouped(groupedData);
+    setDayEndReportMode(mode);
+    setDayEndPreviewFilter(previewFilter);
+    setDayEndReportData({
+      totalStudents,
+      presentToday,
+      absentToday,
+      holidayToday,
+      markedToday,
+      unmarkedToday,
+      filtersSnapshot,
+      date: reportDate,
+      holidayReason: extractHolidayReason(groupedData),
+      pendingBatchCount: pendingBatches.length,
+      totalPendingStudents: pendingBatches.reduce((sum, row) => sum + (row.pendingToday || 0), 0)
+    });
+
+    const colleges = [...new Set(groupedData.map(item => item.college).filter(Boolean))].sort();
+    const batches = [...new Set(groupedData.map(item => item.batch).filter(Boolean))].sort();
+    const courses = [...new Set(groupedData.map(item => item.course).filter(Boolean))].sort();
+    const branches = [...new Set(groupedData.map(item => item.branch).filter(Boolean))].sort();
+    const years = [...new Set(groupedData.map(item => item.year || item.currentYear).filter(Boolean))].sort();
+    const semesters = [...new Set(groupedData.map(item => item.semester || item.currentSemester).filter(Boolean))].sort();
+
+    setDayEndFilterOptions({
+      colleges: [...new Set(colleges)],
+      batches: [...new Set(batches)],
+      courses: [...new Set(courses)],
+      branches: [...new Set(branches)],
+      years: [...new Set(years)],
+      semesters: [...new Set(semesters)],
+      allData: groupedData
+    });
+    setDayEndFilters({
+      college: '',
+      batch: '',
+      course: '',
+      branch: '',
+      year: '',
+      semester: ''
+    });
+    setDayEndReportOpen(true);
+  };
+
+  const maybeShowPreviousDayPendingPopup = async (gateInfo) => {
+    if (previousDayPendingPopupShownRef.current || dayEndReportOpen) return;
+
+    const previousDate = gateInfo?.previousDate;
+    if (!previousDate) return;
+
+    try {
+      const response = await api.get('/attendance/summary', {
+        params: {
+          date: previousDate,
+          student_status: 'Regular'
+        }
+      });
+      if (!response.data?.success) return;
+
+      const summary = response.data?.data || {};
+      const groupedData = summary.groupedSummary || [];
+      const hasPendingBatches = groupedData.some((row) => (row.pendingToday || 0) > 0);
+      if (!hasPendingBatches) return;
+
+      previousDayPendingPopupShownRef.current = true;
+      applyDayEndSummaryToState(summary, previousDate, {
+        previewFilter: 'unmarked',
+        mode: 'previous-pending'
+      });
+    } catch (error) {
+      console.error('Failed to load previous day pending summary:', error);
+    }
+  };
+
   const handleDayEndReport = async () => {
     // If modal is already open, just return (prevent multiple opens)
     if (dayEndReportOpen) return;
@@ -1103,57 +1204,11 @@ const Attendance = () => {
         throw new Error(response.data?.message || 'Unable to fetch day-end report');
       }
 
-      const summary = response.data?.data || {};
-      const totalStudents = summary.totalStudents || 0;
-      const dailyArray = Array.isArray(summary.daily) ? summary.daily : Object.values(summary.daily || {});
-      const safeDaily = (dailyArray || []).filter((d) => d && typeof d === 'object');
-      const presentToday = Number(
-        safeDaily.find((d) => d.status === 'present')?.count ?? summary.daily?.present ?? 0
-      ) || 0;
-      const absentToday = Number(
-        safeDaily.find((d) => d.status === 'absent')?.count ?? summary.daily?.absent ?? 0
-      ) || 0;
-      const holidayToday = Number(
-        safeDaily.find((d) => d.status === 'holiday')?.count ?? summary.daily?.holiday ?? 0
-      ) || 0;
-      const markedToday = presentToday + absentToday + holidayToday;
-      const unmarkedToday = Math.max(0, totalStudents - markedToday);
-
-      const groupedData = summary.groupedSummary || [];
-      setDayEndGrouped(groupedData);
-
-      setDayEndReportData({
-        totalStudents,
-        presentToday,
-        absentToday,
-        holidayToday,
-        markedToday,
-        unmarkedToday,
+      applyDayEndSummaryToState(response.data?.data || {}, attendanceDate, {
+        previewFilter: 'all',
         filtersSnapshot: { ...filters },
-        date: attendanceDate,
-        holidayReason: extractHolidayReason(groupedData)
+        mode: 'day-end'
       });
-
-      // Extract unique filter options from the data
-      const colleges = [...new Set(groupedData.map(item => item.college).filter(Boolean))].sort();
-      const batches = [...new Set(groupedData.map(item => item.batch).filter(Boolean))].sort();
-      const courses = [...new Set(groupedData.map(item => item.course).filter(Boolean))].sort();
-      // Branches will be filtered dynamically based on college and course selections
-      const branches = [...new Set(groupedData.map(item => item.branch).filter(Boolean))].sort();
-      // Backend returns 'year' and 'semester', not 'currentYear' and 'currentSemester'
-      const years = [...new Set(groupedData.map(item => item.year || item.currentYear).filter(Boolean))].sort();
-      const semesters = [...new Set(groupedData.map(item => item.semester || item.currentSemester).filter(Boolean))].sort();
-
-      setDayEndFilterOptions({
-        colleges: [...new Set(colleges)],
-        batches: [...new Set(batches)],
-        courses: [...new Set(courses)],
-        branches: [...new Set(branches)],
-        years: [...new Set(years)],
-        semesters: [...new Set(semesters)],
-        allData: groupedData // Store all data for cascading filters
-      });
-      setDayEndReportOpen(true);
     } catch (error) {
       console.error('Day-end report error:', error);
       toast.error(error.response?.data?.message || 'Unable to fetch day-end report');
@@ -1162,10 +1217,19 @@ const Attendance = () => {
     }
   };
 
+  const handleGoToPreviousPendingDay = () => {
+    const previousDate = dayEndReportData?.date;
+    if (!previousDate) return;
+    setDayEndReportOpen(false);
+    setAttendanceDate(previousDate);
+    toast(`Switched to ${formatFriendlyDate(previousDate)} to complete pending attendance.`, { icon: '📅' });
+  };
+
   const handleDayEndDownload = async (format = 'xlsx') => {
     try {
+      const reportDate = dayEndReportData?.date || attendanceDate;
       const params = new URLSearchParams();
-      params.append('date', attendanceDate);
+      params.append('date', reportDate);
       params.append('format', format);
       params.append('student_status', 'Regular');
       params.append('include_holiday_reason', 'true'); // Include holiday reasons in download
@@ -1189,7 +1253,7 @@ const Attendance = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = `day_end_report_${attendanceDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      const fileName = `day_end_report_${reportDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       link.download = fileName;
       link.click();
       window.URL.revokeObjectURL(url);
@@ -1603,11 +1667,15 @@ const Attendance = () => {
       });
 
       const statusSnapshot = {};
+      const initialSnapshot = {};
       fetchedStudents.forEach((student) => {
         // Only set initial status if student was actually marked in database
         // If not marked, leave undefined so we know it needs to be saved
         if (student.hasAttendanceRecord) {
-          statusSnapshot[student.id] = student.attendanceStatus || 'present';
+          const rawStatus = (student.attendanceStatus || 'present').toLowerCase();
+          initialSnapshot[student.id] = rawStatus;
+          // Pending DB rows default to present in the UI and on save
+          statusSnapshot[student.id] = rawStatus === 'pending' ? 'present' : rawStatus;
         }
         // If not marked, don't set initial status - this allows saving even when all are present
       });
@@ -1670,14 +1738,14 @@ const Attendance = () => {
         });
         // Merge status maps
         setStatusMap(prev => ({ ...prev, ...statusSnapshot }));
-        setInitialStatusMap(prev => ({ ...prev, ...statusSnapshot }));
+        setInitialStatusMap(prev => ({ ...prev, ...initialSnapshot }));
         setSmsStatusMap(prev => ({ ...prev, ...newSmsStatusMap }));
         setLoadedPages(pageToUse);
       } else {
         // Replace students (initial load or no filters)
         setStudents(fetchedStudents);
         setStatusMap(statusSnapshot);
-        setInitialStatusMap({ ...statusSnapshot });
+        setInitialStatusMap({ ...initialSnapshot });
         setSmsStatusMap(newSmsStatusMap);
         if (hasFilters) {
           setLoadedPages(1);
@@ -1704,15 +1772,22 @@ const Attendance = () => {
       setSemesterCalendarEnforced(Boolean(response.data?.data?.semesterCalendarEnforced));
 
       if (
-        gateInfo.isBlocked &&
+        !append &&
+        pageToUse === 1 &&
+        attendanceDate === formatDateInput(new Date()) &&
+        gateInfo.pendingCount > 0 &&
         gateInfo.previousDate &&
-        attendanceDate === formatDateInput(new Date())
+        !todayPreviousPendingWarnedRef.current
       ) {
-        setAttendanceDate(gateInfo.previousDate);
+        todayPreviousPendingWarnedRef.current = true;
         toast(
-          gateInfo.message || `Please complete pending attendance from ${gateInfo.previousDate} before marking today.`,
-          { icon: '⚠️', duration: 6000 }
+          gateInfo.message || `Previous day attendance (${formatFriendlyDate(gateInfo.previousDate)}) is still pending for ${gateInfo.pendingCount} student(s). You can mark today, but please complete previous day when possible.`,
+          { icon: '⚠️', duration: 7000 }
         );
+      }
+
+      if (!append && pageToUse === 1) {
+        maybeShowPreviousDayPendingPopup(gateInfo);
       }
 
       // Always set current page to the page we just loaded
@@ -1728,7 +1803,7 @@ const Attendance = () => {
       attendanceCache.current.set(cacheKey, {
         students: fetchedStudents,
         statusMap: statusSnapshot,
-        initialStatusMap: { ...statusSnapshot },
+        initialStatusMap: { ...initialSnapshot },
         totalStudents: total,
         attendanceStatistics: finalStatistics,
         smsStatusMap: newSmsStatusMap,
@@ -1942,18 +2017,37 @@ const Attendance = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.studentName, filters.parentMobile]);
 
+  const SCOPE_FILTER_FIELDS = ['batch', 'course', 'branch', 'currentYear', 'currentSemester', 'level'];
+
+  const getAttendanceScopeLabel = () => {
+    if (filters.batch && filters.course) return `batch ${filters.batch} (${filters.course})`;
+    if (filters.batch) return `batch ${filters.batch}`;
+    if (filters.course) return `course ${filters.course}`;
+    return 'the current selection';
+  };
+
   const handleFilterChange = (field, value) => {
-    if (field === 'course' && value && value !== filters.course) {
-      const leftCount = attendanceStatistics.unmarked || 0;
-      if (filters.course && leftCount > 0) {
-        toast(
-          `${leftCount} student(s) in "${filters.course}" still need attendance marked. Please complete marking before switching course.`,
-          {
-            icon: '⚠️',
-            duration: 5000
-          }
-        );
-      }
+    const nextValue = value || '';
+    const currentValue = filters[field] || '';
+    const isScopeChange = SCOPE_FILTER_FIELDS.includes(field) && nextValue !== currentValue;
+    const leftCount = attendanceStatistics.unmarked || 0;
+    const hasActiveScope = !!(filters.batch || filters.course);
+
+    if (isScopeChange && leftCount > 0 && hasActiveScope) {
+      const scopeLabel = getAttendanceScopeLabel();
+      const warningMessage = isResolvingPreviousPending
+        ? `${leftCount} student(s) in ${scopeLabel} still need attendance for ${formatFriendlyDate(attendanceGate?.previousDate)}. Unmarked students will be saved as Present when you click Save.`
+        : `${leftCount} student(s) in ${scopeLabel} still need attendance marked. Please complete marking before switching filters.`;
+
+      toast(warningMessage, {
+        icon: '⚠️',
+        duration: isResolvingPreviousPending ? 6000 : 5000
+      });
+    } else if (field === 'course' && value && value !== filters.course && filters.course && leftCount > 0) {
+      toast(
+        `${leftCount} student(s) in "${filters.course}" still need attendance marked. Please complete marking before switching course.`,
+        { icon: '⚠️', duration: 5000 }
+      );
     }
 
     setFilters((prev) => {
@@ -2203,6 +2297,59 @@ const Attendance = () => {
     });
   };
 
+  const renderAttendanceToggle = (studentId, status, { variant = 'desktop' } = {}) => {
+    const isPresent = status === 'present';
+    const isAbsent = status === 'absent';
+    const isDesktop = variant === 'desktop';
+    const iconSize = isDesktop ? 12 : 16;
+
+    const buttonClass = (active, tone) => {
+      if (isDesktop) {
+        return `inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          active
+            ? tone === 'green'
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-red-600 text-white border-red-600'
+            : tone === 'green'
+              ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+              : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+        }`;
+      }
+      return `inline-flex flex-1 items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed ${
+        active
+          ? tone === 'green'
+            ? 'bg-green-600 text-white border-green-600'
+            : 'bg-red-600 text-white border-red-600'
+          : tone === 'green'
+            ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+      }`;
+    };
+
+    return (
+      <div className={`flex items-center ${isDesktop ? 'gap-1' : 'gap-2 w-full'}`}>
+        <button
+          type="button"
+          onClick={() => handleStatusChange(studentId, 'present')}
+          disabled={editingLocked}
+          className={buttonClass(isPresent, 'green')}
+        >
+          <Check size={iconSize} />
+          Present
+        </button>
+        <button
+          type="button"
+          onClick={() => handleStatusChange(studentId, 'absent')}
+          disabled={editingLocked}
+          className={buttonClass(isAbsent, 'red')}
+        >
+          <X size={iconSize} />
+          Absent
+        </button>
+      </div>
+    );
+  };
+
 
 
   const handlePageChange = (newPage) => {
@@ -2269,13 +2416,20 @@ const Attendance = () => {
   const handleAttendanceDateChange = (date) => {
     if (!date) return;
     const today = formatDateInput(new Date());
-    if (date === today && attendanceGate?.isBlocked && attendanceGate?.previousDate) {
-      toast.error(
-        attendanceGate.message || `Please complete pending attendance from ${attendanceGate.previousDate} before marking today.`,
-        { duration: 6000 }
+    if (date === today && (attendanceGate?.pendingCount || 0) > 0 && attendanceGate?.previousDate) {
+      toast(
+        attendanceGate.message || `Previous day attendance (${formatFriendlyDate(attendanceGate.previousDate)}) is still pending. You can mark today, but please complete previous day when possible.`,
+        { icon: '⚠️', duration: 7000 }
       );
-      return;
     }
+
+    if (date === today && isResolvingPreviousPending && (attendanceStatistics.unmarked || 0) > 0) {
+      toast(
+        `${attendanceStatistics.unmarked} student(s) may still be unmarked for ${formatFriendlyDate(attendanceGate?.previousDate)}. You can continue — unmarked students are saved as Present when you Save.`,
+        { icon: '⚠️', duration: 6000 }
+      );
+    }
+
     setAttendanceDate(date);
   };
 
@@ -2621,11 +2775,6 @@ const Attendance = () => {
       toast.success(successMessage);
     } catch (error) {
       console.error('Attendance save failed:', error);
-      const gateData = error.response?.data?.data?.attendanceGate;
-      if (gateData?.isBlocked && gateData?.previousDate) {
-        setAttendanceGate(gateData);
-        setAttendanceDate(gateData.previousDate);
-      }
       toast.error(error.response?.data?.message || error.message || 'Unable to save attendance');
     } finally {
       setSaving(false);
@@ -3063,8 +3212,17 @@ const Attendance = () => {
                   <FileText size={24} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-gray-900 tracking-tight">Day End Abstract Report</h2>
-                  <p className="text-xs text-gray-500 font-medium">{dayEndReportData?.date || attendanceDate}</p>
+                  <h2 className="text-xl font-black text-gray-900 tracking-tight">
+                    {dayEndReportMode === 'previous-pending'
+                      ? 'Previous Day Pending Attendance'
+                      : 'Day End Abstract Report'}
+                  </h2>
+                  <p className="text-xs text-gray-500 font-medium">
+                    {formatFriendlyDate(dayEndReportData?.date || attendanceDate)}
+                    {dayEndReportMode === 'previous-pending' && dayEndReportData?.pendingBatchCount
+                      ? ` · ${dayEndReportData.pendingBatchCount} batch(es) · ${dayEndReportData.totalPendingStudents || 0} student(s) pending`
+                      : ''}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -3097,6 +3255,18 @@ const Attendance = () => {
 
             <div className="flex-1 overflow-y-auto bg-gray-50/30 p-4 sm:p-6">
               <div className="w-full mx-auto space-y-6">
+                {dayEndReportMode === 'previous-pending' && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        These batches still have unmarked students from the previous working day.
+                        Complete their attendance before marking today.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Mobile Filter Toggles */}
                 <div className="flex md:hidden items-center bg-white p-1 rounded-2xl border border-gray-200 shadow-sm">
                   {[
@@ -3333,14 +3503,24 @@ const Attendance = () => {
                 </button>
               </div>
               <div className="flex gap-3 w-full sm:w-auto">
-                <button
-                  onClick={handleSendDayEndReports}
-                  disabled={sendingReports}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform transition-all hover:-translate-y-0.5 disabled:opacity-50 active:scale-90"
-                >
-                  {sendingReports ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />}
-                  <span>Broadcast to Admin</span>
-                </button>
+                {dayEndReportMode === 'previous-pending' ? (
+                  <button
+                    onClick={handleGoToPreviousPendingDay}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-500/20 transform transition-all hover:-translate-y-0.5 active:scale-90"
+                  >
+                    <CalendarCheck size={18} />
+                    <span>Mark Previous Day</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSendDayEndReports}
+                    disabled={sendingReports}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform transition-all hover:-translate-y-0.5 disabled:opacity-50 active:scale-90"
+                  >
+                    {sendingReports ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />}
+                    <span>Broadcast to Admin</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setDayEndReportOpen(false)}
                   className="hidden sm:block px-6 py-3 border border-gray-200 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 transition-all active:scale-95"
@@ -3632,12 +3812,34 @@ const Attendance = () => {
             </button>
           </div>
         </div>
+        {isToday && (attendanceGate?.pendingCount || 0) > 0 && attendanceGate?.previousDate && (
+          <div className="px-4 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>
+                {attendanceGate.message || (
+                  <>
+                    Previous day attendance ({formatFriendlyDate(attendanceGate.previousDate)}) is still pending for{' '}
+                    <strong>{attendanceGate.pendingCount}</strong> student(s). You can mark today — use any batch or course filter, or open the previous day from the calendar when ready.
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+        )}
         {isResolvingPreviousPending && (
           <div className="px-4 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900">
             <div className="flex items-start gap-2">
               <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
               <span>
-                {attendanceGate?.message || `Complete pending attendance from ${attendanceGate?.previousDate} before today's attendance can be opened.`}
+                {attendanceGate?.message || (
+                  <>
+                    Marking attendance for {formatFriendlyDate(attendanceGate?.previousDate)}.
+                    {(attendanceStatistics.unmarked || 0) > 0 && (
+                      <> {attendanceStatistics.unmarked} student(s) are still unmarked in the current view — they will be saved as <strong>Present</strong> when you click Save (optional: mark Absent individually first).</>
+                    )}
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -3855,127 +4057,22 @@ const Attendance = () => {
                             if (columnKey === 'attendance') {
                               return (
                                 <td key={columnKey} className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
-                                  {/* Attendance status logic:
-                            - hasDbRecord: student.attendanceStatus is not null (record exists in DB for this date)
-                            - statusChanged: current status differs from initial loaded status
-                            - justSaved: attendance was saved in this session
-                            
-                            Show "Marked" only if:
-                            1. There's a DB record AND status hasn't been changed locally
-                            2. OR attendance was just saved in this session
-                        */}
                                   {(() => {
-                                    const hasDbRecord = student.attendanceStatus !== null;
-                                    const statusChanged = statusMap[student.id] !== initialStatusMap[student.id];
-                                    const justSaved = lastUpdatedAt !== null;
-                                    const isPendingStatus = status === 'pending';
-
-                                    // Show marked state if saved or has existing record that wasn't changed
-                                    const isHoliday = status === 'holiday';
-                                    const showMarked = justSaved || (hasDbRecord && !statusChanged && !isPendingStatus);
-
-                                    if (showMarked && !statusChanged) {
+                                    if (status === 'holiday') {
                                       return (
-                                        <div className="flex items-center gap-1.5">
-                                          <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${isHoliday
-                                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                                            : status === 'present'
-                                              ? 'bg-green-100 text-green-700 border border-green-200'
-                                              : 'bg-red-100 text-red-700 border border-red-200'
-                                            }`}>
-                                            {isHoliday ? <AlertTriangle size={12} /> : <Check size={12} />}
-                                            <div className="flex flex-col items-start text-left leading-tight">
-                                              <span>{isHoliday ? 'No Class' : status === 'present' ? 'Present' : 'Absent'}</span>
-                                              {isHoliday && student.holidayReason && (
-                                                <span className="text-[8px] font-normal italic opacity-80 mt-0.5 block">{student.holidayReason}</span>
-                                              )}
-                                            </div>
+                                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                                          <AlertTriangle size={12} />
+                                          <div className="flex flex-col items-start text-left leading-tight">
+                                            <span>No Class</span>
+                                            {student.holidayReason && (
+                                              <span className="text-[8px] font-normal italic opacity-80 mt-0.5 block">{student.holidayReason}</span>
+                                            )}
                                           </div>
-                                          {/* Still allow changing even if marked */}
-                                          {!isHoliday && (
-                                            <label className="flex items-center gap-1 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                checked={status === 'absent'}
-                                                onChange={(e) => {
-                                                  if (editingLocked) {
-                                                    toast.error(editingLockReason || 'Attendance editing is disabled for this date.');
-                                                    return;
-                                                  }
-                                                  handleStatusChange(student.id, e.target.checked ? 'absent' : 'present');
-                                                }}
-                                                disabled={editingLocked}
-                                                className="w-3.5 h-3.5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                              />
-                                              <span className={`text-[10px] font-bold ${editingLocked ? 'text-gray-400' : 'text-gray-600'}`}>
-                                                Change
-                                              </span>
-                                            </label>
-                                          )}
                                         </div>
                                       );
                                     }
 
-                                    // Not marked yet - show toggle controls
-                                    return (
-                                      <div className="flex items-center gap-1.5">
-                                        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${status === 'holiday'
-                                          ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                                          : status === 'pending'
-                                            ? 'bg-orange-50 text-orange-700 border border-orange-200'
-                                            : status === 'present'
-                                            ? 'bg-green-50 text-green-600 border border-green-100'
-                                            : 'bg-red-50 text-red-600 border border-red-100'
-                                          }`}>
-                                          {status === 'holiday' ? (
-                                            <>
-                                              <AlertTriangle size={12} />
-                                              <div className="flex flex-col items-start text-left leading-tight">
-                                                <span>No Class</span>
-                                                {student.holidayReason && (
-                                                  <span className="text-[8px] font-normal italic opacity-80 mt-0.5 block">{student.holidayReason}</span>
-                                                )}
-                                              </div>
-                                            </>
-                                          ) : status === 'pending' ? (
-                                            <>
-                                              <Clock size={12} />
-                                              Pending
-                                            </>
-                                          ) : status === 'present' ? (
-                                            <>
-                                              <Check size={12} />
-                                              Present
-                                            </>
-                                          ) : (
-                                            <>
-                                              <X size={12} />
-                                              Absent
-                                            </>
-                                          )}
-                                        </div>
-                                        {status !== 'holiday' && (
-                                          <label className="flex items-center gap-1 cursor-pointer">
-                                            <input
-                                              type="checkbox"
-                                              checked={status === 'absent'}
-                                              onChange={(e) => {
-                                                if (editingLocked) {
-                                                  toast.error(editingLockReason || 'Attendance editing is disabled for this date.');
-                                                  return;
-                                                }
-                                                handleStatusChange(student.id, e.target.checked ? 'absent' : 'present');
-                                              }}
-                                              disabled={editingLocked}
-                                              className="w-3.5 h-3.5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            />
-                                            <span className={`text-[10px] font-bold ${editingLocked ? 'text-gray-400' : 'text-gray-600'}`}>
-                                              {status === 'pending' ? 'Mark' : 'Absent'}
-                                            </span>
-                                          </label>
-                                        )}
-                                      </div>
-                                    );
+                                    return renderAttendanceToggle(student.id, status, { variant: 'desktop' });
                                   })()}
                                 </td>
                               );
@@ -4101,11 +4198,6 @@ const Attendance = () => {
                 {sortedStudents.map((student) => {
                   const status = effectiveStatus(student.id, nonWorkingDayDetails.isNonWorkingDay);
                   const parentContact = student.parentMobile1 || student.parentMobile2 || 'Not available';
-                  const hasDbRecord = student.attendanceStatus !== null;
-                  const statusChanged = statusMap[student.id] !== initialStatusMap[student.id];
-                  const justSaved = lastUpdatedAt !== null;
-                  const isPendingStatus = status === 'pending';
-                  const showMarked = justSaved || (hasDbRecord && !statusChanged && !isPendingStatus);
 
                   return (
                     <div
@@ -4150,64 +4242,13 @@ const Attendance = () => {
 
                         {/* Attendance Status */}
                         <div className="pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
-                          {showMarked && !statusChanged ? (
-                            <div className="flex flex-col gap-2">
-                              <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${status === 'present'
-                                ? 'bg-green-100 text-green-700 border border-green-200'
-                                : 'bg-red-100 text-red-700 border border-red-200'
-                                }`}>
-                                {status === 'present' ? <Check size={16} /> : <X size={16} />}
-                                {status === 'present' ? 'Present (Marked)' : 'Absent (Marked)'}
-                              </div>
-                              <label className="flex items-center gap-2 cursor-pointer touch-manipulation min-h-[44px]">
-                                <input
-                                  type="checkbox"
-                                  checked={status === 'absent'}
-                                  onChange={(e) => {
-                                    if (editingLocked) {
-                                      toast.error(editingLockReason || 'Attendance editing is disabled for this date.');
-                                      return;
-                                    }
-                                    handleStatusChange(student.id, e.target.checked ? 'absent' : 'present');
-                                  }}
-                                  disabled={editingLocked}
-                                  className="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50"
-                                />
-                                <span className={`text-sm ${editingLocked ? 'text-gray-400' : 'text-gray-700'}`}>
-                                  Change Status
-                                </span>
-                              </label>
+                          {status === 'holiday' ? (
+                            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              <AlertTriangle size={16} />
+                              <span>No Class</span>
                             </div>
                           ) : (
-                            <div className="flex flex-col gap-2">
-                              <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${status === 'pending'
-                                ? 'bg-orange-50 text-orange-700 border border-orange-200'
-                                : status === 'present'
-                                ? 'bg-green-50 text-green-600 border border-green-100'
-                                : 'bg-red-50 text-red-600 border border-red-100'
-                                }`}>
-                                {status === 'pending' ? <Clock size={16} /> : status === 'present' ? <Check size={16} /> : <X size={16} />}
-                                {status === 'pending' ? 'Pending Attendance' : status === 'present' ? 'Present' : 'Absent'}
-                              </div>
-                              <label className="flex items-center gap-2 cursor-pointer touch-manipulation min-h-[44px]">
-                                <input
-                                  type="checkbox"
-                                  checked={status === 'absent'}
-                                  onChange={(e) => {
-                                    if (editingLocked) {
-                                      toast.error(editingLockReason || 'Attendance editing is disabled for this date.');
-                                      return;
-                                    }
-                                    handleStatusChange(student.id, e.target.checked ? 'absent' : 'present');
-                                  }}
-                                  disabled={editingLocked}
-                                  className="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500 disabled:opacity-50"
-                                />
-                                <span className={`text-sm ${editingLocked ? 'text-gray-400' : 'text-gray-700'}`}>
-                                  {status === 'pending' ? 'Mark Attendance' : 'Mark as Absent'}
-                                </span>
-                              </label>
-                            </div>
+                            renderAttendanceToggle(student.id, status, { variant: 'mobile' })
                           )}
                         </div>
 

@@ -138,13 +138,18 @@ const isDateWithinSemesterCalendar = (date, startDate, endDate) => {
  */
 const SEMESTER_CALENDAR_CONFIGURED_EXISTS = `
   SELECT 1 FROM semesters sem
-  INNER JOIN courses co ON co.id = sem.course_id AND co.name = s.course
-  WHERE (sem.batch = s.batch OR sem.batch IS NULL)
+  INNER JOIN courses co ON co.id = sem.course_id
+    AND co.name COLLATE utf8mb4_unicode_ci = s.course COLLATE utf8mb4_unicode_ci
+  WHERE (sem.batch COLLATE utf8mb4_unicode_ci = s.batch COLLATE utf8mb4_unicode_ci OR sem.batch IS NULL)
     AND sem.year_of_study = s.current_year
     AND sem.semester_number = s.current_semester
     AND (
       sem.college_id IS NULL
-      OR sem.college_id IN (SELECT id FROM colleges WHERE name = s.college LIMIT 1)
+      OR EXISTS (
+        SELECT 1 FROM colleges cl
+        WHERE cl.name COLLATE utf8mb4_unicode_ci = s.college COLLATE utf8mb4_unicode_ci
+          AND cl.id = sem.college_id
+      )
     )
 `;
 

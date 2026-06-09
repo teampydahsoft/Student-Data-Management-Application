@@ -206,16 +206,8 @@ const buildAttendanceGate = async ({
   userScope
 }) => {
   const todayDate = getDateOnlyString();
-  if (attendanceDate !== todayDate) {
-    return {
-      isBlocked: false,
-      previousDate: null,
-      pendingCount: 0,
-      message: null
-    };
-  }
-
   const previousWorkingDay = await getPreviousWorkingDay(todayDate);
+
   if (!previousWorkingDay) {
     return {
       isBlocked: false,
@@ -225,8 +217,41 @@ const buildAttendanceGate = async ({
     };
   }
 
-  // Page-level gate applies when a batch is selected (attendance is tracked per batch).
-  if (!batch) {
+  const scopeLabel = batch
+    ? course
+      ? `batch ${batch} (${course})`
+      : `batch ${batch}`
+    : null;
+
+  const countPendingForScope = async (date) => {
+    if (!batch) return 0;
+    return countUnresolvedAttendance({
+      attendanceDate: date,
+      batch,
+      course,
+      branch,
+      currentYear,
+      currentSemester,
+      userScope
+    });
+  };
+
+  // Viewing the previous working day — allow editing but surface scoped pending count.
+  if (attendanceDate === previousWorkingDay) {
+    const pendingCount = await countPendingForScope(previousWorkingDay);
+    return {
+      isBlocked: false,
+      previousDate: previousWorkingDay,
+      pendingCount,
+      message: pendingCount > 0 && scopeLabel
+        ? `${pendingCount} student(s) in ${scopeLabel} still need attendance for ${previousWorkingDay}. Unmarked students will be saved as Present when attendance is saved.`
+        : pendingCount > 0
+          ? `${pendingCount} student(s) still need attendance for ${previousWorkingDay}. Unmarked students will be saved as Present when attendance is saved.`
+          : null
+    };
+  }
+
+  if (attendanceDate !== todayDate) {
     return {
       isBlocked: false,
       previousDate: previousWorkingDay,
@@ -235,31 +260,25 @@ const buildAttendanceGate = async ({
     };
   }
 
-  const pendingCount = await countUnresolvedAttendance({
-    attendanceDate: previousWorkingDay,
-    batch,
-    course,
-    branch,
-    currentYear,
-    currentSemester,
-    userScope
-  });
+  // Today — warn when previous day still has pending attendance (never block).
+  const pendingCount = batch
+    ? await countPendingForScope(previousWorkingDay)
+    : await countUnresolvedAttendance({
+        attendanceDate: previousWorkingDay,
+        userScope
+      });
 
-  if (pendingCount <= 0) {
-    return {
-      isBlocked: false,
-      previousDate: previousWorkingDay,
-      pendingCount: 0,
-      message: null
-    };
-  }
+  const message = pendingCount > 0
+    ? scopeLabel
+      ? `Previous day attendance (${previousWorkingDay}) is still pending for ${pendingCount} student(s) in ${scopeLabel}. You may mark today, but please complete previous day when possible.`
+      : `Previous day attendance (${previousWorkingDay}) is still pending for ${pendingCount} student(s). You may mark today, but please complete previous day when possible.`
+    : null;
 
-  const scopeLabel = course ? `batch ${batch} (${course})` : `batch ${batch}`;
   return {
-    isBlocked: true,
+    isBlocked: false,
     previousDate: previousWorkingDay,
     pendingCount,
-    message: `${pendingCount} student(s) in ${scopeLabel} still have pending attendance from ${previousWorkingDay}. Please complete that first before marking today's attendance.`
+    message
   };
 };
 
@@ -1515,35 +1534,6 @@ exports.markAttendance = async (req, res) => {
 
     const todayDate = getDateOnlyString();
     const shouldSendSms = normalizedDate === todayDate;
-
-    if (normalizedDate === todayDate) {
-      const previousWorkingDay = await getPreviousWorkingDay(todayDate);
-      if (previousWorkingDay) {
-        const batchesToCheck = [...new Set(studentRows.map((row) => row.batch).filter(Boolean))];
-        for (const batchName of batchesToCheck) {
-          const pendingCount = await countUnresolvedAttendance({
-            attendanceDate: previousWorkingDay,
-            batch: batchName,
-            userScope: req.userScope
-          });
-          if (pendingCount > 0) {
-            await connection.rollback();
-            return res.status(409).json({
-              success: false,
-              message: `${pendingCount} student(s) in batch ${batchName} still have pending attendance from ${previousWorkingDay}. Please complete that first before marking today's attendance.`,
-              data: {
-                attendanceGate: {
-                  isBlocked: true,
-                  previousDate: previousWorkingDay,
-                  pendingCount,
-                  batch: batchName
-                }
-              }
-            });
-          }
-        }
-      }
-    }
 
     const [existingRows] = await connection.query(
       `
