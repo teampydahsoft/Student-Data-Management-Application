@@ -114,6 +114,23 @@ const formatFriendlyDate = (dateString) => {
   });
 };
 
+const showDismissibleWarningToast = (message, duration = 7000) => {
+  toast((t) => (
+    <div className="flex items-start gap-2 pr-1">
+      <span className="flex-shrink-0 pt-0.5" aria-hidden="true">⚠️</span>
+      <p className="flex-1 text-sm leading-snug">{message}</p>
+      <button
+        type="button"
+        onClick={() => toast.dismiss(t.id)}
+        className="flex-shrink-0 rounded p-0.5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+        aria-label="Dismiss notification"
+      >
+        <X size={16} />
+      </button>
+    </div>
+  ), { duration });
+};
+
 const createEmptyCalendarData = (monthKey) => ({
   month: monthKey,
   countryCode: 'IN',
@@ -1240,6 +1257,9 @@ const Attendance = () => {
       if (dayEndFilters.branch) params.append('branch', dayEndFilters.branch);
       if (dayEndFilters.year) params.append('year', dayEndFilters.year);
       if (dayEndFilters.semester) params.append('semester', dayEndFilters.semester);
+      if (dayEndPreviewFilter && dayEndPreviewFilter !== 'all') {
+        params.append('previewFilter', dayEndPreviewFilter);
+      }
 
       const response = await api.get(`/attendance/day-end-download?${params.toString()}`, {
         responseType: 'blob'
@@ -1253,7 +1273,8 @@ const Attendance = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = `day_end_report_${reportDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      const filterSuffix = dayEndPreviewFilter && dayEndPreviewFilter !== 'all' ? `_${dayEndPreviewFilter}` : '';
+      const fileName = `day_end_report_${reportDate}${filterSuffix}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       link.download = fileName;
       link.click();
       window.URL.revokeObjectURL(url);
@@ -1780,9 +1801,8 @@ const Attendance = () => {
         !todayPreviousPendingWarnedRef.current
       ) {
         todayPreviousPendingWarnedRef.current = true;
-        toast(
-          gateInfo.message || `Previous day attendance (${formatFriendlyDate(gateInfo.previousDate)}) is still pending for ${gateInfo.pendingCount} student(s). You can mark today, but please complete previous day when possible.`,
-          { icon: '⚠️', duration: 7000 }
+        showDismissibleWarningToast(
+          gateInfo.message || `Previous day attendance (${formatFriendlyDate(gateInfo.previousDate)}) is still pending for ${gateInfo.pendingCount} student(s). You can mark today, but please complete previous day when possible.`
         );
       }
 
@@ -2417,9 +2437,8 @@ const Attendance = () => {
     if (!date) return;
     const today = formatDateInput(new Date());
     if (date === today && (attendanceGate?.pendingCount || 0) > 0 && attendanceGate?.previousDate) {
-      toast(
-        attendanceGate.message || `Previous day attendance (${formatFriendlyDate(attendanceGate.previousDate)}) is still pending. You can mark today, but please complete previous day when possible.`,
-        { icon: '⚠️', duration: 7000 }
+      showDismissibleWarningToast(
+        attendanceGate.message || `Previous day attendance (${formatFriendlyDate(attendanceGate.previousDate)}) is still pending. You can mark today, but please complete previous day when possible.`
       );
     }
 

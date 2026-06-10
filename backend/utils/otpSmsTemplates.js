@@ -18,18 +18,12 @@ const buildSemesterRegistrationOtpMessage = (otp, { type = 'Student', year, seme
 
 /**
  * Parent portal login OTP — 1 variable (OTP only).
- * DLT: Dear parent , Your Pydah College Parent Portal OTP is {#var#}.  -Pydah College
+ * DLT: Dear parent , Your Pydah College Parent Portal OTP is {#var#}. -Pydah College
  */
-const PARENT_OTP_SMS_TEMPLATE_ID =
-  process.env.PARENT_OTP_SMS_TEMPLATE_ID || '1707176605569953063';
+const PARENT_OTP_SMS_TEMPLATE_ID = '1707178073641929328';
 
-const buildParentPortalOtpMessage = (otp) => {
-  const custom = process.env.PARENT_OTP_SMS_MESSAGE;
-  if (custom && custom.includes('{otp}')) {
-    return custom.replace(/\{otp\}/g, String(otp));
-  }
-  return `Dear parent , Your Pydah College Parent Portal OTP is ${otp}.  -Pydah College`;
-};
+const buildParentPortalOtpMessage = (otp) =>
+  `Dear parent , Your Pydah College Parent Portal OTP is ${otp}. -Pydah College`;
 
 const sendOtpSms = (smsService, { to, message, templateId, peId = OTP_PE_ID, meta = {} }) =>
   smsService.sendSms({

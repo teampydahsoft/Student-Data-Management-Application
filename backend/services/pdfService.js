@@ -37,8 +37,11 @@ const generateAttendanceReportPDF = async ({
   excludeCourse = false, // Optional: exclude course column from tables (for email reports)
   statsOnly = false, // Optional: if true, only include stats (exclude detailed student list)
   summaryStats = null, // Optional: pre-calculated stats
+  previewFilter = 'all', // all | marked | unmarked
   ...args // Catch-all for any other props
 }) => {
+  const isUnmarkedReport = previewFilter === 'unmarked';
+  const isMarkedReport = previewFilter === 'marked';
   // Filter out cancelled/discontinued/course completed students (already filtered in query, but double-check)
   const validStudents = students.filter(s => {
     const status = s.student_status || (s.student_data && s.student_data['Student Status']);
@@ -259,7 +262,12 @@ const generateAttendanceReportPDF = async ({
     year: 'numeric'
   });
   doc.fontSize(11).font('Helvetica').fillColor('#374151'); // Gray-700
-  doc.text(`Date: ${formattedDate}`, leftMargin, headerTop + 75, {
+  const previewFilterLabel = summaryStats?.previewFilterLabel
+    || (isUnmarkedReport ? 'Unmarked / Pending Only' : isMarkedReport ? 'Marked Only' : null);
+  const dateLine = previewFilterLabel
+    ? `Date: ${formattedDate}  |  View: ${previewFilterLabel}`
+    : `Date: ${formattedDate}`;
+  doc.text(dateLine, leftMargin, headerTop + 75, {
     width: contentWidth, // Use full content width for centering
     align: 'center' // Center the date across the entire page
   });
@@ -302,6 +310,7 @@ const generateAttendanceReportPDF = async ({
   let yPos = summaryBoxTop + 40;
   const leftCol = 60;
   const rightCol = 320;
+  const rightValueCol = rightCol + 100;
   const lineHeight = 18;
 
   // Left column labels (bold)
@@ -348,17 +357,11 @@ const generateAttendanceReportPDF = async ({
     });
   }
 
-  // Right column labels (bold)
-  doc.font('Helvetica-Bold');
-  doc.text('Total Students:', rightCol, yPos);
-  doc.text('Present:', rightCol, yPos + lineHeight);
-  doc.text('Absent:', rightCol, yPos + (lineHeight * 2));
-
   // Calculate statistics (only for valid students, excluding course completed)
-  let totalStudents, presentCount, absentCount;
+  let totalStudents, presentCount, absentCount, unmarkedCount;
 
   if (summaryStats) {
-    ({ totalStudents, presentCount, absentCount } = summaryStats);
+    ({ totalStudents, presentCount, absentCount, unmarkedCount } = summaryStats);
   } else {
     totalStudents = validStudents.length;
     presentCount = attendanceRecords.filter(r => {
@@ -369,16 +372,41 @@ const generateAttendanceReportPDF = async ({
       const student = validStudents.find(s => s.id === r.studentId);
       return student && r.status === 'absent';
     }).length;
+    unmarkedCount = Math.max(0, totalStudents - presentCount - absentCount);
   }
 
-  // Right column values
-  doc.font('Helvetica');
-  doc.text(totalStudents.toString(), rightCol + 85, yPos);
-  doc.fillColor('#10B981'); // Green for present
-  doc.text(presentCount.toString(), rightCol + 85, yPos + lineHeight);
-  doc.fillColor('#EF4444'); // Red for absent
-  doc.text(absentCount.toString(), rightCol + 85, yPos + (lineHeight * 2));
-  doc.fillColor('#000000'); // Reset to black
+  // Right column labels + values (fixed columns to prevent label/value overlap)
+  doc.font('Helvetica-Bold');
+  if (isUnmarkedReport) {
+    doc.text('Unmarked:', rightCol, yPos, { width: 95, lineBreak: false });
+    doc.font('Helvetica');
+    const pendingCount = unmarkedCount ?? totalStudents ?? 0;
+    doc.fillColor('#D97706'); // Amber for pending
+    doc.text(String(pendingCount), rightValueCol, yPos);
+    doc.fillColor('#000000');
+  } else if (isMarkedReport) {
+    doc.text('Marked:', rightCol, yPos, { width: 95, lineBreak: false });
+    doc.text('Present:', rightCol, yPos + lineHeight, { width: 95, lineBreak: false });
+    doc.text('Absent:', rightCol, yPos + (lineHeight * 2), { width: 95, lineBreak: false });
+    doc.font('Helvetica');
+    doc.text(String(totalStudents ?? 0), rightValueCol, yPos);
+    doc.fillColor('#10B981');
+    doc.text(String(presentCount ?? 0), rightValueCol, yPos + lineHeight);
+    doc.fillColor('#EF4444');
+    doc.text(String(absentCount ?? 0), rightValueCol, yPos + (lineHeight * 2));
+    doc.fillColor('#000000');
+  } else {
+    doc.text('Total Students:', rightCol, yPos, { width: 95, lineBreak: false });
+    doc.text('Present:', rightCol, yPos + lineHeight, { width: 95, lineBreak: false });
+    doc.text('Absent:', rightCol, yPos + (lineHeight * 2), { width: 95, lineBreak: false });
+    doc.font('Helvetica');
+    doc.text(String(totalStudents ?? 0), rightValueCol, yPos);
+    doc.fillColor('#10B981');
+    doc.text(String(presentCount ?? 0), rightValueCol, yPos + lineHeight);
+    doc.fillColor('#EF4444');
+    doc.text(String(absentCount ?? 0), rightValueCol, yPos + (lineHeight * 2));
+    doc.fillColor('#000000');
+  }
   doc.font('Helvetica');
 
   doc.y = summaryBoxTop + summaryBoxHeight + 5;
@@ -432,6 +460,14 @@ const generateAttendanceReportPDF = async ({
       // Course, Branch, Batch, Year, Sem, Total, Absent
       summaryColWidths = [110, 110, 65, 50, 50, 60, 70];
       summaryHeaders = ['Course', 'Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent'];
+    }
+
+    if (isUnmarkedReport) {
+      summaryHeaders = summaryHeaders.map((header) => {
+        if (header === 'Tot' || header === 'Total') return 'Pend';
+        if (header === 'Abs' || header === 'Absent') return '';
+        return header;
+      });
     }
 
     const summaryHeaderHeight = 25;
@@ -534,15 +570,18 @@ const generateAttendanceReportPDF = async ({
         doc.text(String(group.semester || 'N/A'), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[5] - 2, ellipsis: true });
         summaryXPos += summaryColWidths[5];
 
-        // Total
-        const totalVal = group.total || group.statistics?.totalStudents || 0;
+        // Total / Pending
+        const totalVal = group.total || group.pending || group.statistics?.totalStudents || 0;
+        if (isUnmarkedReport) doc.fillColor('#D97706');
         doc.text(String(totalVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[6] - 2, ellipsis: true });
         summaryXPos += summaryColWidths[6];
 
-        // Absent
-        doc.fillColor('#EF4444');
-        const absVal = group.absent || group.statistics?.absentCount || 0;
-        doc.text(String(absVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[7] - 2, ellipsis: true });
+        // Absent (hidden for unmarked abstract)
+        if (!isUnmarkedReport) {
+          doc.fillColor('#EF4444');
+          const absVal = group.absent || group.statistics?.absentCount || 0;
+          doc.text(String(absVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[7] - 2, ellipsis: true });
+        }
       } else {
         // Standard Report Logic
 
@@ -572,17 +611,20 @@ const generateAttendanceReportPDF = async ({
         doc.text(String(group.semester || 'N/A'), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[semColIdx] - 2, ellipsis: true });
         summaryXPos += summaryColWidths[semColIdx];
 
-        // Total
+        // Total / Pending
         const totalColIdx = excludeCourse ? 4 : 5;
-        const totalVal = group.total || group.statistics?.totalStudents || 0;
+        const totalVal = group.total || group.pending || group.statistics?.totalStudents || 0;
+        if (isUnmarkedReport) doc.fillColor('#D97706');
         doc.text(String(totalVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[totalColIdx] - 3, ellipsis: true });
         summaryXPos += summaryColWidths[totalColIdx];
 
-        // Absent
-        const absentColIdx = excludeCourse ? 5 : 6;
-        doc.fillColor('#EF4444'); // Red
-        const absVal = group.absent || group.statistics?.absentCount || 0;
-        doc.text(String(absVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[absentColIdx] - 3, ellipsis: true });
+        // Absent (hidden for unmarked abstract)
+        if (!isUnmarkedReport) {
+          const absentColIdx = excludeCourse ? 5 : 6;
+          doc.fillColor('#EF4444'); // Red
+          const absVal = group.absent || group.statistics?.absentCount || 0;
+          doc.text(String(absVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[absentColIdx] - 3, ellipsis: true });
+        }
       }
 
       doc.font('Helvetica');
@@ -774,14 +816,15 @@ const generateAttendanceReportPDF = async ({
       return currentY + 20; // Return Y position after table with spacing
     };
 
-    // Render marked students table first
+    // Render student tables based on report filter
     let currentY = doc.y;
-    currentY = renderStudentTable(markedStudents, 'Marked Students', currentY);
-    doc.y = currentY;
-    doc.moveDown(0.5);
+    if (!isUnmarkedReport && markedStudents.length > 0) {
+      currentY = renderStudentTable(markedStudents, 'Marked Students', currentY);
+      doc.y = currentY;
+      doc.moveDown(0.5);
+    }
 
-    // Render unmarked students table separately
-    if (unmarkedStudents.length > 0) {
+    if (!isMarkedReport && unmarkedStudents.length > 0) {
       checkPageBreak(40);
       currentY = doc.y;
       currentY = renderStudentTable(unmarkedStudents, 'Unmarked Students (Pending)', currentY);

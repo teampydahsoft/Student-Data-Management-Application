@@ -879,6 +879,9 @@ const Reports = () => {
       if (dayEndFilters.branch) params.append('branch', dayEndFilters.branch);
       if (dayEndFilters.year) params.append('year', dayEndFilters.year);
       if (dayEndFilters.semester) params.append('semester', dayEndFilters.semester);
+      if (dayEndPreviewFilter && dayEndPreviewFilter !== 'all') {
+        params.append('previewFilter', dayEndPreviewFilter);
+      }
       const response = await api.get(`/attendance/day-end-download?${params.toString()}`, {
         responseType: 'blob'
       });
@@ -890,7 +893,8 @@ const Reports = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = `day_end_report_${dayEndDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      const filterSuffix = dayEndPreviewFilter && dayEndPreviewFilter !== 'all' ? `_${dayEndPreviewFilter}` : '';
+      const fileName = `day_end_report_${dayEndDate}${filterSuffix}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       link.download = fileName;
       link.click();
       window.URL.revokeObjectURL(url);

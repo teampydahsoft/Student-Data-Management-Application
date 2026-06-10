@@ -4716,10 +4716,17 @@ exports.downloadDayEndReport = async (req, res) => {
       year,
       semester,
       student_status,
-      studentStatus
+      studentStatus,
+      previewFilter: previewFilterRaw
     } = req.query;
 
     const statusFilter = student_status || studentStatus || 'Regular';
+    const previewFilter = (() => {
+      const raw = String(previewFilterRaw || 'all').toLowerCase();
+      if (raw === 'pending') return 'unmarked';
+      if (raw === 'marked' || raw === 'unmarked') return raw;
+      return 'all';
+    })();
     const normalizedFormat = (format || 'xlsx').toLowerCase();
     const attendanceDate = getDateOnlyString(date || new Date());
 
@@ -4820,7 +4827,7 @@ exports.downloadDayEndReport = async (req, res) => {
     );
 
     // Transform grouped data to match frontend format
-    const groupedData = groupedRows.map((row) => {
+    const allGroupedData = groupedRows.map((row) => {
       const present = Number(row.present) || 0;
       const absent = Number(row.absent) || 0;
       const holiday = Number(row.holiday) || 0;
@@ -4843,43 +4850,46 @@ exports.downloadDayEndReport = async (req, res) => {
       };
     });
 
-    // Get total statistics
-    const [countRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${countFilter.clause}${exclusionClause}${scopeCondition}`,
-      [...countFilter.params, ...exclusionParams, ...scopeParams]
-    );
-    const totalStudents = countRows[0]?.totalStudents || 0;
+    const groupedData = allGroupedData.filter((row) => {
+      if (previewFilter === 'marked') return (row.markedToday || 0) > 0;
+      if (previewFilter === 'unmarked') return (row.pendingToday || 0) > 0;
+      return true;
+    });
 
-    const [dailyRows] = await masterPool.query(
-      `
-        SELECT ar.status, COUNT(*) AS count
-        FROM attendance_records ar
-        INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date = ?${countFilter.clause}${exclusionClause}${scopeCondition}
-        GROUP BY ar.status
-      `,
-      [attendanceDate, ...countFilter.params, ...exclusionParams, ...scopeParams]
-    );
+    const totalStudents = groupedData.reduce((sum, row) => sum + (row.totalStudents || 0), 0);
+    const presentToday = groupedData.reduce((sum, row) => sum + (row.presentToday || 0), 0);
+    const absentToday = groupedData.reduce((sum, row) => sum + (row.absentToday || 0), 0);
+    const holidayToday = groupedData.reduce((sum, row) => sum + (row.holidayToday || 0), 0);
+    const markedToday = groupedData.reduce((sum, row) => sum + (row.markedToday || 0), 0);
+    const unmarkedToday = groupedData.reduce((sum, row) => sum + (row.pendingToday || 0), 0);
 
-    const presentToday = Number(dailyRows.find(r => r.status === 'present')?.count || 0);
-    const absentToday = Number(dailyRows.find(r => r.status === 'absent')?.count || 0);
-    const holidayToday = Number(dailyRows.find(r => r.status === 'holiday')?.count || 0);
-    const markedToday = presentToday + absentToday + holidayToday;
-    const unmarkedToday = Math.max(0, totalStudents - markedToday);
+    const previewFilterLabel = previewFilter === 'marked'
+      ? 'Marked Only'
+      : previewFilter === 'unmarked'
+        ? 'Unmarked / Pending Only'
+        : 'All';
+    const fileSuffix = previewFilter !== 'all' ? `_${previewFilter}` : '';
 
     if (normalizedFormat === 'pdf') {
       // Use shared PDF service for consistent design with abstract
-      const attendancePercentage = totalStudents > 0
-        ? ((presentToday / totalStudents) * 100).toFixed(2) + '%'
+      const reportTotalStudents = previewFilter === 'unmarked'
+        ? unmarkedToday
+        : previewFilter === 'marked'
+          ? markedToday
+          : totalStudents;
+      const attendancePercentage = reportTotalStudents > 0 && previewFilter !== 'unmarked'
+        ? ((presentToday / reportTotalStudents) * 100).toFixed(2) + '%'
         : '0.00%';
 
       const summaryStats = {
-        totalStudents,
+        totalStudents: reportTotalStudents,
         markedCount: markedToday,
         unmarkedCount: unmarkedToday,
-        presentCount: presentToday,
-        absentCount: absentToday,
-        attendancePercentage
+        presentCount: previewFilter === 'unmarked' ? 0 : presentToday,
+        absentCount: previewFilter === 'unmarked' ? 0 : absentToday,
+        attendancePercentage,
+        previewFilter,
+        previewFilterLabel
       };
 
       try {
@@ -4891,16 +4901,18 @@ exports.downloadDayEndReport = async (req, res) => {
           branchName: branch || 'All Branches',
           year,
           semester,
-          students: [], // Not used when statsOnly is true
-          attendanceRecords: [], // Not used when statsOnly is true
+          students: [],
+          attendanceRecords: [],
           allBatchesData: groupedData.map(d => ({
             ...d,
-            total: d.totalStudents,
-            present: d.presentToday,
-            absent: d.absentToday
+            total: previewFilter === 'unmarked' ? d.pendingToday : d.totalStudents,
+            present: previewFilter === 'unmarked' ? 0 : d.presentToday,
+            absent: previewFilter === 'unmarked' ? 0 : d.absentToday,
+            pending: d.pendingToday
           })),
           summaryStats, // Pre-calculated stats
-          statsOnly: true, // Do not list students
+          statsOnly: true, // Abstract summary only — no student list
+          previewFilter,
           excludeCourse: false // Include course column in table
         });
 
@@ -4908,7 +4920,7 @@ exports.downloadDayEndReport = async (req, res) => {
         require('fs').unlinkSync(pdfPath);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="day_end_report_${attendanceDate}.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="day_end_report_${attendanceDate}${fileSuffix}.pdf"`);
         return res.send(fileBuffer);
       } catch (pdfError) {
         console.error('PDF Generation failed:', pdfError);
@@ -4925,12 +4937,13 @@ exports.downloadDayEndReport = async (req, res) => {
       const summaryData = [
         ['Day End Attendance Report'],
         ['Date', attendanceDate],
+        ['View', previewFilterLabel],
         [''],
         ['Summary'],
-        ['Total Students', totalStudents],
+        ['Total Students', previewFilter === 'unmarked' ? unmarkedToday : previewFilter === 'marked' ? markedToday : totalStudents],
         ['Marked Today', markedToday],
-        ['Present', presentToday],
-        ['Absent', absentToday],
+        ['Present', previewFilter === 'unmarked' ? 0 : presentToday],
+        ['Absent', previewFilter === 'unmarked' ? 0 : absentToday],
         ['No Class Work', holidayToday],
         ['Unmarked', unmarkedToday],
         [''],
@@ -4950,8 +4963,11 @@ exports.downloadDayEndReport = async (req, res) => {
         ...groupedData.map(row => [
           row.college, row.batch, row.course, row.branch,
           row.year, row.semester,
-          row.totalStudents, row.presentToday, row.absentToday,
-          row.markedToday, row.pendingToday, row.holidayToday,
+          previewFilter === 'unmarked' ? row.pendingToday : row.totalStudents,
+          previewFilter === 'unmarked' ? 0 : row.presentToday,
+          previewFilter === 'unmarked' ? 0 : row.absentToday,
+          previewFilter === 'unmarked' ? 0 : row.markedToday,
+          row.pendingToday, row.holidayToday,
           row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'
         ])
       ];
@@ -4980,7 +4996,7 @@ exports.downloadDayEndReport = async (req, res) => {
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="day_end_report_${attendanceDate}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="day_end_report_${attendanceDate}${fileSuffix}.xlsx"`);
       res.send(buffer);
     }
   } catch (error) {
