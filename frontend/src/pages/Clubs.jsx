@@ -827,10 +827,25 @@ const Clubs = () => {
                                         </div>
                                     </div>
 
-                                    {/* Right Column: Description */}
-                                    <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                                    {/* Right Column: Description + Club Image */}
+                                    <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                         <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Description</h3>
-                                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap flex-1">{selectedClub.description}</p>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{selectedClub.description}</p>
+                                            <div className="w-full min-h-[200px] rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shadow-sm">
+                                                {selectedClub.image_url ? (
+                                                    <img
+                                                        src={selectedClub.image_url}
+                                                        alt={selectedClub.name}
+                                                        className="w-full h-full min-h-[200px] object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full min-h-[200px] flex items-center justify-center text-gray-300">
+                                                        <Users size={48} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
