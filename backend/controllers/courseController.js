@@ -130,6 +130,12 @@ const serializeBranchRow = (branchRow, academicYears = null) => {
   };
 };
 
+const buildFeeQrImageUrl = (courseId, updatedAt, hasFeeQr) => {
+  if (!hasFeeQr) return null;
+  const version = updatedAt ? new Date(updatedAt).getTime() : Date.now();
+  return `/api/courses/${courseId}/fee-qr?v=${version}`;
+};
+
 const formatCourse = (courseRow, branchRows = []) => {
   const branches = branchRows.map((branch) => ({
     ...serializeBranchRow(branch, branch._academicYears),
@@ -151,9 +157,11 @@ const formatCourse = (courseRow, branchRows = []) => {
         : courseRow.year_semester_config)
       : null,
     metadata: courseRow.metadata ? JSON.parse(courseRow.metadata) : null,
-    feeQrImageUrl: courseRow.fee_qr_image
-      ? `/api/courses/${courseRow.id}/fee-qr`
-      : null,
+    feeQrImageUrl: buildFeeQrImageUrl(
+      courseRow.id,
+      courseRow.updated_at,
+      Boolean(courseRow.fee_qr_image_type)
+    ),
     structure: buildStructure(courseRow),
     branches
   };
@@ -1551,10 +1559,19 @@ exports.uploadFeeQr = async (req, res) => {
       [req.file.buffer, req.file.mimetype, courseId]
     );
 
+    const [updatedRows] = await masterPool.execute(
+      'SELECT updated_at FROM courses WHERE id = ? LIMIT 1',
+      [courseId]
+    );
+
     res.json({
       success: true,
       message: 'Fee QR uploaded successfully',
-      feeQrImageUrl: `/api/courses/${courseId}/fee-qr`
+      feeQrImageUrl: buildFeeQrImageUrl(
+        courseId,
+        updatedRows[0]?.updated_at,
+        true
+      )
     });
   } catch (error) {
     console.error('uploadFeeQr error:', error);
@@ -1593,7 +1610,8 @@ exports.getFeeQr = async (req, res) => {
     }
 
     res.set('Content-Type', rows[0].fee_qr_image_type || 'image/png');
-    res.set('Cache-Control', 'public, max-age=86400');
+    // URL includes ?v=<updated_at> cache buster; safe to cache per version
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
     res.send(rows[0].fee_qr_image);
   } catch (error) {
     console.error('getFeeQr error:', error);

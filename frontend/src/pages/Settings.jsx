@@ -2276,9 +2276,17 @@ const Settings = () => {
       if (draft.feeQrFile) {
         const formData = new FormData();
         formData.append('feeQr', draft.feeQrFile);
-        await api.post(`/courses/${courseId}/upload-fee-qr`, formData, {
+        const uploadResponse = await api.post(`/courses/${courseId}/upload-fee-qr`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
+        const uploadedFeeQrUrl = uploadResponse.data?.feeQrImageUrl;
+        if (uploadedFeeQrUrl) {
+          setCourses((prev) => prev.map((course) => (
+            course.id === courseId
+              ? { ...course, feeQrImageUrl: uploadedFeeQrUrl }
+              : course
+          )));
+        }
       }
 
       await api.put(`/courses/${courseId}`, updates);
@@ -5049,6 +5057,10 @@ const Settings = () => {
                   {(courseDrafts[editingCourseId]?.feeQrPreview || courseDrafts[editingCourseId]?.feeQrImageUrl) && (
                     <div className="mb-3 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
                       <img
+                        key={
+                          courseDrafts[editingCourseId]?.feeQrPreview
+                            || courseDrafts[editingCourseId]?.feeQrImageUrl
+                        }
                         src={
                           courseDrafts[editingCourseId]?.feeQrPreview
                             || getApiAssetUrl(courseDrafts[editingCourseId]?.feeQrImageUrl)
@@ -5072,19 +5084,26 @@ const Settings = () => {
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
+                        e.target.value = '';
                         if (!file) return;
                         if (!file.type.startsWith('image/')) {
                           toast.error('Please upload an image file');
                           return;
                         }
-                        setCourseDrafts((prev) => ({
-                          ...prev,
-                          [editingCourseId]: {
-                            ...prev[editingCourseId],
-                            feeQrFile: file,
-                            feeQrPreview: URL.createObjectURL(file)
+                        setCourseDrafts((prev) => {
+                          const previousPreview = prev[editingCourseId]?.feeQrPreview;
+                          if (previousPreview?.startsWith('blob:')) {
+                            URL.revokeObjectURL(previousPreview);
                           }
-                        }));
+                          return {
+                            ...prev,
+                            [editingCourseId]: {
+                              ...prev[editingCourseId],
+                              feeQrFile: file,
+                              feeQrPreview: URL.createObjectURL(file)
+                            }
+                          };
+                        });
                       }}
                     />
                   </label>

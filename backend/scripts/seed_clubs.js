@@ -62,66 +62,56 @@ const CLUBS = [
     },
 ];
 
-const PUBLIC_CLUBS_DIR = path.join(__dirname, '../../frontend/public/clubs');
+const LOCAL_IMAGES_DIR = path.join(__dirname, '../../frontend/public/clubs');
 
-function downloadImage(url, destPath) {
+function downloadImageToBuffer(url) {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
         https
             .get(url, (response) => {
                 if (response.statusCode === 301 || response.statusCode === 302) {
-                    file.close();
-                    fs.unlinkSync(destPath);
-                    return downloadImage(response.headers.location, destPath).then(resolve).catch(reject);
+                    return downloadImageToBuffer(response.headers.location).then(resolve).catch(reject);
                 }
                 if (response.statusCode !== 200) {
-                    file.close();
-                    fs.unlinkSync(destPath);
                     return reject(new Error(`Failed to download ${url}: HTTP ${response.statusCode}`));
                 }
-                response.pipe(file);
-                file.on('finish', () => file.close(() => resolve(destPath)));
+                const chunks = [];
+                response.on('data', (chunk) => chunks.push(chunk));
+                response.on('end', () => resolve(Buffer.concat(chunks)));
             })
-            .on('error', (err) => {
-                file.close();
-                if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
-                reject(err);
-            });
+            .on('error', reject);
     });
 }
 
-async function ensureClubImages() {
-    if (!fs.existsSync(PUBLIC_CLUBS_DIR)) {
-        fs.mkdirSync(PUBLIC_CLUBS_DIR, { recursive: true });
+async function getImageDataUrl(club) {
+    const localPath = path.join(LOCAL_IMAGES_DIR, `${club.slug}.jpg`);
+
+    let buffer;
+    if (fs.existsSync(localPath)) {
+        console.log(`Reading local image: ${club.slug}.jpg`);
+        buffer = fs.readFileSync(localPath);
+    } else {
+        console.log(`Downloading thumbnail: ${club.name}`);
+        buffer = await downloadImageToBuffer(club.imageUrl);
     }
 
-    for (const club of CLUBS) {
-        const filename = `${club.slug}.jpg`;
-        const destPath = path.join(PUBLIC_CLUBS_DIR, filename);
-        if (!fs.existsSync(destPath)) {
-            console.log(`Downloading thumbnail: ${club.name}`);
-            await downloadImage(club.imageUrl, destPath);
-        } else {
-            console.log(`Thumbnail exists: ${filename}`);
-        }
-        club.localImagePath = `/clubs/${filename}`;
-    }
+    const base64 = buffer.toString('base64');
+    return `data:image/jpeg;base64,${base64}`;
 }
 
 async function seedClubs() {
     try {
-        console.log('Seeding campus clubs...');
-        await ensureClubImages();
+        console.log('Seeding campus clubs (images stored as base64 in DB)...');
 
         for (const club of CLUBS) {
+            const imageDataUrl = await getImageDataUrl(club);
             const [existing] = await masterPool.query('SELECT id FROM clubs WHERE name = ?', [club.name]);
 
             if (existing.length > 0) {
                 await masterPool.query(
                     'UPDATE clubs SET description = ?, image_url = ?, is_active = TRUE WHERE id = ?',
-                    [club.description, club.localImagePath, existing[0].id]
+                    [club.description, imageDataUrl, existing[0].id]
                 );
-                console.log(`Updated: ${club.name}`);
+                console.log(`Updated: ${club.name} (${Math.round(imageDataUrl.length / 1024)} KB image in DB)`);
             } else {
                 await masterPool.query(
                     `INSERT INTO clubs (name, description, image_url, form_fields, members, activities, is_active, membership_fee, fee_type)
@@ -129,20 +119,26 @@ async function seedClubs() {
                     [
                         club.name,
                         club.description,
-                        club.localImagePath,
+                        imageDataUrl,
                         JSON.stringify([]),
                         JSON.stringify([]),
                         JSON.stringify([]),
                     ]
                 );
-                console.log(`Created: ${club.name}`);
+                console.log(`Created: ${club.name} (${Math.round(imageDataUrl.length / 1024)} KB image in DB)`);
             }
         }
 
-        const [all] = await masterPool.query('SELECT id, name, LEFT(description, 60) AS desc_preview, image_url FROM clubs ORDER BY id');
+        const [all] = await masterPool.query(
+            `SELECT id, name,
+                    LEFT(description, 50) AS desc_preview,
+                    CASE WHEN image_url LIKE 'data:%' THEN CONCAT('base64 (', ROUND(CHAR_LENGTH(image_url)/1024), ' KB)')
+                         ELSE image_url END AS image_storage
+             FROM clubs ORDER BY name`
+        );
         console.log('\nClubs in database:');
         console.table(all);
-        console.log('Club seeding completed.');
+        console.log('Club seeding completed — all thumbnails stored in image_url column.');
         process.exit(0);
     } catch (error) {
         console.error('Error seeding clubs:', error);
