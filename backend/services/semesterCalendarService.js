@@ -87,6 +87,8 @@ const resolveSemesterCalendarForFilters = async ({
     `SELECT start_date, end_date, batch
      FROM semesters
      WHERE ${whereClause}
+       AND start_date IS NOT NULL
+       AND end_date IS NOT NULL
        AND start_date <= ?
        AND end_date >= ?
      ORDER BY college_id DESC, batch DESC, start_date DESC
@@ -101,6 +103,8 @@ const resolveSemesterCalendarForFilters = async ({
       `SELECT start_date, end_date, batch
        FROM semesters
        WHERE ${whereClause}
+         AND start_date IS NOT NULL
+         AND end_date IS NOT NULL
        ORDER BY college_id DESC, batch DESC, start_date DESC
        LIMIT 1`,
       baseParams
@@ -143,6 +147,8 @@ const SEMESTER_CALENDAR_CONFIGURED_EXISTS = `
   WHERE (sem.batch COLLATE utf8mb4_unicode_ci = s.batch COLLATE utf8mb4_unicode_ci OR sem.batch IS NULL)
     AND sem.year_of_study = s.current_year
     AND sem.semester_number = s.current_semester
+    AND sem.start_date IS NOT NULL
+    AND sem.end_date IS NOT NULL
     AND (
       sem.college_id IS NULL
       OR EXISTS (
@@ -201,6 +207,8 @@ const resolveSemesterCalendarForStudent = async (student) => {
     `SELECT start_date, end_date
      FROM semesters
      WHERE ${whereClause}
+       AND start_date IS NOT NULL
+       AND end_date IS NOT NULL
      ORDER BY college_id DESC, batch DESC, start_date DESC
      LIMIT 1`,
     params
