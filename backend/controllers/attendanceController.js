@@ -37,14 +37,12 @@ const {
 const {
   resolveSemesterCalendarForFilters,
   getSemesterCalendarVisibilityClause,
+  getSemesterCalendarRangeVisibilityClause,
+  appendSemesterCalendarFilter,
   validateStudentAttendanceDate
 } = require('../services/semesterCalendarService');
 
-const applySemesterCalendarFilter = (query, params, attendanceDate) => {
-  const { sql, params: clauseParams } = getSemesterCalendarVisibilityClause(attendanceDate);
-  params.push(...clauseParams);
-  return query + sql;
-};
+const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
 // Helper function to replace template variables
 const replaceTemplateVariables = (template, variables) => {
@@ -3291,6 +3289,7 @@ exports.getAttendanceSummary = async (req, res) => {
     }
 
     const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '';
+    const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(todayKey);
 
     // Apply user scope filtering (uses s.college so compatible with students table without college_id)
     let scopeCondition = '';
@@ -3304,8 +3303,8 @@ exports.getAttendanceSummary = async (req, res) => {
     }
 
     const [studentCountRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${scopeCondition}`,
-      [...params, ...scopeParams]
+      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${semesterSql}${scopeCondition}`,
+      [...params, ...semesterParams, ...scopeParams]
     );
     const totalStudents = studentCountRows[0]?.totalStudents || 0;
 
@@ -3315,10 +3314,10 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date = ?${dailyFilter.clause}${scopeCondition}
+        WHERE ar.attendance_date = ?${dailyFilter.clause}${semesterSql}${scopeCondition}
         GROUP BY ar.status
       `,
-      [todayKey, ...dailyFilter.params, ...scopeParams]
+      [todayKey, ...dailyFilter.params, ...semesterParams, ...scopeParams]
     );
 
     const windowFilter = buildWhereClause(filters, 's');
@@ -3327,11 +3326,11 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.attendance_date, ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date BETWEEN ? AND ?${windowFilter.clause}${scopeCondition}
+        WHERE ar.attendance_date BETWEEN ? AND ?${windowFilter.clause}${semesterSql}${scopeCondition}
         GROUP BY attendance_date, status
         ORDER BY attendance_date ASC
       `,
-      [formatDateKey(weekStart), todayKey, ...windowFilter.params, ...scopeParams]
+      [formatDateKey(weekStart), todayKey, ...windowFilter.params, ...semesterParams, ...scopeParams]
     );
 
     const monthFilter = buildWhereClause(filters, 's');
@@ -3340,11 +3339,11 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.attendance_date, ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date BETWEEN ? AND ?${monthFilter.clause}${scopeCondition}
+        WHERE ar.attendance_date BETWEEN ? AND ?${monthFilter.clause}${semesterSql}${scopeCondition}
         GROUP BY attendance_date, status
         ORDER BY attendance_date ASC
       `,
-      [formatDateKey(monthStart), todayKey, ...monthFilter.params, ...scopeParams]
+      [formatDateKey(monthStart), todayKey, ...monthFilter.params, ...semesterParams, ...scopeParams]
     );
 
     const [groupedRows] = await masterPool.query(
@@ -3366,11 +3365,11 @@ exports.getAttendanceSummary = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
-        WHERE 1=1${whereClause}${scopeCondition}
+        WHERE 1=1${whereClause}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [todayKey, ...params, ...scopeParams]
+      [todayKey, ...params, ...semesterParams, ...scopeParams]
     );
 
 
@@ -4799,6 +4798,8 @@ exports.downloadDayEndReport = async (req, res) => {
       }
     }
 
+    const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+
     // Get grouped summary data (same query as getAttendanceSummary)
     const [groupedRows] = await masterPool.query(
       `
@@ -4819,11 +4820,11 @@ exports.downloadDayEndReport = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
-        WHERE 1=1${countFilter.clause}${exclusionClause}${scopeCondition}
+        WHERE 1=1${countFilter.clause}${exclusionClause}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [attendanceDate, ...countFilter.params, ...exclusionParams, ...scopeParams]
+      [attendanceDate, ...countFilter.params, ...exclusionParams, ...semesterParams, ...scopeParams]
     );
 
     // Transform grouped data to match frontend format
@@ -5217,6 +5218,11 @@ exports.getAttendanceAbstract = async (req, res) => {
       }
     }
 
+    // Exclude students outside configured semester dates overlapping the report range
+    const { sql: semesterRangeSql, params: semesterRangeParams } = getSemesterCalendarRangeVisibilityClause(from, to);
+    studentQuery += semesterRangeSql;
+    studentParams.push(...semesterRangeParams);
+
     // Get all students matching filters (retry with legacy s.college if college_id column missing)
     let studentRows;
     try {
@@ -5248,6 +5254,8 @@ exports.getAttendanceAbstract = async (req, res) => {
             studentQuery += ' AND 1=0';
           }
         }
+        studentQuery += semesterRangeSql;
+        studentParams.push(...semesterRangeParams);
         [studentRows] = await masterPool.query(studentQuery, studentParams);
       } else {
         throw queryErr;
@@ -5557,6 +5565,11 @@ exports.getAttendanceReportForStudents = async (req, res) => {
         studentQuery += ' AND 1=0';
       }
     }
+
+    // Exclude students outside configured semester dates overlapping the report range
+    const { sql: semesterRangeSql, params: semesterRangeParams } = getSemesterCalendarRangeVisibilityClause(from, to);
+    studentQuery += semesterRangeSql;
+    studentParams.push(...semesterRangeParams);
 
     // Get students
     const [studentRows] = await masterPool.query(studentQuery, studentParams);

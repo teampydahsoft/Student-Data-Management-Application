@@ -5,6 +5,7 @@ const { checkAndSendBirthdayNotifications } = require('./birthdayNotificationSer
 const { createBroadcastNotification } = require('./notificationService');
 const { getNonWorkingDayInfo } = require('./nonWorkingDayService');
 const { getAllNotificationUsers, filterAttendanceByUserScope } = require('./getUserScopeAttendance');
+const { appendSemesterCalendarFilter } = require('./semesterCalendarService');
 
 // Helper to check if a form falls due today based on recurrence config
 const isFormDue = (form, today) => {
@@ -283,17 +284,17 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
 
         // Only: Regular + in-scope (non-excluded) + unmarked (no record for this date) → mark pending.
         // marked_by NULL = system/4PM auto-mark.
-        const [result] = await masterPool.query(
-            `INSERT INTO attendance_records (student_id, admission_number, attendance_date, \`year\`, semester, status, marked_by)
+        let pendingInsertQuery = `
+             INSERT INTO attendance_records (student_id, admission_number, attendance_date, \`year\`, semester, status, marked_by)
              SELECT s.id, s.admission_number, ?, s.current_year, s.current_semester, 'pending', NULL
              FROM students s
              LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
              WHERE s.student_status = 'Regular'
                AND ar.id IS NULL
              ${excludeCourseClause}
-             ${excludeStudentClause}`,
-            params
-        );
+             ${excludeStudentClause}`;
+        pendingInsertQuery = appendSemesterCalendarFilter(pendingInsertQuery, params, attendanceDate);
+        const [result] = await masterPool.query(pendingInsertQuery, params);
 
         const affected = result.affectedRows || 0;
         if (affected > 0) {
@@ -315,17 +316,17 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
                 params.push(...excludedStudents);
             }
             // Same rule: only Regular + in-scope + pending; excluded courses/students untouched
-            const [result] = await masterPool.query(
-                `INSERT INTO attendance_records (student_id, admission_number, attendance_date, status, marked_by)
+            let pendingInsertQuery = `
+                 INSERT INTO attendance_records (student_id, admission_number, attendance_date, status, marked_by)
                  SELECT s.id, s.admission_number, ?, 'pending', NULL
                  FROM students s
                  LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
                  WHERE s.student_status = 'Regular'
                    AND ar.id IS NULL
                  ${excludeCourseClause}
-                 ${excludeStudentClause}`,
-                params
-            );
+                 ${excludeStudentClause}`;
+            pendingInsertQuery = appendSemesterCalendarFilter(pendingInsertQuery, params, attendanceDate);
+            const [result] = await masterPool.query(pendingInsertQuery, params);
             const affected = result.affectedRows || 0;
             if (affected > 0) {
                 console.log(`✅ Marked ${affected} unmarked student(s) as pending attendance for ${attendanceDate} (no year/semester).`);
@@ -413,6 +414,8 @@ const sendDailyAttendanceReports = async () => {
             query += ` AND s.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
             params.push(...excludedStudents);
         }
+
+        query = appendSemesterCalendarFilter(query, params, attendanceDate);
 
         query += `
               GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester

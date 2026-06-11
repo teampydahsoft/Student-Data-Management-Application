@@ -177,6 +177,40 @@ const getSemesterCalendarVisibilityClause = (attendanceDate) => ({
 });
 
 /**
+ * SQL fragment for date-range reports: include student when no semester calendar
+ * exists, OR configured semester dates overlap the report range.
+ */
+const getSemesterCalendarRangeVisibilityClause = (fromDate, toDate) => ({
+  sql: `
+    AND (
+      s.current_year IS NULL
+      OR s.current_semester IS NULL
+      OR s.course IS NULL
+      OR s.batch IS NULL
+      OR NOT EXISTS (${SEMESTER_CALENDAR_CONFIGURED_EXISTS})
+      OR EXISTS (
+        ${SEMESTER_CALENDAR_CONFIGURED_EXISTS}
+        AND sem.start_date <= ?
+        AND sem.end_date >= ?
+      )
+    )
+  `,
+  params: [toDate, fromDate]
+});
+
+const appendSemesterCalendarFilter = (query, params, attendanceDate) => {
+  const { sql, params: clauseParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+  params.push(...clauseParams);
+  return query + sql;
+};
+
+const appendSemesterCalendarRangeFilter = (query, params, fromDate, toDate) => {
+  const { sql, params: clauseParams } = getSemesterCalendarRangeVisibilityClause(fromDate, toDate);
+  params.push(...clauseParams);
+  return query + sql;
+};
+
+/**
  * Resolve the exact semester calendar row for a student (no date-based fallback).
  */
 const resolveSemesterCalendarForStudent = async (student) => {
@@ -254,6 +288,9 @@ module.exports = {
   resolveSemesterCalendarForFilters,
   resolveSemesterCalendarForStudent,
   getSemesterCalendarVisibilityClause,
+  getSemesterCalendarRangeVisibilityClause,
+  appendSemesterCalendarFilter,
+  appendSemesterCalendarRangeFilter,
   isDateWithinSemesterCalendar,
   validateStudentAttendanceDate
 };
