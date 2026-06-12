@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
+import { compressTicketPhoto, MAX_TICKET_PHOTO_BYTES } from '../../utils/ticketPhoto';
 
 import { motion } from 'framer-motion';
 import { SkeletonBox } from '../../components/SkeletonLoader';
@@ -28,6 +29,7 @@ const RaiseTicket = () => {
         photo: null
     });
     const [photoPreview, setPhotoPreview] = useState(null);
+    const [photoProcessing, setPhotoProcessing] = useState(false);
     const queryClient = useQueryClient();
 
     // Fetch active categories
@@ -60,11 +62,14 @@ const RaiseTicket = () => {
             });
             return response.data;
         },
-        onSuccess: (data) => {
-            console.log('Ticket creation successful:', data);
+        onSuccess: async () => {
             toast.success('Ticket raised successfully!');
-            queryClient.invalidateQueries(['tickets']);
-            console.log('Navigating to /student/my-tickets');
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['student-tickets'] }),
+                queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+                queryClient.invalidateQueries({ queryKey: ['ticket-audience-counts'] }),
+                queryClient.invalidateQueries({ queryKey: ['ticket-stats'] })
+            ]);
             navigate('/student/my-tickets');
         },
         onError: (error) => {
@@ -85,20 +90,39 @@ const RaiseTicket = () => {
         });
     };
 
-    const handlePhotoChange = (e) => {
+    const handlePhotoChange = async (e) => {
         const file = e.target.files[0];
-        if (file) {
-            if (file.size > 5 * 1024 * 1024) {
-                toast.error('Photo size must be less than 5MB');
-                return;
-            }
-            setFormData({ ...formData, photo: file });
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPhotoPreview(reader.result);
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please select an image file');
+            e.target.value = '';
+            return;
         }
+
+        if (file.size > MAX_TICKET_PHOTO_BYTES) {
+            setPhotoProcessing(true);
+            try {
+                const compressed = await compressTicketPhoto(file, MAX_TICKET_PHOTO_BYTES);
+                if (compressed.size > MAX_TICKET_PHOTO_BYTES) {
+                    toast.error('Photo must be 1MB or smaller. Try a smaller image.');
+                    e.target.value = '';
+                    return;
+                }
+                setFormData({ ...formData, photo: compressed });
+                setPhotoPreview(URL.createObjectURL(compressed));
+                toast.success('Photo compressed to meet the 1MB limit');
+            } catch (error) {
+                toast.error(error.message || 'Failed to process photo');
+                e.target.value = '';
+            } finally {
+                setPhotoProcessing(false);
+            }
+            return;
+        }
+
+        setFormData({ ...formData, photo: file });
+        setPhotoPreview(URL.createObjectURL(file));
     };
 
     const removePhoto = () => {
@@ -265,7 +289,7 @@ const RaiseTicket = () => {
                                     <Camera size={32} color="#9ca3af" />
                                 </div>
                                 <p style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Click or drag photo</p>
-                                <p style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500, letterSpacing: '0.025em' }}>JPG, PNG up to 5MB</p>
+                                <p style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500, letterSpacing: '0.025em' }}>JPG, PNG up to 1MB</p>
                             </label>
                         </div>
                     ) : (
@@ -292,7 +316,7 @@ const RaiseTicket = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem', position: 'relative', zIndex: 10 }}>
                     <button
                         type="submit"
-                        disabled={createMutation.isPending}
+                        disabled={createMutation.isPending || photoProcessing}
                         className="btn-primary"
                         style={{ width: '100%', padding: '1rem', fontSize: '1.125rem' }}
                     >
@@ -300,6 +324,11 @@ const RaiseTicket = () => {
                             <>
                                 <div className="animate-spin rounded-full h-6 w-6 border-4 border-white/20 border-b-white"></div>
                                 <span>Submitting...</span>
+                            </>
+                        ) : photoProcessing ? (
+                            <>
+                                <div className="animate-spin rounded-full h-6 w-6 border-4 border-white/20 border-b-white"></div>
+                                <span>Processing photo...</span>
                             </>
                         ) : (
                             <>

@@ -11,7 +11,23 @@ router.use(authMiddleware);
 // Routes
 router.post(
     '/',
-    ticketController.upload.single('photo'),
+    (req, res, next) => {
+        ticketController.upload.single('photo')(req, res, (err) => {
+            if (err) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Photo must be 1MB or smaller'
+                    });
+                }
+                return res.status(400).json({
+                    success: false,
+                    message: err.message || 'Invalid photo upload'
+                });
+            }
+            next();
+        });
+    },
     ticketController.createTicket
 );
 

@@ -9,7 +9,9 @@ import {
     CheckCircle,
     Clock,
     XCircle,
-    Filter
+    Filter,
+    GraduationCap,
+    Briefcase
 } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
@@ -33,7 +35,29 @@ const STATUS_LABELS = {
     closed: 'Closed'
 };
 
+const REQUESTER_AUDIENCES = [
+    { id: 'student', label: 'Student', icon: GraduationCap },
+    { id: 'faculty', label: 'Faculty', icon: Briefcase }
+];
+
+const matchesRequesterAudience = (ticket, audience) => {
+    if (audience === 'faculty') {
+        return ticket.requester_type === 'staff';
+    }
+    return !ticket.requester_type || ticket.requester_type === 'student';
+};
+
+const getRequesterLabel = (ticket) =>
+    ticket.requester_name ||
+    ticket.requester_display_name ||
+    ticket.student_name ||
+    ticket.staff_requester_name ||
+    ticket.hrms_linked_name ||
+    (ticket.requester_type === 'staff' ? ticket.admission_number : null) ||
+    'Unknown';
+
 const TaskManagement = () => {
+    const [requesterAudience, setRequesterAudience] = useState('student');
     const [activeTab, setActiveTab] = useState('pending'); // pending, assigned, resolved
     const [filters, setFilters] = useState({
         category_id: '',
@@ -64,17 +88,41 @@ const TaskManagement = () => {
     };
 
     // Queries
+    const { data: audienceCounts } = useQuery({
+        queryKey: ['ticket-audience-counts'],
+        queryFn: async () => {
+            const [studentRes, facultyRes] = await Promise.all([
+                api.get('/tickets?requester_type=student&page=1&limit=1'),
+                api.get('/tickets?requester_type=staff&page=1&limit=1')
+            ]);
+            return {
+                student: studentRes.data?.pagination?.total ?? 0,
+                faculty: facultyRes.data?.pagination?.total ?? 0
+            };
+        }
+    });
+
     const { data: ticketsData, isLoading } = useQuery({
-        queryKey: ['tickets', activeTab, filters],
+        queryKey: ['tickets', requesterAudience, filters],
         queryFn: async () => {
             const params = new URLSearchParams();
-            // We fetch all or filter client side if backend doesn't support multiple stats well
-            // For now, let's just fetch default list and filter client side for tabs to ensure accuracy
+            params.append('requester_type', requesterAudience === 'faculty' ? 'staff' : 'student');
             params.append('page', '1');
-            params.append('limit', '200'); // Fetch more to filter locally for now
+            params.append('limit', '200');
             const response = await api.get(`/tickets?${params.toString()}`);
             return response.data;
-        }
+        },
+        staleTime: 0,
+        refetchOnMount: 'always'
+    });
+
+    const { data: ticketDetails, isLoading: ticketDetailsLoading } = useQuery({
+        queryKey: ['ticket', selectedTicket?.id],
+        queryFn: async () => {
+            const response = await api.get(`/tickets/${selectedTicket.id}`);
+            return response.data?.data;
+        },
+        enabled: !!selectedTicket?.id && !showAssignModal && !showStatusModal && !showCommentModal
     });
 
     const { data: usersData } = useQuery({
@@ -112,6 +160,7 @@ const TaskManagement = () => {
             setShowAssignModal(false);
             setAssignForm({ assigned_to: [], notes: '' });
             queryClient.invalidateQueries(['tickets']);
+            queryClient.invalidateQueries(['ticket-audience-counts']);
             if (selectedTicket) queryClient.invalidateQueries(['ticket', selectedTicket.id]);
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Failed to assign ticket')
@@ -127,6 +176,7 @@ const TaskManagement = () => {
             setShowStatusModal(false);
             setStatusForm({ status: '', notes: '' });
             queryClient.invalidateQueries(['tickets']);
+            queryClient.invalidateQueries(['ticket-audience-counts']);
             if (selectedTicket) queryClient.invalidateQueries(['ticket', selectedTicket.id]);
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Failed to update status')
@@ -148,14 +198,21 @@ const TaskManagement = () => {
 
     // Filter Logic
     const allTickets = ticketsData?.data || [];
-    const filteredTickets = allTickets.filter(ticket => {
+    const audienceTickets = allTickets.filter(ticket => matchesRequesterAudience(ticket, requesterAudience));
+
+    const getTabCount = (tab) => {
+        const statuses = getStatusesForTab(tab);
+        return audienceTickets.filter(ticket => statuses.includes(ticket.status)).length;
+    };
+
+    const filteredTickets = audienceTickets.filter(ticket => {
         const statuses = getStatusesForTab(activeTab);
         const matchesStatus = statuses.includes(ticket.status);
         const matchesCategory = filters.category_id ? ticket.category_id === parseInt(filters.category_id) : true;
-        // const matchesAssignee = filters.assigned_to ? ... : true; // Complex logic if array, simplified for now
         const matchesSearch = filters.search ?
             ticket.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-            ticket.ticket_number.toLowerCase().includes(filters.search.toLowerCase())
+            ticket.ticket_number.toLowerCase().includes(filters.search.toLowerCase()) ||
+            getRequesterLabel(ticket).toLowerCase().includes(filters.search.toLowerCase())
             : true;
 
         return matchesStatus && matchesCategory && matchesSearch;
@@ -196,8 +253,26 @@ const TaskManagement = () => {
         <div className="admin-page-container">
             {/* Header */}
             <div className="page-header animate-fade-in">
-                <h1 className="page-title">Task Management</h1>
-                <p className="page-subtitle">Track and manage support tickets</p>
+                <h1 className="page-title">Ticket Management</h1>
+                <p className="page-subtitle">Track and manage student and faculty support requests</p>
+            </div>
+
+            {/* Requester audience selector */}
+            <div className="admin-audience-selector animate-fade-in">
+                {REQUESTER_AUDIENCES.map(({ id, label, icon: Icon }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => setRequesterAudience(id)}
+                        className={`admin-audience-btn ${requesterAudience === id ? 'active' : ''}`}
+                    >
+                        <Icon size={18} />
+                        <span>{label}</span>
+                        <span className="admin-audience-count">
+                            {audienceCounts?.[id] ?? 0}
+                        </span>
+                    </button>
+                ))}
             </div>
 
             {/* Main Content Card - Using CSSFlex via card-base */}
@@ -210,18 +285,21 @@ const TaskManagement = () => {
                             className={`admin-tab-btn ${activeTab === 'pending' ? 'active-pending' : ''}`}
                         >
                             <Clock size={16} /> Pending
+                            <span className="admin-tab-count">{getTabCount('pending')}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('assigned')}
                             className={`admin-tab-btn ${activeTab === 'assigned' ? 'active-assigned' : ''}`}
                         >
                             <UserPlus size={16} /> Assigned / In Progress
+                            <span className="admin-tab-count">{getTabCount('assigned')}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('resolved')}
                             className={`admin-tab-btn ${activeTab === 'resolved' ? 'active-resolved' : ''}`}
                         >
                             <CheckCircle size={16} /> Resolved
+                            <span className="admin-tab-count">{getTabCount('resolved')}</span>
                         </button>
                     </div>
                 </div>
@@ -263,6 +341,7 @@ const TaskManagement = () => {
                             <tr>
                                 <th>Ref #</th>
                                 <th>Title</th>
+                                <th>{requesterAudience === 'faculty' ? 'Faculty' : 'Student'}</th>
                                 <th>Category</th>
                                 <th>Status</th>
                                 <th>Actions</th>
@@ -271,14 +350,23 @@ const TaskManagement = () => {
                         <tbody>
                             {filteredTickets.length > 0 ? (
                                 filteredTickets.map((ticket) => (
-                                    <tr key={ticket.id}>
+                                    <tr
+                                        key={ticket.id}
+                                        className="admin-table-row-clickable"
+                                        onClick={() => setSelectedTicket(ticket)}
+                                    >
                                         <td>
                                             <span className="text-sm font-bold text-gray-900">{ticket.ticket_number}</span>
                                             <div className="text-xs text-gray-500 mt-0.5">{new Date(ticket.created_at).toLocaleDateString()}</div>
                                         </td>
                                         <td>
                                             <div className="text-sm font-medium text-gray-900 truncate max-w-xs">{ticket.title}</div>
-                                            <div className="text-xs text-gray-500 mt-0.5">{ticket.requester_name || ticket.student_name || ticket.staff_requester_name || 'Staff'}</div>
+                                        </td>
+                                        <td>
+                                            <div className="text-sm font-medium text-gray-900">{getRequesterLabel(ticket)}</div>
+                                            {requesterAudience === 'student' && ticket.admission_number && (
+                                                <div className="text-xs text-gray-500 mt-0.5">{ticket.admission_number}</div>
+                                            )}
                                         </td>
                                         <td>
                                             <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
@@ -290,7 +378,7 @@ const TaskManagement = () => {
                                                 {STATUS_LABELS[ticket.status]}
                                             </span>
                                         </td>
-                                        <td>
+                                        <td onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center gap-2">
                                                 <button onClick={() => setSelectedTicket(ticket)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100" title="View Details">
                                                     <Eye size={18} />
@@ -307,13 +395,13 @@ const TaskManagement = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="5" style={{ padding: '4rem 0', textAlign: 'center' }}>
+                                    <td colSpan="6" style={{ padding: '4rem 0', textAlign: 'center' }}>
                                         <div className="flex flex-col items-center justify-center text-gray-500">
                                             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
                                                 <Ticket size={32} className="text-gray-300" />
                                             </div>
-                                            <p className="text-lg font-medium text-gray-900">No tickets found</p>
-                                            <p className="text-sm mt-1">Try adjusting your filters or check back later</p>
+                                            <p className="text-lg font-medium text-gray-900">No {requesterAudience} requests found</p>
+                                            <p className="text-sm mt-1">Try another tab, audience, or adjust your filters</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -326,7 +414,8 @@ const TaskManagement = () => {
             {/* Modals */}
             {selectedTicket && !showAssignModal && !showStatusModal && !showCommentModal && (
                 <TicketDetailsModal
-                    ticket={selectedTicket}
+                    ticket={ticketDetails || selectedTicket}
+                    isLoading={ticketDetailsLoading && !ticketDetails}
                     onClose={() => setSelectedTicket(null)}
                     onAssign={() => openAssignModal(selectedTicket)}
                     onStatusUpdate={() => openStatusModal(selectedTicket)}

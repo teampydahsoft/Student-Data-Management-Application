@@ -89,7 +89,10 @@ async function runMigrations() {
     } catch (error) {
         console.error('\n❌ Migration process failed:', error.message);
         console.error(error);
-        process.exit(1);
+        if (require.main === module) {
+            process.exit(1);
+        }
+        throw error;
     }
 }
 

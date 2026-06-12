@@ -19,7 +19,7 @@ if (rawApiUrl) {
 export const API_URL = API_BASE_URL;
 
 // Also create a base URL for static files (without /api)
-export const STATIC_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5000';
+export const STATIC_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5001';
 
 // For production, ensure we use the same domain for static files
 export const getStaticFileUrl = (filename) => {
@@ -27,7 +27,7 @@ export const getStaticFileUrl = (filename) => {
     if (filename.startsWith('http')) return filename;
 
     // In production, use the same domain as the API but without /api
-    const baseUrl = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5000';
+    const baseUrl = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5001';
 
     // Handle cross-domain static file serving
     return `${baseUrl}/uploads/${filename}`;
@@ -50,7 +50,7 @@ export const getStaticFileUrlDirect = (filename) => {
         return `https://pydahsdbms.onrender.com/uploads/${filename}`;
     }
 
-    return `${rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5000'}/uploads/${filename}`;
+    return `${rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : 'http://localhost:5001'}/uploads/${filename}`;
 };
 
 

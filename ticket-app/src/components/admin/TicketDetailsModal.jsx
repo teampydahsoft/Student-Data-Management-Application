@@ -12,6 +12,7 @@ import {
     AlertCircle
 } from 'lucide-react';
 import TicketStepper from './TicketStepper';
+import { resolveTicketPhotoUrl } from '../../utils/ticketPhoto';
 
 const STATUS_COLORS = {
     pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -29,8 +30,21 @@ const STATUS_LABELS = {
     closed: 'Closed'
 };
 
-const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddComment }) => {
+const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onStatusUpdate, onAddComment }) => {
     if (!ticket) return null;
+
+    const requesterName =
+        ticket.requester_name ||
+        ticket.requester_display_name ||
+        ticket.student_name ||
+        ticket.staff_requester_name ||
+        ticket.hrms_linked_name ||
+        'Unknown';
+    const photoSrc = resolveTicketPhotoUrl(ticket.photo_url);
+    const showStaffId = ticket.requester_type === 'staff' &&
+        ticket.admission_number &&
+        !String(ticket.admission_number).startsWith('HRMS-');
+    const showAdmissionNumber = ticket.requester_type !== 'staff' && ticket.admission_number;
 
     return createPortal(
         <div
@@ -61,6 +75,12 @@ const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddCo
                 </div>
 
                 <div style={{ padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', flex: 1 }}>
+                    {isLoading ? (
+                        <div style={{ padding: '3rem 0', textAlign: 'center', color: '#6b7280', fontWeight: 600 }}>
+                            Loading ticket details...
+                        </div>
+                    ) : (
+                    <>
                     {/* Status Stepper */}
                     <div style={{ padding: '0 1rem' }}>
                         <TicketStepper status={ticket.status} />
@@ -85,9 +105,18 @@ const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddCo
                                         </p>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                                        <label style={{ fontSize: '0.625rem', textTransform: 'uppercase', fontWeight: 900, color: '#9ca3af', letterSpacing: '0.05em' }}>Student</label>
-                                        <p style={{ fontSize: '1rem', fontWeight: 700, color: '#111827' }}>{ticket.student_name}</p>
-                                        <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>{ticket.admission_number}</p>
+                                        <label style={{ fontSize: '0.625rem', textTransform: 'uppercase', fontWeight: 900, color: '#9ca3af', letterSpacing: '0.05em' }}>
+                                            {ticket.requester_type === 'staff' ? 'Faculty / Staff' : 'Student'}
+                                        </label>
+                                        <p style={{ fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+                                            {requesterName !== 'Unknown' ? requesterName : (ticket.admission_number ? `Staff #${ticket.admission_number}` : 'Unknown')}
+                                        </p>
+                                        {showAdmissionNumber && (
+                                            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>{ticket.admission_number}</p>
+                                        )}
+                                        {showStaffId && (
+                                            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>ID: {ticket.admission_number}</p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -103,11 +132,11 @@ const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddCo
                             </div>
 
                             {/* Photo */}
-                            {ticket.photo_url && (
+                            {photoSrc && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                     <label style={{ fontSize: '0.625rem', textTransform: 'uppercase', fontWeight: 900, color: '#9ca3af', letterSpacing: '0.05em' }}>Attachment</label>
                                     <div style={{ borderRadius: '1.5rem', overflow: 'hidden', border: '4px solid #f9fafb', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.06)' }}>
-                                        <img src={ticket.photo_url} alt="Ticket attachment" style={{ width: '100%', maxHeight: '400px', objectFit: 'contain', backgroundColor: '#f3f4f6' }} />
+                                        <img src={photoSrc} alt="Ticket attachment" style={{ width: '100%', maxHeight: '400px', objectFit: 'contain', backgroundColor: '#f3f4f6' }} />
                                     </div>
                                 </div>
                             )}
@@ -259,6 +288,8 @@ const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddCo
                             </div>
                         </div>
                     </div>
+                    </>
+                    )}
                 </div>
             </div>
         </div>,

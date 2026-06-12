@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
+import { resolveTicketPhotoUrl } from '../../utils/ticketPhoto';
 import '../../styles/student-pages.css';
 
 const STATUS_CLASSES = {
@@ -46,7 +47,9 @@ const MyTickets = () => {
         queryFn: async () => {
             const response = await api.get('/tickets/student');
             return response.data?.data || [];
-        }
+        },
+        staleTime: 0,
+        refetchOnMount: 'always'
     });
 
     // Fetch ticket details
@@ -312,7 +315,7 @@ const MyTickets = () => {
             {/* Modal Section */}
             {selectedTicket && !showFeedbackModal && (
                 <TicketDetailsModal
-                    ticket={selectedTicket}
+                    ticket={ticket}
                     onClose={() => setSelectedTicket(null)}
                     onFeedback={() => {
                         if (selectedTicket.status === 'completed' && !selectedTicket.feedback) {
@@ -454,12 +457,12 @@ const TicketDetailsModal = ({ ticket, onClose, onFeedback, onReopen }) => {
                             </div>
                         </div>
 
-                        {ticket.photo_url && (
+                        {(ticket.photo_url || ticket.has_photo) && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 <label style={{ fontSize: '0.625rem', textTransform: 'uppercase', fontWeight: 900, color: '#9ca3af', letterSpacing: '0.05em' }}>Evidence / Attachment</label>
                                 <div style={{ borderRadius: '1.5rem', overflow: 'hidden', border: '4px solid #f9fafb', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.06)' }}>
                                     <img
-                                        src={ticket.photo_url}
+                                        src={resolveTicketPhotoUrl(ticket.photo_url)}
                                         alt="Ticket attachment"
                                         style={{ width: '100%', height: '12rem', objectFit: 'cover' }}
                                     />

@@ -101,6 +101,13 @@ const startServer = async () => {
         try {
             const { runMigrations } = require('./migrations/migrate');
             await runMigrations();
+            try {
+                const { backfillStaffRequesterNames } = require('./utils/requesterNames');
+                getHRMSConnection();
+                await backfillStaffRequesterNames();
+            } catch (backfillError) {
+                console.warn('⚠️  Requester name backfill skipped:', backfillError.message);
+            }
         } catch (error) {
             console.warn('⚠️  Migration check failed:', error.message);
         }

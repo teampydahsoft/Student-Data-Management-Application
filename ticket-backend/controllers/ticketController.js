@@ -2,6 +2,12 @@ const { masterPool } = require('../config/database');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { enrichTicketsRequesterNames, normalizeRequesterFields } = require('../utils/requesterNames');
+
+const MAX_PHOTO_BYTES = 1024 * 1024;
+
+// tickets.raised_by_hrms_id and rbac_users.hrms_id may use different collations on MySQL 8
+const HRMS_USER_JOIN = `LEFT JOIN rbac_users ru_hrms ON t.raised_by_hrms_id COLLATE utf8mb4_unicode_ci = ru_hrms.hrms_id COLLATE utf8mb4_unicode_ci`;
 
 // Configure multer for ticket photo uploads
 const storage = multer.diskStorage({
@@ -21,7 +27,7 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB
+        fileSize: MAX_PHOTO_BYTES
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -133,16 +139,17 @@ exports.createTicket = async (req, res) => {
         let requesterType = 'student';
         let raisedByRbacId = null;
         let raisedByHrmsId = null;
+        let requesterDisplayName = null;
 
         if (isStudent) {
             const admissionNo = user.admission_number || user.admissionNumber;
             const [studentData] = await masterPool.query(
-                'SELECT id, admission_number FROM students WHERE admission_number = ?',
+                'SELECT id, admission_number, student_name FROM students WHERE admission_number = ?',
                 [admissionNo]
             );
 
             if (studentData.length === 0) {
-                return res.status(404).json({
+                return res.status(400).json({
                     success: false,
                     message: 'Student not found in database. Please contact admin.'
                 });
@@ -150,9 +157,11 @@ exports.createTicket = async (req, res) => {
 
             studentId = studentData[0].id;
             admissionNumber = studentData[0].admission_number;
+            requesterDisplayName = studentData[0].student_name || user.name || null;
         } else if (isHrmsSession) {
             requesterType = 'staff';
             raisedByHrmsId = user.hrmsId;
+            requesterDisplayName = user.name || null;
             admissionNumber = user.username || user.email || `HRMS-${user.hrmsId}`;
         } else {
             let [staffUser] = await masterPool.query(
@@ -176,16 +185,14 @@ exports.createTicket = async (req, res) => {
 
             requesterType = 'staff';
             raisedByRbacId = staffUser[0].id;
+            requesterDisplayName = staffUser[0].name || user.name || null;
             admissionNumber = staffUser[0].username || staffUser[0].email || `STAFF-${staffUser[0].id}`;
         }
 
-        // Handle photo upload
+        // Handle photo upload — store file path (not base64) for faster uploads
         let photoUrl = null;
         if (req.file) {
-            const fileBuffer = fs.readFileSync(req.file.path);
-            const base64Image = fileBuffer.toString('base64');
-            const mimeType = req.file.mimetype;
-            photoUrl = `data:${mimeType};base64,${base64Image}`;
+            photoUrl = `/uploads/tickets/${req.file.filename}`;
         }
 
         // Generate ticket number
@@ -196,8 +203,8 @@ exports.createTicket = async (req, res) => {
         try {
             [result] = await masterPool.query(
                 `INSERT INTO tickets 
-           (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, category_id, sub_category_id, title, description, photo_url, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+           (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, requester_display_name, category_id, sub_category_id, title, description, photo_url, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
                 [
                     ticketNumber,
                     studentId,
@@ -205,6 +212,7 @@ exports.createTicket = async (req, res) => {
                     requesterType,
                     raisedByRbacId,
                     raisedByHrmsId,
+                    requesterDisplayName,
                     category_id,
                     sub_category_id || null,
                     title.trim(),
@@ -213,17 +221,22 @@ exports.createTicket = async (req, res) => {
                 ]
             );
         } catch (insertError) {
-            if (insertError.code === 'ER_BAD_FIELD_ERROR' && raisedByHrmsId) {
+            if (insertError.code !== 'ER_BAD_FIELD_ERROR') {
+                throw insertError;
+            }
+
+            if (raisedByHrmsId) {
                 [result] = await masterPool.query(
                     `INSERT INTO tickets 
-               (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, category_id, sub_category_id, title, description, photo_url, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+               (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, category_id, sub_category_id, title, description, photo_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
                     [
                         ticketNumber,
                         studentId,
                         admissionNumber,
                         requesterType,
                         raisedByRbacId,
+                        raisedByHrmsId,
                         category_id,
                         sub_category_id || null,
                         title.trim(),
@@ -231,13 +244,12 @@ exports.createTicket = async (req, res) => {
                         photoUrl
                     ]
                 );
-            } else if (insertError.code === 'ER_BAD_FIELD_ERROR' && isStaffRequester) {
+            } else if (isStaffRequester) {
                 return res.status(503).json({
                     success: false,
                     message: 'Staff ticket support is still initializing. Please try again in a moment.'
                 });
-            }
-            if (insertError.code === 'ER_BAD_FIELD_ERROR') {
+            } else {
                 [result] = await masterPool.query(
                     `INSERT INTO tickets 
                (ticket_number, student_id, admission_number, category_id, sub_category_id, title, description, photo_url, status)
@@ -253,15 +265,10 @@ exports.createTicket = async (req, res) => {
                         photoUrl
                     ]
                 );
-            } else {
-                throw insertError;
             }
         }
 
-        // Clean up uploaded file
-        if (req.file && photoUrl && photoUrl.startsWith('data:')) {
-            fs.unlinkSync(req.file.path);
-        }
+        // Keep uploaded file on disk when stored as path URL
 
         // --- AUTO-ASSIGNMENT LOGIC ---
         // Find managers (staff) who are assigned to this category
@@ -364,18 +371,37 @@ exports.createTicket = async (req, res) => {
  */
 exports.getTickets = async (req, res) => {
     try {
-        const { status, category_id, assigned_to, student_id, page = 1, limit = 50 } = req.query;
+        const { status, category_id, assigned_to, student_id, requester_type, page = 1, limit = 50 } = req.query;
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
         let query = `
       SELECT 
-        t.*,
+        t.id,
+        t.ticket_number,
+        t.student_id,
+        t.admission_number,
+        t.requester_type,
+        t.raised_by_rbac_id,
+        t.raised_by_hrms_id,
+        t.requester_display_name,
+        t.category_id,
+        t.sub_category_id,
+        t.title,
+        t.description,
+        (CASE WHEN t.photo_url IS NOT NULL AND t.photo_url != '' THEN 1 ELSE 0 END) as has_photo,
+        t.status,
+        t.priority,
+        t.created_at,
+        t.updated_at,
+        t.resolved_at,
+        t.closed_at,
         c.name as category_name,
         sc.name as sub_category_name,
         s.student_name,
         s.student_mobile,
         ru_requester.name as staff_requester_name,
-        COALESCE(s.student_name, ru_requester.name) as requester_name,
+        ru_hrms.name as hrms_linked_name,
+        COALESCE(s.student_name, ru_requester.name, ru_hrms.name, t.requester_display_name) as requester_name,
         GROUP_CONCAT(DISTINCT CONCAT(ru.name, ' (', ru.username, ')') SEPARATOR ', ') as assigned_users,
         (
             SELECT JSON_ARRAYAGG(
@@ -396,6 +422,7 @@ exports.getTickets = async (req, res) => {
       LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
       LEFT JOIN students s ON t.student_id = s.id
       LEFT JOIN rbac_users ru_requester ON t.raised_by_rbac_id = ru_requester.id
+      ${HRMS_USER_JOIN}
       LEFT JOIN ticket_assignments ta ON t.id = ta.ticket_id AND ta.is_active = TRUE
       LEFT JOIN rbac_users ru ON ta.assigned_to = ru.id
     `;
@@ -418,6 +445,12 @@ exports.getTickets = async (req, res) => {
             params.push(student_id);
         }
 
+        if (requester_type === 'student') {
+            conditions.push("(t.requester_type = 'student' OR t.requester_type IS NULL)");
+        } else if (requester_type === 'staff' || requester_type === 'faculty') {
+            conditions.push("t.requester_type = 'staff'");
+        }
+
         if (assigned_to) {
             conditions.push('ta.assigned_to = ?');
             params.push(assigned_to);
@@ -431,6 +464,7 @@ exports.getTickets = async (req, res) => {
         params.push(parseInt(limit), offset);
 
         const [tickets] = await masterPool.query(query, params);
+        const enrichedTickets = await enrichTicketsRequesterNames(tickets);
 
         // Get total count
         let countQuery = 'SELECT COUNT(DISTINCT t.id) as total FROM tickets t';
@@ -446,7 +480,7 @@ exports.getTickets = async (req, res) => {
 
         res.json({
             success: true,
-            data: tickets,
+            data: enrichedTickets,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
@@ -481,11 +515,15 @@ exports.getTicket = async (req, res) => {
         sc.description as sub_category_description,
         s.student_name,
         s.student_mobile,
-        s.student_mobile
+        ru_requester.name as staff_requester_name,
+        ru_hrms.name as hrms_linked_name,
+        COALESCE(s.student_name, ru_requester.name, ru_hrms.name, t.requester_display_name) as requester_name
       FROM tickets t
       LEFT JOIN complaint_categories c ON t.category_id = c.id
       LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
       LEFT JOIN students s ON t.student_id = s.id
+      LEFT JOIN rbac_users ru_requester ON t.raised_by_rbac_id = ru_requester.id
+      ${HRMS_USER_JOIN}
       WHERE t.id = ?`,
             [id]
         );
@@ -496,6 +534,9 @@ exports.getTicket = async (req, res) => {
                 message: 'Ticket not found'
             });
         }
+
+        const [normalizedTicket] = await enrichTicketsRequesterNames([tickets[0]]);
+        const ticketRecord = normalizedTicket || normalizeRequesterFields(tickets[0]);
 
         // Check if user is a requester trying to access their own ticket
         if (user.role === 'student' || user.admission_number || user.admissionNumber) {
@@ -582,7 +623,7 @@ exports.getTicket = async (req, res) => {
         res.json({
             success: true,
             data: {
-                ...tickets[0],
+                ...ticketRecord,
                 assignments,
                 status_history: statusHistory,
                 comments,
@@ -628,7 +669,22 @@ exports.getStudentTickets = async (req, res) => {
 
             [tickets] = await masterPool.query(
                 `SELECT
-        t.*,
+        t.id,
+        t.ticket_number,
+        t.student_id,
+        t.admission_number,
+        t.requester_type,
+        t.category_id,
+        t.sub_category_id,
+        t.title,
+        t.description,
+        (CASE WHEN t.photo_url IS NOT NULL AND t.photo_url != '' THEN 1 ELSE 0 END) as has_photo,
+        t.status,
+        t.priority,
+        t.created_at,
+        t.updated_at,
+        t.resolved_at,
+        t.closed_at,
         c.name as category_name,
         sc.name as sub_category_name,
         (
@@ -652,7 +708,22 @@ exports.getStudentTickets = async (req, res) => {
             try {
                 [tickets] = await masterPool.query(
                     `SELECT
-        t.*,
+        t.id,
+        t.ticket_number,
+        t.student_id,
+        t.admission_number,
+        t.requester_type,
+        t.category_id,
+        t.sub_category_id,
+        t.title,
+        t.description,
+        (CASE WHEN t.photo_url IS NOT NULL AND t.photo_url != '' THEN 1 ELSE 0 END) as has_photo,
+        t.status,
+        t.priority,
+        t.created_at,
+        t.updated_at,
+        t.resolved_at,
+        t.closed_at,
         c.name as category_name,
         sc.name as sub_category_name,
         (
