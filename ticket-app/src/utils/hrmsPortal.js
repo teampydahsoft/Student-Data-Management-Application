@@ -40,14 +40,47 @@ export const isHrmsTicketUser = (user) =>
 export const hasStudentDatabasePortalAccess = (user) =>
     !user?.is_worker && (!isHrmsTicketUser(user) || isLinkedHrmsRbacUser(user));
 
+/**
+ * HRMS portal base URL (login page fallback when SSO URL cannot be minted).
+ */
+export const getHrmsPortalUrl = () => HRMS_PORTAL_URL;
+
+/** Return link metadata for HRMS-only ticket sessions. */
+export const getHrmsOnlyReturnLink = () => ({
+    id: 'hrms-return',
+    label: 'Back to HRMS',
+    shortLabel: 'HRMS',
+    href: getHrmsPortalUrl(),
+    external: true,
+    usesSso: true,
+});
+
+/**
+ * Fetch a signed SSO URL from ticket-backend and redirect to HRMS (auto-login).
+ * Falls back to plain HRMS portal URL if SSO minting fails.
+ */
+export const navigateToHrmsPortal = async (api) => {
+    try {
+        const response = await api.get('/auth/hrms-return-url');
+        if (response.data?.success && response.data?.url) {
+            window.location.href = response.data.url;
+            return;
+        }
+    } catch (error) {
+        console.error('HRMS return SSO failed:', error);
+    }
+    window.location.href = getHrmsPortalUrl();
+};
+
 export const getWorkspaceLinks = (user, { mainAppUrl, token } = {}) => {
     const links = [];
 
-    if (isHrmsTicketUser(user)) {
+    // HRMS-only ticket sessions: no outbound HRMS link (user arrived via HRMS SSO; use browser back).
+    if (isLinkedHrmsRbacUser(user)) {
         links.push({
             id: 'hrms',
             label: 'HRMS Portal',
-            href: HRMS_PORTAL_URL,
+            href: getHrmsPortalUrl(),
             external: true,
         });
     }

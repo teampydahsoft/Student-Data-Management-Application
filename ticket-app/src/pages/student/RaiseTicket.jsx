@@ -174,12 +174,12 @@ const RaiseTicket = () => {
     }
 
     return (
-        <div className="student-page-container animate-fade-in-up">
+        <div className="student-page-container animate-fade-in-up raise-ticket-page">
             {/* Header Section */}
-            <div className="flex-col md:flex-row flex-between pb-2 border-b border-gray-100" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <div className="flex-col md:flex-row flex-between pb-2 border-b border-gray-100" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '0.375rem', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                 <div className="page-header" style={{ marginBottom: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#2563eb', marginBottom: '0.25rem' }}>
-                        <Ticket size={16} />
+                    <div className="raise-ticket-header-badge" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#2563eb', marginBottom: '0.125rem' }}>
+                        <Ticket size={14} />
                         <span style={{ fontSize: '0.625rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.2em' }}>Support Case</span>
                     </div>
                     <h1 className="page-title">
@@ -263,7 +263,7 @@ const RaiseTicket = () => {
                     <textarea
                         value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        rows={5}
+                        rows={4}
                         placeholder="Please provide as much detail as possible to help us resolve this quickly..."
                         className="form-textarea"
                         style={{ resize: 'none' }}
@@ -285,11 +285,11 @@ const RaiseTicket = () => {
                                 style={{ display: 'none' }}
                             />
                             <label htmlFor="photo-upload" style={{ cursor: 'pointer', display: 'block' }}>
-                                <div style={{ width: '4rem', height: '4rem', backgroundColor: '#f9fafb', borderRadius: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
-                                    <Camera size={32} color="#9ca3af" />
+                                <div style={{ width: '3rem', height: '3rem', backgroundColor: '#f9fafb', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto' }}>
+                                    <Camera size={24} color="#9ca3af" />
                                 </div>
-                                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Click or drag photo</p>
-                                <p style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500, letterSpacing: '0.025em' }}>JPG, PNG up to 1MB</p>
+                                <p className="photo-upload-title" style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#111827', marginBottom: '0.125rem' }}>Click or drag photo</p>
+                                <p style={{ fontSize: '0.6875rem', color: '#6b7280', fontWeight: 500, letterSpacing: '0.025em' }}>JPG, PNG up to 1MB</p>
                             </label>
                         </div>
                     ) : (
@@ -313,11 +313,11 @@ const RaiseTicket = () => {
                 </div>
 
                 {/* Submit Button */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem', position: 'relative', zIndex: 10 }}>
+                <div className="raise-ticket-submit-wrap" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem', position: 'relative', zIndex: 10 }}>
                     <button
                         type="submit"
                         disabled={createMutation.isPending || photoProcessing}
-                        className="btn-primary"
+                        className="btn-primary raise-ticket-submit-btn"
                         style={{ width: '100%', padding: '1rem', fontSize: '1.125rem' }}
                     >
                         {createMutation.isPending ? (
@@ -356,7 +356,7 @@ const RaiseTicket = () => {
 
             {/* Info Box */}
             <div
-                className="animate-fade-in"
+                className="raise-ticket-info-box animate-fade-in"
                 style={{ background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)', border: '1px solid #dbeafe', borderRadius: '1.5rem', padding: '1.5rem 2rem' }}
             >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>

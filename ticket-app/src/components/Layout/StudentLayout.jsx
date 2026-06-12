@@ -17,7 +17,8 @@ import {
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import NotificationPrompt from '../NotificationPrompt';
-import { getWorkspaceLinks, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser } from '../../utils/hrmsPortal';
+import { getWorkspaceLinks, getHrmsOnlyReturnLink, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
+import api from '../../config/api';
 import { getMainAppReturnUrl } from '../../utils/mainAppUrl';
 import { RiExternalLinkLine } from 'react-icons/ri';
 
@@ -31,7 +32,18 @@ const StudentLayout = ({ children }) => {
     const { user, logout, token } = useAuthStore();
     const isHrmsOnly = isHrmsOnlyTicketUser(user);
     const hasPortalAccess = hasStudentDatabasePortalAccess(user);
-    const workspaceLinks = getWorkspaceLinks(user, { token });
+    const workspaceLinks = isHrmsOnly ? [] : getWorkspaceLinks(user, { token });
+    const hrmsReturnLink = getHrmsOnlyReturnLink();
+
+    const hrmsReturnNavItem = {
+        icon: RiLogoutBoxRLine,
+        activeIcon: RiLogoutBoxRLine,
+        label: hrmsReturnLink.label,
+        shortLabel: hrmsReturnLink.shortLabel,
+        href: hrmsReturnLink.href,
+        isExternal: true,
+        isHrmsReturn: true,
+    };
 
     // --- Navigation Configuration (Short List) ---
     const allNavItems = [
@@ -43,12 +55,20 @@ const StudentLayout = ({ children }) => {
     ];
 
     const navItems = isHrmsOnly
-        ? allNavItems.filter((item) => !item.isExternal)
+        ? [...allNavItems.filter((item) => !item.isExternal), hrmsReturnNavItem]
         : allNavItems;
 
-    const mobilePrimaryItems = navItems.slice(0, 4); // Show first 4 on mobile bar
+    const mobilePrimaryItems = isHrmsOnly
+        ? [...allNavItems.filter((item) => !item.isExternal), hrmsReturnNavItem]
+        : navItems.slice(0, 4);
 
     const handleNavigation = (e, item) => {
+        if (item.isHrmsReturn) {
+            e.preventDefault();
+            navigateToHrmsPortal(api);
+            setMoreMenuOpen(false);
+            return;
+        }
         if (item.isExternal) {
             e.preventDefault();
             window.location.href = getMainAppReturnUrl({
@@ -199,7 +219,13 @@ const StudentLayout = ({ children }) => {
                 /* Desktop Sidebar */
                 @media (max-width: 1024px) {
                     .desktop-sidebar { display: none !important; }
-                    .main-content { margin-left: 0 !important; padding-top: 24px !important; padding-bottom: 80px !important; }
+                    .main-content {
+                        margin-left: 0 !important;
+                        padding: 10px 12px calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+                        width: 100% !important;
+                        max-width: 100vw !important;
+                        box-sizing: border-box !important;
+                    }
                     .mobile-bottom-bar { display: flex !important; }
                 }
                 @media (min-width: 1025px) {
@@ -234,7 +260,24 @@ const StudentLayout = ({ children }) => {
 
                 <nav style={styles.nav} className="custom-scrollbar">
                     {navItems.map((item, index) => {
-                        return item.isExternal ? (
+                        return item.isHrmsReturn ? (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={(e) => handleNavigation(e, item)}
+                                style={{
+                                    ...styles.navItem(false),
+                                    width: '100%',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                }}
+                                className="hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                <item.icon size={20} style={{ minWidth: '20px' }} />
+                                <span>{item.label}</span>
+                            </button>
+                        ) : item.isExternal ? (
                             <a
                                 key={index}
                                 href={portalExternalHref(item.path)}
@@ -357,7 +400,27 @@ const StudentLayout = ({ children }) => {
             {/* Mobile Bottom Bar */}
             <div style={styles.mobileBottomBar} className="mobile-bottom-bar">
                 {mobilePrimaryItems.map((item, index) => {
-                    const active = !item.isExternal && window.location.pathname === item.path; // Simple active check
+                    const active = !item.isExternal && !item.isHrmsReturn && window.location.pathname === item.path;
+
+                    if (item.isHrmsReturn) {
+                        return (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={(e) => handleNavigation(e, item)}
+                                style={{
+                                    ...styles.mobileNavItem(false),
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                }}
+                            >
+                                <item.icon size={24} />
+                                <span>{item.shortLabel || item.label}</span>
+                            </button>
+                        );
+                    }
 
                     if (item.isExternal) {
                         return (

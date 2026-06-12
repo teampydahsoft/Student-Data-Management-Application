@@ -27,6 +27,8 @@ Write-Host "==> Building ticket-app for $TicketPublicUrl"
 $envContent = @"
 VITE_API_URL=/api
 VITE_MAIN_APP_URL=$MainAppUrl
+VITE_HRMS_PORTAL_URL=https://hrms.pydah.edu.in
+VITE_TICKET_APP_URL=$TicketPublicUrl
 "@
 Set-Content -Path (Join-Path $TicketAppDir ".env.production") -Value $envContent -Encoding UTF8
 

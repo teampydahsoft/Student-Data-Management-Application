@@ -30,6 +30,8 @@ else
 fi
 
 upsert_env "TICKET_APP_URL" "$TICKET_PUBLIC_URL"
+upsert_env "HRMS_PORTAL_URL" "${HRMS_PORTAL_URL:-https://hrms.pydah.edu.in}"
+upsert_env "HRMS_SSO_CALLBACK_PATH" "${HRMS_SSO_CALLBACK_PATH:-/auth-callback}"
 upsert_env "CORS_ORIGINS" "$MAIN_APP_URL,$TICKET_PUBLIC_URL,http://43.201.200.99"
 
 echo "==> Updated env keys:"
