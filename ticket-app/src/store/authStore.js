@@ -15,7 +15,9 @@ export { MODULE_ROUTE_MAP, getModuleKeyForPath };
 export const resolveUserType = (user) => {
     if (!user) return null;
     if (user.role === 'student') return 'student';
-    if (user.ticketAccess === 'request' || user.is_hrms_session || user.hrmsId) return 'requester';
+    // HRMS-only ticket session (no linked rbac_users / portal id)
+    if ((user.is_hrms_session || user.hrmsId) && !user.id) return 'requester';
+    if (user.ticketAccess === 'request') return 'requester';
     return 'admin';
 };
 

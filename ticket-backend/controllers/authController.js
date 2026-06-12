@@ -140,7 +140,8 @@ exports.verifyToken = async (req, res) => {
 
         const { masterPool } = require('../config/database');
 
-        if (authUser.is_hrms_session || authUser.hrmsId) {
+        // HRMS-only SSO (no linked rbac id) — not portal admins with hrms_id on their account
+        if ((authUser.is_hrms_session || authUser.hrmsId) && !authUser.id) {
             return res.status(200).json({
                 success: true,
                 user: {
