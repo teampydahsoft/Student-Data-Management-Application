@@ -7,10 +7,13 @@ import '../../styles/admin-pages.css';
 import { DashboardSkeleton } from '../../components/SkeletonLoader';
 
 import useAuthStore from '../../store/authStore';
+import { getWorkspaceLinks } from '../../utils/hrmsPortal';
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const { token, user } = useAuthStore();
+    const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
+    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl, token });
 
     // Fetch ticket stats
     const { data: statsData, isLoading } = useQuery({
@@ -153,23 +156,34 @@ const AdminDashboard = () => {
                                 <ArrowRight size={20} className="text-gray-300" />
                             </div>
                         </div>
-                        <div
-                            className="card-base hover:shadow-md cursor-pointer transition-all bg-white"
-                            onClick={() => window.location.href = `${import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173'}/auth-callback?token=${token}&role=${user?.role || 'admin'}&from=ticket_app`}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="quick-action-icon text-blue-600 bg-blue-50 flex items-center justify-center rounded-lg" style={{ width: '40px', height: '40px' }}>
-                                    <div style={{ transform: 'rotate(180deg)' }}>
-                                        <ArrowRight size={24} />
+                        {workspaceLinks.map((link) => (
+                            <div
+                                key={link.id}
+                                className="card-base hover:shadow-md cursor-pointer transition-all bg-white"
+                                onClick={() => {
+                                    if (link.external) {
+                                        window.open(link.href, '_blank', 'noopener,noreferrer');
+                                    } else {
+                                        window.location.href = link.href;
+                                    }
+                                }}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="quick-action-icon text-blue-600 bg-blue-50 flex items-center justify-center rounded-lg" style={{ width: '40px', height: '40px' }}>
+                                        <div style={{ transform: 'rotate(180deg)' }}>
+                                            <ArrowRight size={24} />
+                                        </div>
                                     </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-gray-900">{link.label}</h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            {link.id === 'hrms' ? 'Open HRMS application' : 'Switch to main application'}
+                                        </p>
+                                    </div>
+                                    <ArrowRight size={20} className="text-gray-300" />
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-gray-900">Student Database</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Switch to main application</p>
-                                </div>
-                                <ArrowRight size={20} className="text-gray-300" />
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </div>

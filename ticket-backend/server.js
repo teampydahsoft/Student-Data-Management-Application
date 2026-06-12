@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const dotenv = require('dotenv');
 const { testConnection } = require('./config/database');
+const { getHRMSConnection } = require('./config/mongoConfig');
 
 // Load env vars
 dotenv.config();
@@ -75,32 +76,33 @@ app.use((err, req, res, next) => {
 
 // Start Server
 const startServer = async () => {
-    // Test Database Connection
     const isConnected = await testConnection();
-    if (isConnected) {
-        // Run pending migrations
-        console.log('\n📦 Checking for pending migrations...');
+    if (!isConnected) {
+        console.error('Failed to connect to database. Server not started.');
+        process.exit(1);
+    }
+
+    getHRMSConnection();
+
+    const server = require('http').createServer({
+        maxHttpHeaderSize: 32768
+    }, app);
+
+    server.listen(PORT, () => {
+        console.log(`\n✅ Ticket Backend Service running on port ${PORT}`);
+        console.log(`🌐 API available at: http://localhost:${PORT}/api`);
+    });
+
+    // Run migrations in the background so API is available immediately
+    console.log('\n📦 Checking for pending migrations (background)...');
+    (async () => {
         try {
             const { runMigrations } = require('./migrations/migrate');
             await runMigrations();
         } catch (error) {
             console.warn('⚠️  Migration check failed:', error.message);
-            console.warn('Continuing server startup...\n');
         }
-
-        // HTTP 431 Fix: Increase header size limit
-        const server = require('http').createServer({
-            maxHttpHeaderSize: 32768 // 32KB
-        }, app);
-
-        server.listen(PORT, () => {
-            console.log(`\n✅ Ticket Backend Service running on port ${PORT}`);
-            console.log(`🌐 API available at: http://localhost:${PORT}/api`);
-        });
-    } else {
-        console.error('Failed to connect to database. Server not started.');
-        process.exit(1);
-    }
+    })();
 };
 
 startServer();

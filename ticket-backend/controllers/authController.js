@@ -1,5 +1,9 @@
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { Student } = require('../models');
+const { authenticateHRMSUser } = require('../utils/hrmsAuth');
+const { verifySsoToken, resolveUserFromSsoPayload } = require('../utils/hrmsSso');
+const { resolveTicketAccessMode } = require('../utils/ticketAccess');
 
 // --- Helper Functions for Response Building ---
 
@@ -63,7 +67,8 @@ const buildRBACUserResponse = (rbacUser) => {
         courseId: rbacUser.course_id,
         branchId: rbacUser.branch_id,
         permissions: permissions,
-        isActive: rbacUser.is_active
+        isActive: rbacUser.is_active,
+        ...(rbacUser.hrms_id ? { hrmsId: rbacUser.hrms_id, is_hrms_user: true } : {})
     };
 };
 
@@ -76,6 +81,50 @@ const buildTicketEmployeeResponse = (emp) => ({
     is_worker: true,
     permissions: [] // Ticket employees have specific role-based access
 });
+
+const attachTicketAccess = async (userPayload, masterPool, options = {}) => {
+    const { id, role, is_worker: isWorker, is_hrms_session: isHrmsSession, hrmsId } = userPayload;
+    if (role === 'student') {
+        return { ...userPayload, ticketAccess: 'request' };
+    }
+    if ((isHrmsSession || hrmsId) && !id) {
+        return { ...userPayload, ticketAccess: 'request' };
+    }
+    const ticketAccess = await resolveTicketAccessMode(masterPool, id, role, isWorker || options.isWorker);
+    return { ...userPayload, ticketAccess };
+};
+
+const buildTokenPayload = (user) => ({
+    id: user.id || null,
+    role: user.role,
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    ...(user.hrmsId && !user.id
+        ? { hrmsId: user.hrmsId, is_hrms_session: true }
+        : user.hrmsId
+            ? { hrmsId: user.hrmsId, is_hrms_user: true }
+            : {}),
+    ...(user.is_hrms_user ? { is_hrms_user: true } : {}),
+    ...(user.is_worker ? { is_worker: true } : {}),
+    ...(user.admission_number ? { admissionNumber: user.admission_number } : {})
+});
+
+const issueAuthResponse = async (res, userPayload, masterPool, options = {}) => {
+    const user = await attachTicketAccess(userPayload, masterPool, options);
+    const token = jwt.sign(
+        buildTokenPayload(user),
+        process.env.JWT_SECRET || 'secret_key',
+        { expiresIn: '24h' }
+    );
+
+    return res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        token,
+        user
+    });
+};
 
 
 // --- Controllers ---
@@ -90,6 +139,22 @@ exports.verifyToken = async (req, res) => {
         }
 
         const { masterPool } = require('../config/database');
+
+        if (authUser.is_hrms_session || authUser.hrmsId) {
+            return res.status(200).json({
+                success: true,
+                user: {
+                    hrmsId: authUser.hrmsId,
+                    name: authUser.name,
+                    username: authUser.username,
+                    email: authUser.email,
+                    role: authUser.role || 'faculty',
+                    is_hrms_session: true,
+                    is_hrms_user: true,
+                    ticketAccess: 'request'
+                }
+            });
+        }
 
         // 1. Check if user is a student
         if (authUser.role === 'student') {
@@ -143,14 +208,14 @@ exports.verifyToken = async (req, res) => {
                 }
                 return res.status(200).json({
                     success: true,
-                    user: buildTicketEmployeeResponse(employees[0])
+                    user: await attachTicketAccess(buildTicketEmployeeResponse(employees[0]), masterPool, { isWorker: true })
                 });
             }
         }
 
         // 3. Check RBAC Users
         const [rbacRows] = await masterPool.query(
-            'SELECT id, name, username, email, role, permissions, college_id, course_id, branch_id, is_active FROM rbac_users WHERE id = ? LIMIT 1',
+            'SELECT id, name, username, email, role, permissions, college_id, course_id, branch_id, is_active, hrms_id FROM rbac_users WHERE id = ? LIMIT 1',
             [authUser.id]
         );
 
@@ -176,20 +241,36 @@ exports.verifyToken = async (req, res) => {
 
             return res.status(200).json({
                 success: true,
-                user: buildRBACUserResponse(rbacUser)
+                user: await attachTicketAccess(buildRBACUserResponse(rbacUser), masterPool)
             });
         }
 
-        // 4. Check Admins (Legacy)
+        // 4. Check Legacy Staff Users
+        const [staffRows] = await masterPool.query(
+            'SELECT id, username, email, assigned_modules, is_active FROM staff_users WHERE id = ? LIMIT 1',
+            [authUser.id]
+        );
+
+        if (staffRows && staffRows.length > 0) {
+            const staffUser = staffRows[0];
+            if (!staffUser.is_active) {
+                return res.status(403).json({ success: false, message: 'Account deactivated' });
+            }
+            const staffResponse = await attachTicketAccess(buildStaffResponse(staffUser), masterPool);
+            return res.status(200).json({ success: true, user: staffResponse });
+        }
+
+        // 5. Check Admins (Legacy)
         const [admins] = await masterPool.query(
             'SELECT id, username, email, password FROM admins WHERE id = ? LIMIT 1',
             [authUser.id]
         );
 
         if (admins && admins.length > 0) {
+            const adminResponse = await attachTicketAccess(buildAdminResponse(admins[0]), masterPool);
             return res.status(200).json({
                 success: true,
-                user: buildAdminResponse(admins[0])
+                user: adminResponse
             });
         }
 
@@ -218,7 +299,6 @@ exports.verifyToken = async (req, res) => {
 exports.unifiedLogin = async (req, res) => {
     try {
         const { username, password } = req.body;
-        const bcrypt = require('bcryptjs');
         const { masterPool } = require('../config/database');
 
         if (!username || !password) {
@@ -241,65 +321,50 @@ exports.unifiedLogin = async (req, res) => {
                     const rbacUser = rbacAdmin[0];
                     if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-                    const rbacResponse = buildRBACUserResponse(rbacUser);
-                    const token = jwt.sign(
-                        {
-                            id: rbacUser.id,
-                            role: rbacUser.role,
-                            username: rbacUser.username
-                        },
-                        process.env.JWT_SECRET || 'secret_key',
-                        { expiresIn: '24h' }
-                    );
-
-                    return res.status(200).json({
-                        success: true,
-                        token,
-                        user: rbacResponse
-                    });
+                    return issueAuthResponse(res, buildRBACUserResponse(rbacUser), masterPool);
                 }
 
-                // If not upgraded, return as standard Admin
-                const token = jwt.sign(
-                    { id: admin.id, role: 'super_admin', username: admin.username },
-                    process.env.JWT_SECRET || 'secret_key',
-                    { expiresIn: '24h' }
-                );
-                return res.status(200).json({
-                    success: true,
-                    token,
-                    user: buildAdminResponse(admin)
-                });
+                return issueAuthResponse(res, buildAdminResponse(admin), masterPool);
             }
         }
 
-        // 2. Check RBAC Users
+        // 2. HRMS MongoDB authentication (same flow as Student Database portal)
+        try {
+            const hrmsResult = await authenticateHRMSUser(username, password, masterPool);
+            if (hrmsResult?.rbacUser) {
+                const rbacUser = hrmsResult.rbacUser;
+                if (!rbacUser.is_active) {
+                    return res.status(403).json({ success: false, message: 'Account deactivated' });
+                }
+                return issueAuthResponse(res, { ...buildRBACUserResponse(rbacUser), is_hrms_user: true }, masterPool);
+            }
+            if (hrmsResult?.hrmsProfile) {
+                return issueAuthResponse(res, { ...hrmsResult.hrmsProfile, is_hrms_user: true }, masterPool);
+            }
+        } catch (hrmsError) {
+            if (hrmsError.statusCode) {
+                return res.status(hrmsError.statusCode).json({ success: false, message: hrmsError.message });
+            }
+        }
+
+        // 3. Check traditional local RBAC Users
         const [rbacUsers] = await masterPool.query(
-            'SELECT id, username, password, role, name, email, permissions, is_active, phone, college_id, course_id, branch_id FROM rbac_users WHERE username = ? OR email = ? LIMIT 1',
+            `SELECT id, username, password, role, name, email, permissions, is_active, phone,
+                    college_id, course_id, branch_id
+             FROM rbac_users WHERE username = ? OR email = ? LIMIT 1`,
             [username, username]
         );
 
         if (rbacUsers.length > 0) {
             const user = rbacUsers[0];
-            if (await bcrypt.compare(password, user.password)) {
+            if (user.password && await bcrypt.compare(password, user.password)) {
                 if (!user.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-                const rbacResponse = buildRBACUserResponse(user);
-                const token = jwt.sign(
-                    { id: user.id, role: user.role, username: user.username },
-                    process.env.JWT_SECRET || 'secret_key',
-                    { expiresIn: '24h' }
-                );
-
-                return res.status(200).json({
-                    success: true,
-                    token,
-                    user: rbacResponse
-                });
+                return issueAuthResponse(res, buildRBACUserResponse(user), masterPool);
             }
         }
 
-        // 3. Check Ticket Employees
+        // 4. Check Ticket Employees
         const [employees] = await masterPool.query(
             'SELECT id, username, password_hash, role, name, email FROM ticket_employees WHERE username = ? AND is_active = 1',
             [username]
@@ -308,21 +373,16 @@ exports.unifiedLogin = async (req, res) => {
         if (employees.length > 0) {
             const employee = employees[0];
             if (employee.password_hash && await bcrypt.compare(password, employee.password_hash)) {
-                const token = jwt.sign(
-                    { id: employee.id, role: employee.role, username: employee.username, is_worker: true },
-                    process.env.JWT_SECRET || 'secret_key',
-                    { expiresIn: '24h' }
+                return issueAuthResponse(
+                    res,
+                    buildTicketEmployeeResponse(employee),
+                    masterPool,
+                    { isWorker: true }
                 );
-
-                return res.status(200).json({
-                    success: true,
-                    token,
-                    user: buildTicketEmployeeResponse(employee)
-                });
             }
         }
 
-        // 4. Check Staff Users (from Main App)
+        // 5. Check Legacy Staff Users (from Main App)
         const [staffRows] = await masterPool.query(
             'SELECT id, username, email, password_hash, assigned_modules, is_active FROM staff_users WHERE username = ? LIMIT 1',
             [username]
@@ -333,16 +393,11 @@ exports.unifiedLogin = async (req, res) => {
             if (await bcrypt.compare(password, staffUser.password_hash)) {
                 if (!staffUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-                const staffResponse = buildStaffResponse(staffUser);
-                const token = jwt.sign({
-                    id: staffUser.id, username: staffUser.username, role: 'staff'
-                }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '24h' });
-
-                return res.json({ success: true, message: 'Login successful', token, user: staffResponse });
+                return issueAuthResponse(res, buildStaffResponse(staffUser), masterPool);
             }
         }
 
-        // 5. Check Students
+        // 6. Check Students
         const [credentials] = await masterPool.query(
             `SELECT id, student_id, admission_number, username, password_hash 
              FROM student_credentials 
@@ -366,34 +421,21 @@ exports.unifiedLogin = async (req, res) => {
 
                 if (students && students.length > 0) {
                     const s = students[0];
-                    const token = jwt.sign(
-                        {
-                            id: cred.student_id,
-                            role: 'student',
-                            username: cred.username,
-                            admissionNumber: cred.admission_number
-                        },
-                        process.env.JWT_SECRET || 'secret_key',
-                        { expiresIn: '24h' }
-                    );
 
-                    return res.status(200).json({
-                        success: true,
-                        token,
-                        user: {
-                            id: cred.student_id,
-                            username: cred.username,
-                            admission_number: cred.admission_number,
-                            role: 'student',
-                            name: s.student_name,
-                            course: s.course,
-                            branch: s.branch,
-                            college: s.college,
-                            current_year: s.current_year,
-                            current_semester: s.current_semester,
-                            student_photo: s.student_photo
-                        }
-                    });
+                    return issueAuthResponse(res, {
+                        id: cred.student_id,
+                        username: cred.username,
+                        admission_number: cred.admission_number,
+                        role: 'student',
+                        name: s.student_name,
+                        course: s.course,
+                        branch: s.branch,
+                        college: s.college,
+                        current_year: s.current_year,
+                        current_semester: s.current_semester,
+                        student_photo: s.student_photo,
+                        ticketAccess: 'request'
+                    }, masterPool);
                 }
             }
         }
@@ -407,4 +449,107 @@ exports.unifiedLogin = async (req, res) => {
             message: 'Server error during login'
         });
     }
+};
+
+/**
+ * Exchange an HRMS / portal SSO JWT for a ticket-app session (no password).
+ * HRMS signs the incoming token with JWT_SECRET or HRMS_SSO_SECRET.
+ * @route POST /api/auth/hrms-sso-session
+ */
+exports.hrmsSsoSession = async (req, res) => {
+    try {
+        const token = req.body.token || req.body.ssoToken;
+        if (!token) {
+            return res.status(400).json({ success: false, message: 'SSO token is required' });
+        }
+
+        const { masterPool } = require('../config/database');
+        let payload;
+
+        try {
+            payload = verifySsoToken(token);
+        } catch (error) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired SSO token'
+            });
+        }
+
+        const resolved = await resolveUserFromSsoPayload(payload, masterPool);
+        if (!resolved) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unable to resolve user from SSO token'
+            });
+        }
+
+        if (resolved.type === 'rbac') {
+            const rbacUser = resolved.user;
+            if (!rbacUser.is_active) {
+                return res.status(403).json({ success: false, message: 'Account deactivated' });
+            }
+            return issueAuthResponse(
+                res,
+                { ...buildRBACUserResponse(rbacUser), is_hrms_user: true },
+                masterPool
+            );
+        }
+
+        if (resolved.type === 'hrms') {
+            return issueAuthResponse(
+                res,
+                { ...resolved.profile, is_hrms_user: true },
+                masterPool
+            );
+        }
+
+        if (resolved.type === 'student') {
+            const s = resolved.student;
+            return issueAuthResponse(res, {
+                id: s.id,
+                username: s.username,
+                admission_number: s.admission_number,
+                role: 'student',
+                name: s.student_name,
+                course: s.course,
+                branch: s.branch,
+                college: s.college,
+                current_year: s.current_year,
+                current_semester: s.current_semester,
+                student_photo: s.student_photo
+            }, masterPool);
+        }
+
+        return res.status(403).json({ success: false, message: 'Unsupported SSO user type' });
+    } catch (error) {
+        console.error('HRMS SSO session error:', error);
+        res.status(500).json({ success: false, message: 'Server error during SSO login' });
+    }
+};
+
+/**
+ * Public SSO integration info for HRMS / portal developers.
+ * @route GET /api/auth/sso-config
+ */
+exports.getSsoConfig = (req, res) => {
+    const ticketAppUrl = process.env.TICKET_APP_URL || 'http://localhost:5174';
+
+    res.json({
+        success: true,
+        data: {
+            ticketAppUrl,
+            callbackPath: '/auth-callback',
+            callbackExample: `${ticketAppUrl}/auth-callback?token={jwt}&from=hrms&redirect=/student/my-tickets`,
+            exchangeEndpoint: '/api/auth/hrms-sso-session',
+            verifyEndpoint: '/api/auth/verify',
+            signingSecrets: [
+                'JWT_SECRET (shared with Student Database — pass-through SSO)',
+                'HRMS_SSO_SECRET (optional dedicated secret for token exchange)'
+            ],
+            requiredTokenClaims: {
+                hrmsOnlyUser: ['hrmsId', 'role', 'username', 'name', 'email'],
+                linkedRbacUser: ['id', 'role', 'username', 'name', 'email', 'hrmsId (optional)']
+            }
+        }
+    });
 };

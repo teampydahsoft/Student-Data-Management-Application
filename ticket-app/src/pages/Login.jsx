@@ -22,7 +22,7 @@ const Login = ({ isStudent = false }) => {
 
     useEffect(() => {
         if (isAuthenticated) {
-            if (userType === 'student') {
+            if (userType === 'student' || userType === 'requester') {
                 navigate('/student/my-tickets');
             } else {
                 navigate('/tickets');
@@ -141,7 +141,7 @@ const Login = ({ isStudent = false }) => {
                         <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                             <div>
                                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                                    Username / Admission No
+                                    Username / Admission No / Employee ID
                                 </label>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -153,7 +153,7 @@ const Login = ({ isStudent = false }) => {
                                         value={formData.username}
                                         onChange={handleChange}
                                         className="block w-full pl-9 sm:pl-10 pr-3 py-2.5 sm:py-3 bg-[#FAFAF5]/50 border border-gray-200 rounded-xl text-sm sm:text-base text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A2517]/20 focus:border-[#1A2517] transition-all"
-                                        placeholder="Enter Username or Admission No"
+                                        placeholder="Enter Username, Admission No, or Employee ID"
                                         disabled={loading}
                                     />
                                 </div>

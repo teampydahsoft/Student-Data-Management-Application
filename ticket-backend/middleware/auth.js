@@ -30,6 +30,9 @@ const authMiddleware = (req, res, next) => {
         if (decoded.admissionNumber && !decoded.admission_number) {
             decoded.admission_number = decoded.admissionNumber;
         }
+        if (decoded.hrmsId && !decoded.is_hrms_session) {
+            decoded.is_hrms_session = true;
+        }
 
         req.user = decoded;
         // Legacy support for admin checks if needed

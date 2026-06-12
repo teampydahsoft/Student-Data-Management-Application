@@ -51,17 +51,31 @@ const generateTicketNumber = async () => {
 };
 
 /**
- * Create a new ticket (student raises complaint)
+ * Create a new ticket (student or staff raises complaint)
  */
 exports.createTicket = async (req, res) => {
     try {
         const { category_id, sub_category_id, title, description } = req.body;
-        const student = req.user || req.student;
+        const user = req.user || req.student;
 
-        if (!student || !student.admission_number) {
+        if (!user) {
             return res.status(401).json({
                 success: false,
-                message: 'Student authentication required'
+                message: 'Authentication required'
+            });
+        }
+
+        const isStudent = user.role === 'student' || user.admission_number || user.admissionNumber;
+        const isHrmsSession = !!(user.is_hrms_session || user.hrmsId);
+        const isStaffRequester = !isStudent && (
+            isHrmsSession ||
+            (user.id && user.role !== 'super_admin' && user.role !== 'admin' && !user.is_worker)
+        );
+
+        if (!isStudent && !isStaffRequester) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only students and staff can raise tickets through this endpoint'
             });
         }
 
@@ -114,20 +128,56 @@ exports.createTicket = async (req, res) => {
             }
         }
 
-        // Get student ID
-        const [studentData] = await masterPool.query(
-            'SELECT id, admission_number FROM students WHERE admission_number = ?',
-            [student.admission_number]
-        );
+        let studentId = null;
+        let admissionNumber = null;
+        let requesterType = 'student';
+        let raisedByRbacId = null;
+        let raisedByHrmsId = null;
 
-        if (studentData.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Student not found in database. Please contact admin.'
-            });
+        if (isStudent) {
+            const admissionNo = user.admission_number || user.admissionNumber;
+            const [studentData] = await masterPool.query(
+                'SELECT id, admission_number FROM students WHERE admission_number = ?',
+                [admissionNo]
+            );
+
+            if (studentData.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Student not found in database. Please contact admin.'
+                });
+            }
+
+            studentId = studentData[0].id;
+            admissionNumber = studentData[0].admission_number;
+        } else if (isHrmsSession) {
+            requesterType = 'staff';
+            raisedByHrmsId = user.hrmsId;
+            admissionNumber = user.username || user.email || `HRMS-${user.hrmsId}`;
+        } else {
+            let [staffUser] = await masterPool.query(
+                'SELECT id, username, email, name FROM rbac_users WHERE id = ? LIMIT 1',
+                [user.id]
+            );
+
+            if (staffUser.length === 0 && user.username) {
+                [staffUser] = await masterPool.query(
+                    'SELECT id, username, email, name FROM rbac_users WHERE username = ? OR email = ? LIMIT 1',
+                    [user.username, user.username]
+                );
+            }
+
+            if (staffUser.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Staff profile not found. Please contact admin.'
+                });
+            }
+
+            requesterType = 'staff';
+            raisedByRbacId = staffUser[0].id;
+            admissionNumber = staffUser[0].username || staffUser[0].email || `STAFF-${staffUser[0].id}`;
         }
-
-        const studentId = studentData[0].id;
 
         // Handle photo upload
         let photoUrl = null;
@@ -141,22 +191,72 @@ exports.createTicket = async (req, res) => {
         // Generate ticket number
         const ticketNumber = await generateTicketNumber();
 
-        // Create ticket
-        const [result] = await masterPool.query(
-            `INSERT INTO tickets 
-       (ticket_number, student_id, admission_number, category_id, sub_category_id, title, description, photo_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-            [
-                ticketNumber,
-                studentId,
-                studentData[0].admission_number,
-                category_id,
-                sub_category_id || null,
-                title.trim(),
-                description ? description.trim() : '',
-                photoUrl
-            ]
-        );
+        // Create ticket — support legacy schema before staff-requester migration completes
+        let result;
+        try {
+            [result] = await masterPool.query(
+                `INSERT INTO tickets 
+           (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, category_id, sub_category_id, title, description, photo_url, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                [
+                    ticketNumber,
+                    studentId,
+                    admissionNumber,
+                    requesterType,
+                    raisedByRbacId,
+                    raisedByHrmsId,
+                    category_id,
+                    sub_category_id || null,
+                    title.trim(),
+                    description ? description.trim() : '',
+                    photoUrl
+                ]
+            );
+        } catch (insertError) {
+            if (insertError.code === 'ER_BAD_FIELD_ERROR' && raisedByHrmsId) {
+                [result] = await masterPool.query(
+                    `INSERT INTO tickets 
+               (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, category_id, sub_category_id, title, description, photo_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                    [
+                        ticketNumber,
+                        studentId,
+                        admissionNumber,
+                        requesterType,
+                        raisedByRbacId,
+                        category_id,
+                        sub_category_id || null,
+                        title.trim(),
+                        description ? description.trim() : '',
+                        photoUrl
+                    ]
+                );
+            } else if (insertError.code === 'ER_BAD_FIELD_ERROR' && isStaffRequester) {
+                return res.status(503).json({
+                    success: false,
+                    message: 'Staff ticket support is still initializing. Please try again in a moment.'
+                });
+            }
+            if (insertError.code === 'ER_BAD_FIELD_ERROR') {
+                [result] = await masterPool.query(
+                    `INSERT INTO tickets 
+               (ticket_number, student_id, admission_number, category_id, sub_category_id, title, description, photo_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                    [
+                        ticketNumber,
+                        studentId,
+                        admissionNumber,
+                        category_id,
+                        sub_category_id || null,
+                        title.trim(),
+                        description ? description.trim() : '',
+                        photoUrl
+                    ]
+                );
+            } else {
+                throw insertError;
+            }
+        }
 
         // Clean up uploaded file
         if (req.file && photoUrl && photoUrl.startsWith('data:')) {
@@ -274,6 +374,8 @@ exports.getTickets = async (req, res) => {
         sc.name as sub_category_name,
         s.student_name,
         s.student_mobile,
+        ru_requester.name as staff_requester_name,
+        COALESCE(s.student_name, ru_requester.name) as requester_name,
         GROUP_CONCAT(DISTINCT CONCAT(ru.name, ' (', ru.username, ')') SEPARATOR ', ') as assigned_users,
         (
             SELECT JSON_ARRAYAGG(
@@ -293,6 +395,7 @@ exports.getTickets = async (req, res) => {
       LEFT JOIN complaint_categories c ON t.category_id = c.id
       LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
       LEFT JOIN students s ON t.student_id = s.id
+      LEFT JOIN rbac_users ru_requester ON t.raised_by_rbac_id = ru_requester.id
       LEFT JOIN ticket_assignments ta ON t.id = ta.ticket_id AND ta.is_active = TRUE
       LEFT JOIN rbac_users ru ON ta.assigned_to = ru.id
     `;
@@ -394,10 +497,19 @@ exports.getTicket = async (req, res) => {
             });
         }
 
-        // Check if user is a student trying to access their own ticket
-        if (user.role === 'student' || user.admission_number) {
+        // Check if user is a requester trying to access their own ticket
+        if (user.role === 'student' || user.admission_number || user.admissionNumber) {
             const studentAdmissionNumber = user.admission_number || user.admissionNumber;
             if (tickets[0].admission_number !== studentAdmissionNumber) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Access denied. You can only view your own tickets.'
+                });
+            }
+        } else if (tickets[0].requester_type === 'staff') {
+            const ownsByRbac = user.id && tickets[0].raised_by_rbac_id === user.id;
+            const ownsByHrms = user.hrmsId && tickets[0].raised_by_hrms_id === user.hrmsId;
+            if (!ownsByRbac && !ownsByHrms) {
                 return res.status(403).json({
                     success: false,
                     message: 'Access denied. You can only view your own tickets.'
@@ -492,21 +604,30 @@ exports.getTicket = async (req, res) => {
  */
 exports.getStudentTickets = async (req, res) => {
     try {
-        const student = req.user || req.student;
+        const user = req.user || req.student;
 
-        const admissionNumber = student?.admission_number || student?.admissionNumber;
-
-        if (!student || !admissionNumber) {
+        if (!user) {
             return res.status(401).json({
                 success: false,
-                message: 'Student authentication required'
+                message: 'Authentication required'
             });
         }
 
-        console.log('Fetching tickets for student:', admissionNumber);
+        const isStudent = user.role === 'student' || user.admission_number || user.admissionNumber;
+        const isHrmsSession = !!(user.is_hrms_session || user.hrmsId);
+        const admissionNumber = user.admission_number || user.admissionNumber;
 
-        const [tickets] = await masterPool.query(
-            `SELECT 
+        let tickets;
+        if (isStudent) {
+            if (!admissionNumber) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Student authentication required'
+                });
+            }
+
+            [tickets] = await masterPool.query(
+                `SELECT
         t.*,
         c.name as category_name,
         sc.name as sub_category_name,
@@ -523,12 +644,73 @@ exports.getStudentTickets = async (req, res) => {
       FROM tickets t
       LEFT JOIN complaint_categories c ON t.category_id = c.id
       LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
-      WHERE t.admission_number = ?
+      WHERE t.admission_number = ? AND (t.requester_type = 'student' OR t.requester_type IS NULL)
       ORDER BY t.created_at DESC`,
-            [admissionNumber]
-        );
-
-        console.log('Tickets found:', tickets.length);
+                [admissionNumber]
+            );
+        } else if (isHrmsSession) {
+            try {
+                [tickets] = await masterPool.query(
+                    `SELECT
+        t.*,
+        c.name as category_name,
+        sc.name as sub_category_name,
+        (
+            SELECT JSON_OBJECT(
+                'id', tf_sub.id,
+                'rating', tf_sub.rating,
+                'feedback_text', tf_sub.feedback_text
+            )
+            FROM ticket_feedback tf_sub
+            WHERE tf_sub.ticket_id = t.id
+            LIMIT 1
+        ) as feedback
+      FROM tickets t
+      LEFT JOIN complaint_categories c ON t.category_id = c.id
+      LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
+      WHERE t.raised_by_hrms_id = ? AND t.requester_type = 'staff'
+      ORDER BY t.created_at DESC`,
+                    [user.hrmsId]
+                );
+            } catch (queryError) {
+                if (queryError.code === 'ER_BAD_FIELD_ERROR') {
+                    [tickets] = await masterPool.query(
+                        `SELECT t.*, c.name as category_name, sc.name as sub_category_name
+                         FROM tickets t
+                         LEFT JOIN complaint_categories c ON t.category_id = c.id
+                         LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
+                         WHERE t.admission_number = ? AND t.requester_type = 'staff'
+                         ORDER BY t.created_at DESC`,
+                        [user.username || user.email || `HRMS-${user.hrmsId}`]
+                    );
+                } else {
+                    throw queryError;
+                }
+            }
+        } else {
+            [tickets] = await masterPool.query(
+                `SELECT
+        t.*,
+        c.name as category_name,
+        sc.name as sub_category_name,
+        (
+            SELECT JSON_OBJECT(
+                'id', tf_sub.id,
+                'rating', tf_sub.rating,
+                'feedback_text', tf_sub.feedback_text
+            )
+            FROM ticket_feedback tf_sub
+            WHERE tf_sub.ticket_id = t.id
+            LIMIT 1
+        ) as feedback
+      FROM tickets t
+      LEFT JOIN complaint_categories c ON t.category_id = c.id
+      LEFT JOIN complaint_categories sc ON t.sub_category_id = sc.id
+      WHERE t.raised_by_rbac_id = ? AND t.requester_type = 'staff'
+      ORDER BY t.created_at DESC`,
+                [user.id]
+            );
+        }
 
         res.json({
             success: true,

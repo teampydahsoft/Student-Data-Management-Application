@@ -17,4 +17,8 @@ router.get('/verify', authMiddleware, authController.verifyToken);
 // Login (Public route)
 router.post('/unified-login', authController.unifiedLogin);
 
+// HRMS / portal SSO (no password)
+router.post('/hrms-sso-session', authController.hrmsSsoSession);
+router.get('/sso-config', authController.getSsoConfig);
+
 module.exports = router;

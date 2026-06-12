@@ -16,9 +16,23 @@ import {
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import { FRONTEND_MODULES } from '../../constants/rbac';
+import { getWorkspaceLinks, hasStudentDatabasePortalAccess } from '../../utils/hrmsPortal';
 
-// Main App URL for redirection
+// Main App URL for redirection (Student Database portal)
 const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
+
+const workspaceLinkStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '10px 16px',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: '500',
+    textDecoration: 'none',
+    color: '#4B5563',
+    transition: 'all 0.2s',
+};
 
 const AdminLayout = () => {
     // State
@@ -33,7 +47,8 @@ const AdminLayout = () => {
         navigate('/login');
     };
 
-    const hasPortalAccess = !user?.is_worker;
+    const hasPortalAccess = hasStudentDatabasePortalAccess(user);
+    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
 
     // --- Navigation Configuration ---
     const navItems = [
@@ -339,8 +354,7 @@ const AdminLayout = () => {
                         );
                     })}
 
-                    {/* Workspace Dropdown */}
-                    {hasPortalAccess && (
+                    {workspaceLinks.length > 0 && (
                         <div style={{ marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
                             <button
                                 onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
@@ -363,25 +377,19 @@ const AdminLayout = () => {
 
                             {workspaceDropdownOpen && (
                                 <div style={{ paddingLeft: '24px', marginTop: '4px' }}>
-                                    <a
-                                        href={`${MAIN_APP_URL}/auth-callback?token=${token}&role=${user?.role || 'admin'}&from=ticket_app`}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '12px',
-                                            padding: '10px 16px',
-                                            borderRadius: '10px',
-                                            fontSize: '13px',
-                                            fontWeight: '500',
-                                            textDecoration: 'none',
-                                            color: '#4B5563',
-                                            transition: 'all 0.2s'
-                                        }}
-                                        className="hover:bg-blue-50 hover:text-blue-700"
-                                    >
-                                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3B82F6' }} />
-                                        <span>Student Database</span>
-                                    </a>
+                                    {workspaceLinks.map((link) => (
+                                        <a
+                                            key={link.id}
+                                            href={link.href}
+                                            target={link.external ? '_blank' : undefined}
+                                            rel={link.external ? 'noopener noreferrer' : undefined}
+                                            style={workspaceLinkStyle}
+                                            className="hover:bg-blue-50 hover:text-blue-700"
+                                        >
+                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3B82F6' }} />
+                                            <span>{link.label}</span>
+                                        </a>
+                                    ))}
                                 </div>
                             )}
                         </div>

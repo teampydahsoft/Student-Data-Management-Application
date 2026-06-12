@@ -15,12 +15,14 @@ import api from '../../config/api';
 import { SkeletonBox, StudentDashboardSkeleton } from '../../components/SkeletonLoader';
 import '../../styles/student-pages.css';
 
-import useAuthStore from '../../store/authStore'; // Import store
+import useAuthStore from '../../store/authStore';
+import { getWorkspaceLinks } from '../../utils/hrmsPortal';
 
 const Dashboard = () => {
     const navigate = useNavigate();
-    const { token } = useAuthStore(); // Get token
+    const { token, user } = useAuthStore();
     const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
+    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
 
     // Fetch tickets data for summary
     const { data: tickets = [], isLoading } = useQuery({
@@ -185,19 +187,29 @@ const Dashboard = () => {
                             </div>
                         </Link>
 
-                        <div className="action-card secondary">
-                            <div style={{ position: 'relative', zIndex: 10 }}>
-                                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '-0.025em', fontFamily: 'Poppins, sans-serif' }}>Student Portal</h3>
-                                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>Access academic results, services, and attendance.</p>
-                                <a
-                                    href={token ? `${MAIN_APP_URL}/auth-callback?token=${token}&role=student&from=ticket_app` : `${MAIN_APP_URL}/student/dashboard`}
-                                    className="btn-secondary"
-                                    style={{ width: '100%', fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
-                                >
-                                    Go to Portal
-                                </a>
+                        {workspaceLinks.map((link) => (
+                            <div key={link.id} className="action-card secondary">
+                                <div style={{ position: 'relative', zIndex: 10 }}>
+                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '-0.025em', fontFamily: 'Poppins, sans-serif' }}>
+                                        {link.label}
+                                    </h3>
+                                    <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                                        {link.id === 'hrms'
+                                            ? 'Open the HRMS application for employee services and profile.'
+                                            : 'Access the Student Database portal for admin and academic modules.'}
+                                    </p>
+                                    <a
+                                        href={link.href}
+                                        target={link.external ? '_blank' : undefined}
+                                        rel={link.external ? 'noopener noreferrer' : undefined}
+                                        className="btn-secondary"
+                                        style={{ width: '100%', fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+                                    >
+                                        Open {link.label}
+                                    </a>
+                                </div>
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </motion.div>
             </div>

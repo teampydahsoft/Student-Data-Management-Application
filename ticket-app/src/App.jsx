@@ -31,7 +31,7 @@ import LoadingAnimation from './components/LoadingAnimation';
 import { FRONTEND_MODULES } from './constants/rbac';
 
 const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
-  const { isAuthenticated, user, hasPermission, isLoading } = useAuthStore();
+  const { isAuthenticated, user, userType, hasPermission, isLoading } = useAuthStore();
   const location = useLocation();
 
   if (isLoading) {
@@ -43,17 +43,18 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
   }
 
   if (!isAuthenticated) {
-    // Redirect to Local Login instead of Main App
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (allowedRoles) {
-    if (allowedRoles.includes('student') && user?.role !== 'student') {
-      // Must be student
+    const isRequesterRoute = allowedRoles.includes('student') || allowedRoles.includes('requester');
+    const isAdminRoute = allowedRoles.includes('admin');
+
+    if (isRequesterRoute && !['student', 'requester'].includes(userType)) {
       return <Navigate to="/unauthorized" replace />;
     }
-    if (!allowedRoles.includes('student') && user?.role === 'student') {
-      // Must not be student
+
+    if (isAdminRoute && userType !== 'admin') {
       return <Navigate to="/unauthorized" replace />;
     }
   }
@@ -150,7 +151,7 @@ const App = () => {
         <Route
           path="/student/*"
           element={
-            <ProtectedRoute allowedRoles={['student']}>
+            <ProtectedRoute allowedRoles={['student', 'requester']}>
               <StudentLayout />
             </ProtectedRoute>
           }

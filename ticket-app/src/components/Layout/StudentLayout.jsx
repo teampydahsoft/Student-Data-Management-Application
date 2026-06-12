@@ -17,26 +17,36 @@ import {
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import NotificationPrompt from '../NotificationPrompt';
+import { getWorkspaceLinks, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser } from '../../utils/hrmsPortal';
+import { RiExternalLinkLine } from 'react-icons/ri';
 
-// Main App URL for redirection
+// Main App URL for redirection (Student Database portal)
 const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
 
 const StudentLayout = ({ children }) => {
     // State
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+    const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
     const navigate = useNavigate();
     const { user, logout, token } = useAuthStore();
+    const isHrmsOnly = isHrmsOnlyTicketUser(user);
+    const hasPortalAccess = hasStudentDatabasePortalAccess(user);
+    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
 
     // --- Navigation Configuration (Short List) ---
-    const navItems = [
+    const allNavItems = [
         { icon: RiHome4Line, activeIcon: RiHome4Fill, label: 'Dashboard', path: '/student/dashboard', isExternal: false },
         { icon: RiAddCircleLine, activeIcon: RiAddCircleFill, label: 'Raise Ticket', path: '/student/raise-ticket', isExternal: false },
         { icon: RiTicketLine, activeIcon: RiTicketFill, label: 'Ticket History', path: '/student/my-tickets', isExternal: false },
         { icon: RiUser3Line, activeIcon: RiUser3Fill, label: 'Portal Profile', path: '/student/profile', isExternal: true },
         { icon: RiLogoutBoxRLine, activeIcon: RiLogoutBoxRLine, label: 'Back to Portal', path: '/student/dashboard', isExternal: true },
     ];
+
+    const navItems = isHrmsOnly
+        ? allNavItems.filter((item) => !item.isExternal)
+        : allNavItems;
 
     const mobilePrimaryItems = navItems.slice(0, 4); // Show first 4 on mobile bar
 
@@ -250,12 +260,56 @@ const StudentLayout = ({ children }) => {
                             </NavLink>
                         )
                     })}
+                    {workspaceLinks.length > 0 && (
+                        <div style={{ marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setWorkspaceOpen(!workspaceOpen)}
+                                style={{
+                                    ...styles.navItem(false),
+                                    width: '100%',
+                                    justifyContent: 'space-between',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <span>Workspace</span>
+                                <RiExternalLinkLine size={16} />
+                            </button>
+                            {workspaceOpen && workspaceLinks.map((link) => (
+                                <a
+                                    key={link.id}
+                                    href={link.href}
+                                    target={link.external ? '_blank' : undefined}
+                                    rel={link.external ? 'noopener noreferrer' : undefined}
+                                    style={{
+                                        ...styles.navItem(false),
+                                        marginTop: '4px',
+                                        marginLeft: '8px',
+                                        fontSize: '13px',
+                                    }}
+                                    className="hover:bg-blue-50 hover:text-blue-700"
+                                >
+                                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3B82F6' }} />
+                                    <span>{link.label}</span>
+                                </a>
+                            ))}
+                        </div>
+                    )}
                 </nav>
 
                 {/* User Profile */}
                 <div
-                    style={styles.profileCard}
-                    onClick={() => window.location.href = `${MAIN_APP_URL}/student/profile`}
+                    style={{
+                        ...styles.profileCard,
+                        cursor: hasPortalAccess ? 'pointer' : 'default',
+                    }}
+                    onClick={() => {
+                        if (hasPortalAccess) {
+                            window.location.href = `${MAIN_APP_URL}/student/profile`;
+                        }
+                    }}
                 >
                     <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#E0E7FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5', overflow: 'hidden' }}>
                         {user?.student_photo ? (
@@ -269,7 +323,7 @@ const StudentLayout = ({ children }) => {
                             {user?.student_name || user?.name || 'Student'}
                         </p>
                         <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>
-                            {user?.admission_number || user?.admissionNumber}
+                            {user?.admission_number || user?.admissionNumber || user?.username || user?.email}
                         </p>
                     </div>
                 </div>

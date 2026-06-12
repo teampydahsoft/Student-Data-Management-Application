@@ -12,16 +12,23 @@ import {
 // Re-export for backward compatibility
 export { MODULE_ROUTE_MAP, getModuleKeyForPath };
 
-const resolveDefaultRoute = (user, isStudent = false) => {
+export const resolveUserType = (user) => {
+    if (!user) return null;
+    if (user.role === 'student') return 'student';
+    if (user.ticketAccess === 'request' || user.is_hrms_session || user.hrmsId) return 'requester';
+    return 'admin';
+};
+
+const resolveDefaultRoute = (user, userType = null) => {
     if (!user) return '/login';
 
-    // Student users go to student dashboard OR my-tickets since this is ticket app
-    if (isStudent || user.role === 'student' || user.admission_number) {
-        return '/student/my-tickets'; // Redirect directly to tickets for student
+    const type = userType || resolveUserType(user);
+
+    if (type === 'student' || type === 'requester') {
+        return '/student/my-tickets';
     }
 
-    // Admin users
-    return '/tickets'; // Redirect directly to ticket management
+    return '/tickets';
 };
 
 const useAuthStore = create((set) => {
@@ -34,13 +41,12 @@ const useAuthStore = create((set) => {
         user: storedUser ? JSON.parse(storedUser) : null,
         token: storedToken || null,
         isAuthenticated: !!storedToken,
-        userType: storedUserType || null, // 'admin' or 'student'
+        userType: storedUserType || null,
 
         login: async (username, password) => {
             try {
                 const response = await api.post('/auth/unified-login', { username, password });
 
-                // Check if response has success flag
                 if (!response.data.success) {
                     return {
                         success: false,
@@ -57,7 +63,7 @@ const useAuthStore = create((set) => {
                     };
                 }
 
-                const userType = user.role === 'student' ? 'student' : 'admin';
+                const userType = resolveUserType(user);
 
                 localStorage.setItem('token', token);
                 localStorage.setItem('user', JSON.stringify(user));
@@ -65,7 +71,7 @@ const useAuthStore = create((set) => {
                 localStorage.removeItem('admin');
 
                 set({ user, token, isAuthenticated: true, userType });
-                return { success: true, redirectPath: resolveDefaultRoute(user, userType === 'student') };
+                return { success: true, redirectPath: resolveDefaultRoute(user, userType) };
             } catch (error) {
                 console.error('Login error:', error);
                 const errorMessage = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
@@ -76,9 +82,7 @@ const useAuthStore = create((set) => {
             }
         },
 
-        // Kept for backward compatibility but routes to unified login logic internally or just fails gracefully if used directly
         loginAsStudent: async (username, password) => {
-            // Use the unified login instead
             return useAuthStore.getState().login(username, password);
         },
 
@@ -94,16 +98,13 @@ const useAuthStore = create((set) => {
         })),
 
         logout: () => {
-            // Clear all React Query cache immediately
             queryClient.clear();
 
-            // Clear all localStorage items (comprehensive cleanup)
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('userType');
             localStorage.removeItem('admin');
 
-            // Clear any other potential cache/data items
             try {
                 const keysToRemove = [];
                 for (let i = 0; i < localStorage.length; i++) {
@@ -117,7 +118,6 @@ const useAuthStore = create((set) => {
                 console.warn('Error during localStorage cleanup:', error);
             }
 
-            // Clear state
             set({ user: null, token: null, isAuthenticated: false, userType: null });
         },
 
@@ -128,9 +128,7 @@ const useAuthStore = create((set) => {
                 if (user) {
                     localStorage.setItem('user', JSON.stringify(user));
                     localStorage.removeItem('admin');
-                    const persistedType = localStorage.getItem('userType');
-                    // If persisted type is missing, infer from role
-                    const type = persistedType || (user.role === 'student' ? 'student' : 'admin');
+                    const type = resolveUserType(user);
 
                     set({ user, isAuthenticated: true, userType: type });
                     return true;

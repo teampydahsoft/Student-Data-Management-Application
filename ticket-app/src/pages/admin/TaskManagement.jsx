@@ -278,7 +278,7 @@ const TaskManagement = () => {
                                         </td>
                                         <td>
                                             <div className="text-sm font-medium text-gray-900 truncate max-w-xs">{ticket.title}</div>
-                                            <div className="text-xs text-gray-500 mt-0.5">{ticket.student_name}</div>
+                                            <div className="text-xs text-gray-500 mt-0.5">{ticket.requester_name || ticket.student_name || ticket.staff_requester_name || 'Staff'}</div>
                                         </td>
                                         <td>
                                             <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
