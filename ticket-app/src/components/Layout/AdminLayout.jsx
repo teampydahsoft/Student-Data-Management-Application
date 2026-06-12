@@ -17,9 +17,7 @@ import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import { FRONTEND_MODULES } from '../../constants/rbac';
 import { getWorkspaceLinks, hasStudentDatabasePortalAccess } from '../../utils/hrmsPortal';
-
-// Main App URL for redirection (Student Database portal)
-const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
+import { getMainAppReturnUrl } from '../../utils/mainAppUrl';
 
 const workspaceLinkStyle = {
     display: 'flex',
@@ -48,7 +46,12 @@ const AdminLayout = () => {
     };
 
     const hasPortalAccess = hasStudentDatabasePortalAccess(user);
-    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
+    const workspaceLinks = getWorkspaceLinks(user, { token });
+    const portalReturnHref = getMainAppReturnUrl({
+        token,
+        role: user?.role === 'student' ? 'student' : (user?.role || 'admin'),
+        path: '/',
+    });
 
     // --- Navigation Configuration ---
     const navItems = [
@@ -328,7 +331,7 @@ const AdminLayout = () => {
                             return (
                                 <a
                                     key={index}
-                                    href={item.path === '/' ? MAIN_APP_URL : `${MAIN_APP_URL}${item.path}`}
+                                    href={item.isExternal ? portalReturnHref : item.path}
                                     style={styles.navItem(false)}
                                     className="hover:bg-blue-50 hover:text-blue-700"
                                 >
@@ -430,7 +433,7 @@ const AdminLayout = () => {
                         return (
                             <a
                                 key={index}
-                                href={item.path === '/' ? MAIN_APP_URL : `${MAIN_APP_URL}${item.path}`}
+                                href={item.isExternal ? portalReturnHref : item.path}
                                 style={styles.mobileNavItem(false)}
                             >
                                 <item.icon size={24} />

@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/ticket-app}"
 TICKET_PUBLIC_URL="${TICKET_PUBLIC_URL:-https://maintenance.pydah.edu.in}"
-MAIN_APP_URL="${MAIN_APP_URL:-https://pydahgroup.com}"
+MAIN_APP_URL="${MAIN_APP_URL:-https://sdms.pydah.edu.in}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> Ensuring app directory exists: $APP_ROOT"

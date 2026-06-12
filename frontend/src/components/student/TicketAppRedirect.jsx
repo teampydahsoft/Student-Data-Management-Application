@@ -1,13 +1,14 @@
 import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { navigateToTicketApp } from '../../utils/ticketAppUrl';
+import { navigateToTicketApp, resolveTicketAppRedirectPath } from '../../utils/ticketAppUrl';
 
-const TicketAppRedirect = () => {
+const TicketAppRedirect = ({ redirectPath }) => {
   const { pathname } = useLocation();
+  const targetPath = redirectPath || pathname;
 
   useEffect(() => {
-    navigateToTicketApp(pathname);
-  }, [pathname]);
+    navigateToTicketApp(resolveTicketAppRedirectPath(targetPath));
+  }, [targetPath]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[40vh] text-center px-4">

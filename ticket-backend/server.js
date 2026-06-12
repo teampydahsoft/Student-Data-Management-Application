@@ -21,6 +21,8 @@ const allowedOrigins = process.env.CORS_ORIGINS
     : [
         'http://localhost:5174',
         'http://localhost:5173',
+        'https://maintenance.pydah.edu.in',
+        'https://sdms.pydah.edu.in',
         'https://pydahsdms-tickets.vercel.app',
         'https://student-data-management-app.vercel.app'
     ];

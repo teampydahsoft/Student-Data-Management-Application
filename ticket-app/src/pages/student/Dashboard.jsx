@@ -21,8 +21,7 @@ import { getWorkspaceLinks } from '../../utils/hrmsPortal';
 const Dashboard = () => {
     const navigate = useNavigate();
     const { token, user } = useAuthStore();
-    const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
-    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
+    const workspaceLinks = getWorkspaceLinks(user, { token });
 
     // Fetch tickets data for summary
     const { data: tickets = [], isLoading } = useQuery({

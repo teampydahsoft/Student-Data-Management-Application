@@ -535,7 +535,7 @@ const AdminLayout = () => {
                     {/* Maintenance Management Link */}
                     {(isFullAccessRole(user?.role) || (user?.permissions && hasModuleAccess(user.permissions, FRONTEND_MODULES.TICKETS)) || (Array.isArray(user?.modules) && user.modules.includes(FRONTEND_MODULES.TICKETS))) && (
                       <a
-                        href={getTicketAppUrl('/tickets')}
+                        href={getTicketAppUrl('/task-management')}
                         className="flex items-center rounded-md transition-all duration-200 gap-2 px-2 py-1.5 text-[11px] font-medium text-gray-200/80 hover:bg-white/10 hover:text-white hover:translate-x-1 min-h-[32px]"
                       >
                         <Ticket size={14} className="text-gray-400" />
@@ -681,7 +681,7 @@ const AdminLayout = () => {
                   <div className="grid grid-cols-1 gap-2">
                     {(isFullAccessRole(user?.role) || (user?.permissions && hasModuleAccess(user.permissions, FRONTEND_MODULES.TICKETS)) || (Array.isArray(user?.modules) && user.modules.includes(FRONTEND_MODULES.TICKETS))) && (
                       <a
-                        href={getTicketAppUrl('/tickets')}
+                        href={getTicketAppUrl('/task-management')}
                         className="group flex items-center justify-between p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-700 font-bold active:scale-[0.98] transition-all shadow-sm"
                       >
                         <div className="flex items-center gap-3">

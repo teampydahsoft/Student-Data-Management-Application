@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 
 import { motion } from 'framer-motion';
 
+import { getMainAppLoginUrl } from '../utils/mainAppUrl';
+
 const Login = ({ isStudent = false }) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -206,10 +208,21 @@ const Login = ({ isStudent = false }) => {
                         </form>
 
                         <div className="mt-6 sm:mt-8 text-center space-y-3 sm:space-y-4">
+                            <p className="text-xs text-gray-500 leading-relaxed px-2">
+                                Staff &amp; students already signed in to the Student Portal should open{' '}
+                                <span className="font-semibold text-gray-700">Maintenance</span> from the portal
+                                sidebar (Workspace) — no second login needed.
+                            </p>
+                            <a
+                                href={getMainAppLoginUrl(isStudentLogin)}
+                                className="inline-flex text-xs sm:text-sm font-medium text-[#1A2517] hover:text-[#11180F] underline underline-offset-2"
+                            >
+                                Go to Student Portal
+                            </a>
                             <button
                                 type="button"
                                 onClick={() => toast('Please contact administrator to reset password')}
-                                className="text-xs sm:text-sm font-medium text-[#1A2517] hover:text-[#11180F] transition-colors"
+                                className="block mx-auto text-xs sm:text-sm font-medium text-[#1A2517] hover:text-[#11180F] transition-colors"
                             >
                                 Forgot Password?
                             </button>

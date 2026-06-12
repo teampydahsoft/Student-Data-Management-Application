@@ -27,7 +27,6 @@ import CategoryReport from './pages/CategoryReport';
 import SmsReport from './pages/SmsReport';
 import StudentPromotions from './pages/StudentPromotions';
 import CollegeTransfer from './pages/CollegeTransfer';
-import TicketManagement from './pages/TicketManagement';
 import TaskManagement from './pages/TaskManagement';
 import Announcements from './pages/Announcements';
 import StudentHistory from './pages/StudentHistory';
@@ -226,7 +225,7 @@ function App() {
           <Route path="reports/day-end" element={<Reports />} />
           <Route path="reports/category" element={<CategoryReport />} />
           <Route path="reports/sms" element={<SmsReport />} />
-          <Route path="tickets" element={<TicketManagement />} />
+          <Route path="tickets" element={<TicketAppRedirect redirectPath="/task-management" />} />
           <Route path="task-management" element={<TaskManagement />} />
           <Route path="announcements" element={<Announcements />} />
           <Route path="student-history" element={<StudentHistory />} />

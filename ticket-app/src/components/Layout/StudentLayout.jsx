@@ -18,10 +18,8 @@ import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import NotificationPrompt from '../NotificationPrompt';
 import { getWorkspaceLinks, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser } from '../../utils/hrmsPortal';
+import { getMainAppReturnUrl } from '../../utils/mainAppUrl';
 import { RiExternalLinkLine } from 'react-icons/ri';
-
-// Main App URL for redirection (Student Database portal)
-const MAIN_APP_URL = import.meta.env.VITE_MAIN_APP_URL || 'http://localhost:5173';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -33,7 +31,7 @@ const StudentLayout = ({ children }) => {
     const { user, logout, token } = useAuthStore();
     const isHrmsOnly = isHrmsOnlyTicketUser(user);
     const hasPortalAccess = hasStudentDatabasePortalAccess(user);
-    const workspaceLinks = getWorkspaceLinks(user, { mainAppUrl: MAIN_APP_URL, token });
+    const workspaceLinks = getWorkspaceLinks(user, { token });
 
     // --- Navigation Configuration (Short List) ---
     const allNavItems = [
@@ -53,14 +51,17 @@ const StudentLayout = ({ children }) => {
     const handleNavigation = (e, item) => {
         if (item.isExternal) {
             e.preventDefault();
-            // Construct SSO URL if token exists
-            const target = token
-                ? `${MAIN_APP_URL}/auth-callback?token=${token}&role=student&from=ticket_app`
-                : `${MAIN_APP_URL}${item.path}`;
-            window.location.href = target;
+            window.location.href = getMainAppReturnUrl({
+                token,
+                role: 'student',
+                path: item.path,
+            });
         }
         setMoreMenuOpen(false);
     };
+
+    const portalExternalHref = (path) =>
+        getMainAppReturnUrl({ token, role: 'student', path });
 
     const handleLogout = () => {
         logout();
@@ -236,7 +237,7 @@ const StudentLayout = ({ children }) => {
                         return item.isExternal ? (
                             <a
                                 key={index}
-                                href={`${MAIN_APP_URL}${item.path}`}
+                                href={portalExternalHref(item.path)}
                                 onClick={(e) => handleNavigation(e, item)}
                                 style={styles.navItem(false)}
                                 className="hover:bg-blue-50 hover:text-blue-700"
@@ -307,7 +308,11 @@ const StudentLayout = ({ children }) => {
                     }}
                     onClick={() => {
                         if (hasPortalAccess) {
-                            window.location.href = `${MAIN_APP_URL}/student/profile`;
+                            window.location.href = getMainAppReturnUrl({
+                                token,
+                                role: 'student',
+                                path: '/student/profile',
+                            });
                         }
                     }}
                 >
@@ -358,7 +363,7 @@ const StudentLayout = ({ children }) => {
                         return (
                             <a
                                 key={index}
-                                href={`${MAIN_APP_URL}${item.path}`}
+                                href={portalExternalHref(item.path)}
                                 onClick={(e) => handleNavigation(e, item)}
                                 style={styles.mobileNavItem(false)}
                             >

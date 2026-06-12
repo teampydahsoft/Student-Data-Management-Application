@@ -4,7 +4,7 @@ param(
 
     [string]$SshUser = "ec2-user",
     [string]$KeyPath = "",
-    [string]$MainAppUrl = "https://pydahgroup.com",
+    [string]$MainAppUrl = "https://sdms.pydah.edu.in",
     [string]$TicketPublicUrl = "https://maintenance.pydah.edu.in"
 )
 

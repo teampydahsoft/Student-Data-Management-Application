@@ -1,8 +1,12 @@
+import { MAIN_APP_URL, getMainAppReturnUrl } from './mainAppUrl';
+
 export const HRMS_PORTAL_URL =
     import.meta.env.VITE_HRMS_PORTAL_URL || 'https://hrms.pydah.edu.in';
 
 export const TICKET_APP_URL =
     import.meta.env.VITE_TICKET_APP_URL || window.location.origin;
+
+export { MAIN_APP_URL, getMainAppReturnUrl };
 
 /**
  * URL HRMS should redirect to for passwordless ticket-app login.
@@ -48,14 +52,17 @@ export const getWorkspaceLinks = (user, { mainAppUrl, token } = {}) => {
         });
     }
 
-    if (hasStudentDatabasePortalAccess(user) && mainAppUrl) {
+    if (hasStudentDatabasePortalAccess(user)) {
         const role = user?.role === 'student' ? 'student' : (user?.role || 'admin');
         links.push({
             id: 'student-database',
             label: 'Student Database',
-            href: token
-                ? `${mainAppUrl}/auth-callback?token=${token}&role=${role}&from=ticket_app`
-                : mainAppUrl,
+            href: getMainAppReturnUrl({
+                token,
+                role,
+                baseUrl: mainAppUrl || MAIN_APP_URL,
+                path: role === 'student' ? '/student/dashboard' : '/',
+            }),
             external: true,
         });
     }
