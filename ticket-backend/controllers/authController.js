@@ -598,6 +598,7 @@ exports.getSsoConfig = (req, res) => {
     const ticketAppUrl = process.env.TICKET_APP_URL || 'http://localhost:5174';
     const hrmsPortalUrl = (process.env.HRMS_PORTAL_URL || 'https://hrms.pydah.edu.in').replace(/\/$/, '');
     const hrmsCallbackPath = process.env.HRMS_SSO_CALLBACK_PATH || '/auth-callback';
+    const hrmsReturnRedirect = process.env.HRMS_RETURN_REDIRECT_PATH || '/dashboard';
 
     res.json({
         success: true,
@@ -609,7 +610,9 @@ exports.getSsoConfig = (req, res) => {
             verifyEndpoint: '/api/auth/verify',
             hrmsReturnEndpoint: '/api/auth/hrms-return-url',
             hrmsReturnCallbackPath: hrmsCallbackPath,
-            hrmsReturnExample: `${hrmsPortalUrl}${hrmsCallbackPath}?token={jwt}&from=ticket_app`,
+            hrmsReturnRedirectPath: hrmsReturnRedirect,
+            hrmsReturnExample: `${hrmsPortalUrl}${hrmsCallbackPath}?token={jwt}&from=ticket_app&redirect=${encodeURIComponent(hrmsReturnRedirect)}`,
+            hrmsReturnLandingUrl: `${hrmsPortalUrl}${hrmsReturnRedirect}`,
             signingSecrets: [
                 'JWT_SECRET (shared with Student Database — pass-through SSO)',
                 'HRMS_SSO_SECRET (optional dedicated secret for token exchange)'

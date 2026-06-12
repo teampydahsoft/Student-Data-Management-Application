@@ -43,7 +43,12 @@ export const hasStudentDatabasePortalAccess = (user) =>
 /**
  * HRMS portal base URL (login page fallback when SSO URL cannot be minted).
  */
+export const HRMS_DASHBOARD_PATH = '/dashboard';
+
 export const getHrmsPortalUrl = () => HRMS_PORTAL_URL;
+
+export const getHrmsDashboardUrl = () =>
+    `${HRMS_PORTAL_URL.replace(/\/$/, '')}${HRMS_DASHBOARD_PATH}`;
 
 /** Return link metadata for HRMS-only ticket sessions. */
 export const getHrmsOnlyReturnLink = () => ({
@@ -69,7 +74,7 @@ export const navigateToHrmsPortal = async (api) => {
     } catch (error) {
         console.error('HRMS return SSO failed:', error);
     }
-    window.location.href = getHrmsPortalUrl();
+    window.location.href = getHrmsDashboardUrl();
 };
 
 export const getWorkspaceLinks = (user, { mainAppUrl, token } = {}) => {

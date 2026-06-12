@@ -34,7 +34,7 @@ function mintHrmsReturnToken(user) {
     });
 }
 
-function buildHrmsReturnUrl(user) {
+function buildHrmsReturnUrl(user, options = {}) {
     const token = mintHrmsReturnToken(user);
     if (!token) {
         return null;
@@ -42,9 +42,16 @@ function buildHrmsReturnUrl(user) {
 
     const base = (process.env.HRMS_PORTAL_URL || 'https://hrms.pydah.edu.in').replace(/\/$/, '');
     const callbackPath = process.env.HRMS_SSO_CALLBACK_PATH || '/auth-callback';
+    const redirectPath = options.redirectPath
+        || process.env.HRMS_RETURN_REDIRECT_PATH
+        || '/dashboard';
+
     const params = new URLSearchParams();
     params.set('token', token);
     params.set('from', 'ticket_app');
+    if (redirectPath) {
+        params.set('redirect', redirectPath.startsWith('/') ? redirectPath : `/${redirectPath}`);
+    }
 
     return `${base}${callbackPath}?${params.toString()}`;
 }
