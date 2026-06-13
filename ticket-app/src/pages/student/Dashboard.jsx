@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -16,14 +16,19 @@ import { SkeletonBox, StudentDashboardSkeleton } from '../../components/Skeleton
 import '../../styles/student-pages.css';
 
 import useAuthStore from '../../store/authStore';
-import { getWorkspaceLinks, getHrmsOnlyReturnLink, isHrmsOnlyTicketUser } from '../../utils/hrmsPortal';
+import { getWorkspaceLinks, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
 
 const Dashboard = () => {
     const navigate = useNavigate();
     const { token, user } = useAuthStore();
     const isHrmsOnly = isHrmsOnlyTicketUser(user);
-    const hrmsReturnLink = getHrmsOnlyReturnLink();
     const workspaceLinks = isHrmsOnly ? [] : getWorkspaceLinks(user, { token });
+
+    useEffect(() => {
+        if (isHrmsOnly) {
+            navigateToHrmsPortal();
+        }
+    }, [isHrmsOnly]);
 
     // Fetch tickets data for summary
     const { data: tickets = [], isLoading } = useQuery({
@@ -187,29 +192,6 @@ const Dashboard = () => {
                                 <p style={{ fontSize: '0.875rem', fontWeight: 500, opacity: 0.9, lineHeight: 1.5 }}>Need help with something? Let us know immediately and we'll resolve it.</p>
                             </div>
                         </Link>
-
-                        {isHrmsOnly && (
-                            <a
-                                href={hrmsReturnLink.href}
-                                className="action-card secondary hrms-return-card"
-                                style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
-                            >
-                                <div style={{ position: 'relative', zIndex: 10 }}>
-                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '-0.025em', fontFamily: 'Poppins, sans-serif' }}>
-                                        {hrmsReturnLink.label}
-                                    </h3>
-                                    <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-                                        Return to the HRMS dashboard (your HRMS session stays active in this browser).
-                                    </p>
-                                    <span
-                                        className="btn-secondary"
-                                        style={{ width: '100%', fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
-                                    >
-                                        Open HRMS Dashboard
-                                    </span>
-                                </div>
-                            </a>
-                        )}
 
                         {workspaceLinks.map((link) => (
                             <div key={link.id} className={`action-card secondary workspace-link-card${link.id === 'hrms' ? ' workspace-links-mobile-hidden' : ''}`}>

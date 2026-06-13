@@ -54,6 +54,21 @@ export const getHrmsOnlyReturnLink = () => ({
     external: true,
 });
 
+/** Ticket nav for HRMS-only employees: Dashboard opens HRMS, not the ticket app dashboard. */
+export const getHrmsEmployeeNavItems = (items) =>
+    items
+        .filter((item) => !item.isExternal)
+        .map((item) =>
+            item.path === '/student/dashboard'
+                ? {
+                      ...item,
+                      isHrmsDashboard: true,
+                      href: getHrmsDashboardUrl(),
+                      shortLabel: 'Dashboard',
+                  }
+                : item
+        );
+
 /** Navigate back to HRMS dashboard (same browser keeps HRMS login). */
 export const navigateToHrmsPortal = () => {
     window.location.href = getHrmsDashboardUrl();

@@ -22,6 +22,7 @@ import RoleManagement from './pages/admin/RoleManagement';
 import Dashboard from './pages/student/Dashboard';
 import RaiseTicket from './pages/student/RaiseTicket';
 import MyTickets from './pages/student/MyTickets';
+import { isHrmsOnlyTicketUser } from './utils/hrmsPortal';
 
 // Store & Components
 import useAuthStore from './store/authStore';
@@ -65,6 +66,12 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
   }
 
   return children;
+};
+
+const StudentDefaultRedirect = () => {
+  const { user } = useAuthStore();
+  const target = isHrmsOnlyTicketUser(user) ? 'my-tickets' : 'dashboard';
+  return <Navigate to={target} replace />;
 };
 
 const App = () => {
@@ -160,7 +167,7 @@ const App = () => {
           <Route path="my-tickets" element={<MyTickets />} />
           <Route path="raise-ticket" element={<RaiseTicket />} />
           {/* Default redirect for /student root */}
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
+          <Route path="*" element={<StudentDefaultRedirect />} />
         </Route>
 
       </Routes>

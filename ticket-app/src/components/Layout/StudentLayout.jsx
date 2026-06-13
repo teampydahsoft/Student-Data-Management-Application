@@ -17,7 +17,7 @@ import {
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import NotificationPrompt from '../NotificationPrompt';
-import { getWorkspaceLinks, getHrmsOnlyReturnLink, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
+import { getWorkspaceLinks, getHrmsEmployeeNavItems, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
 import { getMainAppReturnUrl } from '../../utils/mainAppUrl';
 import { RiExternalLinkLine } from 'react-icons/ri';
 
@@ -32,17 +32,6 @@ const StudentLayout = ({ children }) => {
     const isHrmsOnly = isHrmsOnlyTicketUser(user);
     const hasPortalAccess = hasStudentDatabasePortalAccess(user);
     const workspaceLinks = isHrmsOnly ? [] : getWorkspaceLinks(user, { token });
-    const hrmsReturnLink = getHrmsOnlyReturnLink();
-
-    const hrmsReturnNavItem = {
-        icon: RiLogoutBoxRLine,
-        activeIcon: RiLogoutBoxRLine,
-        label: hrmsReturnLink.label,
-        shortLabel: hrmsReturnLink.shortLabel,
-        href: hrmsReturnLink.href,
-        isExternal: true,
-        isHrmsReturn: true,
-    };
 
     // --- Navigation Configuration (Short List) ---
     const allNavItems = [
@@ -54,15 +43,13 @@ const StudentLayout = ({ children }) => {
     ];
 
     const navItems = isHrmsOnly
-        ? [...allNavItems.filter((item) => !item.isExternal), hrmsReturnNavItem]
+        ? getHrmsEmployeeNavItems(allNavItems)
         : allNavItems;
 
-    const mobilePrimaryItems = isHrmsOnly
-        ? [...allNavItems.filter((item) => !item.isExternal), hrmsReturnNavItem]
-        : navItems.slice(0, 4);
+    const mobilePrimaryItems = isHrmsOnly ? navItems : navItems.slice(0, 4);
 
     const handleNavigation = (e, item) => {
-        if (item.isHrmsReturn) {
+        if (item.isHrmsDashboard) {
             e.preventDefault();
             navigateToHrmsPortal();
             setMoreMenuOpen(false);
@@ -259,7 +246,7 @@ const StudentLayout = ({ children }) => {
 
                 <nav style={styles.nav} className="custom-scrollbar">
                     {navItems.map((item, index) => {
-                        return item.isHrmsReturn ? (
+                        return item.isHrmsDashboard ? (
                             <button
                                 key={index}
                                 type="button"
@@ -399,9 +386,9 @@ const StudentLayout = ({ children }) => {
             {/* Mobile Bottom Bar */}
             <div style={styles.mobileBottomBar} className="mobile-bottom-bar">
                 {mobilePrimaryItems.map((item, index) => {
-                    const active = !item.isExternal && !item.isHrmsReturn && window.location.pathname === item.path;
+                    const active = !item.isExternal && !item.isHrmsDashboard && window.location.pathname === item.path;
 
-                    if (item.isHrmsReturn) {
+                    if (item.isHrmsDashboard) {
                         return (
                             <button
                                 key={index}
