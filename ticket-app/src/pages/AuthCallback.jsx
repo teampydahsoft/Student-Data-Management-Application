@@ -66,6 +66,16 @@ const AuthCallback = () => {
                 const userType = applyAuthSession(sessionToken, user);
                 toast.success(fromHrms ? 'Signed in from HRMS' : 'Signed in from Portal');
 
+                if (fromHrms) {
+                    localStorage.setItem('hrms_origin_token', token);
+                    const hrmsReturn = searchParams.get('hrms_return') || searchParams.get('return_to');
+                    if (hrmsReturn && hrmsReturn.startsWith('/') && !hrmsReturn.startsWith('//')) {
+                        localStorage.setItem('hrms_return_path', hrmsReturn);
+                    } else {
+                        localStorage.setItem('hrms_return_path', '/dashboard');
+                    }
+                }
+
                 const redirect = searchParams.get('redirect');
                 const safeRedirect =
                     redirect && redirect.startsWith('/') && !redirect.startsWith('//')

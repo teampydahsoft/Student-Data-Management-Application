@@ -531,7 +531,7 @@ exports.hrmsSsoSession = async (req, res) => {
 
 /**
  * Issue a short-lived JWT so HRMS can restore the user's session (ticket app → HRMS).
- * HRMS should verify with HRMS_SSO_SECRET or JWT_SECRET at /auth-callback?token=...&from=ticket_app
+ * HRMS return: /login?token=...&redirect=/dashboard (HRMS /auth-callback does not exist).
  * @route GET /api/auth/hrms-return-url
  */
 exports.getHrmsReturnUrl = async (req, res) => {
@@ -597,8 +597,8 @@ exports.getHrmsReturnUrl = async (req, res) => {
 exports.getSsoConfig = (req, res) => {
     const ticketAppUrl = process.env.TICKET_APP_URL || 'http://localhost:5174';
     const hrmsPortalUrl = (process.env.HRMS_PORTAL_URL || 'https://hrms.pydah.edu.in').replace(/\/$/, '');
-    const hrmsCallbackPath = process.env.HRMS_SSO_CALLBACK_PATH || '/auth-callback';
     const hrmsReturnRedirect = process.env.HRMS_RETURN_REDIRECT_PATH || '/dashboard';
+    const hrmsReturnMode = process.env.HRMS_SSO_RETURN_MODE || 'login';
 
     res.json({
         success: true,
@@ -609,10 +609,11 @@ exports.getSsoConfig = (req, res) => {
             exchangeEndpoint: '/api/auth/hrms-sso-session',
             verifyEndpoint: '/api/auth/verify',
             hrmsReturnEndpoint: '/api/auth/hrms-return-url',
-            hrmsReturnCallbackPath: hrmsCallbackPath,
+            hrmsReturnMode,
             hrmsReturnRedirectPath: hrmsReturnRedirect,
-            hrmsReturnExample: `${hrmsPortalUrl}${hrmsCallbackPath}?token={jwt}&from=ticket_app&redirect=${encodeURIComponent(hrmsReturnRedirect)}`,
+            hrmsReturnExample: `${hrmsPortalUrl}/login?token={jwt}&from=ticket_app&redirect=${encodeURIComponent(hrmsReturnRedirect)}`,
             hrmsReturnLandingUrl: `${hrmsPortalUrl}${hrmsReturnRedirect}`,
+            note: 'HRMS /auth-callback returns 404 — use /login?token= with redirect=/dashboard',
             signingSecrets: [
                 'JWT_SECRET (shared with Student Database — pass-through SSO)',
                 'HRMS_SSO_SECRET (optional dedicated secret for token exchange)'
