@@ -16,7 +16,7 @@ import { SkeletonBox, StudentDashboardSkeleton } from '../../components/Skeleton
 import '../../styles/student-pages.css';
 
 import useAuthStore from '../../store/authStore';
-import { getWorkspaceLinks, getHrmsOnlyReturnLink, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
+import { getWorkspaceLinks, getHrmsOnlyReturnLink, isHrmsOnlyTicketUser } from '../../utils/hrmsPortal';
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -189,27 +189,26 @@ const Dashboard = () => {
                         </Link>
 
                         {isHrmsOnly && (
-                            <button
-                                type="button"
-                                onClick={() => navigateToHrmsPortal(api)}
+                            <a
+                                href={hrmsReturnLink.href}
                                 className="action-card secondary hrms-return-card"
-                                style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }}
+                                style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
                             >
                                 <div style={{ position: 'relative', zIndex: 10 }}>
                                     <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '-0.025em', fontFamily: 'Poppins, sans-serif' }}>
                                         {hrmsReturnLink.label}
                                     </h3>
                                     <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-                                        Return to the HRMS application — you will be signed in automatically.
+                                        Return to the HRMS dashboard (your HRMS session stays active in this browser).
                                     </p>
                                     <span
                                         className="btn-secondary"
                                         style={{ width: '100%', fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
                                     >
-                                        Open HRMS Portal
+                                        Open HRMS Dashboard
                                     </span>
                                 </div>
-                            </button>
+                            </a>
                         )}
 
                         {workspaceLinks.map((link) => (

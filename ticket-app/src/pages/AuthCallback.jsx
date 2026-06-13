@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import useAuthStore, { resolveUserType } from '../store/authStore';
 import api from '../config/api';
 import toast from 'react-hot-toast';
+import { resolveSafeRedirect } from '../utils/safeRedirect';
 
 const applyAuthSession = (token, user) => {
     const userType = resolveUserType(user);
@@ -29,69 +30,65 @@ const AuthCallback = () => {
     useEffect(() => {
         const processAuth = async () => {
             const token = searchParams.get('token');
-            const fromHrms = searchParams.get('from') === 'hrms';
+            const from = searchParams.get('from');
+            const fromHrms = from === 'hrms';
 
             if (!token) {
                 navigate('/login', { replace: true });
                 return;
             }
 
-            localStorage.setItem('token', token);
-
             try {
                 let sessionToken = token;
                 let user = null;
 
-                // 1) Pass-through SSO when token is already signed with shared JWT_SECRET
-                try {
-                    const verifyResponse = await api.get('/auth/verify');
-                    if (verifyResponse.data.success && verifyResponse.data.user) {
-                        user = verifyResponse.data.user;
-                    }
-                } catch (verifyError) {
-                    // 2) Exchange HRMS / portal token for a ticket-app session
+                if (fromHrms) {
+                    // HRMS inbound SSO — exchange HRMS JWT for ticket-app session
                     const exchangeResponse = await api.post('/auth/hrms-sso-session', { token });
-                    if (!exchangeResponse.data.success) {
-                        throw verifyError;
+                    if (!exchangeResponse.data?.success) {
+                        throw new Error(exchangeResponse.data?.message || 'HRMS SSO exchange failed');
                     }
                     sessionToken = exchangeResponse.data.token;
                     user = exchangeResponse.data.user;
-                    localStorage.setItem('token', sessionToken);
+                } else {
+                    localStorage.setItem('token', token);
+
+                    // Portal / pass-through when token is already a ticket-app JWT
+                    try {
+                        const verifyResponse = await api.get('/auth/verify');
+                        if (verifyResponse.data.success && verifyResponse.data.user) {
+                            user = verifyResponse.data.user;
+                        }
+                    } catch (verifyError) {
+                        const exchangeResponse = await api.post('/auth/hrms-sso-session', { token });
+                        if (!exchangeResponse.data?.success) {
+                            throw verifyError;
+                        }
+                        sessionToken = exchangeResponse.data.token;
+                        user = exchangeResponse.data.user;
+                    }
                 }
 
                 if (!user) {
                     throw new Error('Verification failed');
                 }
 
-                const userType = applyAuthSession(sessionToken, user);
+                applyAuthSession(sessionToken, user);
                 toast.success(fromHrms ? 'Signed in from HRMS' : 'Signed in from Portal');
 
-                if (fromHrms) {
-                    localStorage.setItem('hrms_origin_token', token);
-                    const hrmsReturn = searchParams.get('hrms_return') || searchParams.get('return_to');
-                    if (hrmsReturn && hrmsReturn.startsWith('/') && !hrmsReturn.startsWith('//')) {
-                        localStorage.setItem('hrms_return_path', hrmsReturn);
-                    } else {
-                        localStorage.setItem('hrms_return_path', '/dashboard');
-                    }
-                }
+                const redirectParam = searchParams.get('redirect');
+                const defaultPath =
+                    fromHrms || user.role === 'student' || resolveUserType(user) === 'requester'
+                        ? '/student/my-tickets'
+                        : '/dashboard';
 
-                const redirect = searchParams.get('redirect');
-                const safeRedirect =
-                    redirect && redirect.startsWith('/') && !redirect.startsWith('//')
-                        ? redirect
-                        : null;
+                const destination = resolveSafeRedirect(redirectParam, { defaultPath });
 
-                if (safeRedirect) {
-                    navigate(safeRedirect, { replace: true });
-                } else if (userType === 'student' || userType === 'requester') {
-                    navigate('/student/my-tickets', { replace: true });
-                } else {
-                    navigate('/dashboard', { replace: true });
-                }
+                // Replace history entry so token is stripped from the URL
+                navigate(destination, { replace: true });
             } catch (error) {
                 console.error('Auth Callback Error:', error);
-                toast.error(error.response?.data?.message || 'Session invalid or expired');
+                toast.error(error.response?.data?.message || error.message || 'Session invalid or expired');
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('userType');

@@ -3,7 +3,6 @@ const bcrypt = require('bcryptjs');
 const { Student } = require('../models');
 const { authenticateHRMSUser } = require('../utils/hrmsAuth');
 const { verifySsoToken, resolveUserFromSsoPayload } = require('../utils/hrmsSso');
-const { buildHrmsReturnUrl } = require('../utils/hrmsReturnSso');
 const { resolveTicketAccessMode } = require('../utils/ticketAccess');
 
 // --- Helper Functions for Response Building ---
@@ -479,6 +478,13 @@ exports.hrmsSsoSession = async (req, res) => {
 
         const resolved = await resolveUserFromSsoPayload(payload, masterPool);
         if (!resolved) {
+            const hrmsId = payload.hrmsId || payload.hrms_id;
+            if (!hrmsId && !payload.id && payload.role !== 'student') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'HRMS SSO token must include hrmsId'
+                });
+            }
             return res.status(403).json({
                 success: false,
                 message: 'Unable to resolve user from SSO token'
@@ -530,75 +536,12 @@ exports.hrmsSsoSession = async (req, res) => {
 };
 
 /**
- * Issue a short-lived JWT so HRMS can restore the user's session (ticket app → HRMS).
- * HRMS return: /login?token=...&redirect=/dashboard (HRMS /auth-callback does not exist).
- * @route GET /api/auth/hrms-return-url
- */
-exports.getHrmsReturnUrl = async (req, res) => {
-    try {
-        const authUser = req.user;
-        if (!authUser) {
-            return res.status(401).json({ success: false, message: 'Authentication required' });
-        }
-
-        const isHrmsUser = !!(authUser.is_hrms_session || authUser.hrmsId || authUser.is_hrms_user);
-        if (!isHrmsUser) {
-            return res.status(403).json({
-                success: false,
-                message: 'HRMS return SSO is only available for HRMS-authenticated users',
-            });
-        }
-
-        const { masterPool } = require('../config/database');
-        let profile = {
-            hrmsId: authUser.hrmsId,
-            name: authUser.name,
-            username: authUser.username,
-            email: authUser.email,
-            role: authUser.role || 'faculty',
-        };
-
-        if (!profile.hrmsId && authUser.id) {
-            const [rows] = await masterPool.query(
-                `SELECT hrms_id, name, username, email, role
-                 FROM rbac_users WHERE id = ? LIMIT 1`,
-                [authUser.id]
-            );
-            if (rows.length > 0 && rows[0].hrms_id) {
-                profile = {
-                    hrmsId: rows[0].hrms_id,
-                    name: rows[0].name || profile.name,
-                    username: rows[0].username || profile.username,
-                    email: rows[0].email || profile.email,
-                    role: rows[0].role || profile.role,
-                };
-            }
-        }
-
-        const url = buildHrmsReturnUrl(profile);
-        if (!url) {
-            return res.status(400).json({
-                success: false,
-                message: 'Unable to build HRMS return URL — missing HRMS user id',
-            });
-        }
-
-        return res.json({ success: true, url });
-    } catch (error) {
-        console.error('HRMS return SSO error:', error);
-        res.status(500).json({ success: false, message: 'Failed to create HRMS return link' });
-    }
-};
-
-/**
  * Public SSO integration info for HRMS / portal developers.
  * @route GET /api/auth/sso-config
  */
 exports.getSsoConfig = (req, res) => {
-    const ticketAppUrl = process.env.TICKET_APP_URL || 'http://localhost:5174';
+    const ticketAppUrl = (process.env.TICKET_APP_URL || 'http://localhost:5174').replace(/\/$/, '');
     const hrmsPortalUrl = (process.env.HRMS_PORTAL_URL || 'https://hrms.pydah.edu.in').replace(/\/$/, '');
-    const hrmsReturnRedirect = process.env.HRMS_RETURN_REDIRECT_PATH || '/dashboard';
-    const hrmsReturnMode = process.env.HRMS_SSO_RETURN_MODE || 'login';
 
     res.json({
         success: true,
@@ -608,21 +551,27 @@ exports.getSsoConfig = (req, res) => {
             callbackExample: `${ticketAppUrl}/auth-callback?token={jwt}&from=hrms&redirect=/student/my-tickets`,
             exchangeEndpoint: '/api/auth/hrms-sso-session',
             verifyEndpoint: '/api/auth/verify',
-            hrmsReturnEndpoint: '/api/auth/hrms-return-url',
-            hrmsReturnMode,
-            hrmsReturnRedirectPath: hrmsReturnRedirect,
-            hrmsReturnExample: `${hrmsPortalUrl}/login?token={jwt}&from=ticket_app&redirect=${encodeURIComponent(hrmsReturnRedirect)}`,
-            hrmsReturnLandingUrl: `${hrmsPortalUrl}${hrmsReturnRedirect}`,
-            note: 'HRMS /auth-callback returns 404 — use /login?token= with redirect=/dashboard',
+            inboundFlow: {
+                urlParams: ['token', 'from=hrms', 'redirect (optional, allowlisted)'],
+                verifyWith: ['JWT_SECRET', 'HRMS_SSO_SECRET (optional)'],
+                requiredClaims: ['hrmsId'],
+                recommendedClaims: ['role', 'username', 'name', 'email'],
+                defaultRedirect: '/student/my-tickets',
+            },
+            hrmsReturnUrl: `${hrmsPortalUrl}/dashboard`,
+            hrmsReturnNote: 'No return SSO — plain link only; HRMS session persists in same browser localStorage.',
             signingSecrets: [
-                'JWT_SECRET (shared with Student Database — pass-through SSO)',
+                'JWT_SECRET (shared with HRMS production — must match exactly)',
                 'HRMS_SSO_SECRET (optional dedicated secret for token exchange)'
             ],
-            requiredTokenClaims: {
-                hrmsOnlyUser: ['hrmsId', 'role', 'username', 'name', 'email'],
-                linkedRbacUser: ['id', 'role', 'username', 'name', 'email', 'hrmsId (optional)']
+            requiredEnv: {
+                JWT_SECRET: 'shared production secret (not a placeholder)',
+                TICKET_APP_URL: ticketAppUrl,
             },
-            hrmsReturnTokenClaims: ['hrmsId', 'role', 'username', 'name', 'email', 'from=ticket_app']
+            doNotUseForReturn: [
+                'https://hrms.pydah.edu.in/login?token=...',
+                'ticket-maintenance-backend.pydah.edu.in for browser redirects'
+            ]
         }
     });
 };

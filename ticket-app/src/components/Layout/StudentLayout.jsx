@@ -18,7 +18,6 @@ import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import NotificationPrompt from '../NotificationPrompt';
 import { getWorkspaceLinks, getHrmsOnlyReturnLink, hasStudentDatabasePortalAccess, isHrmsOnlyTicketUser, navigateToHrmsPortal } from '../../utils/hrmsPortal';
-import api from '../../config/api';
 import { getMainAppReturnUrl } from '../../utils/mainAppUrl';
 import { RiExternalLinkLine } from 'react-icons/ri';
 
@@ -65,7 +64,7 @@ const StudentLayout = ({ children }) => {
     const handleNavigation = (e, item) => {
         if (item.isHrmsReturn) {
             e.preventDefault();
-            navigateToHrmsPortal(api);
+            navigateToHrmsPortal();
             setMoreMenuOpen(false);
             return;
         }
