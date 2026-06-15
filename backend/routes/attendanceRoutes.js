@@ -14,6 +14,8 @@ router.get('/summary', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'vi
 router.get('/student/:studentId/history', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.getStudentAttendanceHistory);
 router.get('/download', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'download'), attendanceController.downloadAttendanceReport);
 router.get('/day-end-download', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.downloadDayEndReport);
+router.get('/overall-summary', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.getOverallAttendanceSummary);
+router.get('/overall-download', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.downloadOverallAttendanceReport);
 router.get('/report-for-students', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.getAttendanceReportForStudents);
 router.get('/report/abstract', attachUserScope, verifyPermission(MODULES.ATTENDANCE, 'view'), attendanceController.getAttendanceAbstract);
 router.get('/student', attachUserScope, attendanceController.getStudentAttendance);

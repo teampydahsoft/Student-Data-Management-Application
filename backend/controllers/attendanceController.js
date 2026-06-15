@@ -5655,3 +5655,546 @@ exports.getAttendanceReportForStudents = async (req, res) => {
     });
   }
 };
+
+// Fetch aggregated daily + internship attendance summary
+exports.getOverallAttendanceSummary = async (req, res) => {
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['attendance_config']
+    );
+    let excludedCourses = [];
+    let excludedStudents = [];
+    if (settings && settings.length > 0) {
+      const config = JSON.parse(settings[0].value);
+      if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
+      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+    }
+
+    const referenceDate = safeDate(req.query.date) || new Date();
+    const todayKey = formatDateKey(referenceDate);
+
+    const filters = {
+      batch: normalizeTextFilter(req.query.batch),
+      course: normalizeTextFilter(req.query.course),
+      branch: normalizeTextFilter(req.query.branch),
+      year: parseOptionalInteger(req.query.year),
+      semester: parseOptionalInteger(req.query.semester),
+      studentStatus: 'Regular'
+    };
+
+    const { conditions, params } = buildStudentFilterConditions(filters, 's');
+
+    if (excludedCourses.length > 0) {
+      conditions.push(`s.course NOT IN (${excludedCourses.map(() => '?').join(',')})`);
+      params.push(...excludedCourses);
+    }
+    if (excludedStudents.length > 0) {
+      conditions.push(`s.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`);
+      params.push(...excludedStudents);
+    }
+
+    const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '';
+    const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(todayKey);
+
+    // Apply user scope filtering
+    let scopeCondition = '';
+    let scopeParams = [];
+    if (req.userScope) {
+      const { scopeCondition: scopeCond, params: scopeP } = getScopeConditionString(req.userScope, 's');
+      if (scopeCond) {
+        scopeCondition = ` AND ${scopeCond}`;
+        scopeParams = scopeP;
+      }
+    }
+
+    const [studentCountRows] = await masterPool.query(
+      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${semesterSql}${scopeCondition}`,
+      [...params, ...semesterParams, ...scopeParams]
+    );
+    const totalStudents = studentCountRows[0]?.totalStudents || 0;
+
+    // Fetch overall daily status counts
+    const [dailyRows] = await masterPool.query(
+      `
+        SELECT 
+          LOWER(CASE 
+            WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.status, 'unmarked')
+            ELSE COALESCE(ar.status, 'unmarked')
+          END) AS status,
+          COUNT(*) AS count
+        FROM students s
+        LEFT JOIN internship_assignments i_assign
+          ON s.id = i_assign.student_id
+          AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+          AND JSON_CONTAINS(i_assign.allowed_days, JSON_QUOTE(LEFT(DAYNAME(?), 3)))
+        LEFT JOIN internship_attendance ia 
+          ON s.id = ia.student_id 
+          AND ia.attendance_date = ?
+          AND ia.internship_id = i_assign.internship_id
+        LEFT JOIN attendance_records ar 
+          ON s.id = ar.student_id 
+          AND ar.attendance_date = ?
+        WHERE s.student_status = 'Regular'${whereClause}${semesterSql}${scopeCondition}
+        GROUP BY status
+      `,
+      [todayKey, todayKey, todayKey, todayKey, ...params, ...semesterParams, ...scopeParams]
+    );
+
+    // Fetch overall grouped summary data
+    const [groupedRows] = await masterPool.query(
+      `
+        SELECT 
+          s.college AS college,
+          s.batch AS batch,
+          s.course AS course,
+          s.branch AS branch,
+          s.current_year AS year,
+          s.current_semester AS semester,
+          COUNT(s.id) AS total_students,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'present' THEN 1 ELSE 0 END) AS daily_present,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'absent' THEN 1 ELSE 0 END) AS daily_absent,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Present' THEN 1 ELSE 0 END) AS internship_present,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Absent' THEN 1 ELSE 0 END) AS internship_absent,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
+          GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
+          DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
+        FROM students s
+        LEFT JOIN internship_assignments i_assign
+          ON s.id = i_assign.student_id
+          AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+          AND JSON_CONTAINS(i_assign.allowed_days, JSON_QUOTE(LEFT(DAYNAME(?), 3)))
+        LEFT JOIN internship_attendance ia 
+          ON s.id = ia.student_id 
+          AND ia.attendance_date = ?
+          AND ia.internship_id = i_assign.internship_id
+        LEFT JOIN attendance_records ar 
+          ON s.id = ar.student_id 
+          AND ar.attendance_date = ?
+        WHERE s.student_status = 'Regular'${whereClause}${semesterSql}${scopeCondition}
+        GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+        ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+      `,
+      [todayKey, todayKey, todayKey, todayKey, ...params, ...semesterParams, ...scopeParams]
+    );
+
+    let presentCount = 0;
+    let absentCount = 0;
+    let holidayCount = 0;
+    let rejectedCount = 0;
+
+    dailyRows.forEach((row) => {
+      if (row.status === 'present') presentCount = row.count;
+      if (row.status === 'absent') absentCount = row.count;
+      if (row.status === 'holiday') holidayCount = row.count;
+      if (row.status === 'rejected') rejectedCount = row.count;
+    });
+
+    const markedCount = presentCount + absentCount + holidayCount + rejectedCount;
+    const unmarkedCount = Math.max(0, totalStudents - markedCount);
+    const denominator = totalStudents || markedCount || 1;
+    const percentage = Math.round((presentCount / denominator) * 100);
+
+    const groupedSummary = groupedRows.map((row) => {
+      const dailyPresent = Number(row.daily_present) || 0;
+      const dailyAbsent = Number(row.daily_absent) || 0;
+      const internshipPresent = Number(row.internship_present) || 0;
+      const internshipAbsent = Number(row.internship_absent) || 0;
+      const holiday = Number(row.holiday) || 0;
+      const rejected = Number(row.rejected) || 0;
+      const total = Number(row.total_students) || 0;
+
+      const present = dailyPresent + internshipPresent;
+      const absent = dailyAbsent + internshipAbsent;
+      const marked = present + absent + holiday + rejected;
+
+      return {
+        college: row.college || null,
+        batch: row.batch || null,
+        course: row.course || null,
+        branch: row.branch || null,
+        year: row.year || null,
+        semester: row.semester || null,
+        totalStudents: total,
+        dailyPresent,
+        dailyAbsent,
+        internshipPresent,
+        internshipAbsent,
+        holidayToday: holiday,
+        rejectedToday: rejected,
+        presentToday: present,
+        absentToday: absent,
+        holidayReasons: row.holiday_reasons || null,
+        lastUpdated: row.last_updated || null,
+        markedToday: marked,
+        pendingToday: Math.max(0, total - marked)
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalStudents,
+        referenceDate: todayKey,
+        filters: {
+          batch: filters.batch,
+          course: filters.course,
+          branch: filters.branch,
+          year: filters.year,
+          semester: filters.semester
+        },
+        daily: {
+          date: todayKey,
+          present: presentCount,
+          absent: absentCount,
+          holiday: holidayCount,
+          rejected: rejectedCount,
+          marked: markedCount,
+          pending: unmarkedCount,
+          totalStudents,
+          total: totalStudents,
+          percentage
+        },
+        groupedSummary
+      }
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch overall attendance summary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching overall attendance summary'
+    });
+  }
+};
+
+// Download overall attendance report in PDF or Excel format
+exports.downloadOverallAttendanceReport = async (req, res) => {
+  try {
+    const {
+      date,
+      format,
+      batch,
+      course,
+      branch,
+      college,
+      year,
+      semester,
+      previewFilter: previewFilterRaw
+    } = req.query;
+
+    const previewFilter = (() => {
+      const raw = String(previewFilterRaw || 'all').toLowerCase();
+      if (raw === 'pending') return 'unmarked';
+      if (raw === 'marked' || raw === 'unmarked') return raw;
+      return 'all';
+    })();
+    const normalizedFormat = (format || 'xlsx').toLowerCase();
+    const attendanceDate = getDateOnlyString(date || new Date());
+
+    if (!attendanceDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format'
+      });
+    }
+
+    if (normalizedFormat !== 'pdf' && normalizedFormat !== 'xlsx') {
+      return res.status(400).json({
+        success: false,
+        message: 'Format must be either pdf or xlsx'
+      });
+    }
+
+    // Fetch exclude settings
+    let excludedCourses = [];
+    let excludedStudents = [];
+    try {
+      const [settings] = await masterPool.query(
+        'SELECT value FROM settings WHERE `key` = ?',
+        ['attendance_config']
+      );
+      if (settings && settings.length > 0) {
+        const config = JSON.parse(settings[0].value);
+        if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
+        if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch attendance config for overall report:', err);
+    }
+
+    const filters = {
+      batch: normalizeTextFilter(batch),
+      course: normalizeTextFilter(course),
+      branch: normalizeTextFilter(branch),
+      college: normalizeTextFilter(college),
+      year: parseOptionalInteger(year),
+      semester: parseOptionalInteger(semester),
+      studentStatus: 'Regular'
+    };
+
+    const countFilter = buildWhereClause(filters, 's');
+
+    let exclusionClause = '';
+    const exclusionParams = [];
+
+    if (excludedCourses.length > 0) {
+      exclusionClause += ` AND s.course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
+      exclusionParams.push(...excludedCourses);
+    }
+
+    if (excludedStudents.length > 0) {
+      exclusionClause += ` AND s.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+      exclusionParams.push(...excludedStudents);
+    }
+
+    let scopeCondition = '';
+    let scopeParams = [];
+    if (req.userScope) {
+      const { scopeCondition: scopeCond, params: scopeP } = getScopeConditionString(req.userScope, 's');
+      if (scopeCond) {
+        scopeCondition = ` AND ${scopeCond}`;
+        scopeParams = scopeP;
+      }
+    }
+
+    const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+
+    // Get grouped summary data (aggregated daily + internship)
+    const [groupedRows] = await masterPool.query(
+      `
+        SELECT 
+          s.college AS college,
+          s.batch AS batch,
+          s.course AS course,
+          s.branch AS branch,
+          s.current_year AS year,
+          s.current_semester AS semester,
+          COUNT(s.id) AS total_students,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'present' THEN 1 ELSE 0 END) AS daily_present,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'absent' THEN 1 ELSE 0 END) AS daily_absent,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Present' THEN 1 ELSE 0 END) AS internship_present,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Absent' THEN 1 ELSE 0 END) AS internship_absent,
+          SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
+          SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
+          GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
+          DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
+        FROM students s
+        LEFT JOIN internship_assignments i_assign
+          ON s.id = i_assign.student_id
+          AND ? BETWEEN i_assign.start_date AND i_assign.end_date
+          AND JSON_CONTAINS(i_assign.allowed_days, JSON_QUOTE(LEFT(DAYNAME(?), 3)))
+        LEFT JOIN internship_attendance ia 
+          ON s.id = ia.student_id 
+          AND ia.attendance_date = ?
+          AND ia.internship_id = i_assign.internship_id
+        LEFT JOIN attendance_records ar 
+          ON s.id = ar.student_id 
+          AND ar.attendance_date = ?
+        WHERE 1=1${countFilter.clause}${exclusionClause}${semesterSql}${scopeCondition}
+        GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+        ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
+      `,
+      [attendanceDate, attendanceDate, attendanceDate, attendanceDate, ...countFilter.params, ...exclusionParams, ...semesterParams, ...scopeParams]
+    );
+
+    const allGroupedData = groupedRows.map((row) => {
+      const dailyPresent = Number(row.daily_present) || 0;
+      const dailyAbsent = Number(row.daily_absent) || 0;
+      const internshipPresent = Number(row.internship_present) || 0;
+      const internshipAbsent = Number(row.internship_absent) || 0;
+      const holiday = Number(row.holiday) || 0;
+      const rejected = Number(row.rejected) || 0;
+      const total = Number(row.total_students) || 0;
+
+      const present = dailyPresent + internshipPresent;
+      const absent = dailyAbsent + internshipAbsent;
+      const marked = present + absent + holiday + rejected;
+
+      return {
+        college: row.college || '—',
+        batch: row.batch || '—',
+        course: row.course || '—',
+        branch: row.branch || '—',
+        year: row.year || '—',
+        semester: row.semester || '—',
+        totalStudents: total,
+        dailyPresent,
+        dailyAbsent,
+        internshipPresent,
+        internshipAbsent,
+        holidayToday: holiday,
+        rejectedToday: rejected,
+        presentToday: present,
+        absentToday: absent,
+        markedToday: marked,
+        pendingToday: Math.max(0, total - marked),
+        lastUpdated: row.last_updated || null,
+        holidayReasons: row.holiday_reasons || null
+      };
+    });
+
+    const groupedData = allGroupedData.filter((row) => {
+      if (previewFilter === 'marked') return (row.markedToday || 0) > 0;
+      if (previewFilter === 'unmarked') return (row.pendingToday || 0) > 0;
+      return true;
+    });
+
+    const totalStudents = groupedData.reduce((sum, row) => sum + (row.totalStudents || 0), 0);
+    const presentToday = groupedData.reduce((sum, row) => sum + (row.presentToday || 0), 0);
+    const absentToday = groupedData.reduce((sum, row) => sum + (row.absentToday || 0), 0);
+    const holidayToday = groupedData.reduce((sum, row) => sum + (row.holidayToday || 0), 0);
+    const rejectedToday = groupedData.reduce((sum, row) => sum + (row.rejectedToday || 0), 0);
+    const markedToday = groupedData.reduce((sum, row) => sum + (row.markedToday || 0), 0);
+    const unmarkedToday = groupedData.reduce((sum, row) => sum + (row.pendingToday || 0), 0);
+
+    const previewFilterLabel = previewFilter === 'marked'
+      ? 'Marked Only'
+      : previewFilter === 'unmarked'
+        ? 'Unmarked / Pending Only'
+        : 'All';
+    const fileSuffix = previewFilter !== 'all' ? `_${previewFilter}` : '';
+
+    if (normalizedFormat === 'pdf') {
+      const reportTotalStudents = previewFilter === 'unmarked'
+        ? unmarkedToday
+        : previewFilter === 'marked'
+          ? markedToday
+          : totalStudents;
+      const attendancePercentage = reportTotalStudents > 0 && previewFilter !== 'unmarked'
+        ? ((presentToday / reportTotalStudents) * 100).toFixed(2) + '%'
+        : '0.00%';
+
+      const summaryStats = {
+        totalStudents: reportTotalStudents,
+        markedCount: markedToday,
+        unmarkedCount: unmarkedToday,
+        presentCount: previewFilter === 'unmarked' ? 0 : presentToday,
+        absentCount: previewFilter === 'unmarked' ? 0 : (absentToday + rejectedToday), // Combine rejected into absent for standard PDF
+        attendancePercentage,
+        previewFilter,
+        previewFilterLabel
+      };
+
+      try {
+        const pdfPath = await generateAttendanceReportPDF({
+          collegeName: college || 'All Colleges',
+          attendanceDate,
+          batch,
+          courseName: course || 'All Courses',
+          branchName: branch || 'All Branches',
+          year,
+          semester,
+          students: [],
+          attendanceRecords: [],
+          allBatchesData: groupedData.map(d => ({
+            ...d,
+            total: previewFilter === 'unmarked' ? d.pendingToday : d.totalStudents,
+            present: previewFilter === 'unmarked' ? 0 : d.presentToday,
+            absent: previewFilter === 'unmarked' ? 0 : (d.absentToday + d.rejectedToday),
+            pending: d.pendingToday
+          })),
+          summaryStats,
+          statsOnly: true,
+          previewFilter,
+          excludeCourse: false
+        });
+
+        const fileBuffer = require('fs').readFileSync(pdfPath);
+        require('fs').unlinkSync(pdfPath);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="overall_attendance_report_${attendanceDate}${fileSuffix}.pdf"`);
+        return res.send(fileBuffer);
+      } catch (pdfError) {
+        console.error('PDF Generation failed:', pdfError);
+        return res.status(500).json({ success: false, message: 'PDF Generation failed' });
+      }
+    } else {
+      // Generate Excel
+      const XLSX = require('xlsx');
+      const workbook = XLSX.utils.book_new();
+
+      const summaryData = [
+        ['Overall Attendance Report (Daily + Internship)'],
+        ['Date', attendanceDate],
+        ['View', previewFilterLabel],
+        [''],
+        ['Summary'],
+        ['Total Students', previewFilter === 'unmarked' ? unmarkedToday : previewFilter === 'marked' ? markedToday : totalStudents],
+        ['Marked Today', markedToday],
+        ['Class Present', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.dailyPresent || 0), 0)],
+        ['Class Absent', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.dailyAbsent || 0), 0)],
+        ['Internship Present', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.internshipPresent || 0), 0)],
+        ['Internship Absent', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.internshipAbsent || 0), 0)],
+        ['Internship Rejected', previewFilter === 'unmarked' ? 0 : rejectedToday],
+        ['No Class Work', holidayToday],
+        ['Unmarked', unmarkedToday],
+        [''],
+        ['Filters'],
+        ...(filters.batch ? [['Batch', filters.batch]] : []),
+        ...(filters.course ? [['Course', filters.course]] : []),
+        ...(filters.branch ? [['Branch', filters.branch]] : []),
+        ...(filters.year ? [['Year', filters.year]] : []),
+        ...(filters.semester ? [['Semester', filters.semester]] : [])
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+      // Grouped data sheet
+      const tableData = [
+        ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Students', 'Class Present', 'Class Absent', 'Internship Present', 'Internship Absent', 'Internship Rejected', 'Marked', 'Pending', 'No Class Work', 'Time Stamp'],
+        ...groupedData.map(row => [
+          row.college, row.batch, row.course, row.branch,
+          row.year, row.semester,
+          previewFilter === 'unmarked' ? row.pendingToday : row.totalStudents,
+          previewFilter === 'unmarked' ? 0 : row.dailyPresent,
+          previewFilter === 'unmarked' ? 0 : row.dailyAbsent,
+          previewFilter === 'unmarked' ? 0 : row.internshipPresent,
+          previewFilter === 'unmarked' ? 0 : row.internshipAbsent,
+          previewFilter === 'unmarked' ? 0 : row.rejectedToday,
+          previewFilter === 'unmarked' ? 0 : row.markedToday,
+          row.pendingToday, row.holidayToday,
+          row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'
+        ])
+      ];
+      const tableSheet = XLSX.utils.aoa_to_sheet(tableData);
+
+      // Column widths
+      tableSheet['!cols'] = [
+        { wch: 15 }, // College
+        { wch: 12 }, // Batch
+        { wch: 20 }, // Course
+        { wch: 15 }, // Branch
+        { wch: 8 },  // Year
+        { wch: 8 },  // Semester
+        { wch: 10 }, // Students
+        { wch: 12 }, // Class Present
+        { wch: 12 }, // Class Absent
+        { wch: 15 }, // Internship Present
+        { wch: 15 }, // Internship Absent
+        { wch: 15 }, // Internship Rejected
+        { wch: 10 }, // Marked
+        { wch: 10 }, // Pending
+        { wch: 12 }, // No Class Work
+        { wch: 15 }  // Time Stamp
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, tableSheet, 'Grouped Summary');
+
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="overall_attendance_report_${attendanceDate}${fileSuffix}.xlsx"`);
+      return res.send(buffer);
+    }
+  } catch (error) {
+    console.error('Overall report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while generating overall attendance report'
+    });
+  }
+};
+

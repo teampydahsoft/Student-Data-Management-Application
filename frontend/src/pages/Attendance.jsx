@@ -265,6 +265,7 @@ const Attendance = () => {
   const [dayEndReportOpen, setDayEndReportOpen] = useState(false);
   const [dayEndReportMode, setDayEndReportMode] = useState('day-end'); // day-end | previous-pending
   const [dayEndReportLoading, setDayEndReportLoading] = useState(false);
+  const [overallAttendanceLoading, setOverallAttendanceLoading] = useState(false);
   const [dayEndReportData, setDayEndReportData] = useState(null);
   const [dayEndGrouped, setDayEndGrouped] = useState([]);
   const [dayEndPreviewFilter, setDayEndPreviewFilter] = useState('all'); // all | marked | unmarked
@@ -456,7 +457,11 @@ const Attendance = () => {
     const filteredRows = dayEndGroupedDisplay;
     const totalStudents = filteredRows.reduce((sum, row) => sum + (row.totalStudents || 0), 0);
     const markedToday = filteredRows.reduce((sum, row) => sum + (row.markedToday || 0), 0);
-    const absentToday = filteredRows.reduce((sum, row) => sum + (row.absentToday || 0), 0);
+    const absentToday = filteredRows.reduce((sum, row) => {
+      const baseAbsent = row.absentToday || 0;
+      const rejected = dayEndReportMode === 'overall' ? (row.rejectedToday || 0) : 0;
+      return sum + baseAbsent + rejected;
+    }, 0);
     const presentToday = filteredRows.reduce((sum, row) => sum + (row.presentToday || 0), 0);
     const holidayToday = filteredRows.reduce((sum, row) => sum + (row.holidayToday || 0), 0);
     const unmarkedToday = filteredRows.reduce((sum, row) => sum + (row.pendingToday || 0), 0);
@@ -479,7 +484,7 @@ const Attendance = () => {
       unmarkedToday,
       holidayReason: holidayReasons || null
     };
-  }, [dayEndGroupedDisplay]);
+  }, [dayEndGroupedDisplay, dayEndReportMode]);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -1120,7 +1125,12 @@ const Attendance = () => {
     const holidayToday = Number(
       safeDaily.find((d) => d.status === 'holiday')?.count ?? summary.daily?.holiday ?? 0
     ) || 0;
-    const markedToday = presentToday + absentToday + holidayToday;
+    const rejectedToday = Number(
+      safeDaily.find((d) => d.status === 'rejected')?.count ?? summary.daily?.rejected ?? 0
+    ) || 0;
+
+    const displayAbsent = mode === 'overall' ? (absentToday + rejectedToday) : absentToday;
+    const markedToday = presentToday + absentToday + holidayToday + rejectedToday;
     const unmarkedToday = Math.max(0, totalStudents - markedToday);
 
     const groupedData = summary.groupedSummary || [];
@@ -1132,8 +1142,9 @@ const Attendance = () => {
     setDayEndReportData({
       totalStudents,
       presentToday,
-      absentToday,
+      absentToday: displayAbsent,
       holidayToday,
+      rejectedToday,
       markedToday,
       unmarkedToday,
       filtersSnapshot,
@@ -1234,6 +1245,38 @@ const Attendance = () => {
     }
   };
 
+  const handleOverallAttendanceReport = async () => {
+    if (dayEndReportOpen) return;
+
+    setOverallAttendanceLoading(true);
+    try {
+      const params = {
+        date: attendanceDate
+      };
+      if (filters.batch) params.batch = filters.batch;
+      if (filters.course) params.course = filters.course;
+      if (filters.branch) params.branch = filters.branch;
+      if (filters.currentYear) params.year = filters.currentYear;
+      if (filters.currentSemester) params.semester = filters.currentSemester;
+
+      const response = await api.get('/attendance/overall-summary', { params });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to fetch overall attendance report');
+      }
+
+      applyDayEndSummaryToState(response.data?.data || {}, attendanceDate, {
+        previewFilter: 'all',
+        filtersSnapshot: { ...filters },
+        mode: 'overall'
+      });
+    } catch (error) {
+      console.error('Overall report error:', error);
+      toast.error(error.response?.data?.message || 'Unable to fetch overall attendance report');
+    } finally {
+      setOverallAttendanceLoading(false);
+    }
+  };
+
   const handleGoToPreviousPendingDay = () => {
     const previousDate = dayEndReportData?.date;
     if (!previousDate) return;
@@ -1261,7 +1304,10 @@ const Attendance = () => {
         params.append('previewFilter', dayEndPreviewFilter);
       }
 
-      const response = await api.get(`/attendance/day-end-download?${params.toString()}`, {
+      const isOverall = dayEndReportMode === 'overall';
+      const endpoint = isOverall ? '/attendance/overall-download' : '/attendance/day-end-download';
+
+      const response = await api.get(`${endpoint}?${params.toString()}`, {
         responseType: 'blob'
       });
 
@@ -1274,7 +1320,8 @@ const Attendance = () => {
       const link = document.createElement('a');
       link.href = url;
       const filterSuffix = dayEndPreviewFilter && dayEndPreviewFilter !== 'all' ? `_${dayEndPreviewFilter}` : '';
-      const fileName = `day_end_report_${reportDate}${filterSuffix}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      const prefix = isOverall ? 'overall_attendance_report' : 'day_end_report';
+      const fileName = `${prefix}_${reportDate}${filterSuffix}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       link.download = fileName;
       link.click();
       window.URL.revokeObjectURL(url);
@@ -3179,6 +3226,16 @@ const Attendance = () => {
               {dayEndReportLoading ? 'Loading...' : 'Day End Report'}
             </button>
 
+            <button
+              type="button"
+              onClick={handleOverallAttendanceReport}
+              disabled={overallAttendanceLoading}
+              className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold shadow hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
+            >
+              <Users size={14} />
+              {overallAttendanceLoading ? 'Loading...' : 'Overall Attendance'}
+            </button>
+
             {filters.currentYear && filters.currentSemester && (
               <button
                 type="button"
@@ -3234,6 +3291,8 @@ const Attendance = () => {
                   <h2 className="text-xl font-black text-gray-900 tracking-tight">
                     {dayEndReportMode === 'previous-pending'
                       ? 'Previous Day Pending Attendance'
+                      : dayEndReportMode === 'overall'
+                      ? 'Overall Attendance Abstract Report'
                       : 'Day End Abstract Report'}
                   </h2>
                   <p className="text-xs text-gray-500 font-medium">
@@ -3352,24 +3411,61 @@ const Attendance = () => {
                         <p className="text-[10px] font-bold text-gray-400 mt-1">YEAR {row.year} • SEM {row.semester}</p>
                       </div>
 
-                      <div className="grid grid-cols-4 gap-2 mb-4 bg-gray-50 rounded-2xl p-4">
-                        <div className="text-center">
-                          <div className="text-[10px] font-black text-gray-400 uppercase mb-1">Ttl</div>
-                          <div className="text-xs font-black text-gray-900">{row.totalStudents || 0}</div>
+                      {dayEndReportMode === 'overall' ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 bg-gray-50 rounded-2xl p-4 text-xs font-bold text-gray-700">
+                          <div>
+                            <div className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Total</div>
+                            <div className="text-gray-900">{row.totalStudents || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Pending</div>
+                            <div className="text-gray-900">{row.pendingToday || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-emerald-600 uppercase mb-0.5">Class Pres</div>
+                            <div className="text-emerald-700">{row.dailyPresent || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-rose-600 uppercase mb-0.5">Class Abs</div>
+                            <div className="text-rose-700">{row.dailyAbsent || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-emerald-800 uppercase mb-0.5">Intern Pres</div>
+                            <div className="text-emerald-900">{row.internshipPresent || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-rose-800 uppercase mb-0.5">Intern Abs</div>
+                            <div className="text-rose-900">{row.internshipAbsent || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-red-500 uppercase mb-0.5">Intern Rej</div>
+                            <div className="text-red-600">{row.rejectedToday || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-black text-amber-500 uppercase mb-0.5">No Class</div>
+                            <div className="text-amber-600">{row.holidayToday || 0}</div>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-[10px] font-black text-emerald-500 uppercase mb-1">P</div>
-                          <div className="text-xs font-black text-emerald-600">{row.presentToday || 0}</div>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-2 mb-4 bg-gray-50 rounded-2xl p-4">
+                          <div className="text-center">
+                            <div className="text-[10px] font-black text-gray-400 uppercase mb-1">Ttl</div>
+                            <div className="text-xs font-black text-gray-900">{row.totalStudents || 0}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-[10px] font-black text-emerald-500 uppercase mb-1">P</div>
+                            <div className="text-xs font-black text-emerald-600">{row.presentToday || 0}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-[10px] font-black text-rose-500 uppercase mb-1">A</div>
+                            <div className="text-xs font-black text-rose-600">{row.absentToday || 0}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-[10px] font-black text-amber-500 uppercase mb-1">N.C</div>
+                            <div className="text-xs font-black text-amber-600">{row.holidayToday || 0}</div>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-[10px] font-black text-rose-500 uppercase mb-1">A</div>
-                          <div className="text-xs font-black text-rose-600">{row.absentToday || 0}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-[10px] font-black text-amber-500 uppercase mb-1">N.C</div>
-                          <div className="text-xs font-black text-amber-600">{row.holidayToday || 0}</div>
-                        </div>
-                      </div>
+                      )}
 
                       <div className="flex items-center justify-between pt-2">
                         <div className="text-[9px] font-medium text-gray-400">
@@ -3447,10 +3543,25 @@ const Attendance = () => {
                             </select>
                           </th>
                           <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Students</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Absent</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Present</th>
-                          <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">Status %</th>
-                          <th className="px-6 py-5 w-[150px] text-[10px] font-bold uppercase tracking-widest text-right">No Class Work</th>
+                          {dayEndReportMode === 'overall' ? (
+                            <>
+                              <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-emerald-600">Class P</th>
+                              <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-rose-600">Class A</th>
+                              <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-emerald-800">Intern P</th>
+                              <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-rose-800">Intern A</th>
+                              <th className="px-4 py-5 w-[70px] text-[10px] font-bold uppercase tracking-widest text-right text-red-500">Rej</th>
+                              <th className="px-4 py-5 w-[90px] text-[10px] font-bold uppercase tracking-widest text-right text-amber-500">No Class</th>
+                              <th className="px-4 py-5 w-[80px] text-[10px] font-bold uppercase tracking-widest text-right">Pending</th>
+                              <th className="px-4 py-5 w-[90px] text-[10px] font-bold uppercase tracking-widest text-center">Status %</th>
+                            </>
+                          ) : (
+                            <>
+                              <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Absent</th>
+                              <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Present</th>
+                              <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">Status %</th>
+                              <th className="px-6 py-5 w-[150px] text-[10px] font-bold uppercase tracking-widest text-right">No Class Work</th>
+                            </>
+                          )}
                           <th className="px-6 py-5 w-[120px] text-[10px] font-bold uppercase tracking-widest text-right">Updated At</th>
                         </tr>
                       </thead>
@@ -3463,35 +3574,90 @@ const Attendance = () => {
                             <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.year || '—'}</td>
                             <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.semester || '—'}</td>
                             <td className="px-6 py-4 text-right text-xs font-bold text-gray-900">{row.totalStudents ?? 0}</td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="bg-rose-50 text-rose-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
-                                {row.absentToday ?? 0}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
-                                {row.presentToday ?? 0}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col items-center gap-1.5">
-                                <span className={`text-[11px] font-bold ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                  {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
-                                </span>
-                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                  <div
-                                    className={`h-full transition-all duration-1000 ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                    style={{ width: `${row.totalStudents > 0 ? (row.presentToday / row.totalStudents * 100) : 0}%` }}
-                                  ></div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex flex-col items-end">
-                                <span className="font-bold text-amber-600 text-[11px]">{row.holidayToday ?? 0}</span>
-                                {row.holidayReasons && <span className="text-[10px] font-medium text-gray-500 truncate max-w-[120px]" title={row.holidayReasons}>{row.holidayReasons}</span>}
-                              </div>
-                            </td>
+                            {dayEndReportMode === 'overall' ? (
+                              <>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg font-bold text-[11px]">
+                                    {row.dailyPresent ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded-lg font-bold text-[11px]">
+                                    {row.dailyAbsent ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded-lg font-bold text-[11px]">
+                                    {row.internshipPresent ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded-lg font-bold text-[11px]">
+                                    {row.internshipAbsent ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg font-bold text-[11px]">
+                                    {row.rejectedToday ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="text-amber-600 font-bold text-[11px]">
+                                    {row.holidayToday ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <span className="text-gray-500 font-bold text-[11px]">
+                                    {row.pendingToday ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className={`text-[11px] font-bold ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                      {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
+                                    </span>
+                                    <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                                      <div
+                                        className={`h-full transition-all duration-1000 ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                        style={{ width: `${row.totalStudents > 0 ? (row.presentToday / row.totalStudents * 100) : 0}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="px-6 py-4 text-right">
+                                  <span className="bg-rose-50 text-rose-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
+                                    {row.absentToday ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-xl font-bold text-[11px]">
+                                    {row.presentToday ?? 0}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col items-center gap-1.5">
+                                    <span className={`text-[11px] font-bold ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                      {row.totalStudents > 0 ? ((row.presentToday / row.totalStudents) * 100).toFixed(1) + '%' : '0.0%'}
+                                    </span>
+                                    <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                                      <div
+                                        className={`h-full transition-all duration-1000 ${row.totalStudents > 0 && (row.presentToday / row.totalStudents * 100) > 75 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                        style={{ width: `${row.totalStudents > 0 ? (row.presentToday / row.totalStudents * 100) : 0}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span className="font-bold text-amber-600 text-[11px]">{row.holidayToday ?? 0}</span>
+                                    {row.holidayReasons && <span className="text-[10px] font-medium text-gray-500 truncate max-w-[120px]" title={row.holidayReasons}>{row.holidayReasons}</span>}
+                                  </div>
+                                </td>
+                              </>
+                            )}
                             <td className="px-6 py-4 text-right text-[11px] font-medium text-gray-500 tabular-nums">
                               {row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
                             </td>
@@ -3522,7 +3688,7 @@ const Attendance = () => {
                 </button>
               </div>
               <div className="flex gap-3 w-full sm:w-auto">
-                {dayEndReportMode === 'previous-pending' ? (
+                {dayEndReportMode === 'previous-pending' && (
                   <button
                     onClick={handleGoToPreviousPendingDay}
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-500/20 transform transition-all hover:-translate-y-0.5 active:scale-90"
@@ -3530,7 +3696,8 @@ const Attendance = () => {
                     <CalendarCheck size={18} />
                     <span>Mark Previous Day</span>
                   </button>
-                ) : (
+                )}
+                {dayEndReportMode === 'day-end' && (
                   <button
                     onClick={handleSendDayEndReports}
                     disabled={sendingReports}
