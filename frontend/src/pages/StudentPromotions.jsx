@@ -1133,6 +1133,9 @@ const StudentPromotions = () => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       Semester
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Accommodation
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1181,6 +1184,21 @@ const StudentPromotions = () => {
                         </td>
                         <td className="px-4 py-3 text-gray-600">
                           {student.current_semester || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {student.accommodation === 'Hostel' ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-purple-100 text-purple-800 text-xs font-medium">
+                              Hostel
+                            </span>
+                          ) : student.accommodation === 'Transport' ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-blue-100 text-blue-800 text-xs font-medium">
+                              Transport
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-gray-100 text-gray-800 text-xs font-medium">
+                              Own Transport
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

@@ -15,6 +15,7 @@ const connectDB = async () => {
 };
 
 let hrmsConnection = null;
+let hostelConnection = null;
 
 const getHRMSConnection = () => {
   if (hrmsConnection) return hrmsConnection;
@@ -42,4 +43,30 @@ const getHRMSConnection = () => {
   }
 };
 
-module.exports = { connectDB, getHRMSConnection };
+const getHostelConnection = () => {
+  if (hostelConnection) return hostelConnection;
+
+  if (!process.env.HOSTEL_MONGO_URI) {
+    console.warn('⚠️ HOSTEL_MONGO_URI is not defined. Hostel connection will not be established.');
+    return null;
+  }
+
+  try {
+    hostelConnection = mongoose.createConnection(process.env.HOSTEL_MONGO_URI);
+
+    hostelConnection.on('connected', () => {
+      console.log(`✅ Hostel MongoDB Connected`);
+    });
+
+    hostelConnection.on('error', (err) => {
+      console.error(`❌ Hostel MongoDB Connection Error: ${err.message}`);
+    });
+
+    return hostelConnection;
+  } catch (error) {
+    console.error(`❌ Error creating Hostel MongoDB connection: ${error.message}`);
+    return null;
+  }
+};
+
+module.exports = { connectDB, getHRMSConnection, getHostelConnection };

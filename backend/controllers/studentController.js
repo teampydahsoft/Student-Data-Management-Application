@@ -1338,6 +1338,39 @@ const performPromotion = async ({ connection, admissionNumber, targetStage, admi
 
   await connection.query(updateQuery, updateParams);
 
+  // Expire transport requests in MySQL
+  await connection.query(
+    `UPDATE transport_requests SET status = 'expired' WHERE admission_number = ? AND status = 'approved'`,
+    [student.admission_number || admissionNumber]
+  );
+
+  // Expire hostel status in MongoDB
+  try {
+    const hostelConn = require('../config/mongoConfig').getHostelConnection();
+    if (hostelConn) {
+      const collection = hostelConn.collection('users');
+      // Look for the student in Hostel using admissionNumber or pin_no
+      const identifiers = [];
+      if (student.admission_number || admissionNumber) identifiers.push(student.admission_number || admissionNumber);
+      if (student.pin_no) identifiers.push(student.pin_no);
+      
+      if (identifiers.length > 0) {
+        await collection.updateMany(
+          { 
+            $or: [
+              { admissionNumber: { $in: identifiers } },
+              { rollNumber: { $in: identifiers } }
+            ],
+            hostelStatus: 'Active'
+          },
+          { $set: { hostelStatus: 'Expired' } }
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Error expiring hostel status during promotion:', err);
+  }
+
   // Validate admin_id exists before inserting audit log
   let validAdminId = null;
   if (adminId) {
@@ -2682,6 +2715,48 @@ exports.getAllStudents = async (req, res) => {
 
     const [countResult] = await masterPool.query(countQuery, countParams);
 
+    const admissionNumbers = students.map(s => s.admission_number).filter(Boolean);
+    const pinNumbers = students.map(s => s.pin_no).filter(Boolean);
+    
+    // Fetch Transport status from MySQL transport_requests table
+    let transportStudents = new Set();
+    if (admissionNumbers.length > 0) {
+      try {
+        const adNumPlaceholders = admissionNumbers.map(() => '?').join(',');
+        const [transReqs] = await masterPool.query(
+          `SELECT admission_number FROM transport_requests WHERE status = 'approved' AND admission_number IN (${adNumPlaceholders})`,
+          [...admissionNumbers]
+        );
+        transReqs.forEach(req => transportStudents.add(req.admission_number));
+      } catch (err) {
+        console.error('Error fetching transport requests:', err);
+      }
+    }
+
+    // Fetch Hostel status from Hostel MongoDB users collection
+    let hostelStudents = new Set();
+    try {
+      const hostelConn = require('../config/mongoConfig').getHostelConnection();
+      if (hostelConn && (admissionNumbers.length > 0 || pinNumbers.length > 0)) {
+        const collection = hostelConn.collection('users');
+        const query = {
+          $or: [
+            { admissionNumber: { $in: admissionNumbers } },
+            { rollNumber: { $in: pinNumbers } }
+          ],
+          hostelStatus: 'Active'
+        };
+        const hostelUsers = await collection.find(query).toArray();
+        
+        hostelUsers.forEach(user => {
+          if (user.admissionNumber) hostelStudents.add(user.admissionNumber);
+          if (user.rollNumber) hostelStudents.add(user.rollNumber);
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching hostel users:', err);
+    }
+
     // Parse JSON fields
     const parsedStudents = students.map(student => {
       const parsedData = parseJSON(student.student_data) || {};
@@ -2714,6 +2789,14 @@ exports.getAllStudents = async (req, res) => {
         ? rawScholarStatus
         : 'Pending';
 
+      // Determine accommodation
+      let accommodation = 'Own Transport';
+      if (hostelStudents.has(student.admission_number) || (student.pin_no && hostelStudents.has(student.pin_no))) {
+        accommodation = 'Hostel';
+      } else if (transportStudents.has(student.admission_number)) {
+        accommodation = 'Transport';
+      }
+
       return {
         ...student,
         current_year: stage.year,
@@ -2723,7 +2806,8 @@ exports.getAllStudents = async (req, res) => {
         student_data: parsedData,
         fee_status: resolvedFeeStatus,
         registration_status: resolvedRegistrationStatus,
-        scholar_status: normalizedScholarStatus
+        scholar_status: normalizedScholarStatus,
+        accommodation: accommodation
       };
     });
 
