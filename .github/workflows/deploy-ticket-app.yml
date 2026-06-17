@@ -1,0 +1,50 @@
+name: Deploy Ticket App to AWS Lightsail
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'ticket-app/**'
+      - 'ticket-backend/**'
+      - '.github/workflows/deploy-ticket-app.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-ticket-app:
+    name: Deploy Ticket Frontend & Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: |
+            ticket-app/package-lock.json
+            ticket-backend/package-lock.json
+
+      - name: Configure SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/lightsail_key.pem
+          chmod 600 ~/.ssh/lightsail_key.pem
+          
+          # Add Lightsail host to known_hosts to prevent interactive prompts
+          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Backend
+        shell: pwsh
+        run: |
+          cd ticket-backend
+          ./deploy/deploy-backend.ps1 -LightsailHost "${{ secrets.LIGHTSAIL_HOST }}" -SshUser "${{ secrets.LIGHTSAIL_USER }}" -KeyPath "~/.ssh/lightsail_key.pem"
+
+      - name: Deploy Frontend
+        shell: pwsh
+        run: |
+          cd ticket-backend
+          ./deploy/deploy-from-windows.ps1 -LightsailHost "${{ secrets.LIGHTSAIL_HOST }}" -SshUser "${{ secrets.LIGHTSAIL_USER }}" -KeyPath "~/.ssh/lightsail_key.pem"
