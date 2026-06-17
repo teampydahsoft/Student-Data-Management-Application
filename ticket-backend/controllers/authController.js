@@ -9,14 +9,19 @@ const { resolveTicketAccessMode } = require('../utils/ticketAccess');
 
 // Mock permissions for Super Admin to ensure they have access to everything in Ticket App
 const MOCK_SUPER_ADMIN_PERMISSIONS = {
-    dashboard: { view: true }, // Changed from ticket_dashboard to dashboard to match frontend
-    ticket_management: { read: true, write: true },
+    // Main portal module keys
+    dashboard: { view: true },
     settings: { view: true, edit: true },
     reports: { view: true, download: true },
     user_management: { view: true, control: true },
     student_management: { view: true, add_student: true, bulk_upload: true, delete_student: true, update_pin: true, export: true, view_sms: true },
-    employee_management: { read: true, write: true, delete: true }, // If used
-    category_management: { read: true, write: true, delete: true }  // If used
+    // Ticket App module keys (must match constants/rbac.js MODULES)
+    ticket_dashboard: { read: true, write: true, update: true, delete: true },
+    ticket_management: { read: true, write: true, update: true, delete: true },
+    employee_management: { read: true, write: true, update: true, delete: true },
+    category_management: { read: true, write: true, update: true, delete: true },
+    ticket_reports: { read: true, write: true, update: true, delete: true },
+    ticket_settings: { read: true, write: true, update: true, delete: true }
 };
 
 const buildAdminResponse = (admin) => ({
@@ -83,14 +88,14 @@ const buildTicketEmployeeResponse = (emp) => ({
 });
 
 const attachTicketAccess = async (userPayload, masterPool, options = {}) => {
-    const { id, role, is_worker: isWorker, is_hrms_session: isHrmsSession, hrmsId } = userPayload;
+    const { id, role, is_worker: isWorker, is_hrms_session: isHrmsSession, hrmsId, permissions } = userPayload;
     if (role === 'student') {
         return { ...userPayload, ticketAccess: 'request' };
     }
     if ((isHrmsSession || hrmsId) && !id) {
         return { ...userPayload, ticketAccess: 'request' };
     }
-    const ticketAccess = await resolveTicketAccessMode(masterPool, id, role, isWorker || options.isWorker);
+    const ticketAccess = await resolveTicketAccessMode(masterPool, id, role, isWorker || options.isWorker, permissions);
     return { ...userPayload, ticketAccess };
 };
 

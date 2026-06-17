@@ -52,6 +52,7 @@ const PERMISSIONS = {
 };
 
 // Helper: Check if a user has permission for a specific module and operation
+// Supports both object-style { read: true, write: false } and array-style ['read', 'write']
 const hasPermission = (userPermissions, module, operation = 'read') => {
     if (!userPermissions) return false;
 
@@ -59,10 +60,17 @@ const hasPermission = (userPermissions, module, operation = 'read') => {
     const modulePerms = userPermissions[module];
     if (!modulePerms) return false;
 
-    // If verifying read access, any permission usually implies read access, 
-    // but let's be strict or allow 'read' or 'write' (which implies read usually)
-    // For this simple implementation, we check explicit inclusion
-    return modulePerms.includes(operation);
+    // Object-style: { read: true, write: false } — used by ticket_roles and rbac_users
+    if (typeof modulePerms === 'object' && !Array.isArray(modulePerms)) {
+        return modulePerms[operation] === true;
+    }
+
+    // Array-style: ['read', 'write'] — legacy format
+    if (Array.isArray(modulePerms)) {
+        return modulePerms.includes(operation);
+    }
+
+    return false;
 };
 
 // Legacy support functions

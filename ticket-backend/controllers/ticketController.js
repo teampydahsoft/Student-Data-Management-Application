@@ -538,8 +538,15 @@ exports.getTicket = async (req, res) => {
         const [normalizedTicket] = await enrichTicketsRequesterNames([tickets[0]]);
         const ticketRecord = normalizedTicket || normalizeRequesterFields(tickets[0]);
 
-        // Check if user is a requester trying to access their own ticket
-        if (user.role === 'student' || user.admission_number || user.admissionNumber) {
+        // Determine if this is a pure requester (student or HRMS-only faculty with no portal id)
+        // vs. an admin-side user (super_admin, any RBAC user with a proper id, worker, etc.)
+        // Admin-side users can view ALL tickets; requesters can only view their own.
+        const isStudentRequester = user.role === 'student' || !!(user.admission_number || user.admissionNumber);
+        const isHrmsOnlyRequester = !!(user.is_hrms_session || user.hrmsId) && !user.id;
+        const isAdminSideUser = !isStudentRequester && !isHrmsOnlyRequester;
+
+        if (isStudentRequester) {
+            // Students can only view their own tickets
             const studentAdmissionNumber = user.admission_number || user.admissionNumber;
             if (tickets[0].admission_number !== studentAdmissionNumber) {
                 return res.status(403).json({
@@ -547,16 +554,18 @@ exports.getTicket = async (req, res) => {
                     message: 'Access denied. You can only view your own tickets.'
                 });
             }
-        } else if (tickets[0].requester_type === 'staff') {
-            const ownsByRbac = user.id && tickets[0].raised_by_rbac_id === user.id;
+        } else if (isHrmsOnlyRequester) {
+            // HRMS-only faculty (raised ticket as requester, no portal login) can only view their own
             const ownsByHrms = user.hrmsId && tickets[0].raised_by_hrms_id === user.hrmsId;
-            if (!ownsByRbac && !ownsByHrms) {
+            if (!ownsByHrms) {
                 return res.status(403).json({
                     success: false,
                     message: 'Access denied. You can only view your own tickets.'
                 });
             }
         }
+        // isAdminSideUser → no restriction: super admins, managers, workers, custom roles, sub-admins
+        // all have full access to view any ticket
 
         // Get assignments
         const [assignments] = await masterPool.query(

@@ -54,7 +54,7 @@ router.get(
 
 router.post(
     '/:id/assign',
-    verifyPermission(MODULES.TICKETS, PERMISSIONS.WRITE),
+    verifyPermission(MODULES.TICKET_MANAGEMENT, PERMISSIONS.WRITE),
     ticketController.assignTicket
 );
 
