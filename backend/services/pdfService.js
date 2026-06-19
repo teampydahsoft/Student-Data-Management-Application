@@ -38,6 +38,7 @@ const generateAttendanceReportPDF = async ({
   statsOnly = false, // Optional: if true, only include stats (exclude detailed student list)
   summaryStats = null, // Optional: pre-calculated stats
   previewFilter = 'all', // all | marked | unmarked
+  showRemarks = false, // Optional: add a Remarks column to the batch summary table
   ...args // Catch-all for any other props
 }) => {
   const isUnmarkedReport = previewFilter === 'unmarked';
@@ -453,13 +454,13 @@ const generateAttendanceReportPDF = async ({
       summaryColWidths = [120, 80, 80, 60, 40, 40, 45, 50]; // Total: 515
       summaryHeaders = ['College', 'Course', 'Branch', 'Batch', 'Year', 'Sem', 'Tot', 'Abs'];
     } else if (excludeCourse) {
-      // Branch, Batch, Year, Sem, Total, Absent
-      summaryColWidths = [170, 85, 65, 65, 65, 65];
-      summaryHeaders = ['Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent'];
+      // Branch, Batch, Year, Sem, Total, Absent[, Remarks]
+      summaryColWidths = showRemarks ? [120, 65, 55, 55, 55, 55, 160] : [170, 85, 65, 65, 65, 65];
+      summaryHeaders = showRemarks ? ['Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent', 'Remarks'] : ['Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent'];
     } else {
-      // Course, Branch, Batch, Year, Sem, Total, Absent
-      summaryColWidths = [110, 110, 65, 50, 50, 60, 70];
-      summaryHeaders = ['Course', 'Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent'];
+      // Course, Branch, Batch, Year, Sem, Total, Absent[, Remarks]
+      summaryColWidths = showRemarks ? [80, 80, 55, 45, 40, 50, 55, 110] : [110, 110, 65, 50, 50, 60, 70];
+      summaryHeaders = showRemarks ? ['Course', 'Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent', 'Remarks'] : ['Course', 'Branch', 'Batch', 'Year', 'Sem', 'Total', 'Absent'];
     }
 
     if (isUnmarkedReport) {
@@ -624,6 +625,15 @@ const generateAttendanceReportPDF = async ({
           doc.fillColor('#EF4444'); // Red
           const absVal = group.absent || group.statistics?.absentCount || 0;
           doc.text(String(absVal), summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[absentColIdx] - 3, ellipsis: true });
+          summaryXPos += summaryColWidths[absentColIdx];
+        }
+
+        // Remarks (only when showRemarks is enabled)
+        if (showRemarks) {
+          const remarksColIdx = excludeCourse ? 6 : 7;
+          doc.fillColor('#7C3AED'); // Violet
+          const remarksVal = group.holidayReasons || '';
+          doc.text(remarksVal, summaryXPos, summaryCurrentY + 5, { width: summaryColWidths[remarksColIdx] - 3, ellipsis: true });
         }
       }
 

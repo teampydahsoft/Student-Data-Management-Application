@@ -5759,6 +5759,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
           SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
           SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
+          GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.remarks IS NOT NULL AND ar.remarks != '' THEN ar.remarks ELSE NULL END SEPARATOR ', ') AS attendance_remarks,
           DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
         FROM students s
         LEFT JOIN internship_assignments i_assign
@@ -5828,7 +5829,8 @@ exports.getOverallAttendanceSummary = async (req, res) => {
         holidayReasons: row.holiday_reasons || null,
         lastUpdated: row.last_updated || null,
         markedToday: marked,
-        pendingToday: Math.max(0, total - marked)
+        pendingToday: Math.max(0, total - marked),
+        remarks: [row.holiday_reasons, row.attendance_remarks].filter(Boolean).join('; ') || null
       };
     });
 
@@ -5979,6 +5981,7 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
           SUM(CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
           SUM(CASE WHEN i_assign.id IS NOT NULL AND ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
+          GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.remarks IS NOT NULL AND ar.remarks != '' THEN ar.remarks ELSE NULL END SEPARATOR ', ') AS attendance_remarks,
           DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
         FROM students s
         LEFT JOIN internship_assignments i_assign
@@ -6031,7 +6034,8 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         markedToday: marked,
         pendingToday: Math.max(0, total - marked),
         lastUpdated: row.last_updated || null,
-        holidayReasons: row.holiday_reasons || null
+        holidayReasons: row.holiday_reasons || null,
+        remarks: [row.holiday_reasons, row.attendance_remarks].filter(Boolean).join('; ') || null
       };
     });
 
@@ -6093,12 +6097,14 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
             total: previewFilter === 'unmarked' ? d.pendingToday : d.totalStudents,
             present: previewFilter === 'unmarked' ? 0 : d.presentToday,
             absent: previewFilter === 'unmarked' ? 0 : (d.absentToday + d.rejectedToday),
-            pending: d.pendingToday
+            pending: d.pendingToday,
+            holidayReasons: d.remarks || d.holidayReasons || null
           })),
           summaryStats,
           statsOnly: true,
           previewFilter,
-          excludeCourse: false
+          excludeCourse: false,
+          showRemarks: true
         });
 
         const fileBuffer = require('fs').readFileSync(pdfPath);
@@ -6127,9 +6133,9 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         ['Class Present', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.dailyPresent || 0), 0)],
         ['Class Absent', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.dailyAbsent || 0), 0)],
         ['Internship Present', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.internshipPresent || 0), 0)],
-        ['Internship Absent', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.internshipAbsent || 0), 0)],
-        ['Internship Rejected', previewFilter === 'unmarked' ? 0 : rejectedToday],
+        ['Internship Absent', previewFilter === 'unmarked' ? 0 : groupedData.reduce((sum, row) => sum + (row.internshipAbsent || 0) + (row.rejectedToday || 0), 0)],
         ['No Class Work', holidayToday],
+        ['Remarks', previewFilter === 'unmarked' ? '' : [...new Set(groupedData.filter(r => r.remarks).map(r => r.remarks))].join('; ') || ''],
         ['Unmarked', unmarkedToday],
         [''],
         ['Filters'],
@@ -6144,7 +6150,7 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
 
       // Grouped data sheet
       const tableData = [
-        ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Students', 'Class Present', 'Class Absent', 'Internship Present', 'Internship Absent', 'Internship Rejected', 'Marked', 'Pending', 'No Class Work', 'Time Stamp'],
+        ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Students', 'Class Present', 'Class Absent', 'Internship Present', 'Internship Absent', 'Marked', 'Pending', 'No Class Work', 'Remarks', 'Time Stamp'],
         ...groupedData.map(row => [
           row.college, row.batch, row.course, row.branch,
           row.year, row.semester,
@@ -6152,10 +6158,10 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
           previewFilter === 'unmarked' ? 0 : row.dailyPresent,
           previewFilter === 'unmarked' ? 0 : row.dailyAbsent,
           previewFilter === 'unmarked' ? 0 : row.internshipPresent,
-          previewFilter === 'unmarked' ? 0 : row.internshipAbsent,
-          previewFilter === 'unmarked' ? 0 : row.rejectedToday,
+          previewFilter === 'unmarked' ? 0 : (row.internshipAbsent + row.rejectedToday),
           previewFilter === 'unmarked' ? 0 : row.markedToday,
           row.pendingToday, row.holidayToday,
+          row.remarks || '',
           row.lastUpdated ? new Date(row.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—'
         ])
       ];
@@ -6174,10 +6180,10 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         { wch: 12 }, // Class Absent
         { wch: 15 }, // Internship Present
         { wch: 15 }, // Internship Absent
-        { wch: 15 }, // Internship Rejected
         { wch: 10 }, // Marked
         { wch: 10 }, // Pending
         { wch: 12 }, // No Class Work
+        { wch: 30 }, // Remarks
         { wch: 15 }  // Time Stamp
       ];
 

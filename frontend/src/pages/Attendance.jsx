@@ -3435,16 +3435,18 @@ const Attendance = () => {
                           </div>
                           <div>
                             <div className="text-[9px] font-black text-rose-800 uppercase mb-0.5">Intern Abs</div>
-                            <div className="text-rose-900">{row.internshipAbsent || 0}</div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] font-black text-red-500 uppercase mb-0.5">Intern Rej</div>
-                            <div className="text-red-600">{row.rejectedToday || 0}</div>
+                            <div className="text-rose-900">{(row.internshipAbsent || 0) + (row.rejectedToday || 0)}</div>
                           </div>
                           <div>
                             <div className="text-[9px] font-black text-amber-500 uppercase mb-0.5">No Class</div>
                             <div className="text-amber-600">{row.holidayToday || 0}</div>
                           </div>
+                          {(row.remarks || row.holidayReasons) && (
+                            <div className="col-span-2 sm:col-span-4 border-t border-gray-200 pt-2 mt-1">
+                              <div className="text-[9px] font-black text-violet-500 uppercase mb-0.5">Remarks</div>
+                              <div className="text-[10px] font-medium text-gray-600 italic">{row.remarks || row.holidayReasons}</div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-4 gap-2 mb-4 bg-gray-50 rounded-2xl p-4">
@@ -3489,7 +3491,7 @@ const Attendance = () => {
                 {/* Desktop View: Table */}
                 <div className="hidden md:block bg-white rounded-[2.5rem] border border-gray-200 shadow-2xl overflow-hidden">
                   <div className="overflow-x-auto min-h-[400px]">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1350px]">
+                    <table className="w-full text-left border-collapse table-fixed min-w-[1500px]">
                       <thead>
                         <tr className="bg-gray-900 text-white">
                           <th className="px-6 py-5 w-[240px] text-[10px] font-bold uppercase tracking-widest">
@@ -3549,10 +3551,10 @@ const Attendance = () => {
                               <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-rose-600">Class A</th>
                               <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-emerald-800">Intern P</th>
                               <th className="px-4 py-5 w-[85px] text-[10px] font-bold uppercase tracking-widest text-right text-rose-800">Intern A</th>
-                              <th className="px-4 py-5 w-[70px] text-[10px] font-bold uppercase tracking-widest text-right text-red-500">Rej</th>
                               <th className="px-4 py-5 w-[90px] text-[10px] font-bold uppercase tracking-widest text-right text-amber-500">No Class</th>
                               <th className="px-4 py-5 w-[80px] text-[10px] font-bold uppercase tracking-widest text-right">Pending</th>
                               <th className="px-4 py-5 w-[90px] text-[10px] font-bold uppercase tracking-widest text-center">Status %</th>
+                              <th className="px-4 py-5 w-[160px] text-[10px] font-bold uppercase tracking-widest text-left text-violet-400">Remarks</th>
                             </>
                           ) : (
                             <>
@@ -3593,12 +3595,7 @@ const Attendance = () => {
                                 </td>
                                 <td className="px-4 py-4 text-right">
                                   <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded-lg font-bold text-[11px]">
-                                    {row.internshipAbsent ?? 0}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-4 text-right">
-                                  <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg font-bold text-[11px]">
-                                    {row.rejectedToday ?? 0}
+                                    {(row.internshipAbsent ?? 0) + (row.rejectedToday ?? 0)}
                                   </span>
                                 </td>
                                 <td className="px-4 py-4 text-right">
@@ -3623,6 +3620,11 @@ const Attendance = () => {
                                       ></div>
                                     </div>
                                   </div>
+                                </td>
+                                <td className="px-4 py-4 text-left max-w-[160px]">
+                                  <span className="text-[11px] font-medium text-violet-600 italic leading-tight line-clamp-2" title={row.remarks || row.holidayReasons || ''}>
+                                    {row.remarks || row.holidayReasons || '—'}
+                                  </span>
                                 </td>
                               </>
                             ) : (
