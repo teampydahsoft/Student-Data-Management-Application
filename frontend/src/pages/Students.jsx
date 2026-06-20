@@ -287,11 +287,13 @@ const Students = () => {
   const [dropdownFilterOptions, setDropdownFilterOptions] = useState({
     stud_type: [],
     student_status: [],
-    scholar_status: SCHOLAR_STATUS_OPTIONS,
+    scholar_status: [],
     caste: [],
     gender: [],
     certificates_status: [],
-    remarks: []
+    remarks: [],
+    district: [],
+    mandal_name: []
   });
   const [showBulkRollNumber, setShowBulkRollNumber] = useState(false);
   const [showManualRollNumber, setShowManualRollNumber] = useState(false);
@@ -1135,7 +1137,9 @@ const Students = () => {
           caste: data.caste || [],
           gender: data.gender || [],
           certificates_status: data.certificates_status || [],
-          remarks: data.remarks || []
+          remarks: data.remarks || [],
+          district: data.district || [],
+          mandal_name: data.mandal_name || []
         });
       }
       return true;
@@ -2772,6 +2776,32 @@ const Students = () => {
                   <option value="">All</option>
                   {(dropdownFilterOptions.remarks || []).map((remark) => (
                     <option key={remark} value={remark}>{remark}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">District</label>
+                <select
+                  value={filters.district || ''}
+                  onChange={(e) => handleFilterChange('district', e.target.value)}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                >
+                  <option value="">All</option>
+                  {(dropdownFilterOptions.district || []).map((district) => (
+                    <option key={district} value={district}>{district}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Mandal</label>
+                <select
+                  value={filters.mandal_name || ''}
+                  onChange={(e) => handleFilterChange('mandal_name', e.target.value)}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                >
+                  <option value="">All</option>
+                  {(dropdownFilterOptions.mandal_name || []).map((mandal) => (
+                    <option key={mandal} value={mandal}>{mandal}</option>
                   ))}
                 </select>
               </div>

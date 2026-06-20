@@ -4881,6 +4881,14 @@ exports.getFilterOptions = async (req, res) => {
       `SELECT DISTINCT remarks FROM students ${whereClause} AND remarks IS NOT NULL AND remarks <> '' ORDER BY remarks ASC`,
       params
     );
+    const [districtRows] = await masterPool.query(
+      `SELECT DISTINCT district FROM students ${whereClause} AND district IS NOT NULL AND district <> '' ORDER BY district ASC`,
+      params
+    );
+    const [mandalRows] = await masterPool.query(
+      `SELECT DISTINCT mandal_name FROM students ${whereClause} AND mandal_name IS NOT NULL AND mandal_name <> '' ORDER BY mandal_name ASC`,
+      params
+    );
 
     res.json({
       success: true,
@@ -4891,7 +4899,9 @@ exports.getFilterOptions = async (req, res) => {
         caste: casteRows.map((row) => row.caste),
         gender: genderRows.map((row) => row.gender),
         certificates_status: certificatesStatusRows.map((row) => row.certificates_status),
-        remarks: remarksRows.map((row) => row.remarks)
+        remarks: remarksRows.map((row) => row.remarks),
+        district: districtRows.map((row) => row.district),
+        mandal_name: mandalRows.map((row) => row.mandal_name)
       }
     });
   } catch (error) {
