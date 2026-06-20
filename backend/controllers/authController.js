@@ -1107,8 +1107,9 @@ exports.getStudentLoginStats = async (req, res) => {
 
 /**
  * Issue a short-lived HS256 JWT for CRT workspace SSO.
- * CRT expects: GET https://crt.pydahsoft.in/sso?token=<jwt>
- * Claims: exp + pin_no | admission_number | username (and optional name).
+ * CRT contract: POST https://crt.pydahsoft.in/sso-login?token=<jwt>
+ * Payload: { sub: <admission_number|pin_no>, exp: now+300 }
+ * Signed with SDMS_SSO_SECRET (shared secret agreed with CRT team).
  */
 exports.getCrtSsoUrl = async (req, res) => {
   try {
@@ -1134,31 +1135,35 @@ exports.getCrtSsoUrl = async (req, res) => {
     }
 
     const student = rows[0];
-    const pinNo = student.pin_no ? String(student.pin_no).trim() : '';
-    const admissionNumber = student.admission_number ? String(student.admission_number).trim() : '';
-    const username = student.username ? String(student.username).trim() : '';
+    // Prefer admission_number as the student identifier (matches CRT login);
+    // fall back to pin_no, then username.
+    const sub =
+      (student.admission_number ? String(student.admission_number).trim() : '') ||
+      (student.pin_no ? String(student.pin_no).trim() : '') ||
+      (student.username ? String(student.username).trim() : '');
 
-    if (!pinNo && !admissionNumber && !username) {
+    if (!sub) {
       return res.status(400).json({
         success: false,
-        message: 'Student has no PIN, admission number, or username for CRT SSO'
+        message: 'Student has no admission number, PIN, or username for CRT SSO'
       });
     }
 
-    const payload = {};
-    if (pinNo) payload.pin_no = pinNo;
-    if (admissionNumber) payload.admission_number = admissionNumber;
-    if (username) payload.username = username;
-    if (student.student_name) payload.name = student.student_name;
+    // Use the dedicated CRT shared secret; fall back to JWT_SECRET if not set.
+    const secret = process.env.SDMS_SSO_SECRET || process.env.JWT_SECRET;
 
-    const expiresIn = process.env.CRT_SSO_TOKEN_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '24h';
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+    // CRT spec: exp = current unix timestamp + 300 (5 minutes).
+    const expiresInSeconds = 5 * 60; // 300 s
+    const payload = { sub };
+
+    const token = jwt.sign(payload, secret, {
       algorithm: 'HS256',
-      expiresIn
+      expiresIn: expiresInSeconds
     });
 
     const crtBaseUrl = (process.env.CRT_APP_URL || 'https://crt.pydahsoft.in').replace(/\/$/, '');
-    const url = `${crtBaseUrl}/sso?token=${encodeURIComponent(token)}`;
+    // CRT redirect path per their spec: /sso-login?token=<jwt>
+    const url = `${crtBaseUrl}/sso-login?token=${encodeURIComponent(token)}`;
 
     return res.json({ success: true, url });
   } catch (err) {
