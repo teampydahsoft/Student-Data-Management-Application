@@ -33,7 +33,6 @@ import {
     RiBusFill,
     RiFolderLine,
     RiFolderFill,
-    RiArrowDownSLine,
     RiQuestionAnswerLine,
     RiQuestionAnswerFill,
     RiCalendar2Line,
@@ -63,7 +62,6 @@ const StudentLayout = ({ children }) => {
     const [showRestrictionModal, setShowRestrictionModal] = useState(false);
     const [fetchedStatus, setFetchedStatus] = useState(null);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
-    const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
     const [hasInternship, setHasInternship] = useState(false);
     const [layoutSettings, setLayoutSettings] = useState(null);
 
@@ -214,6 +212,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiCalendarEventLine, activeIcon: RiCalendarEventFill, label: 'Event Calendar', path: '/student/events' },
         { icon: RiCheckboxCircleLine, activeIcon: RiCheckboxCircleFill, label: 'Attendance', path: '/student/attendance' },
         { icon: RiBookOpenLine, activeIcon: RiBookOpenFill, label: 'CRT Scores', path: '/student/versant-tests' },
+        { icon: RiBookOpenLine, activeIcon: RiBookOpenFill, label: 'CRT Training Portal', path: '/crt-portal', isCrtApp: true },
         { icon: RiMapPinLine, activeIcon: RiMapPinFill, label: 'Internship', path: '/student/internship' },
         { icon: RiCalendar2Line, activeIcon: RiCalendar2Fill, label: 'Time Table', path: '/student/timetable' },
         { icon: RiFileList3Line, activeIcon: RiFileList3Fill, label: 'Sem Registration', path: '/student/semester-registration' },
@@ -227,10 +226,8 @@ const StudentLayout = ({ children }) => {
         if (item.label === 'Internship' && !hasInternship) return false;
 
         if (layoutSettings) {
-            // Map path to setting key
             const key = item.path.replace('/student/', '');
-            // Check if explicitly disabled (if key exists and is false)
-            if (layoutSettings[key] === false) return false;
+            if (!item.isCrtApp && layoutSettings[key] === false) return false;
         }
 
         return true;
@@ -325,7 +322,21 @@ const StudentLayout = ({ children }) => {
                     {/* Navigation */}
                     <nav className="flex-1 px-3 py-4 lg:py-5 space-y-0.5 overflow-y-auto no-scrollbar scroll-smooth">
                         {navItems.map((item, index) => (
-                            item.isExternal ? (
+                            item.isCrtApp ? (
+                                <button
+                                    key={`${item.path}-${index}`}
+                                    type="button"
+                                    onClick={() => navigateToCrtApp('/student/dashboard')}
+                                    className={`
+                                      relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-[12px] font-bold transition-all duration-200 group w-full text-left
+                                      ${isBirthday ? 'text-gray-500 hover:bg-amber-50 hover:text-amber-700' : 'text-gray-500 hover:bg-sky-100 hover:text-sky-700'}
+                                    `}
+                                >
+                                    <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full transition-all duration-300 opacity-0 scale-y-0 ${isBirthday ? 'bg-amber-500' : 'bg-sky-500'}`}></span>
+                                    <item.icon size={20} className="transition-transform duration-300 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
+                                    <span className="tracking-tight">{item.label}</span>
+                                </button>
+                            ) : item.isExternal ? (
                                 <a
                                     key={`${item.path}-${index}`}
                                     href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
@@ -367,40 +378,6 @@ const StudentLayout = ({ children }) => {
                             )
                         ))}
                     </nav>
-
-                    {/* Workspace — external apps linked via SDMS login (PIN / admission) */}
-                    <div className="px-3 pb-2">
-                        <button
-                            type="button"
-                            onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
-                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-[12px] font-bold transition-all ${workspaceDropdownOpen ? 'bg-sky-50 text-sky-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                        >
-                            <span className="flex items-center gap-2">
-                                <RiFolderLine size={18} />
-                                Workspace
-                            </span>
-                            <RiArrowDownSLine size={16} className={`transition-transform ${workspaceDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {workspaceDropdownOpen && (
-                            <div className="mt-1 ml-2 pl-4 border-l-2 border-sky-200 space-y-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => navigateToCrtApp('/student/dashboard')}
-                                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-semibold text-gray-600 hover:bg-sky-50 hover:text-sky-700 transition-colors text-left"
-                                >
-                                    <RiBookOpenLine size={16} />
-                                    CRT Training Portal
-                                </button>
-                                <a
-                                    href={getTicketAppUrl('/student/my-tickets')}
-                                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-semibold text-gray-600 hover:bg-sky-50 hover:text-sky-700 transition-colors"
-                                >
-                                    <RiTicketLine size={16} />
-                                    Maintenance
-                                </a>
-                            </div>
-                        )}
-                    </div>
 
                     {/* User Info Card */}
                     <div
@@ -571,7 +548,22 @@ const StudentLayout = ({ children }) => {
 
                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 sm:gap-3 mb-5">
                             {mobileSecondaryItems.map((item) => (
-                                item.isExternal ? (
+                                item.isCrtApp ? (
+                                    <button
+                                        key={item.path}
+                                        type="button"
+                                        onClick={() => { navigateToCrtApp('/student/dashboard'); setMoreMenuOpen(false); }}
+                                        className="flex flex-col items-center gap-1.5 p-1 group"
+                                    >
+                                        <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-[14px] bg-white/60 border border-white/60 shadow-sm flex items-center justify-center text-gray-500 group-active:scale-90 transition-all">
+                                            <item.icon size={20} className="sm:hidden" />
+                                            <item.icon size={22} className="hidden sm:block" />
+                                        </div>
+                                        <span className="text-[9px] sm:text-[10px] font-bold text-gray-600 text-center line-clamp-1 w-full px-0.5">
+                                            CRT Portal
+                                        </span>
+                                    </button>
+                                ) : item.isExternal ? (
                                     <a
                                         key={item.path}
                                         href={item.isTicketApp ? getTicketAppUrl(item.path) : item.path}
