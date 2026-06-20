@@ -3861,75 +3861,99 @@ exports.deleteStudent = async (req, res) => {
 
 // Get dashboard statistics
 exports.getDashboardStats = async (req, res) => {
-
   try {
-    let totalStudents = 0;
-    let masterDbConnected = true;
-
-    try {
-      // Build scope-aware query for regular students
-      let statsQuery = "SELECT COUNT(*) as total FROM students WHERE student_status = 'Regular'";
-      const statsParams = [];
-
-      // Apply user scope filtering
-      if (req.userScope) {
-        const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
-        if (scopeCondition) {
-          statsQuery += ` AND ${scopeCondition}`;
-          statsParams.push(...scopeParams);
-        }
+    // Build scope-aware query for regular students
+    let statsQuery = "SELECT COUNT(*) as total FROM students WHERE student_status = 'Regular'";
+    const statsParams = [];
+    if (req.userScope) {
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
+      if (scopeCondition) {
+        statsQuery += ` AND ${scopeCondition}`;
+        statsParams.push(...scopeParams);
       }
-
-      const [studentCount] = await masterPool.query(statsQuery, statsParams);
-      totalStudents = studentCount?.[0]?.total || 0;
-    } catch (dbError) {
-      masterDbConnected = false;
-      console.warn('Dashboard stats: master database unavailable, returning fallback totals', dbError.message || dbError);
     }
 
-    let pendingSubmissions = 0;
-    try {
-      const [pendingResult] = await masterPool.query(
-        'SELECT COUNT(*) as count FROM form_submissions WHERE status = ?',
-        ['pending']
-      );
-      pendingSubmissions = pendingResult[0]?.count || 0;
-    } catch (error) {
-      console.warn('Dashboard stats: unable to count pending submissions', error.message || error);
+    // Today's date in YYYY-MM-DD for attendance count
+    const now = new Date();
+    const todayKey = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    // Build the same scope condition for the attendance join (scoped to students table)
+    let attendanceScopeJoin = '';
+    const attendanceScopeParams = [];
+    if (req.userScope) {
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 's');
+      if (scopeCondition) {
+        attendanceScopeJoin = ` AND ${scopeCondition}`;
+        attendanceScopeParams.push(...scopeParams);
+      }
+    }
+
+    // Run all independent queries in parallel
+    const [studentCountResult, pendingResult, recentSubmissionsResult, attendanceResult] = await Promise.allSettled([
+      masterPool.query(statsQuery, statsParams),
+      masterPool.query('SELECT COUNT(*) as count FROM form_submissions WHERE status = ?', ['pending']),
+      masterPool.query(
+        `SELECT fs.submission_id, fs.admission_number, fs.status, fs.created_at, fs.form_id,
+                f.form_name
+         FROM form_submissions fs
+         LEFT JOIN forms f ON f.form_id = fs.form_id
+         ORDER BY fs.created_at DESC
+         LIMIT 10`
+      ),
+      // Today's present/absent counts — scoped to the same students visible to this user
+      masterPool.query(
+        `SELECT ar.status, COUNT(*) AS count
+         FROM attendance_records ar
+         INNER JOIN students s ON s.id = ar.student_id
+         WHERE ar.attendance_date = ?
+           AND s.student_status = 'Regular'${attendanceScopeJoin}
+         GROUP BY ar.status`,
+        [todayKey, ...attendanceScopeParams]
+      ),
+    ]);
+
+    const masterDbConnected = studentCountResult.status === 'fulfilled';
+    if (!masterDbConnected) {
+      console.warn('Dashboard stats: master database unavailable', studentCountResult.reason?.message);
+    }
+
+    const totalStudents =
+      studentCountResult.status === 'fulfilled'
+        ? studentCountResult.value[0]?.[0]?.total || 0
+        : 0;
+
+    const pendingSubmissions =
+      pendingResult.status === 'fulfilled'
+        ? pendingResult.value[0]?.[0]?.count || 0
+        : 0;
+
+    if (pendingResult.status === 'rejected') {
+      console.warn('Dashboard stats: unable to count pending submissions', pendingResult.reason?.message);
     }
 
     let recentWithNames = [];
-    try {
-      const [recentSubmissions] = await masterPool.query(
-        'SELECT submission_id, admission_number, status, created_at, form_id FROM form_submissions ORDER BY created_at DESC LIMIT 10'
-      );
+    if (recentSubmissionsResult.status === 'fulfilled') {
+      const rows = recentSubmissionsResult.value[0] || [];
+      recentWithNames = rows.map((r) => ({ ...r, submitted_at: r.created_at }));
+    } else {
+      console.warn('Dashboard stats: unable to fetch recent submissions', recentSubmissionsResult.reason?.message);
+    }
 
-      if (recentSubmissions) {
-        recentWithNames = recentSubmissions.map((r) => ({
-          ...r,
-          submitted_at: r.created_at // Use created_at as submitted_at
-        }));
-        const formIds = Array.from(new Set(recentSubmissions.map((r) => r.form_id))).filter(Boolean);
-
-        if (formIds.length > 0) {
-          const placeholders = formIds.map(() => '?').join(',');
-          const [formsRows] = await masterPool.query(
-            `SELECT form_id, form_name FROM forms WHERE form_id IN (${placeholders})`,
-            formIds
-          );
-
-          if (formsRows) {
-            const idToName = new Map(formsRows.map((f) => [f.form_id, f.form_name]));
-            recentWithNames = recentWithNames.map((r) => ({
-              ...r,
-              form_name: idToName.get(r.form_id) || null
-            }));
-          }
-        }
-      }
-    } catch (mysqlError) {
-      console.warn('Dashboard stats: unexpected error while preparing recent submissions', mysqlError.message || mysqlError);
-      recentWithNames = [];
+    // Parse today's attendance counts from the grouped result
+    let presentToday = 0;
+    let absentToday = 0;
+    if (attendanceResult.status === 'fulfilled') {
+      const rows = attendanceResult.value[0] || [];
+      rows.forEach((row) => {
+        if (row.status === 'present') presentToday = Number(row.count) || 0;
+        if (row.status === 'absent') absentToday = Number(row.count) || 0;
+      });
+    } else {
+      console.warn('Dashboard stats: unable to fetch today attendance counts', attendanceResult.reason?.message);
     }
 
     res.json({
@@ -3938,16 +3962,19 @@ exports.getDashboardStats = async (req, res) => {
         totalStudents,
         pendingSubmissions,
         recentSubmissions: recentWithNames,
+        presentToday,
+        absentToday,
+        attendanceDate: todayKey,
         completedProfiles: 0,
         averageCompletion: 0,
-        masterDbConnected
-      }
+        masterDbConnected,
+      },
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching dashboard statistics'
+      message: 'Server error while fetching dashboard statistics',
     });
   }
 };

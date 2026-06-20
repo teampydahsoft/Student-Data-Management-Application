@@ -38,25 +38,12 @@ const Dashboard = () => {
 
   // Check individual module permissions
   const canViewStudents = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view');
-  const canViewAttendance = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.ATTENDANCE, 'view');
   const canViewColleges = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.SETTINGS, 'view');
   const canViewSubmissions = isAdmin || hasPermission(userPermissions, BACKEND_MODULES.PRE_REGISTRATION, 'approve') || hasPermission(userPermissions, BACKEND_MODULES.PRE_REGISTRATION, 'add_student');
 
-  // Use React Query for stats
+  // Use React Query for stats (includes today's attendance counts)
   const { data: stats, isLoading: loadingStats } = useStudentStats({
     enabled: canViewStudents
-  });
-
-  // Fetch attendance summary for today
-  const { data: attendanceData, isLoading: loadingAttendance } = useQuery({
-    queryKey: ['attendance', 'summary', 'today'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await api.get(`/attendance/summary?date=${today}`);
-      return response.data?.data || null;
-    },
-    enabled: canViewAttendance,
-    staleTime: 1 * 60 * 1000, // 1 minute (attendance changes frequently)
   });
 
   // Fetch colleges count
@@ -64,10 +51,12 @@ const Dashboard = () => {
     queryKey: ['colleges', 'count'],
     queryFn: async () => {
       const response = await api.get('/colleges');
-      return response.data?.data || [];
+      const data = response.data?.data || [];
+      return { count: Array.isArray(data) ? data.length : 0 };
     },
-    enabled: canViewColleges || canViewStudents, // Often colleges are needed for student filtering
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: canViewColleges || canViewStudents,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   // Use React Query for recent submissions
@@ -76,26 +65,27 @@ const Dashboard = () => {
     queryFn: async () => {
       const response = await api.get('/submissions');
       const submissions = response.data.data || [];
-      // Get the 10 most recent submissions
       return submissions
         .sort((a, b) => new Date(b.created_at || b.submitted_at) - new Date(a.created_at || a.submitted_at))
         .slice(0, 10);
     },
     enabled: canViewSubmissions,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 2 * 60 * 1000,
   });
 
   const recentSubmissions = recentSubmissionsData || [];
-  const presentToday = attendanceData?.daily?.present || 0;
-  const absentToday = attendanceData?.daily?.absent || 0;
-  const totalCampuses = collegesData?.length || 0;
+  const presentToday = stats?.presentToday ?? 0;
+  const absentToday = stats?.absentToday ?? 0;
+  const totalCampuses = collegesData?.count ?? (Array.isArray(collegesData) ? collegesData.length : 0);
 
-  const loading = loadingStats || loadingAttendance || loadingColleges;
+  // Block page skeleton only until the primary stats arrive
+  const loading = loadingStats;
 
   const statCards = [
     {
       title: 'Total Students',
       value: stats?.totalStudents || 0,
+      isLoading: loadingStats,
       icon: Users,
       bgGradient: 'from-blue-600 to-blue-700',
       textColor: 'text-blue-600',
@@ -106,6 +96,7 @@ const Dashboard = () => {
     {
       title: 'Present Today',
       value: presentToday,
+      isLoading: loadingStats,
       icon: CheckCircle,
       bgGradient: 'from-green-500 to-green-600',
       textColor: 'text-green-600',
@@ -116,6 +107,7 @@ const Dashboard = () => {
     {
       title: 'Absent Today',
       value: absentToday,
+      isLoading: loadingStats,
       icon: XCircle,
       bgGradient: 'from-red-500 to-red-600',
       textColor: 'text-red-600',
@@ -126,6 +118,7 @@ const Dashboard = () => {
     {
       title: 'Total Campuses',
       value: totalCampuses,
+      isLoading: loadingColleges,
       icon: Building2,
       bgGradient: 'from-purple-500 to-purple-600',
       textColor: 'text-purple-600',
@@ -177,7 +170,11 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1">{stat.title}</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">{stat.value.toLocaleString()}</p>
+                  {stat.isLoading ? (
+                    <div className="h-8 w-20 bg-gray-200 animate-pulse rounded mb-2" />
+                  ) : (
+                    <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">{stat.value.toLocaleString()}</p>
+                  )}
                   {stat.subtitle && (
                     <p className="text-xs font-medium text-gray-400">{stat.subtitle}</p>
                   )}

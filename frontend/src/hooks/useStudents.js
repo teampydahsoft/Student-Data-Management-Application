@@ -153,7 +153,8 @@ export const useStudentStats = ({ enabled = true } = {}) => {
       return response.data?.data;
     },
     enabled,
-    staleTime: 2 * 60 * 1000, // Stats can be slightly stale
+    staleTime: 5 * 60 * 1000, // Stats are unlikely to change within 5 minutes
+    gcTime: 15 * 60 * 1000,   // Keep in cache for 15 minutes
   });
 };
 

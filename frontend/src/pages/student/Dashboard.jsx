@@ -245,10 +245,17 @@ const Dashboard = () => {
         fetchAllData();
 
         // Refresh attendance when page becomes visible (user switches back to tab)
+        // Throttle to at most once every 2 minutes to avoid hammering the server
+        let lastAttendanceRefresh = 0;
+        const ATTENDANCE_REFRESH_INTERVAL = 2 * 60 * 1000; // 2 minutes
+
         const handleVisibilityChange = () => {
             if (!document.hidden && user?.admission_number) {
+                const now = Date.now();
+                if (now - lastAttendanceRefresh < ATTENDANCE_REFRESH_INTERVAL) return;
+                lastAttendanceRefresh = now;
                 // Refresh attendance data when user comes back to the tab
-                api.get('/attendance/student', { params: { _t: Date.now() } })
+                api.get('/attendance/student')
                     .then(response => {
                         if (response.data.success) {
                             setAttendanceHistory(response.data.data);
