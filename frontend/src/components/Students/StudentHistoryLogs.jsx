@@ -19,7 +19,11 @@ import {
     Star,
     CreditCard,
     LogIn,
-    ArrowRightLeft
+    ArrowRightLeft,
+    ClipboardEdit,
+    Check,
+    X,
+    CalendarClock
 } from 'lucide-react';
 import api from '../../config/api';
 import { formatDate } from '../../utils/dateUtils';
@@ -69,6 +73,7 @@ const ACTION_CONFIG = {
     UPDATE_REGISTRATION_STATUS: { label: 'Reg. Status Updated', icon: Star, dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-100' },
     REJOIN: { label: 'Student Rejoined', icon: LogIn, dot: 'bg-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
     TRANSFER: { label: 'College Transfer', icon: ArrowRightLeft, dot: 'bg-indigo-500', badge: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+    PROFILE_CHANGE_REQUEST: { label: 'Profile Change Request', icon: ClipboardEdit, dot: 'bg-cyan-500', badge: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
     DEFAULT: { label: 'Action', icon: FileText, dot: 'bg-gray-400', badge: 'bg-gray-50 text-gray-700 border-gray-100' },
 };
 
@@ -303,6 +308,70 @@ const LogDetails = ({ log }) => {
     );
 };
 
+// ─── Profile Change Request Detail Renderer ──────────────────────────────────
+const ProfileChangeDetails = ({ entry }) => {
+    const changes = entry.requested_changes || {};
+    const entries = Object.entries(changes);
+    if (entries.length === 0) return null;
+
+    const statusColors = {
+        approved: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        rejected: 'bg-red-50 text-red-700 border-red-100',
+        pending: 'bg-amber-50 text-amber-700 border-amber-100',
+    };
+    const StatusIcon = entry.status === 'approved' ? Check : entry.status === 'rejected' ? X : Clock;
+
+    return (
+        <div className="mt-3 space-y-3">
+            {/* Status row */}
+            <div className="flex flex-wrap items-center gap-3">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 ring-inset ${statusColors[entry.status] || statusColors.pending}`}>
+                    <StatusIcon className="w-3 h-3" />
+                    {entry.status?.charAt(0).toUpperCase() + entry.status?.slice(1)}
+                </span>
+                {entry.reviewed_by && (
+                    <span className="text-xs text-gray-500">
+                        Reviewed by <span className="font-semibold text-gray-700">{entry.reviewed_by}</span>
+                    </span>
+                )}
+                {entry.updated_at && entry.status !== 'pending' && (
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <CalendarClock className="w-3 h-3" />
+                        {formatDate(entry.updated_at)}
+                    </span>
+                )}
+            </div>
+
+            {/* Field diff table */}
+            <div className="rounded-2xl border border-gray-200 overflow-hidden text-xs shadow-sm bg-white">
+                <div className="flex items-center bg-gray-50/80 border-b border-gray-200 px-4 py-2.5 gap-2 font-bold uppercase tracking-widest text-[10px] text-gray-400">
+                    <span className="w-[110px] flex-shrink-0">Field</span>
+                    <span className="flex-1 text-cyan-600/80">Requested Value</span>
+                </div>
+                <div className="divide-y divide-gray-100">
+                    {entries.map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50/50 transition-colors">
+                            <span className="w-[110px] flex-shrink-0 font-bold text-gray-700 truncate" title={friendlyField(key)}>
+                                {friendlyField(key)}
+                            </span>
+                            <span className="flex-1 min-w-0 text-cyan-800 bg-cyan-50/50 border border-cyan-100/50 px-2.5 py-1.5 rounded-xl font-semibold truncate" title={String(value ?? '')}>
+                                {String(value ?? '—') || '—'}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Admin comments */}
+            {entry.comments && (
+                <p className="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 italic">
+                    "{entry.comments}"
+                </p>
+            )}
+        </div>
+    );
+};
+
 // ─── Registration Stages (5 stages) ──────────────────────────────────────────
 const RegistrationSnapshot = ({ student }) => {
     if (!student) return null;
@@ -391,6 +460,7 @@ const RoleBadge = ({ role }) => {
 // ─── Main Component ────────────────────────────────────────────────────────────
 const StudentHistoryLogs = ({ student }) => {
     const [logs, setLogs] = useState([]);
+    const [profileChanges, setProfileChanges] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -401,17 +471,24 @@ const StudentHistoryLogs = ({ student }) => {
         else setLoading(true);
         setError(null);
         try {
-            const response = await api.get('/logs', {
-                params: { entityType: 'STUDENT', entityId: student.admission_number, limit: 200 }
-            });
-            if (response.data?.success) {
-                // Latest first
-                const sorted = [...(response.data.data || [])].sort(
+            const [auditRes, profileRes] = await Promise.allSettled([
+                api.get('/logs', {
+                    params: { entityType: 'STUDENT', entityId: student.admission_number, limit: 200 }
+                }),
+                api.get(`/profile-changes/by-student/${student.admission_number}`)
+            ]);
+
+            if (auditRes.status === 'fulfilled' && auditRes.value.data?.success) {
+                const sorted = [...(auditRes.value.data.data || [])].sort(
                     (a, b) => new Date(b.created_at) - new Date(a.created_at)
                 );
                 setLogs(sorted);
             } else {
-                throw new Error(response.data?.message || 'Failed to fetch history');
+                throw new Error('Failed to fetch history');
+            }
+
+            if (profileRes.status === 'fulfilled' && profileRes.value.data?.success) {
+                setProfileChanges(profileRes.value.data.data || []);
             }
         } catch (err) {
             console.error('Error fetching student history logs:', err);
@@ -461,8 +538,22 @@ const StudentHistoryLogs = ({ student }) => {
         );
     }
 
-    // ── Build timeline entries ──
-    const allEntries = [...logs];
+    // ── Build timeline entries — merge audit logs + profile change requests ──
+    const profileChangeEntries = profileChanges.map(pc => ({
+        ...pc,
+        _type: 'profile_change',
+        action_type: 'PROFILE_CHANGE_REQUEST',
+        requested_changes: typeof pc.requested_changes === 'string'
+            ? (() => { try { return JSON.parse(pc.requested_changes); } catch { return {}; } })()
+            : (pc.requested_changes || {}),
+    }));
+
+    const allEntries = [...logs, ...profileChangeEntries].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+
+    // Registration date from student.created_at
+    const registeredAt = student?.created_at ? formatDate(student.created_at) : null;
 
     return (
         <div className="flex flex-col h-full">
@@ -475,17 +566,25 @@ const StudentHistoryLogs = ({ student }) => {
                     <div>
                         <h3 className="font-bold text-gray-900 text-xs uppercase tracking-widest">History Log</h3>
                         <p className="text-[10px] text-gray-500 font-bold">
-                            {logs.length} EVENTS RECORDED
+                            {logs.length} AUDIT EVENT{logs.length !== 1 ? 'S' : ''} &bull; {profileChanges.length} PROFILE CHANGE REQUEST{profileChanges.length !== 1 ? 'S' : ''}
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={() => fetchLogs(true)}
-                    disabled={refreshing}
-                    className="p-2.5 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex items-center gap-3">
+                    {registeredAt && (
+                        <div className="hidden sm:flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm text-xs text-gray-500">
+                            <CalendarClock className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                            <span>Registered <span className="font-semibold text-gray-700">{registeredAt}</span></span>
+                        </div>
+                    )}
+                    <button
+                        onClick={() => fetchLogs(true)}
+                        disabled={refreshing}
+                        className="p-2.5 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
             </div>
 
             {/* Timeline */}
@@ -504,8 +603,11 @@ const StudentHistoryLogs = ({ student }) => {
                             const IconComp = cfg.icon;
                             const isFirst = idx === 0;
                             const isCreate = log.action_type?.toUpperCase() === 'CREATE';
-                            const performerName = log.admin_full_name || log.admin_username || 'System';
-                            const performerRole = log.admin_role;
+                            const isProfileChange = log._type === 'profile_change';
+                            const performerName = isProfileChange
+                                ? (log.reviewed_by ? `Reviewed by ${log.reviewed_by}` : 'Awaiting review')
+                                : (log.admin_full_name || log.admin_username || 'System');
+                            const performerRole = isProfileChange ? null : log.admin_role;
 
                             return (
                                 <div key={log.id} className="flex gap-3 group">
@@ -552,7 +654,10 @@ const StudentHistoryLogs = ({ student }) => {
                                             </div>
 
                                             {/* Details */}
-                                            <LogDetails log={log} />
+                                            {isProfileChange
+                                                ? <ProfileChangeDetails entry={log} />
+                                                : <LogDetails log={log} />
+                                            }
 
                                             {/* Show registration snapshot on first CREATE */}
                                             {isCreate && (

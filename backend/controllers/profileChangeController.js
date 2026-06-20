@@ -244,6 +244,30 @@ exports.updateRequestStatus = async (req, res) => {
     }
 };
 
+// Admin fetches all requests for a specific student (by admission number)
+exports.getRequestsByAdmission = async (req, res) => {
+    try {
+        const { admission_number } = req.params;
+        if (!admission_number) {
+            return res.status(400).json({ success: false, message: 'Admission number is required' });
+        }
+
+        const [requests] = await masterPool.query(
+            `SELECT p.id, p.admission_number, p.requested_changes, p.status,
+                    p.created_at, p.updated_at, p.reviewed_by, p.comments
+             FROM profile_change_requests p
+             WHERE p.admission_number = ?
+             ORDER BY p.created_at DESC`,
+            [admission_number]
+        );
+
+        res.json({ success: true, data: requests });
+    } catch (error) {
+        console.error('Error fetching requests by admission number:', error);
+        res.status(500).json({ success: false, message: 'Server error while fetching requests' });
+    }
+};
+
 // Student marks profile as verified (no changes needed)
 exports.markVerified = async (req, res) => {
     try {

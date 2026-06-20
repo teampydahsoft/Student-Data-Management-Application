@@ -18,6 +18,14 @@ router.get(
     profileChangeController.getAllRequests
 );
 
+// Admin: fetch all profile change requests for a specific student
+router.get(
+    '/by-student/:admission_number',
+    authMiddleware,
+    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+    profileChangeController.getRequestsByAdmission
+);
+
 router.put(
     '/:id/status',
     authMiddleware,
