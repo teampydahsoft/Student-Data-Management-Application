@@ -573,6 +573,113 @@ exports.deleteCollege = async (req, res) => {
 };
 
 /**
+ * GET /api/colleges/dashboard-stats
+ * Returns per-college student count, today's attendance, and recent announcements
+ * for the super admin dashboard.
+ */
+exports.getCollegeDashboardStats = async (req, res) => {
+  try {
+    const now = new Date();
+    const todayKey = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    // 1. All active colleges
+    const colleges = await collegeService.fetchColleges({ includeInactive: false });
+
+    if (!colleges || colleges.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const collegeNames = colleges.map((c) => c.name);
+
+    // 2. Student counts grouped by college
+    const [studentRows] = await masterPool.query(
+      `SELECT college, COUNT(*) AS total
+       FROM students
+       WHERE student_status = 'Regular' AND college IN (?)
+       GROUP BY college`,
+      [collegeNames]
+    );
+
+    // 3. Today's attendance grouped by college + status
+    const [attendanceRows] = await masterPool.query(
+      `SELECT s.college, ar.status, COUNT(*) AS count
+       FROM attendance_records ar
+       INNER JOIN students s ON s.id = ar.student_id
+       WHERE ar.attendance_date = ?
+         AND s.student_status = 'Regular'
+         AND s.college IN (?)
+       GROUP BY s.college, ar.status`,
+      [todayKey, collegeNames]
+    );
+
+    // 4. 3 most recent active announcements per college
+    const [announcementRows] = await masterPool.query(
+      `SELECT a.id, a.title, a.content, a.created_at, a.target_college
+       FROM announcements a
+       WHERE a.is_active = 1
+       ORDER BY a.created_at DESC
+       LIMIT 50`
+    );
+
+    // Build lookup maps
+    const studentMap = {};
+    for (const row of studentRows) {
+      studentMap[row.college] = Number(row.total) || 0;
+    }
+
+    const attendanceMap = {};
+    for (const row of attendanceRows) {
+      if (!attendanceMap[row.college]) attendanceMap[row.college] = { present: 0, absent: 0 };
+      if (row.status === 'present') attendanceMap[row.college].present = Number(row.count) || 0;
+      if (row.status === 'absent') attendanceMap[row.college].absent = Number(row.count) || 0;
+    }
+
+    // Match announcements to colleges — an announcement targets a college if
+    // target_college is NULL (global) or contains the college name as a JSON value.
+    const parseTargetCollege = (raw) => {
+      if (!raw) return null;
+      if (Array.isArray(raw)) return raw;
+      try { return JSON.parse(raw); } catch (_) { return null; }
+    };
+
+    const announcementsByCollege = {};
+    for (const college of colleges) {
+      const matched = announcementRows.filter((a) => {
+        const targets = parseTargetCollege(a.target_college);
+        return !targets || targets.includes(college.name);
+      }).slice(0, 3);
+      announcementsByCollege[college.name] = matched.map((a) => ({
+        id: a.id,
+        title: a.title,
+        content: a.content ? a.content.substring(0, 120) : '',
+        created_at: a.created_at,
+      }));
+    }
+
+    // Compose final response
+    const data = colleges.map((college) => ({
+      id: college.id,
+      name: college.name,
+      code: college.code,
+      totalStudents: studentMap[college.name] || 0,
+      presentToday: attendanceMap[college.name]?.present || 0,
+      absentToday: attendanceMap[college.name]?.absent || 0,
+      attendanceDate: todayKey,
+      recentAnnouncements: announcementsByCollege[college.name] || [],
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('getCollegeDashboardStats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch college dashboard stats' });
+  }
+};
+
+/**
  * GET /api/colleges/:collegeId/courses
  * Get all courses for a college
  */

@@ -20,6 +20,9 @@ router.use(authMiddleware);
 router.post('/:id/upload-header', upload.single('header'), collegeController.uploadHeaderImage);
 router.post('/:id/upload-footer', upload.single('footer'), collegeController.uploadFooterImage);
 
+// Super admin dashboard stats (college-wise) — must be before /:collegeId
+router.get('/dashboard-stats', collegeController.getCollegeDashboardStats);
+
 // College list (no param)
 router.get('/', attachUserScope, collegeController.getColleges);
 router.post('/', collegeController.createCollege);
