@@ -18,6 +18,7 @@ const {
   isGlobalTarget,
   extractTargetsFromBody
 } = require('../services/targetingService');
+const { getISTDateString } = require('../utils/dateUtils');
 
 const padMonth = (value) => String(value).padStart(2, '0');
 
@@ -162,7 +163,7 @@ exports.getNonWorkingDays = async (req, res) => {
     });
 
     const attendanceCountsMap = await getAttendanceStatusForRange(monthStart, monthEnd);
-    const todayKey = new Date().toISOString().split('T')[0];
+    const todayKey = getISTDateString();
 
     const publicHolidays = holidays.map((holiday) => ({
       date: holiday.date,

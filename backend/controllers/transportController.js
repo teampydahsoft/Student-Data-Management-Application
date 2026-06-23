@@ -1,5 +1,6 @@
 const { masterPool } = require('../config/database');
 const transportConnection = require('../config/transportDb');
+const { getISTDateString } = require('../utils/dateUtils');
 
 // Import Schemas using the new connection
 // We require the Model files to get the Schema, but we must re-compile them 
@@ -67,7 +68,7 @@ exports.createTransportRequest = async (req, res) => {
             );
             if (courseRows.length > 0) {
                 const courseId = courseRows[0].id;
-                const todayKey = new Date().toISOString().slice(0, 10);
+                const todayKey = getISTDateString();
                 // Prefer semester that is currently active (today within start_date..end_date)
                 const [semesterRows] = await masterPool.query(
                     `SELECT id, start_date, end_date, academic_year_id, year_of_study, semester_number

@@ -4,31 +4,12 @@
  */
 
 const { getNonWorkingDaysForRange } = require('./nonWorkingDayService');
+const { parseDateString } = require('../utils/dateUtils');
 
 /**
- * Get date only string in YYYY-MM-DD format
+ * Get date only string in YYYY-MM-DD format (IST-aware)
  */
-const getDateOnlyString = (input) => {
-  if (!input) {
-    const today = new Date();
-    return [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, '0'),
-      String(today.getDate()).padStart(2, '0')
-    ].join('-');
-  }
-
-  const date = new Date(input);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0')
-  ].join('-');
-};
+const getDateOnlyString = (input) => parseDateString(input);
 
 /**
  * Build date set for a given date range

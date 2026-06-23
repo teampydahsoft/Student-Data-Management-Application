@@ -3,6 +3,7 @@ const { masterPool } = require('../config/database');
 const { sendBrevoEmail } = require('../utils/emailService');
 const { checkAndSendBirthdayNotifications } = require('./birthdayNotificationService');
 const { createBroadcastNotification } = require('./notificationService');
+const { getISTDateString } = require('../utils/dateUtils');
 const { getNonWorkingDayInfo } = require('./nonWorkingDayService');
 const { getAllNotificationUsers, filterAttendanceByUserScope } = require('./getUserScopeAttendance');
 const { appendSemesterCalendarFilter } = require('./semesterCalendarService');
@@ -84,14 +85,7 @@ const checkAndResendRecurringForms = async () => {
 };
 
 // Helper to get today's date in YYYY-MM-DD format (IST)
-const getTodayDate = () => {
-    const today = new Date();
-    return [
-        today.getFullYear(),
-        String(today.getMonth() + 1).padStart(2, '0'),
-        String(today.getDate()).padStart(2, '0')
-    ].join('-');
-};
+const getTodayDate = () => getISTDateString();
 
 /**
  * Generate Report HTML

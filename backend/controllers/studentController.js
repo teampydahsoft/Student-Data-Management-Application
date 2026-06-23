@@ -8,6 +8,7 @@ const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const { generateRegistrationReportPDF } = require('../services/pdfService');
+const { getISTDateString } = require('../utils/dateUtils');
 const {
   getNextStage,
   normalizeStage
@@ -5942,11 +5943,10 @@ exports.updateFeeStatus = async (req, res) => {
       // Only needed if we haven't already set it to pending above
       if (isFeeCleared && fee_status === 'permitted' && permit_ending_date && hasRegStatusColumn) {
         const permitDate = new Date(permit_ending_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        permitDate.setHours(0, 0, 0, 0);
+        const todayStr = getISTDateString();
+        const todayDate = new Date(todayStr);
 
-        if (permitDate < today) {
+        if (permitDate < todayDate) {
           await masterPool.query(
             'UPDATE students SET registration_status = ? WHERE admission_number = ?',
             ['pending', admissionNumber]
@@ -6145,7 +6145,7 @@ exports.checkExpiredPermits = async (req, res) => {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getISTDateString();
 
     // Find all students with fee_status = 'permitted' and permit_ending_date < today
     const [students] = await masterPool.query(

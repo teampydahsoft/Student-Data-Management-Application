@@ -1,4 +1,5 @@
 const { masterPool } = require('../config/database');
+const { getISTDateString } = require('../utils/dateUtils');
 
 const deriveBatchLabel = (academicYearLabel, yearOfStudy) => {
   const label = academicYearLabel != null ? String(academicYearLabel).trim().replace(/\s/g, '') : '';
@@ -81,7 +82,7 @@ const resolveSemesterCalendarForFilters = async ({
     baseParams.unshift(collegeId);
   }
 
-  const dateKey = attendanceDate || new Date().toISOString().slice(0, 10);
+  const dateKey = attendanceDate || getISTDateString();
   const activeParams = [...baseParams, dateKey, dateKey];
   const [activeRows] = await masterPool.query(
     `SELECT start_date, end_date, batch

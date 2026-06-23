@@ -5,6 +5,7 @@ const { getNotificationSetting } = require('./settingsController');
 const { sendBrevoEmail } = require('../utils/emailService');
 const { sendAttendanceReportNotifications } = require('../services/attendanceNotificationService');
 const { getAllAttendanceForDate, areAllBatchesMarked, areAllBatchesMarkedForCollege, areAllBatchesMarkedForCollegeCourseBranch } = require('../services/getAllAttendanceForDate');
+const { getISTDateString, parseDateString } = require('../utils/dateUtils');
 const {
   getNonWorkingDayInfo,
   getStudentHolidayOnDate,
@@ -292,27 +293,7 @@ const parseStudentData = (data) => {
   }
 };
 
-const getDateOnlyString = (input) => {
-  if (!input) {
-    const today = new Date();
-    return [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, '0'),
-      String(today.getDate()).padStart(2, '0')
-    ].join('-');
-  }
-
-  const date = new Date(input);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0')
-  ].join('-');
-};
+const getDateOnlyString = (input) => parseDateString(input);
 
 exports.getFilterOptions = async (req, res) => {
   try {
