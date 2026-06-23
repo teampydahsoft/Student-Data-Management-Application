@@ -18,10 +18,14 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // IST Timezone Helpers (India Standard Time: UTC+5:30)
+// Always derived from UTC epoch + fixed IST offset.
+// Do NOT use getTimezoneOffset() — the server TZ (Asia/Kolkata) makes it -330,
+// which cancels the offset and returns UTC instead of IST.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
 const getCurrentISTTime = () => {
-    const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    return new Date(now.getTime() + istOffset + (now.getTimezoneOffset() * 60 * 1000));
+    // Add IST offset to UTC epoch, then read UTC fields to get IST wall clock time
+    return new Date(Date.now() + IST_OFFSET_MS);
 };
 
 const getCurrentISTDayShort = () => {

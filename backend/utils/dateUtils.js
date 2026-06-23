@@ -1,9 +1,14 @@
 /**
  * Date utilities with IST (UTC+5:30) awareness.
  *
- * The server runs in UTC. All "today's date" calculations must be offset to
- * IST so that users marking attendance between midnight IST (18:30 UTC) and
- * 05:30 IST get the correct calendar date.
+ * The server TZ is set to Asia/Kolkata (IST) via PM2 ecosystem.config.js.
+ * However, Date.now() / new Date().getTime() always return UTC epoch — safe.
+ * We derive IST by adding a fixed +5:30 offset to UTC epoch and reading
+ * .toISOString() (which always outputs UTC), giving the correct IST wall-clock date.
+ *
+ * IMPORTANT: Do NOT use getTimezoneOffset() for IST calculations.
+ * On an IST-configured server getTimezoneOffset() returns -330, which cancels
+ * the +5:30 offset and gives UTC instead of IST.
  *
  * Rule of thumb:
  *  - Use getISTDateString()            → "today" in IST (no argument needed)
