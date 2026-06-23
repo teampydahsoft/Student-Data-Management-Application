@@ -2375,13 +2375,17 @@ const Settings = () => {
 
   const startEditBranch = (courseId, branch, courseDefaults) => {
     setEditingBranch({ courseId, branchId: branch.id });
+    const meta = branch.metadata || {};
     setBranchDrafts((prev) => ({
       ...prev,
       [branch.id]: {
         name: branch.name || '',
         code: branch.code || '',
         totalYears: branch.totalYears ?? courseDefaults.totalYears,
-        semestersPerYear: branch.semestersPerYear ?? courseDefaults.semestersPerYear
+        semestersPerYear: branch.semestersPerYear ?? courseDefaults.semestersPerYear,
+        hasAdditionalYear: meta.hasAdditionalYear || false,
+        additionalYear: meta.additionalYear || '',
+        additionalYearSemesters: meta.additionalYearSemesters || ''
       }
     }));
   };
@@ -2413,13 +2417,37 @@ const Settings = () => {
       return;
     }
 
+    // Validate additional year config
+    if (draft.hasAdditionalYear) {
+      const addYear = Number(draft.additionalYear);
+      const addSems = Number(draft.additionalYearSemesters);
+      if (!addYear || addYear < 1 || addYear > 10) {
+        toast.error('Additional year must be a valid number (1–10)');
+        return;
+      }
+      if (!addSems || addSems < 1 || addSems > 4) {
+        toast.error('Additional year semesters must be between 1 and 4');
+        return;
+      }
+    }
+
+    // Build metadata with additional year info
+    const metadata = draft.hasAdditionalYear
+      ? {
+          hasAdditionalYear: true,
+          additionalYear: Number(draft.additionalYear),
+          additionalYearSemesters: Number(draft.additionalYearSemesters)
+        }
+      : { hasAdditionalYear: false };
+
     try {
       setSavingBranchId(branch.id);
       await api.put(`/courses/${courseId}/branches/${branch.id}`, {
         name: draft.name.trim(),
         code: draft.code.trim(),
         totalYears: draft.totalYears ? Number(draft.totalYears) : undefined,
-        semestersPerYear: draft.semestersPerYear ? Number(draft.semestersPerYear) : undefined
+        semestersPerYear: draft.semestersPerYear ? Number(draft.semestersPerYear) : undefined,
+        metadata
       });
 
       toast.success('Branch updated successfully');
@@ -5296,6 +5324,54 @@ const Settings = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
                     />
                   </div>
+                </div>
+
+                {/* Additional / Optional Year */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={branchDrafts[editingBranch.branchId]?.hasAdditionalYear || false}
+                      onChange={(e) => updateBranchDraft(editingBranch.branchId, 'hasAdditionalYear', e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Has Additional (Optional) Year</span>
+                  </label>
+                  {branchDrafts[editingBranch.branchId]?.hasAdditionalYear && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Additional Year No. <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={branchDrafts[editingBranch.branchId]?.additionalYear || ''}
+                          onChange={(e) => updateBranchDraft(editingBranch.branchId, 'additionalYear', e.target.value)}
+                          placeholder="e.g. 5"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Semesters in Addl. Year <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={4}
+                          value={branchDrafts[editingBranch.branchId]?.additionalYearSemesters || ''}
+                          onChange={(e) => updateBranchDraft(editingBranch.branchId, 'additionalYearSemesters', e.target.value)}
+                          placeholder="e.g. 2"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-400 leading-snug">
+                    When enabled, course-completed students can be moved into this additional year from the student edit panel.
+                  </p>
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">

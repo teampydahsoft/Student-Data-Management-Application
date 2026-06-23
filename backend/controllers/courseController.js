@@ -126,7 +126,9 @@ const serializeBranchRow = (branchRow, academicYears = null) => {
     // New: array of academic years (from junction table)
     academicYearIds: academicYearIds,
     academicYearLabels: academicYearLabels,
-    metadata: branchRow.metadata ? JSON.parse(branchRow.metadata) : null
+    metadata: branchRow.metadata
+      ? (typeof branchRow.metadata === 'string' ? JSON.parse(branchRow.metadata) : branchRow.metadata)
+      : null
   };
 };
 
@@ -156,7 +158,9 @@ const formatCourse = (courseRow, branchRows = []) => {
         ? JSON.parse(courseRow.year_semester_config)
         : courseRow.year_semester_config)
       : null,
-    metadata: courseRow.metadata ? JSON.parse(courseRow.metadata) : null,
+    metadata: courseRow.metadata
+      ? (typeof courseRow.metadata === 'string' ? JSON.parse(courseRow.metadata) : courseRow.metadata)
+      : null,
     feeQrImageUrl: buildFeeQrImageUrl(
       courseRow.id,
       courseRow.updated_at,

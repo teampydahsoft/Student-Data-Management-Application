@@ -77,6 +77,9 @@ const StudentPromotions = () => {
   const [showRejoinModal, setShowRejoinModal] = useState(false);
   const [rejoinStudent, setRejoinStudent] = useState(null);
   const [showProfileUpdateSettings, setShowProfileUpdateSettings] = useState(false);
+  // Additional year promotion popup state
+  const [additionalYearStudents, setAdditionalYearStudents] = useState([]); // students eligible for additional year
+  const [additionalYearChoices, setAdditionalYearChoices] = useState({}); // { admissionNumber: 'additional' | 'complete' }
 
   const selectedCount = selectedAdmissionNumbers.size;
 
@@ -513,6 +516,7 @@ const StudentPromotions = () => {
       });
 
       const courseConfigMap = new Map();
+      const branchMetaMap = new Map(); // key: "courseName|branchName"
       if (uniqueCourses.size > 0) {
         try {
           const coursesResponse = await api.get('/courses?includeInactive=false');
@@ -524,6 +528,11 @@ const StudentPromotions = () => {
                 totalYears: course.totalYears || course.total_years || course.defaultYears,
                 semestersPerYear: course.semestersPerYear || course.semesters_per_year,
                 yearSemesterConfig: course.yearSemesterConfig || course.year_semester_config
+              });
+              // Store branch metadata for additional year lookup
+              (course.branches || []).forEach(branch => {
+                const key = `${courseName}|${branch.name}`;
+                branchMetaMap.set(key, branch.metadata || {});
               });
             }
           });
@@ -568,6 +577,8 @@ const StudentPromotions = () => {
 
         // Determine if student has completed the course
         let isCourseCompleted = false;
+        let hasAdditionalYearOption = false;
+        let additionalYearTarget = null;
         if (!nextStage && courseConfig && currentStage && issues.length === 0) {
           const totalYears = courseConfig.totalYears || 4;
           const DEFAULT_SEMESTERS_PER_YEAR = 2;
@@ -585,8 +596,21 @@ const StudentPromotions = () => {
           }
 
           if (currentStage.year === totalYears && currentStage.semester === semestersForFinalYear) {
-            isCourseCompleted = true;
-            infoNotes.push('Student has completed all years and semesters. Will be marked as "Course Completed".');
+            // Check if branch has an additional year option
+            const branchKey = `${student.course}|${student.branch}`;
+            const branchMeta = branchMetaMap.get(branchKey) || {};
+            if (branchMeta.hasAdditionalYear && branchMeta.additionalYear) {
+              hasAdditionalYearOption = true;
+              additionalYearTarget = {
+                year: Number(branchMeta.additionalYear),
+                semester: 1,
+                totalSemesters: Number(branchMeta.additionalYearSemesters) || 2
+              };
+              infoNotes.push(`Branch has an optional Year ${branchMeta.additionalYear}. You can promote to it or mark as "Course Completed".`);
+            } else {
+              isCourseCompleted = true;
+              infoNotes.push('Student has completed all years and semesters. Will be marked as "Course Completed".');
+            }
           }
         }
 
@@ -598,12 +622,23 @@ const StudentPromotions = () => {
           issues,
           hasConflict,
           isCourseCompleted,
+          hasAdditionalYearOption,
+          additionalYearTarget,
           infoNotes
         };
       });
 
       setPromotionPlan(plan);
       setHasStageConflicts(plan.some((item) => item.hasConflict));
+
+      // Identify students with additional year option and initialize their choices
+      const addYearStudents = plan.filter(item => item.hasAdditionalYearOption && item.issues.length === 0);
+      setAdditionalYearStudents(addYearStudents);
+      const initChoices = {};
+      addYearStudents.forEach(item => {
+        initChoices[item.admissionNumber] = 'complete'; // default: course completed
+      });
+      setAdditionalYearChoices(initChoices);
 
       // Check for left-out students early (students matching filters but not selected)
       try {
@@ -640,10 +675,28 @@ const StudentPromotions = () => {
 
   const executePromotion = async () => {
     // Include students who can be promoted OR students who have completed the course
+    // OR students with additional year option (promote or complete based on choice)
     const promotableStudents = promotionPlan.filter(
       (item) => (item.nextStage && item.issues.length === 0) ||
-        (item.isCourseCompleted && item.issues.length === 0)
-    );
+        (item.isCourseCompleted && item.issues.length === 0) ||
+        (item.hasAdditionalYearOption && item.issues.length === 0)
+    ).map(item => {
+      // For additional year students, override nextStage based on choice
+      if (item.hasAdditionalYearOption) {
+        const choice = additionalYearChoices[item.admissionNumber] || 'additional';
+        if (choice === 'additional' && item.additionalYearTarget) {
+          return {
+            ...item,
+            nextStage: { year: item.additionalYearTarget.year, semester: 1 },
+            isCourseCompleted: false
+          };
+        } else {
+          // choice === 'complete'
+          return { ...item, nextStage: null, isCourseCompleted: true };
+        }
+      }
+      return item;
+    });
 
     if (promotableStudents.length === 0) {
       toast.error('No eligible students to promote');
@@ -689,7 +742,14 @@ const StudentPromotions = () => {
     setSubmitting(true);
     try {
       const response = await api.post('/students/promotions/bulk', {
-        students: promotableStudents.map((item) => ({ admissionNumber: item.admissionNumber })),
+        students: promotableStudents.map((item) => ({
+          admissionNumber: item.admissionNumber,
+          // Pass explicit target stage for additional year or course-completed students
+          ...(item.nextStage && !item.isCourseCompleted ? {
+            targetYear: item.nextStage.year,
+            targetSemester: item.nextStage.semester
+          } : {})
+        })),
         leftOutStudents: leftOutUpdates
       });
 
@@ -762,10 +822,21 @@ const StudentPromotions = () => {
       };
     });
 
-    // Get promotable students from promotion plan
+    // Get promotable students from promotion plan (include additional year students with their choices applied)
     const promotableStudents = promotionPlan.filter(
-      (item) => item.nextStage && item.issues.length === 0
-    );
+      (item) => (item.nextStage && item.issues.length === 0) ||
+        (item.isCourseCompleted && item.issues.length === 0) ||
+        (item.hasAdditionalYearOption && item.issues.length === 0)
+    ).map(item => {
+      if (item.hasAdditionalYearOption) {
+        const choice = additionalYearChoices[item.admissionNumber] || 'additional';
+        if (choice === 'additional' && item.additionalYearTarget) {
+          return { ...item, nextStage: { year: item.additionalYearTarget.year, semester: 1 }, isCourseCompleted: false };
+        }
+        return { ...item, nextStage: null, isCourseCompleted: true };
+      }
+      return item;
+    });
 
     // Perform promotion with left-out updates
     await performPromotion(promotableStudents, leftOutUpdates);
@@ -1371,6 +1442,56 @@ const StudentPromotions = () => {
                 </div>
               )}
 
+              {/* Additional Year Decision Panel */}
+              {additionalYearStudents.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-orange-100 border-b border-orange-200 flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-orange-600" />
+                    <span className="text-sm font-bold text-orange-900">
+                      {additionalYearStudents.length} Student{additionalYearStudents.length === 1 ? '' : 's'} at Final Year — Branch has Optional Year
+                    </span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <p className="text-xs text-orange-800">
+                      These students have completed the regular course. Their branch offers an optional additional year.
+                      Choose to promote them to it or mark as Course Completed.
+                    </p>
+                    <div className="space-y-2">
+                      {additionalYearStudents.map(item => (
+                        <div key={item.admissionNumber} className="flex flex-col sm:flex-row sm:items-center gap-3 bg-white border border-orange-100 rounded-lg px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{item.studentName}</p>
+                            <p className="text-xs text-gray-500">{item.admissionNumber} — Year {item.currentStage?.year}, Sem {item.currentStage?.semester}</p>
+                          </div>
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => setAdditionalYearChoices(prev => ({ ...prev, [item.admissionNumber]: 'additional' }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                                additionalYearChoices[item.admissionNumber] === 'additional'
+                                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                                  : 'bg-white border-gray-300 text-gray-700 hover:border-indigo-400'
+                              }`}
+                            >
+                              → Year {item.additionalYearTarget?.year}, Sem 1
+                            </button>
+                            <button
+                              onClick={() => setAdditionalYearChoices(prev => ({ ...prev, [item.admissionNumber]: 'complete' }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                                additionalYearChoices[item.admissionNumber] === 'complete'
+                                  ? 'bg-blue-600 border-blue-600 text-white'
+                                  : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+                              }`}
+                            >
+                              ✓ Course Completed
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl overflow-hidden">
                 <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 px-4 py-3">
                   <div className="flex items-center justify-between">
@@ -1378,7 +1499,7 @@ const StudentPromotions = () => {
                       Promotion Summary
                     </h4>
                     <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
-                      {promotionPlan.filter(item => (item.nextStage && item.issues.length === 0) || (item.isCourseCompleted && item.issues.length === 0)).length} Eligible
+                      {promotionPlan.filter(item => (item.nextStage && item.issues.length === 0) || (item.isCourseCompleted && item.issues.length === 0) || (item.hasAdditionalYearOption && item.issues.length === 0)).length} Eligible
                     </span>
                   </div>
                 </div>
@@ -1406,13 +1527,28 @@ const StudentPromotions = () => {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {promotionPlan.map((item) => {
                         const isEligible = (item.nextStage && item.issues.length === 0) ||
-                          (item.isCourseCompleted && item.issues.length === 0);
+                          (item.isCourseCompleted && item.issues.length === 0) ||
+                          (item.hasAdditionalYearOption && item.issues.length === 0);
                         const issueText = item.issues.filter(Boolean).join(', ');
-                        const infoText = Array.isArray(item.infoNotes) ? item.infoNotes.filter(Boolean).join('. ') : '';
                         const conflictText = item.hasConflict
                           ? 'Target stage already contains students'
                           : '';
-                        const noteText = [issueText, conflictText, infoText].filter(Boolean).join('. ');
+                        const noteText = [issueText, conflictText].filter(Boolean).join('. ');
+
+                        // Compute display next stage for additional year students
+                        let displayNextStage = null;
+                        let displayCourseCompleted = item.isCourseCompleted;
+                        if (item.hasAdditionalYearOption) {
+                          const choice = additionalYearChoices[item.admissionNumber] || 'additional';
+                          if (choice === 'additional' && item.additionalYearTarget) {
+                            displayNextStage = { year: item.additionalYearTarget.year, semester: 1 };
+                          } else {
+                            displayCourseCompleted = true;
+                          }
+                        } else {
+                          displayNextStage = item.nextStage;
+                        }
+
                         return (
                           <tr
                             key={item.admissionNumber}
@@ -1437,12 +1573,12 @@ const StudentPromotions = () => {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {item.nextStage ? (
+                              {displayNextStage ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold">
                                   <ArrowRight size={14} className="text-indigo-600" />
-                                  Year {item.nextStage.year} • Sem {item.nextStage.semester}
+                                  Year {displayNextStage.year} • Sem {displayNextStage.semester}
                                 </span>
-                              ) : item.isCourseCompleted ? (
+                              ) : displayCourseCompleted ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold">
                                   <CheckCircle size={14} className="text-blue-600" />
                                   Course Completed

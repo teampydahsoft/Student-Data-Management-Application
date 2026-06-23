@@ -519,6 +519,73 @@ const Students = () => {
     });
   }, [students, sortConfig]);
 
+  // Compute year and semester dropdown options for the student edit panel
+  // Based on the selected student's course+branch structure + additional year from branch metadata
+  const studentEditYearOptions = useMemo(() => {
+    const courseName = editData?.course || selectedStudent?.course;
+    const branchName = editData?.branch || selectedStudent?.branch;
+
+    if (!courseName || !coursesWithLevels?.length) {
+      return ['1', '2', '3', '4'];
+    }
+
+    const courseObj = coursesWithLevels.find(c => c.name === courseName);
+    if (!courseObj) return ['1', '2', '3', '4'];
+
+    // Determine total years from branch override or course default
+    const branchObj = (courseObj.branches || []).find(b => b.name === branchName);
+    const totalYears = Number(branchObj?.totalYears || courseObj.totalYears) || 4;
+
+    const years = Array.from({ length: totalYears }, (_, i) => String(i + 1));
+
+    // If branch has an additional year configured, always show it
+    const branchMeta = branchObj?.metadata || {};
+    if (branchMeta.hasAdditionalYear && branchMeta.additionalYear) {
+      const addYearStr = String(branchMeta.additionalYear);
+      if (!years.includes(addYearStr)) {
+        years.push(addYearStr);
+      }
+    }
+
+    return years;
+  }, [editData?.course, editData?.branch, selectedStudent?.course, selectedStudent?.branch, coursesWithLevels]);
+
+  const studentEditSemesterOptions = useMemo(() => {
+    const courseName = editData?.course || selectedStudent?.course;
+    const branchName = editData?.branch || selectedStudent?.branch;
+    const currentYear = Number(editData?.current_year || selectedStudent?.current_year) || 1;
+
+    if (!courseName || !coursesWithLevels?.length) {
+      return ['1', '2'];
+    }
+
+    const courseObj = coursesWithLevels.find(c => c.name === courseName);
+    if (!courseObj) return ['1', '2'];
+
+    const branchObj = (courseObj.branches || []).find(b => b.name === branchName);
+    const branchMeta = branchObj?.metadata || {};
+
+    // Check if current year is the additional year — use its semester count
+    if (branchMeta.hasAdditionalYear && branchMeta.additionalYear) {
+      if (currentYear === Number(branchMeta.additionalYear)) {
+        const addSems = Number(branchMeta.additionalYearSemesters) || 2;
+        return Array.from({ length: addSems }, (_, i) => String(i + 1));
+      }
+    }
+
+    // Use per-year semester config if available
+    const structure = branchObj?.structure || courseObj.structure;
+    if (structure?.years && Array.isArray(structure.years)) {
+      const yearConfig = structure.years.find(y => y.yearNumber === currentYear);
+      if (yearConfig?.semesters?.length) {
+        return yearConfig.semesters.map(s => String(s.semesterNumber));
+      }
+    }
+
+    const semPerYear = Number(branchObj?.semestersPerYear || courseObj.semestersPerYear) || 2;
+    return Array.from({ length: semPerYear }, (_, i) => String(i + 1));
+  }, [editData?.course, editData?.branch, editData?.current_year, selectedStudent?.course, selectedStudent?.branch, selectedStudent?.current_year, coursesWithLevels]);
+
   const totalPages = studentsData?.pagination?.totalPages ||
     (totalStudents > 0 ? Math.max(1, Math.ceil(totalStudents / (pageSize || 1))) : 1);
   // Only show loading for students table, not the entire page
@@ -3588,18 +3655,22 @@ const Students = () => {
                     <div className="grid grid-cols-2 gap-2 w-full">
                       <SidebarDetailItem
                         label="Year"
-                        value={editData.current_year || selectedStudent?.current_year}
+                        value={String(editData.current_year || selectedStudent?.current_year || '')}
                         icon={<Calendar size={14} />}
                         editable={editMode}
                         disabled={isFieldFrozen(selectedStudent, 'current_year')}
+                        type="select"
+                        options={studentEditYearOptions}
                         onChange={(val) => updateEditField('current_year', val)}
                       />
                       <SidebarDetailItem
                         label="Semester"
-                        value={editData.current_semester || selectedStudent?.current_semester}
+                        value={String(editData.current_semester || selectedStudent?.current_semester || '')}
                         icon={<Calendar size={14} />}
                         editable={editMode}
                         disabled={isFieldFrozen(selectedStudent, 'current_semester')}
+                        type="select"
+                        options={studentEditSemesterOptions}
                         onChange={(val) => updateEditField('current_semester', val)}
                       />
                     </div>
