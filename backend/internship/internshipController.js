@@ -17,6 +17,27 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
     return R * c; // Distance in meters
 };
 
+// IST Timezone Helpers (India Standard Time: UTC+5:30)
+const getCurrentISTTime = () => {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    return new Date(now.getTime() + istOffset + (now.getTimezoneOffset() * 60 * 1000));
+};
+
+const getCurrentISTDayShort = () => {
+    const istTime = getCurrentISTTime();
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return days[istTime.getUTCDay()];
+};
+
+const getCurrentISTDate = () => {
+    const istTime = getCurrentISTTime();
+    const year = istTime.getUTCFullYear();
+    const month = String(istTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(istTime.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 // Helper: Re-validates attendance records against a (possibly new) internship location
 const revalidateAttendanceInternal = async (connection, studentIdList, startDate, endDate, internshipId) => {
     if (!studentIdList || studentIdList.length === 0) return 0;
@@ -202,7 +223,7 @@ exports.updateInternshipLocation = async (req, res) => {
                 const minStart = assignments.reduce((min, a) => a.start_date < min ? a.start_date : min, assignments[0].start_date);
                 const studentIds = assignments.map(a => a.student_id);
                 
-                await revalidateAttendanceInternal(connection, studentIds, minStart, new Date().toISOString().split('T')[0], id);
+                await revalidateAttendanceInternal(connection, studentIds, minStart, getCurrentISTDate(), id);
             }
         } catch (err) {
             console.error('[Internship] Error during auto-revalidation:', err);
@@ -222,12 +243,12 @@ exports.getAttendanceReport = async (req, res) => {
     try {
         const { batch, college, course, branch, year, semester, location, startDate, endDate } = req.query;
         
-        // Use provided dates or default to today
-        const reportStartDate = startDate || new Date().toISOString().split('T')[0];
+        // Use provided dates or default to today (IST)
+        const reportStartDate = startDate || getCurrentISTDate();
         const reportEndDate = endDate || reportStartDate;
 
         // before generating report, mark any overdue students as absent for today
-        if (!startDate || reportStartDate === new Date().toISOString().split('T')[0]) {
+        if (!startDate || reportStartDate === getCurrentISTDate()) {
             await autoMarkAbsentees(reportStartDate);
         }
 
@@ -310,7 +331,7 @@ exports.getAttendanceReport = async (req, res) => {
 exports.getDayEndReport = async (req, res) => {
     try {
         const { date, batch, college, course, branch, year, semester } = req.query;
-        const reportDate = date || new Date().toISOString().split('T')[0];
+        const reportDate = date || getCurrentISTDate();
         // automatically mark absentees for provided date as well
         await autoMarkAbsentees(reportDate);
 
@@ -419,7 +440,7 @@ exports.getDayEndReport = async (req, res) => {
 exports.downloadDayEndReport = async (req, res) => {
     try {
         const { date, format, batch, college, course, branch, year, semester } = req.query;
-        const reportDate = date || new Date().toISOString().split('T')[0];
+        const reportDate = date || getCurrentISTDate();
         const normalizedFormat = (format || 'xlsx').toLowerCase();
 
         // Re-use logic from getDayEndReport to fetch data
@@ -551,11 +572,21 @@ exports.downloadDayEndReport = async (req, res) => {
 // has no attendance for a given date and whose internship location's
 // allowed_end_time has already passed the current server time.
 async function autoMarkAbsentees(reportDate) {
-    const now = new Date();
-    // use local hours/minutes rather than UTC so comparison with allowed_end_time (stored as local) works
-    const nowHour = now.getHours().toString().padStart(2, '0');
-    const nowMinute = now.getMinutes().toString().padStart(2, '0');
-    const nowTime = `${nowHour}:${nowMinute}`; // HH:MM local
+    const istToday = getCurrentISTDate();
+    // For past dates, consider the day as ended (use a time past allowed_end_time)
+    // For today, use current IST time
+    const isToday = reportDate === istToday;
+    let nowTime;
+    if (isToday) {
+        const istTime = getCurrentISTTime();
+        const hour = istTime.getUTCHours().toString().padStart(2, '0');
+        const minute = istTime.getUTCMinutes().toString().padStart(2, '0');
+        nowTime = `${hour}:${minute}`;
+    } else {
+        // For past dates, use a time that's guaranteed to be past allowed_end_time
+        // This will mark all unmarked students as absent for past dates
+        nowTime = '23:59';
+    }
     try {
         const [result] = await masterPool.query(
             `
@@ -900,47 +931,64 @@ exports.markAttendance = async (req, res) => {
             }
         }
 
-        // Fetch Internship details
-        const [internships] = await masterPool.query('SELECT * FROM internship_locations WHERE id = ?', [internshipId]);
-        if (internships.length === 0) {
-            return res.status(404).json({ success: false, message: 'Internship location not found.' });
-        }
-        const internship = internships[0];
+        // 2. Verify Student Assignment for this Internship
+        const istDate = getCurrentISTDate();
+        const istDayShort = getCurrentISTDayShort();
+        
+        const [assignments] = await masterPool.query(
+            `SELECT ia.*, il.allowed_start_time, il.allowed_end_time, il.latitude, il.longitude, il.radius, il.company_name
+             FROM internship_assignments ia
+             JOIN internship_locations il ON ia.internship_id = il.id
+             WHERE ia.student_id = ? AND ia.internship_id = ? 
+             AND ? BETWEEN ia.start_date AND ia.end_date
+             AND JSON_CONTAINS(ia.allowed_days, JSON_QUOTE(?))`,
+            [studentId, internshipId, istDate, istDayShort]
+        );
 
-        // 2. Distance Calculation
+        if (assignments.length === 0) {
+            console.warn(`Student ${studentId} attempted attendance for internship ${internshipId} without valid assignment for ${istDate} (${istDayShort})`);
+            return res.status(403).json({
+                success: false,
+                message: 'You are not assigned to this internship for today. Please contact your coordinator.'
+            });
+        }
+
+        const assignment = assignments[0];
+        const internship = assignment; // Contains joined internship_locations fields
+
+        // 3. Distance Calculation
         const distance = calculateDistance(latitude, longitude, parseFloat(internship.latitude), parseFloat(internship.longitude));
         console.log(`Distance for student ${studentId}: ${distance}m (Allowed: ${internship.radius}m)`);
 
-        // 3. Radius Check (Allow but Mark as Suspicious)
+        // 4. Radius Check (Allow but Mark as Suspicious)
         if (!isSuspicious && distance > internship.radius) {
             isSuspicious = true;
             suspiciousReason = `Outside Radius: ${Math.round(distance)}m (Allowed: ${internship.radius}m)`;
             console.log(`Student ${studentId} is outside radius but attendance recorded as Suspicious.`);
         }
 
-        // 4. Time Check
-        const now = new Date();
-        const currentHour = now.getHours().toString().padStart(2, '0');
-        const currentMinute = now.getMinutes().toString().padStart(2, '0');
+        // 5. Time Check (using IST)
+        const istTime = getCurrentISTTime();
+        const currentHour = istTime.getUTCHours().toString().padStart(2, '0');
+        const currentMinute = istTime.getUTCMinutes().toString().padStart(2, '0');
         const currentTimeStr = `${currentHour}:${currentMinute}`;
 
         if (currentTimeStr < internship.allowed_start_time || currentTimeStr > internship.allowed_end_time) {
-            console.warn(`Attendance attempt outside hours: ${currentTimeStr}`);
+            console.warn(`Attendance attempt outside hours: ${currentTimeStr} (IST), Allowed: ${internship.allowed_start_time} - ${internship.allowed_end_time}`);
             return res.status(400).json({
                 success: false,
-                message: `Attendance is only allowed between ${internship.allowed_start_time} and ${internship.allowed_end_time}.`
+                message: `Attendance is only allowed between ${internship.allowed_start_time} and ${internship.allowed_end_time} (IST).`
             });
         }
 
-        // 5. Check-In/Check-out Logic
-        const today = new Date().toISOString().split('T')[0];
+        // 6. Check-In/Check-out Logic
 
         // DEVICE FINGERPRINT CHECK
         if (deviceFingerprint) {
             const [duplicates] = await masterPool.query(
                 `SELECT student_id FROM internship_attendance 
                  WHERE device_fingerprint = ? AND attendance_date = ? AND student_id != ?`,
-                [deviceFingerprint, today, studentId]
+                [deviceFingerprint, istDate, studentId]
             );
             if (duplicates.length > 0) {
                 isSuspicious = true;
@@ -953,7 +1001,7 @@ exports.markAttendance = async (req, res) => {
 
         const [existing] = await masterPool.query(
             'SELECT * FROM internship_attendance WHERE student_id = ? AND internship_id = ? AND attendance_date = ?',
-            [studentId, internshipId, today]
+            [studentId, internshipId, istDate]
         );
 
         let attendance = existing[0];
@@ -1039,7 +1087,7 @@ exports.markAttendance = async (req, res) => {
                     `INSERT INTO internship_attendance 
                     (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason, device_fingerprint) 
                     VALUES (?, ?, NOW(), ?, 'Rejected', ?, 1, ?, ?)`,
-                    [studentId, internshipId, checkInLocation, today, `Extreme Distance: ${Math.round(distance)}m`, deviceFingerprint]
+                    [studentId, internshipId, checkInLocation, istDate, `Extreme Distance: ${Math.round(distance)}m`, deviceFingerprint]
                 );
                 console.log(`Student ${studentId} marked as REJECTED due to extreme distance.`);
                 const [newAttendance] = await masterPool.query('SELECT * FROM internship_attendance WHERE id = ?', [result.insertId]);
@@ -1062,7 +1110,7 @@ exports.markAttendance = async (req, res) => {
                 `INSERT INTO internship_attendance 
                 (student_id, internship_id, check_in_time, check_in_location, status, attendance_date, is_suspicious, suspicious_reason, device_fingerprint) 
                 VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)`,
-                [studentId, internshipId, checkInLocation, initialStatus, today, isSuspicious, suspiciousReason, deviceFingerprint]
+                [studentId, internshipId, checkInLocation, initialStatus, istDate, isSuspicious, suspiciousReason, deviceFingerprint]
             );
 
             console.log(`Student ${studentId} checked in successfully. ID: ${result.insertId}`);
@@ -1084,7 +1132,7 @@ exports.markAttendance = async (req, res) => {
 exports.getStudentStatus = async (req, res) => {
     try {
         const studentId = req.user.id;
-        const today = new Date().toISOString().split('T')[0];
+        const today = getCurrentISTDate();
 
         const [rows] = await masterPool.query(`
             SELECT ia.*, il.company_name, il.address 
