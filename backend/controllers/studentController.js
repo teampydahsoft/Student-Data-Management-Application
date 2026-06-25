@@ -6975,9 +6975,20 @@ exports.getRegistrationReport = async (req, res) => {
 
     // Process students to calculate 5 stages status
     const reportData = students.map(student => {
-      const studentData = typeof student.student_data === 'string'
-        ? JSON.parse(student.student_data || '{}')
-        : (student.student_data || {});
+      let studentData = {};
+      try {
+        studentData = typeof student.student_data === 'string'
+          ? JSON.parse(student.student_data || '{}')
+          : (student.student_data || {});
+      } catch (e) {
+        const raw = student.student_data || '';
+        const studentVerMatch = raw.match(/"is_student_mobile_verified"\s*:\s*(true|false)/);
+        const parentVerMatch  = raw.match(/"is_parent_mobile_verified"\s*:\s*(true|false)/);
+        studentData = {
+          is_student_mobile_verified: studentVerMatch ? studentVerMatch[1] === 'true' : false,
+          is_parent_mobile_verified:  parentVerMatch  ? parentVerMatch[1]  === 'true' : false,
+        };
+      }
 
       // Stage 1: Verification
       const isStudentVerified = !!studentData.is_student_mobile_verified;
@@ -7443,7 +7454,22 @@ exports.exportRegistrationReport = async (req, res) => {
 
     // Process Data
     const processedData = students.map(student => {
-      const studentData = typeof student.student_data === 'string' ? JSON.parse(student.student_data || '{}') : (student.student_data || {});
+      let studentData = {};
+      try {
+        studentData = typeof student.student_data === 'string'
+          ? JSON.parse(student.student_data || '{}')
+          : (student.student_data || {});
+      } catch (e) {
+        // student_data may be truncated (TEXT column limit) or malformed JSON.
+        // Extract only the fields we need via regex as a fallback.
+        const raw = student.student_data || '';
+        const studentVerMatch = raw.match(/"is_student_mobile_verified"\s*:\s*(true|false)/);
+        const parentVerMatch  = raw.match(/"is_parent_mobile_verified"\s*:\s*(true|false)/);
+        studentData = {
+          is_student_mobile_verified: studentVerMatch ? studentVerMatch[1] === 'true' : false,
+          is_parent_mobile_verified:  parentVerMatch  ? parentVerMatch[1]  === 'true' : false,
+        };
+      }
 
       const isStudentVerified = studentData.is_student_mobile_verified === true;
       const isParentVerified = studentData.is_parent_mobile_verified === true;
@@ -7738,9 +7764,15 @@ exports.adminVerifyMobile = async (req, res) => {
     }
 
     const student = students[0];
-    let studentData = typeof student.student_data === 'string'
-      ? JSON.parse(student.student_data || '{}')
-      : (student.student_data || {});
+    let studentData = {};
+    try {
+      studentData = typeof student.student_data === 'string'
+        ? JSON.parse(student.student_data || '{}')
+        : (student.student_data || {});
+    } catch (e) {
+      // Fallback: student_data may be truncated; start fresh so the verification flag can be saved
+      studentData = {};
+    }
 
     // 2. Update status based on type
     if (type === 'student') {
