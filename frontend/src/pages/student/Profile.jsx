@@ -342,9 +342,16 @@ const Profile = () => {
                                 <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 leading-tight tracking-tight mb-1 break-words">
                                     {displayData.student_name || user.name}
                                 </h1>
-                                <span className="font-extrabold text-indigo-600 tracking-widest text-xs sm:text-sm">
-                                    {displayData.admission_number || user.admission_number}
-                                </span>
+                                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                    <span className="font-extrabold text-indigo-600 tracking-widest text-xs sm:text-sm">
+                                        {displayData.admission_number || user.admission_number}
+                                    </span>
+                                    {displayData.roll_number && (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-extrabold tracking-wide">
+                                            {displayData.roll_number}
+                                        </span>
+                                    )}
+                                </div>
 
                                 <div className="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 mt-3">
                                     <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-2 ${getCertificateStatus().toLowerCase().includes('verified')

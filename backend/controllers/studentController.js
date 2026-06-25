@@ -2848,19 +2848,24 @@ exports.getStudentByAdmission = async (req, res) => {
     const { admissionNumber } = req.params;
 
     const [students] = await masterPool.query(
-      `SELECT *,
+      `SELECT s.*,
+              srn.roll_number AS roll_number,
+              srn.branch_prefix AS roll_branch_prefix,
+              srn.serial AS roll_serial,
         CASE
-          WHEN certificates_status = 'Temporary' THEN 'Temporary'
+          WHEN s.certificates_status = 'Temporary' THEN 'Temporary'
           WHEN
-            (student_data LIKE '%"is_student_mobile_verified":true%' AND student_data LIKE '%"is_parent_mobile_verified":true%') AND
-            (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
-            (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-            (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-            (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '')
+            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+            (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
+            (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
+            (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
+            (s.scholar_status IS NOT NULL AND TRIM(IFNULL(s.scholar_status,'')) != '')
           THEN 'Completed'
           ELSE 'pending'
         END AS registration_status_computed
-      FROM students WHERE admission_number = ? OR admission_no = ?`,
+      FROM students s
+      LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
+      WHERE s.admission_number = ? OR s.admission_no = ?`,
       [admissionNumber, admissionNumber]
     );
 
@@ -5537,9 +5542,13 @@ exports.getStudentByAdmission = async (req, res) => {
 
     const [students] = await masterPool.query(
       `SELECT s.*, 
-              sc.username
+              sc.username,
+              srn.roll_number AS roll_number,
+              srn.branch_prefix AS roll_branch_prefix,
+              srn.serial AS roll_serial
        FROM students s
        LEFT JOIN student_credentials sc ON s.id = sc.student_id
+       LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
        WHERE s.admission_number = ?`,
       [admissionNumber]
     );

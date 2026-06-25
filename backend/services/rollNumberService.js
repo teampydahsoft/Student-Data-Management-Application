@@ -1,26 +1,23 @@
 /**
- * Resolve attendance display identifiers from student_roll_numbers when assigned.
+ * Resolve attendance display identifier: PIN when assigned, otherwise branch roll number.
  */
 
 const resolveAttendanceDisplayNumber = ({ assignedRollNumber, pinNo, studentData } = {}) => {
-  const roll = assignedRollNumber != null ? String(assignedRollNumber).trim() : '';
-  if (roll) {
-    return roll;
-  }
-
   const data = studentData && typeof studentData === 'object' ? studentData : {};
-  const pin = pinNo != null ? String(pinNo).trim() : '';
+
+  const pin =
+    (pinNo != null ? String(pinNo).trim() : '') ||
+    (data['PIN Number'] != null ? String(data['PIN Number']).trim() : '') ||
+    (data['Pin Number'] != null ? String(data['Pin Number']).trim() : '') ||
+    (data['pin_number'] != null ? String(data['pin_number']).trim() : '') ||
+    (data.pin_no != null ? String(data.pin_no).trim() : '');
+
   if (pin) {
     return pin;
   }
 
-  return (
-    data['PIN Number'] ||
-    data['Pin Number'] ||
-    data['pin_number'] ||
-    data.pin_no ||
-    null
-  );
+  const roll = assignedRollNumber != null ? String(assignedRollNumber).trim() : '';
+  return roll || null;
 };
 
 const resolveAttendanceDisplayNumberFromRow = (row, parseStudentData) => {

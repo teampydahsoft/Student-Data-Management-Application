@@ -2949,7 +2949,7 @@ const Attendance = () => {
     const semesterTotals = history?.semester?.totals || { present: 0, absent: 0, unmarked: 0 };
 
     rows.push(csvValue('Student Name') + ',' + csvValue(student.studentName || 'Unknown'));
-    rows.push(csvValue('Roll Number') + ',' + csvValue(student.pinNumber || 'N/A'));
+    rows.push(csvValue('PIN Number') + ',' + csvValue(student.pinNumber || 'N/A'));
     rows.push(csvValue('Batch') + ',' + csvValue(student.batch || 'N/A'));
     rows.push(csvValue('Course') + ',' + csvValue(student.course || 'N/A'));
     rows.push(csvValue('Branch') + ',' + csvValue(student.branch || 'N/A'));
@@ -4091,7 +4091,7 @@ const Attendance = () => {
                       {columnOrder.map((columnKey) => {
                         const columnConfig = {
                           student: { label: 'Student', sortable: true },
-                          pin: { label: 'Roll No', sortable: true },
+                          pin: { label: 'PIN', sortable: true },
                           registrationStatus: { label: 'Registration Status', sortable: true },
                           batch: { label: 'Batch', sortable: true },
                           course: { label: 'Program', sortable: true },
@@ -4564,7 +4564,7 @@ const Attendance = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      const headers = ['Student Name', 'Roll Number', 'Admission Number', 'College', 'Course', 'Branch', 'Year', 'Semester', 'Parent Mobile', 'Status', 'Reason'];
+                      const headers = ['Student Name', 'PIN Number', 'Admission Number', 'College', 'Course', 'Branch', 'Year', 'Semester', 'Parent Mobile', 'Status', 'Reason'];
                       const rows = smsResults.map(result => [
                         result.studentName || '-',
                         result.pinNumber || '-',
@@ -4652,7 +4652,7 @@ const Attendance = () => {
                   <thead className="bg-gray-100 border-b border-gray-200 sticky top-0">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Student Name</th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Roll No</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">PIN</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Admission No</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">College</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Program</th>
@@ -4882,7 +4882,7 @@ const Attendance = () => {
 
                 {attendanceReport.absentCount > 0 && (
                   <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Absent Students Roll Numbers</h3>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Absent Students PIN Numbers</h3>
                     <div className="flex flex-wrap gap-2">
                       {attendanceReport.absentPinNumbers.length > 0 ? (
                         attendanceReport.absentPinNumbers.map((pin, index) => (
@@ -4894,7 +4894,7 @@ const Attendance = () => {
                           </span>
                         ))
                       ) : (
-                        <p className="text-sm text-gray-500">No roll numbers available for absent students</p>
+                        <p className="text-sm text-gray-500">No PIN numbers available for absent students</p>
                       )}
                     </div>
                   </div>

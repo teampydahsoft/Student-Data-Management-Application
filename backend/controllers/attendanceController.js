@@ -4628,7 +4628,7 @@ exports.downloadAttendanceReport = async (req, res) => {
       // Detailed attendance sheet
       const headerRow = [
         'Admission Number',
-        'Roll Number',
+        'PIN Number',
         'Student Name',
         'Batch',
         'Course',

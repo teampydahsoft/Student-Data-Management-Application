@@ -4257,7 +4257,14 @@ const Students = () => {
                               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
                                 Admission Number
                               </label>
-                              <p className="text-base font-bold text-gray-900">{selectedStudent.admission_number}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-base font-bold text-gray-900">{selectedStudent.admission_number}</p>
+                                {selectedStudent.roll_number && (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold">
+                                    Roll No: {selectedStudent.roll_number}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                           <div className="mt-3">
