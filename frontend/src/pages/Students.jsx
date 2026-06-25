@@ -2559,7 +2559,7 @@ const Students = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLocalSearch()}
               className="w-full pl-10 pr-4 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-xs touch-manipulation min-h-[36px]"
-              placeholder="Search students..."
+              placeholder="Search by name, admission no, PIN, or roll number..."
             />
           </div>
           <button

@@ -47,6 +47,10 @@ const {
   STUDENT_ROLL_NUMBERS_JOIN,
   STUDENT_ROLL_NUMBERS_SELECT
 } = require('../services/rollNumberService');
+const {
+  resolveStudentSectionSql,
+  fetchSectionFilterOptions
+} = require('../services/sectionFilterService');
 
 const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
@@ -528,6 +532,17 @@ exports.getFilterOptions = async (req, res) => {
       level3.params
     );
 
+    const sections = (batch && branch)
+      ? await fetchSectionFilterOptions({
+        course: course || null,
+        branch,
+        batch,
+        year: year || null,
+        semester: semester || null,
+        college: college || null
+      })
+      : [];
+
     res.json({
       success: true,
       data: {
@@ -536,7 +551,8 @@ exports.getFilterOptions = async (req, res) => {
         years: yearRows.map((row) => row.currentYear),
         semesters: semesterRows.map((row) => row.currentSemester),
         courses: courseRowsRes.map((row) => row.course),
-        branches: branchRowsRes.map((row) => row.branch)
+        branches: branchRowsRes.map((row) => row.branch),
+        sections
       }
     });
   } catch (error) {
@@ -567,6 +583,7 @@ exports.getAttendance = async (req, res) => {
       parentMobile,
       course,
       branch,
+      section,
       college,
       limit,
       offset
@@ -621,6 +638,7 @@ exports.getAttendance = async (req, res) => {
         s.course,
         s.branch,
         s.college,
+        ${resolveStudentSectionSql('s')} AS resolved_section,
         ${STUDENT_ROLL_NUMBERS_SELECT},
         ar.id AS attendance_record_id,
         ar.status AS attendance_status,
@@ -681,6 +699,12 @@ exports.getAttendance = async (req, res) => {
     if (branch) {
       query += ' AND s.branch = ?';
       params.push(branch);
+    }
+
+    const normalizedSection = typeof section === 'string' ? section.trim() : '';
+    if (normalizedSection && branch) {
+      query += ` AND ${resolveStudentSectionSql('s')} = ?`;
+      params.push(normalizedSection);
     }
 
     // Fetched dynamic exclusion config
@@ -833,6 +857,11 @@ exports.getAttendance = async (req, res) => {
       countParams.push(branch);
     }
 
+    if (normalizedSection && branch) {
+      countQuery += ` AND ${resolveStudentSectionSql('s')} = ?`;
+      countParams.push(normalizedSection);
+    }
+
     // Exclude certain courses (after course filter to use index)
     // Exclude certain courses (after course filter to use index)
     {
@@ -983,6 +1012,11 @@ exports.getAttendance = async (req, res) => {
     if (branch) {
       statsQuery += ' AND s.branch = ?';
       statsParams.push(branch);
+    }
+
+    if (normalizedSection && branch) {
+      statsQuery += ` AND ${resolveStudentSectionSql('s')} = ?`;
+      statsParams.push(normalizedSection);
     }
 
     // Exclude certain courses (after course filter to use index)
@@ -1166,6 +1200,7 @@ exports.getAttendance = async (req, res) => {
         batch: row.batch || studentData.Batch || null,
         course: courseValue,
         branch: branchValue,
+        section: row.resolved_section || studentData.section || studentData.Section || null,
         college: row.college || studentData.College || studentData.college || null,
         currentYear: row.current_year || studentData['Current Academic Year'] || null,
         currentSemester: row.current_semester || studentData['Current Semester'] || null,

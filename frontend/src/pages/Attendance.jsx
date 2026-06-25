@@ -114,6 +114,35 @@ const formatFriendlyDate = (dateString) => {
   });
 };
 
+const getBranchSectionConfig = (coursesWithLevels, courseName, branchName) => {
+  if (!branchName) {
+    return { enabled: false, items: [] };
+  }
+
+  const matchingBranches = [];
+  if (courseName) {
+    const courseObj = coursesWithLevels.find((course) => course.name === courseName);
+    const branchObj = (courseObj?.branches || []).find((branch) => branch.name === branchName);
+    if (branchObj) matchingBranches.push(branchObj);
+  } else {
+    coursesWithLevels.forEach((course) => {
+      const branchObj = (course.branches || []).find((branch) => branch.name === branchName);
+      if (branchObj) matchingBranches.push(branchObj);
+    });
+  }
+
+  const branchWithSections = matchingBranches.find((branch) => branch?.metadata?.sections?.enabled);
+  if (!branchWithSections) {
+    return { enabled: false, items: [] };
+  }
+
+  const items = (branchWithSections.metadata?.sections?.items || [])
+    .map((item) => item?.name)
+    .filter(Boolean);
+
+  return { enabled: items.length > 0, items };
+};
+
 const showDismissibleWarningToast = (message, duration = 7000) => {
   toast((t) => (
     <div className="flex items-start gap-2 pr-1">
@@ -194,6 +223,7 @@ const Attendance = () => {
     course: '',
     level: '',
     branch: '',
+    section: '',
     currentYear: '',
     currentSemester: '',
     studentName: '',
@@ -204,7 +234,8 @@ const Attendance = () => {
     courses: [],
     branches: [],
     years: [],
-    semesters: []
+    semesters: [],
+    sections: []
   });
   const [coursesWithLevels, setCoursesWithLevels] = useState([]); // Store courses with level info
   const [coursesWithBranches, setCoursesWithBranches] = useState([]);
@@ -698,6 +729,30 @@ const Attendance = () => {
     return filterOptions.branches || [];
   }, [filters.course, filters.batch, filterOptions.branches]);
 
+  const filterBranchHasSections = useMemo(() => {
+    if (!filters.branch) return false;
+    const coursesSource = coursesWithBranches.length > 0 ? coursesWithBranches : coursesWithLevels;
+    return getBranchSectionConfig(coursesSource, filters.course, filters.branch).enabled;
+  }, [filters.course, filters.branch, coursesWithBranches, coursesWithLevels]);
+
+  const showSectionFilters = !!(filters.batch && filters.branch && filterBranchHasSections);
+
+  const sectionFilterOptions = useMemo(() => {
+    if (!showSectionFilters) return [];
+    const apiSections = filterOptions.sections || [];
+    if (apiSections.length > 0) return apiSections;
+    const coursesSource = coursesWithBranches.length > 0 ? coursesWithBranches : coursesWithLevels;
+    return getBranchSectionConfig(coursesSource, filters.course, filters.branch).items;
+  }, [showSectionFilters, filterOptions.sections, coursesWithBranches, coursesWithLevels, filters.course, filters.branch]);
+
+  const displayColumnOrder = useMemo(() => {
+    const base = columnOrder.filter((key) => key !== 'section');
+    if (!showSectionFilters) return base;
+    const branchIdx = base.indexOf('branch');
+    if (branchIdx === -1) return [...base, 'section'];
+    return [...base.slice(0, branchIdx + 1), 'section', ...base.slice(branchIdx + 1)];
+  }, [columnOrder, showSectionFilters]);
+
   // Pagination calculations
   const safePageSize = pageSize || 1;
   const totalPages = totalStudents > 0 ? Math.max(1, Math.ceil(totalStudents / safePageSize)) : 1;
@@ -991,6 +1046,8 @@ const Attendance = () => {
         level: filtersToUse.level,
         course: filtersToUse.course,
         branch: filtersToUse.branch,
+        currentYear: filtersToUse.currentYear,
+        currentSemester: filtersToUse.currentSemester,
         excludeField: excludeField
       });
       const cached = filterOptionsCacheRef.current.get(cacheKey);
@@ -1012,7 +1069,9 @@ const Attendance = () => {
         params.append('course', filtersToUse.course);
       }
       if (filtersToUse.branch && excludeField !== 'branch') params.append('branch', filtersToUse.branch);
-      // Note: year and semester are not included so they cascade properly
+      if (filtersToUse.currentYear && excludeField !== 'currentYear') params.append('year', filtersToUse.currentYear);
+      if (filtersToUse.currentSemester && excludeField !== 'currentSemester') params.append('semester', filtersToUse.currentSemester);
+      // Note: year and semester are not excluded when loading child options
 
       const [filtersResponse, coursesResponse] = await Promise.all([
         api.get(`/attendance/filters?${params.toString()}`),
@@ -1026,7 +1085,8 @@ const Attendance = () => {
           courses: [...new Set(data.courses || [])],
           branches: [...new Set(data.branches || [])],
           years: [...new Set(data.years || [])],
-          semesters: [...new Set(data.semesters || [])]
+          semesters: [...new Set(data.semesters || [])],
+          sections: [...new Set(data.sections || [])]
         };
         setFilterOptions(nextOptions);
 
@@ -1382,6 +1442,7 @@ const Attendance = () => {
       if (filters.batch) params.append('batch', filters.batch);
       if (filters.course) params.append('course', filters.course);
       if (filters.branch) params.append('branch', filters.branch);
+      if (filters.section) params.append('section', filters.section);
       if (filters.currentYear) params.append('currentYear', filters.currentYear);
       if (filters.currentSemester) params.append('currentSemester', filters.currentSemester);
 
@@ -1551,7 +1612,7 @@ const Attendance = () => {
       pendingRequestRef.current = controller;
 
       // Check if filters are applied (excluding search filters like studentName and parentMobile)
-      const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+      const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
 
       // When filters are applied, use infinite scroll with 50 students per page
       // When no filters, use pagination normally
@@ -1590,6 +1651,7 @@ const Attendance = () => {
       if (filters.batch) params.append('batch', filters.batch);
       if (filters.course) params.append('course', filters.course);
       if (filters.branch) params.append('branch', filters.branch);
+      if (filters.section) params.append('section', filters.section);
       if (filters.currentYear) params.append('currentYear', filters.currentYear);
       if (filters.currentSemester) params.append('currentSemester', filters.currentSemester);
       if (filters.studentName) params.append('studentName', filters.studentName.trim());
@@ -1945,7 +2007,7 @@ const Attendance = () => {
 
   // Load more students for infinite scroll
   const loadMoreStudents = async () => {
-    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
     if (!hasFilters || loadingMore || !hasMore) {
       return;
     }
@@ -1954,7 +2016,7 @@ const Attendance = () => {
 
   // Set up Intersection Observer for infinite scroll when filters are applied
   useEffect(() => {
-    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
 
     if (!hasFilters || !scrollObserverRef.current) {
       return;
@@ -2040,7 +2102,28 @@ const Attendance = () => {
       loadFilterOptions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.batch, filters.level, filters.course, filters.branch]);
+  }, [filters.batch, filters.level, filters.course, filters.branch, filters.currentYear, filters.currentSemester]);
+
+  useEffect(() => {
+    if (!filters.section) return;
+    if (!showSectionFilters) {
+      setFilters((prev) => {
+        if (!prev.section) return prev;
+        const next = { ...prev };
+        delete next.section;
+        return next;
+      });
+      return;
+    }
+    if (sectionFilterOptions.length > 0 && !sectionFilterOptions.includes(filters.section)) {
+      setFilters((prev) => {
+        if (!prev.section) return prev;
+        const next = { ...prev };
+        delete next.section;
+        return next;
+      });
+    }
+  }, [showSectionFilters, sectionFilterOptions, filters.section]);
 
   // Load attendance with debouncing when filters change (only after initial load)
   // This prevents excessive API calls when filters change rapidly
@@ -2063,6 +2146,7 @@ const Attendance = () => {
     filters.batch,
     filters.course,
     filters.branch,
+    filters.section,
     filters.currentYear,
     filters.currentSemester,
     pageSize,
@@ -2084,7 +2168,7 @@ const Attendance = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.studentName, filters.parentMobile]);
 
-  const SCOPE_FILTER_FIELDS = ['batch', 'course', 'branch', 'currentYear', 'currentSemester', 'level'];
+  const SCOPE_FILTER_FIELDS = ['batch', 'course', 'branch', 'section', 'currentYear', 'currentSemester', 'level'];
 
   const getAttendanceScopeLabel = () => {
     if (filters.batch && filters.course) return `batch ${filters.batch} (${filters.course})`;
@@ -2130,16 +2214,21 @@ const Attendance = () => {
 
       // Clear dependent filters when parent filter changes
       if (field === 'course') {
-        // When course changes, clear branch
+        // When course changes, clear branch and section
         delete newFilters.branch;
+        delete newFilters.section;
       } else if (field === 'level') {
-        // When level changes, clear course and branch (course options change)
+        // When level changes, clear course, branch, and section (course options change)
         delete newFilters.course;
         delete newFilters.branch;
+        delete newFilters.section;
       } else if (field === 'batch') {
-        // When batch changes, clear year and semester
+        // When batch changes, clear year, semester, and section
         delete newFilters.currentYear;
         delete newFilters.currentSemester;
+        delete newFilters.section;
+      } else if (field === 'branch') {
+        delete newFilters.section;
       } else if (field === 'currentYear') {
         // When year changes, clear semester
         delete newFilters.currentSemester;
@@ -2285,6 +2374,11 @@ const Attendance = () => {
           // Branch: string sorting
           aValue = (a.branch || '').toLowerCase();
           bValue = (b.branch || '').toLowerCase();
+          isNumeric = false;
+          break;
+        case 'section':
+          aValue = (a.section || '').toLowerCase();
+          bValue = (b.section || '').toLowerCase();
           isNumeric = false;
           break;
         case 'year':
@@ -3187,6 +3281,20 @@ const Attendance = () => {
                 </option>
               ))}
             </select>
+            {showSectionFilters && (
+              <select
+                value={filters.section || ''}
+                onChange={(event) => handleFilterChange('section', event.target.value)}
+                className="min-w-[110px] flex-1 sm:flex-none rounded-md border border-gray-300 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation min-h-[36px]"
+              >
+                <option value="">All Sections</option>
+                {sectionFilterOptions.map((sectionOption) => (
+                  <option key={sectionOption} value={sectionOption}>
+                    {sectionOption}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               value={filters.currentYear}
               onChange={(event) => handleFilterChange('currentYear', event.target.value)}
@@ -4088,7 +4196,7 @@ const Attendance = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      {columnOrder.map((columnKey) => {
+                      {displayColumnOrder.map((columnKey) => {
                         const columnConfig = {
                           student: { label: 'Student', sortable: true },
                           pin: { label: 'PIN', sortable: true },
@@ -4096,6 +4204,7 @@ const Attendance = () => {
                           batch: { label: 'Batch', sortable: true },
                           course: { label: 'Program', sortable: true },
                           branch: { label: 'Branch', sortable: true },
+                          section: { label: 'Section', sortable: true },
                           year: { label: 'Year', sortable: true },
                           semester: { label: 'Semester', sortable: true },
                           parentContact: { label: 'Parent Contact', sortable: true },
@@ -4126,7 +4235,7 @@ const Attendance = () => {
                               <div className="flex flex-col gap-0.5">
                                 <button
                                   onClick={() => moveColumn(columnKey, 'left')}
-                                  disabled={columnOrder.indexOf(columnKey) === 0}
+                                  disabled={displayColumnOrder.indexOf(columnKey) === 0}
                                   className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
                                   title="Move left"
                                 >
@@ -4134,7 +4243,7 @@ const Attendance = () => {
                                 </button>
                                 <button
                                   onClick={() => moveColumn(columnKey, 'right')}
-                                  disabled={columnOrder.indexOf(columnKey) === columnOrder.length - 1}
+                                  disabled={displayColumnOrder.indexOf(columnKey) === displayColumnOrder.length - 1}
                                   className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
                                   title="Move right"
                                 >
@@ -4156,7 +4265,7 @@ const Attendance = () => {
                           key={student.id}
                           className="hover:bg-gray-50"
                         >
-                          {columnOrder.map((columnKey) => {
+                          {displayColumnOrder.map((columnKey) => {
                             if (columnKey === 'student') {
                               return (
                                 <td key={columnKey} className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
@@ -4218,6 +4327,13 @@ const Attendance = () => {
                               return (
                                 <td key={columnKey} className="px-1 py-1.5 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
                                   {student.branch || 'N/A'}
+                                </td>
+                              );
+                            }
+                            if (columnKey === 'section') {
+                              return (
+                                <td key={columnKey} className="px-1 py-1.5 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
+                                  {student.section || 'N/A'}
                                 </td>
                               );
                             }
@@ -4416,6 +4532,12 @@ const Attendance = () => {
                             <p className="text-xs text-gray-500">Branch</p>
                             <p className="text-sm font-medium text-gray-900 truncate" title={student.branch || ''}>{student.branch || 'N/A'}</p>
                           </div>
+                          {showSectionFilters && (
+                            <div>
+                              <p className="text-xs text-gray-500">Section</p>
+                              <p className="text-sm font-medium text-gray-900">{student.section || 'N/A'}</p>
+                            </div>
+                          )}
                           <div>
                             <p className="text-xs text-gray-500">Year/Sem</p>
                             <p className="text-sm font-medium text-gray-900">
@@ -4448,7 +4570,7 @@ const Attendance = () => {
 
               {/* Infinite scroll observer and loading indicator */}
               {(() => {
-                const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+                const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
                 if (hasFilters && hasMore) {
                   return (
                     <div ref={scrollObserverRef} className="py-4 flex justify-center">
@@ -4470,7 +4592,7 @@ const Attendance = () => {
                   ? 'No students to display'
                   : (() => {
                     // Check if filters are applied
-                    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+                    const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
                     if (hasFilters) {
                       // When filters are applied, show loaded vs total students
                       return `Showing ${students.length.toLocaleString()} of ${totalStudents.toLocaleString()} student${totalStudents !== 1 ? 's' : ''}`;
@@ -4482,7 +4604,7 @@ const Attendance = () => {
               </div>
               {(() => {
                 // Check if filters are applied - hide pagination controls when filters are active
-                const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.currentYear || filters.currentSemester);
+                const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
                 if (hasFilters) {
                   return null; // Don't show pagination controls when filters are applied
                 }

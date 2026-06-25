@@ -25,11 +25,8 @@ const maybeReassignBranchSections = async (course, branch, batch = null) => {
   }
 };
 
-const resolveStudentSectionSql = () => `COALESCE(
-  (SELECT ss.section_name FROM student_sections ss WHERE ss.student_id = students.id LIMIT 1),
-  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(students.student_data, '$.section'))), ''),
-  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(students.student_data, '$.Section'))), '')
-)`;
+const { resolveStudentSectionSql, fetchSectionFilterOptions } = require('../services/sectionFilterService');
+const { buildStudentSearchCondition } = require('../services/rollNumberService');
 const { getScopeConditionString } = require('../utils/scoping');
 const { otpCache } = require('../services/cache'); // Import otpCache
 const smsService = require('../services/smsService'); // Import smsService
@@ -2487,15 +2484,9 @@ exports.getAllStudents = async (req, res) => {
     // Student status can still be filtered using filter_student_status parameter
 
     if (search) {
-      // Only search by student name, PIN number, and admission number
-      const searchPattern = `%${search.trim()}%`;
-      query += ` AND (
-        admission_number LIKE ? 
-        OR admission_no LIKE ? 
-        OR pin_no LIKE ? 
-        OR student_name LIKE ?
-      )`;
-      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      query += clause;
+      params.push(...searchParams);
     }
 
     // Date range filter
@@ -2638,15 +2629,9 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (search) {
-      // Only search by student name, PIN number, and admission number (matching main query)
-      const searchPattern = `%${search}%`;
-      countQuery += ` AND (
-        admission_number LIKE ? 
-        OR admission_no LIKE ? 
-        OR pin_no LIKE ? 
-        OR student_name LIKE ?
-      )`;
-      countParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      countQuery += clause;
+      countParams.push(...searchParams);
     }
 
     // Apply same filters to count query
@@ -4999,133 +4984,6 @@ exports.getFilterOptions = async (req, res) => {
   }
 };
 
-// Get quick filter options (batches, courses, branches, years, semesters) - WITHOUT course exclusions
-// This is used by pages other than attendance that need all courses to be available
-const fetchSectionFilterOptions = async ({ course, branch, batch, year, semester, college } = {}) => {
-  if (!course || !branch) {
-    return [];
-  }
-
-  try {
-    const [courseRows] = await masterPool.query(
-      'SELECT id FROM courses WHERE name = ? AND is_active = 1 LIMIT 1',
-      [course]
-    );
-    if (courseRows.length === 0) {
-      return [];
-    }
-
-    const [branchRows] = await masterPool.query(
-      'SELECT metadata FROM course_branches WHERE course_id = ? AND name = ? AND is_active = 1 LIMIT 1',
-      [courseRows[0].id, branch]
-    );
-    if (branchRows.length === 0 || !branchRows[0].metadata) {
-      return [];
-    }
-
-    const metadata = typeof branchRows[0].metadata === 'string'
-      ? JSON.parse(branchRows[0].metadata)
-      : branchRows[0].metadata;
-
-    if (!metadata?.sections?.enabled || !Array.isArray(metadata.sections.items)) {
-      return [];
-    }
-
-    const configuredSections = metadata.sections.items
-      .map((item) => item?.name)
-      .filter(Boolean);
-
-    const studentParams = [course, branch];
-    let studentWhere = `WHERE s.course = ? AND s.branch = ?`;
-
-    if (college) {
-      studentWhere += ' AND s.college = ?';
-      studentParams.push(college);
-    }
-    if (batch) {
-      studentWhere += ' AND s.batch = ?';
-      studentParams.push(batch);
-    }
-    if (year) {
-      studentWhere += ' AND s.current_year = ?';
-      studentParams.push(parseInt(year, 10));
-    }
-    if (semester) {
-      studentWhere += ' AND s.current_semester = ?';
-      studentParams.push(parseInt(semester, 10));
-    }
-
-    const [assignedRows] = await masterPool.query(
-      `SELECT DISTINCT ss.section_name AS section
-       FROM student_sections ss
-       INNER JOIN students s ON s.id = ss.student_id
-       ${studentWhere}
-       ORDER BY ss.section_name ASC`,
-      studentParams
-    );
-
-    let assignedSections = assignedRows
-      .map((row) => row.section)
-      .filter(Boolean);
-
-    if (assignedSections.length === 0) {
-      let jsonWhere = `
-        WHERE course = ? AND branch = ?
-          AND (
-            (JSON_EXTRACT(student_data, '$.section') IS NOT NULL
-              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))) <> '')
-            OR (JSON_EXTRACT(student_data, '$.Section') IS NOT NULL
-              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))) <> '')
-          )`;
-      const jsonParams = [course, branch];
-      if (college) {
-        jsonWhere += ' AND college = ?';
-        jsonParams.push(college);
-      }
-      if (batch) {
-        jsonWhere += ' AND batch = ?';
-        jsonParams.push(batch);
-      }
-      if (year) {
-        jsonWhere += ' AND current_year = ?';
-        jsonParams.push(parseInt(year, 10));
-      }
-      if (semester) {
-        jsonWhere += ' AND current_semester = ?';
-        jsonParams.push(parseInt(semester, 10));
-      }
-
-      const [jsonRows] = await masterPool.query(
-        `SELECT DISTINCT COALESCE(
-           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))), ''),
-           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))), '')
-         ) AS section
-         FROM students
-         ${jsonWhere}
-         ORDER BY section ASC`,
-        jsonParams
-      );
-      assignedSections = jsonRows.map((row) => row.section).filter(Boolean);
-    }
-
-    if (assignedSections.length === 0) {
-      if (batch || year || semester || college) {
-        return [];
-      }
-      return configuredSections;
-    }
-
-    const assignedSet = new Set(assignedSections);
-    const orderedConfigured = configuredSections.filter((name) => assignedSet.has(name));
-    const extras = assignedSections.filter((name) => !configuredSections.includes(name));
-
-    return [...orderedConfigured, ...extras];
-  } catch (error) {
-    console.warn('Failed to fetch section filter options:', error);
-    return [];
-  }
-};
-
 exports.getQuickFilterOptions = async (req, res) => {
   try {
     // Get filter parameters from query string
@@ -7079,14 +6937,9 @@ exports.getRegistrationReport = async (req, res) => {
     }
 
     if (search) {
-      const searchPattern = `%${search.trim()}%`;
-      baseQuery += ` AND (
-        admission_number LIKE ? 
-        OR admission_no LIKE ? 
-        OR pin_no LIKE ? 
-        OR student_name LIKE ?
-      )`;
-      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      baseQuery += clause;
+      params.push(...searchParams);
     }
 
     // Scholarship status filter (pending = empty, eligible = has eligible/jvd/yes, not_eligible = not eligible)
@@ -7426,9 +7279,9 @@ exports.getRegistrationAbstract = async (req, res) => {
     }
 
     if (search) {
-      const searchPattern = `%${search.trim()}%`;
-      baseQuery += ` AND (admission_number LIKE ? OR admission_no LIKE ? OR pin_no LIKE ? OR student_name LIKE ?)`;
-      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      baseQuery += clause;
+      params.push(...searchParams);
     }
 
     const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
@@ -7600,9 +7453,9 @@ exports.exportRegistrationReport = async (req, res) => {
     }
 
     if (search) {
-      const searchPattern = `%${search.trim()}%`;
-      baseQuery += ` AND (admission_number LIKE ? OR admission_no LIKE ? OR pin_no LIKE ? OR student_name LIKE ?)`;
-      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      baseQuery += clause;
+      params.push(...searchParams);
     }
 
     const scholarshipFilterExport = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();

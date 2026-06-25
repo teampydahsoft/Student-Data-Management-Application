@@ -40,9 +40,36 @@ const STUDENT_ROLL_NUMBERS_SELECT = `
   srn.serial AS roll_serial
 `;
 
+const buildStudentSearchCondition = (search, tableAlias = 'students') => {
+  const term = typeof search === 'string' ? search.trim() : '';
+  if (!term) {
+    return { clause: '', params: [] };
+  }
+
+  const searchPattern = `%${term}%`;
+  const alias = tableAlias || 'students';
+  const col = (name) => `${alias}.${name}`;
+
+  return {
+    clause: ` AND (
+      ${col('admission_number')} LIKE ?
+      OR ${col('admission_no')} LIKE ?
+      OR ${col('pin_no')} LIKE ?
+      OR ${col('student_name')} LIKE ?
+      OR EXISTS (
+        SELECT 1 FROM student_roll_numbers srn
+        WHERE srn.student_id = ${col('id')}
+        AND srn.roll_number LIKE ?
+      )
+    )`,
+    params: [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]
+  };
+};
+
 module.exports = {
   resolveAttendanceDisplayNumber,
   resolveAttendanceDisplayNumberFromRow,
   STUDENT_ROLL_NUMBERS_JOIN,
-  STUDENT_ROLL_NUMBERS_SELECT
+  STUDENT_ROLL_NUMBERS_SELECT,
+  buildStudentSearchCondition
 };
