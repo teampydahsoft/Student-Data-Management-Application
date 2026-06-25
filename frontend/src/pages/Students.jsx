@@ -156,6 +156,42 @@ const SidebarDetailItem = ({ label, value, icon, editable, disabled, type = 'tex
   </div>
 );
 
+const getStudentSection = (editData = {}, student = null) => {
+  const data = editData && Object.keys(editData).length > 0
+    ? editData
+    : (student?.student_data && typeof student.student_data === 'object' ? student.student_data : {});
+  return editData?.section || editData?.Section || data?.section || data?.Section || '';
+};
+
+const getBranchSectionConfig = (coursesWithLevels, courseName, branchName) => {
+  if (!branchName) {
+    return { enabled: false, items: [] };
+  }
+
+  const matchingBranches = [];
+  if (courseName) {
+    const courseObj = coursesWithLevels.find((course) => course.name === courseName);
+    const branchObj = (courseObj?.branches || []).find((branch) => branch.name === branchName);
+    if (branchObj) matchingBranches.push(branchObj);
+  } else {
+    coursesWithLevels.forEach((course) => {
+      const branchObj = (course.branches || []).find((branch) => branch.name === branchName);
+      if (branchObj) matchingBranches.push(branchObj);
+    });
+  }
+
+  const branchWithSections = matchingBranches.find((branch) => branch?.metadata?.sections?.enabled);
+  if (!branchWithSections) {
+    return { enabled: false, items: [] };
+  }
+
+  const items = (branchWithSections.metadata?.sections?.items || [])
+    .map((item) => item?.name)
+    .filter(Boolean);
+
+  return { enabled: items.length > 0, items };
+};
+
 // Helper components for Details tab
 const SummaryPill = ({ label, value, icon, color }) => {
   const colorClasses = {
@@ -280,8 +316,10 @@ const Students = () => {
     courses: [],
     branches: [],
     years: [],
-    semesters: []
+    semesters: [],
+    sections: []
   });
+  const [academicYearOptions, setAcademicYearOptions] = useState([]);
   const [coursesWithLevels, setCoursesWithLevels] = useState([]); // Store courses with level info
   const [availableFields, setAvailableFields] = useState([]);
   const [dropdownFilterOptions, setDropdownFilterOptions] = useState({
@@ -334,7 +372,7 @@ const Students = () => {
   const filtersRef = useRef(filters);
   const searchTermRef = useRef(searchTerm);
   const pageSizeRef = useRef(pageSize);
-  const pageSizeOptions = [10, 25, 50, 100];
+  const pageSizeOptions = [10, 25, 50, 100, 200, 300, 400, 500];
 
   // React Query hooks
   // --- Action Handlers ---
@@ -378,6 +416,7 @@ const Students = () => {
     if (filters.course) filterParams.course = filters.course;
     if (filters.level) filterParams.level = filters.level;
     if (filters.branch) filterParams.branch = filters.branch;
+    if (filters.section) filterParams.section = filters.section;
 
     // All student database fields
     const studentFields = [
@@ -585,6 +624,58 @@ const Students = () => {
     const semPerYear = Number(branchObj?.semestersPerYear || courseObj.semestersPerYear) || 2;
     return Array.from({ length: semPerYear }, (_, i) => String(i + 1));
   }, [editData?.course, editData?.branch, editData?.current_year, selectedStudent?.course, selectedStudent?.branch, selectedStudent?.current_year, coursesWithLevels]);
+
+  const batchOptions = useMemo(() => {
+    return [...new Set([...(academicYearOptions || []), ...(quickFilterOptions.batches || [])])]
+      .filter(Boolean)
+      .sort((a, b) => String(a).localeCompare(String(b)));
+  }, [academicYearOptions, quickFilterOptions.batches]);
+
+  const studentSectionOptions = useMemo(() => {
+    const courseName = editData?.course || selectedStudent?.course;
+    const branchName = editData?.branch || selectedStudent?.branch;
+    return getBranchSectionConfig(coursesWithLevels, courseName, branchName).items;
+  }, [editData?.course, editData?.branch, selectedStudent?.course, selectedStudent?.branch, coursesWithLevels]);
+
+  const studentBranchHasSections = useMemo(() => {
+    const courseName = editData?.course || selectedStudent?.course;
+    const branchName = editData?.branch || selectedStudent?.branch;
+    return getBranchSectionConfig(coursesWithLevels, courseName, branchName).enabled;
+  }, [editData?.course, editData?.branch, selectedStudent?.course, selectedStudent?.branch, coursesWithLevels]);
+
+  const filterBranchHasSections = useMemo(() => {
+    if (!filters.course || !filters.branch) return false;
+    return getBranchSectionConfig(coursesWithLevels, filters.course, filters.branch).enabled;
+  }, [filters.course, filters.branch, coursesWithLevels]);
+
+  useEffect(() => {
+    if (!filters.section) return;
+    if (!filters.course || !filters.branch) return;
+    if (!coursesWithLevels.length) return;
+    if (!filterBranchHasSections) {
+      setFilters((prev) => {
+        if (!prev.section) return prev;
+        const next = { ...prev };
+        delete next.section;
+        filtersRef.current = next;
+        return next;
+      });
+    }
+  }, [filterBranchHasSections, filters.section, filters.course, filters.branch, coursesWithLevels.length]);
+
+  useEffect(() => {
+    if (!filters.section) return;
+    const availableSections = quickFilterOptions.sections || [];
+    if (availableSections.length > 0 && !availableSections.includes(filters.section)) {
+      setFilters((prev) => {
+        if (!prev.section) return prev;
+        const next = { ...prev };
+        delete next.section;
+        filtersRef.current = next;
+        return next;
+      });
+    }
+  }, [quickFilterOptions.sections, filters.section]);
 
   const totalPages = studentsData?.pagination?.totalPages ||
     (totalStudents > 0 ? Math.max(1, Math.ceil(totalStudents / (pageSize || 1))) : 1);
@@ -1036,6 +1127,18 @@ const Students = () => {
       // Step 1: Load colleges first (independent)
       await fetchColleges();
 
+      try {
+        const academicResponse = await api.get('/academic-years/active');
+        if (academicResponse.data?.success) {
+          const labels = (academicResponse.data.data || [])
+            .map((year) => year.yearLabel || year.year_label)
+            .filter(Boolean);
+          setAcademicYearOptions(labels);
+        }
+      } catch (error) {
+        console.warn('Failed to load academic years for batch options:', error);
+      }
+
       // Step 2: Load quick filter options (with current filters for cascading)
       await fetchQuickFilterOptions(filters);
 
@@ -1143,11 +1246,23 @@ const Students = () => {
         params.append('course', currentFilters.course);
       }
 
+      if (currentFilters.branch && excludeField !== 'branch') {
+        params.append('branch', currentFilters.branch);
+      }
+
       // Include batch only if:
       // 1. Batch is selected AND
       // 2. Batch/year/semester are not being changed
       if (currentFilters.batch && excludeField !== 'batch' && excludeField !== 'year' && excludeField !== 'semester') {
         params.append('batch', currentFilters.batch);
+      }
+
+      if (currentFilters.year && excludeField !== 'year' && excludeField !== 'semester') {
+        params.append('year', currentFilters.year);
+      }
+
+      if (currentFilters.semester && excludeField !== 'semester') {
+        params.append('semester', currentFilters.semester);
       }
 
       const queryString = params.toString();
@@ -1161,7 +1276,8 @@ const Students = () => {
           courses: [...new Set(data.courses || [])],
           branches: [...new Set(data.branches || [])],
           years: [...new Set(data.years || [])],
-          semesters: [...new Set(data.semesters || [])]
+          semesters: [...new Set(data.semesters || [])],
+          sections: [...new Set(data.sections || [])]
         });
       }
       return true;
@@ -1452,14 +1568,21 @@ const Students = () => {
         delete newFilters.level;
         delete newFilters.course;
         delete newFilters.branch;
+        delete newFilters.section;
       } else if (field === 'level') {
         // If level changes (or is cleared), clear batch, course and branch to avoid invalid selections
         delete newFilters.batch;
         delete newFilters.course;
         delete newFilters.branch;
+        delete newFilters.section;
       } else if (field === 'course') {
         // If course changes (or is cleared), clear branch to avoid invalid selections
         delete newFilters.branch;
+        delete newFilters.section;
+      } else if (field === 'branch') {
+        delete newFilters.section;
+      } else if (field === 'batch' || field === 'year' || field === 'semester') {
+        delete newFilters.section;
       }
 
       // Auto-expand filters when a filter is applied
@@ -1795,6 +1918,8 @@ const Students = () => {
         'Branch': student.branch,
         'Branch Name': student.branch
       }),
+      section: getStudentSection(student.student_data || {}, student),
+      Section: getStudentSection(student.student_data || {}, student),
       ...(student.stud_type && { stud_type: student.stud_type, 'StudType': student.stud_type }),
       ...(student.student_status && { student_status: student.student_status, 'Student Status': student.student_status }),
       // Always include scholar_status so it can be updated from blank
@@ -2260,6 +2385,13 @@ const Students = () => {
     setEditData(prev => {
       const newData = { ...prev, [key]: value };
 
+      if (key === 'section') {
+        newData.Section = value;
+      }
+      if (key === 'batch') {
+        newData.Batch = value;
+      }
+
       // If college changes, refresh course and branch options for the modal
       if (key === 'college') {
         fetchQuickFilterOptions({ college: value }).catch(console.warn);
@@ -2713,6 +2845,21 @@ const Students = () => {
                   ))}
                 </select>
               </div>
+              {filters.course && filters.branch && filterBranchHasSections && (
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Section</label>
+                  <select
+                    value={filters.section || ''}
+                    onChange={(e) => handleFilterChange('section', e.target.value)}
+                    className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  >
+                    <option value="">All</option>
+                    {(quickFilterOptions.sections || []).map((section) => (
+                      <option key={section} value={section}>{section}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex flex-col">
                 <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Quota</label>
                 <select
@@ -3595,6 +3742,66 @@ const Students = () => {
                     </div>
                   </div>
 
+                  <div className="w-full space-y-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wide">
+                        <GitBranch size={12} />
+                        {editData.branch || selectedStudent?.branch || 'No Branch'}
+                      </span>
+                      {studentBranchHasSections && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 text-[10px] font-bold uppercase tracking-wide">
+                          Sec {getStudentSection(editData, selectedStudent) || '—'}
+                        </span>
+                      )}
+                      {!editMode && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wide">
+                          <Calendar size={12} />
+                          {editData.batch || selectedStudent?.batch || 'No Batch'}
+                        </span>
+                      )}
+                    </div>
+
+                    {editMode && (
+                      <div className={`grid grid-cols-1 ${studentBranchHasSections ? 'sm:grid-cols-2' : ''} gap-2`}>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Batch</label>
+                          <select
+                            value={editData.batch || selectedStudent?.batch || ''}
+                            onChange={(e) => updateEditField('batch', e.target.value)}
+                            disabled={isFieldFrozen(selectedStudent, 'batch')}
+                            className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all disabled:bg-gray-100 disabled:text-gray-500"
+                          >
+                            <option value="">Select Batch</option>
+                            {batchOptions.map((batch) => (
+                              <option key={batch} value={batch}>{batch}</option>
+                            ))}
+                            {(editData.batch || selectedStudent?.batch) &&
+                              !batchOptions.includes(editData.batch || selectedStudent?.batch) && (
+                                <option value={editData.batch || selectedStudent?.batch}>
+                                  {editData.batch || selectedStudent?.batch}
+                                </option>
+                              )}
+                          </select>
+                        </div>
+                        {studentBranchHasSections && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Section</label>
+                            <select
+                              value={getStudentSection(editData, selectedStudent)}
+                              onChange={(e) => updateEditField('section', e.target.value)}
+                              className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
+                            >
+                              <option value="">Select Section</option>
+                              {studentSectionOptions.map((section) => (
+                                <option key={section} value={section}>{section}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Sidebar Details Group */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 lg:gap-4 bg-gray-50/50 rounded-2xl lg:rounded-[2rem] p-4 lg:p-5 border border-gray-100">
                     <SidebarDetailItem
@@ -3604,16 +3811,6 @@ const Students = () => {
                       editable={editMode}
                       disabled={isFieldFrozen(selectedStudent, 'student_name')}
                       onChange={(val) => updateEditField('student_name', val)}
-                    />
-                    <SidebarDetailItem
-                      label="Batch"
-                      value={editData.batch || selectedStudent?.batch}
-                      icon={<Calendar size={14} />}
-                      editable={editMode}
-                      disabled={isFieldFrozen(selectedStudent, 'batch')}
-                      type="select"
-                      options={quickFilterOptions.batches}
-                      onChange={(val) => updateEditField('batch', val)}
                     />
                     <SidebarDetailItem
                       label="College"

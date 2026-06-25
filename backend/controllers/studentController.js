@@ -13,6 +13,23 @@ const {
   getNextStage,
   normalizeStage
 } = require('../services/academicProgression');
+const sectionAssignmentService = require('../services/sectionAssignmentService');
+
+// Section assignment is per batch: each batch gets its own A/B/C/D split (strength limits apply within the batch).
+const maybeReassignBranchSections = async (course, branch, batch = null) => {
+  if (!course || !branch) return;
+  try {
+    await sectionAssignmentService.reassignSectionsForStudentBranch(course, branch, batch);
+  } catch (error) {
+    console.error('Auto section assignment failed:', error);
+  }
+};
+
+const resolveStudentSectionSql = () => `COALESCE(
+  (SELECT ss.section_name FROM student_sections ss WHERE ss.student_id = students.id LIMIT 1),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(students.student_data, '$.section'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(students.student_data, '$.Section'))), '')
+)`;
 const { getScopeConditionString } = require('../utils/scoping');
 const { otpCache } = require('../services/cache'); // Import otpCache
 const smsService = require('../services/smsService'); // Import smsService
@@ -2353,6 +2370,7 @@ exports.getAllStudents = async (req, res) => {
       filter_college,
       filter_course,
       filter_branch,
+      filter_section,
       ...otherFilters
     } = req.query;
 
@@ -2369,6 +2387,8 @@ exports.getAllStudents = async (req, res) => {
       typeof filter_course === 'string' && filter_course.trim().length > 0 ? filter_course.trim() : null;
     const normalizedFilterBranch =
       typeof filter_branch === 'string' && filter_branch.trim().length > 0 ? filter_branch.trim() : null;
+    const normalizedFilterSection =
+      typeof filter_section === 'string' && filter_section.trim().length > 0 ? filter_section.trim() : null;
     const normalizedOtherFilters = Object.keys(otherFilters)
       .sort()
       .reduce((acc, key) => {
@@ -2420,6 +2440,7 @@ exports.getAllStudents = async (req, res) => {
         filter_college: normalizedFilterCollege,
         filter_course: normalizedFilterCourse,
         filter_branch: normalizedFilterBranch,
+        filter_section: normalizedFilterSection,
         filters: normalizedOtherFilters
       });
 
@@ -2523,6 +2544,11 @@ exports.getAllStudents = async (req, res) => {
     if (normalizedFilterBranch) {
       query += ' AND branch = ?';
       params.push(normalizedFilterBranch);
+    }
+
+    if (normalizedFilterSection && normalizedFilterBranch) {
+      query += ` AND ${resolveStudentSectionSql()} = ?`;
+      params.push(normalizedFilterSection);
     }
 
     // Level filter - filter by courses with the specified level
@@ -2668,6 +2694,11 @@ exports.getAllStudents = async (req, res) => {
     if (normalizedFilterBranch) {
       countQuery += ' AND branch = ?';
       countParams.push(normalizedFilterBranch);
+    }
+
+    if (normalizedFilterSection && normalizedFilterBranch) {
+      countQuery += ` AND ${resolveStudentSectionSql()} = ?`;
+      countParams.push(normalizedFilterSection);
     }
 
     // Level filter for count query - reuse the same validLevelCourseNames
@@ -3483,6 +3514,37 @@ exports.updateStudent = async (req, res) => {
 
     clearStudentsCache();
 
+    const finalCourse = auditChanges.course?.to ?? existingStudent.course;
+    const finalBranch = auditChanges.branch?.to ?? existingStudent.branch;
+    const finalBatch = auditChanges.batch?.to ?? existingStudent.batch;
+    const shouldReassignSections = ['course', 'branch', 'batch', 'pin_no'].some((key) => key in auditChanges);
+    if (shouldReassignSections && finalCourse && finalBranch) {
+      if (('course' in auditChanges || 'branch' in auditChanges || 'batch' in auditChanges) &&
+        existingStudent.course && existingStudent.branch) {
+        await maybeReassignBranchSections(
+          existingStudent.course,
+          existingStudent.branch,
+          existingStudent.batch
+        );
+      }
+      await maybeReassignBranchSections(finalCourse, finalBranch, finalBatch);
+    } else {
+      const manualSection =
+        incomingStudentData.section ||
+        incomingStudentData.Section ||
+        mutableStudentData.section ||
+        mutableStudentData.Section;
+      if (manualSection) {
+        await sectionAssignmentService.syncStudentSectionFromData({
+          studentId: existingStudent.id,
+          courseName: finalCourse,
+          branchName: finalBranch,
+          batch: finalBatch,
+          sectionName: manualSection
+        });
+      }
+    }
+
     res.json({
       success: true,
       message: 'Student data updated successfully'
@@ -3571,6 +3633,18 @@ exports.updatePinNumber = async (req, res) => {
     });
 
     clearStudentsCache();
+
+    const [studentRow] = await masterPool.query(
+      'SELECT course, branch, batch FROM students WHERE admission_number = ? LIMIT 1',
+      [admissionNumber]
+    );
+    if (studentRow.length > 0) {
+      await maybeReassignBranchSections(
+        studentRow[0].course,
+        studentRow[0].branch,
+        studentRow[0].batch
+      );
+    }
 
     console.log('[PIN UPDATE] ✅ SUCCESS - PIN updated to:', pinNumber);
 
@@ -4345,6 +4419,12 @@ exports.createStudent = async (req, res) => {
 
     clearStudentsCache();
 
+    await maybeReassignBranchSections(
+      createdStudent.course,
+      createdStudent.branch,
+      createdStudent.batch
+    );
+
     res.status(201).json({
       success: true,
       message: 'Student created successfully',
@@ -4921,6 +5001,131 @@ exports.getFilterOptions = async (req, res) => {
 
 // Get quick filter options (batches, courses, branches, years, semesters) - WITHOUT course exclusions
 // This is used by pages other than attendance that need all courses to be available
+const fetchSectionFilterOptions = async ({ course, branch, batch, year, semester, college } = {}) => {
+  if (!course || !branch) {
+    return [];
+  }
+
+  try {
+    const [courseRows] = await masterPool.query(
+      'SELECT id FROM courses WHERE name = ? AND is_active = 1 LIMIT 1',
+      [course]
+    );
+    if (courseRows.length === 0) {
+      return [];
+    }
+
+    const [branchRows] = await masterPool.query(
+      'SELECT metadata FROM course_branches WHERE course_id = ? AND name = ? AND is_active = 1 LIMIT 1',
+      [courseRows[0].id, branch]
+    );
+    if (branchRows.length === 0 || !branchRows[0].metadata) {
+      return [];
+    }
+
+    const metadata = typeof branchRows[0].metadata === 'string'
+      ? JSON.parse(branchRows[0].metadata)
+      : branchRows[0].metadata;
+
+    if (!metadata?.sections?.enabled || !Array.isArray(metadata.sections.items)) {
+      return [];
+    }
+
+    const configuredSections = metadata.sections.items
+      .map((item) => item?.name)
+      .filter(Boolean);
+
+    const studentParams = [course, branch];
+    let studentWhere = `WHERE s.course = ? AND s.branch = ?`;
+
+    if (college) {
+      studentWhere += ' AND s.college = ?';
+      studentParams.push(college);
+    }
+    if (batch) {
+      studentWhere += ' AND s.batch = ?';
+      studentParams.push(batch);
+    }
+    if (year) {
+      studentWhere += ' AND s.current_year = ?';
+      studentParams.push(parseInt(year, 10));
+    }
+    if (semester) {
+      studentWhere += ' AND s.current_semester = ?';
+      studentParams.push(parseInt(semester, 10));
+    }
+
+    const [assignedRows] = await masterPool.query(
+      `SELECT DISTINCT ss.section_name AS section
+       FROM student_sections ss
+       INNER JOIN students s ON s.id = ss.student_id
+       ${studentWhere}
+       ORDER BY ss.section_name ASC`,
+      studentParams
+    );
+
+    let assignedSections = assignedRows
+      .map((row) => row.section)
+      .filter(Boolean);
+
+    if (assignedSections.length === 0) {
+      let jsonWhere = `
+        WHERE course = ? AND branch = ?
+          AND (
+            (JSON_EXTRACT(student_data, '$.section') IS NOT NULL
+              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))) <> '')
+            OR (JSON_EXTRACT(student_data, '$.Section') IS NOT NULL
+              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))) <> '')
+          )`;
+      const jsonParams = [course, branch];
+      if (college) {
+        jsonWhere += ' AND college = ?';
+        jsonParams.push(college);
+      }
+      if (batch) {
+        jsonWhere += ' AND batch = ?';
+        jsonParams.push(batch);
+      }
+      if (year) {
+        jsonWhere += ' AND current_year = ?';
+        jsonParams.push(parseInt(year, 10));
+      }
+      if (semester) {
+        jsonWhere += ' AND current_semester = ?';
+        jsonParams.push(parseInt(semester, 10));
+      }
+
+      const [jsonRows] = await masterPool.query(
+        `SELECT DISTINCT COALESCE(
+           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))), ''),
+           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))), '')
+         ) AS section
+         FROM students
+         ${jsonWhere}
+         ORDER BY section ASC`,
+        jsonParams
+      );
+      assignedSections = jsonRows.map((row) => row.section).filter(Boolean);
+    }
+
+    if (assignedSections.length === 0) {
+      if (batch || year || semester || college) {
+        return [];
+      }
+      return configuredSections;
+    }
+
+    const assignedSet = new Set(assignedSections);
+    const orderedConfigured = configuredSections.filter((name) => assignedSet.has(name));
+    const extras = assignedSections.filter((name) => !configuredSections.includes(name));
+
+    return [...orderedConfigured, ...extras];
+  } catch (error) {
+    console.warn('Failed to fetch section filter options:', error);
+    return [];
+  }
+};
+
 exports.getQuickFilterOptions = async (req, res) => {
   try {
     // Get filter parameters from query string
@@ -5234,7 +5439,8 @@ exports.getQuickFilterOptions = async (req, res) => {
         years: yearRows.map((row) => row.currentYear),
         semesters: semesterRows.map((row) => row.currentSemester),
         courses: courseRows.map((row) => row.course),
-        branches: branchRows.map((row) => row.branch)
+        branches: branchRows.map((row) => row.branch),
+        sections: await fetchSectionFilterOptions({ course, branch, batch, year, semester, college })
       }
     });
   } catch (error) {

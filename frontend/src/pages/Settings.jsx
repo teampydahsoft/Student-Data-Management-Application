@@ -530,6 +530,215 @@ const FREEZABLE_FIELDS = [
   }
 ];
 
+const defaultSectionRow = () => ({ name: '', strength: '' });
+
+const defaultBranchSectionsState = () => ({
+  sectionsEnabled: false,
+  sections: [defaultSectionRow()]
+});
+
+const buildBranchSectionsMetadata = (draft) => {
+  if (!draft?.sectionsEnabled) {
+    return { enabled: false, items: [] };
+  }
+  return {
+    enabled: true,
+    sortOrder: 'pin_then_roll',
+    items: (draft.sections || [])
+      .filter((s) => s?.name && String(s.name).trim())
+      .map((s) => ({
+        name: String(s.name).trim(),
+        strength: Math.max(1, parseInt(s.strength, 10) || 0)
+      }))
+  };
+};
+
+const buildBranchMetadata = (draft) => {
+  const metadata = {};
+  if (draft?.hasAdditionalYear) {
+    metadata.hasAdditionalYear = true;
+    metadata.additionalYear = Number(draft.additionalYear);
+    metadata.additionalYearSemesters = Number(draft.additionalYearSemesters);
+  } else {
+    metadata.hasAdditionalYear = false;
+  }
+  metadata.sections = buildBranchSectionsMetadata(draft);
+  return metadata;
+};
+
+const parseBranchSectionsFromMetadata = (meta = {}) => {
+  const sectionsMeta = meta.sections || {};
+  return {
+    sectionsEnabled: Boolean(sectionsMeta.enabled),
+    sections: sectionsMeta.items?.length
+      ? sectionsMeta.items.map((item) => ({
+          name: item.name || '',
+          strength: item.strength ?? ''
+        }))
+      : [defaultSectionRow()]
+  };
+};
+
+const validateBranchSections = (draft) => {
+  if (!draft?.sectionsEnabled) {
+    return null;
+  }
+  const validSections = (draft.sections || []).filter(
+    (s) => s?.name && String(s.name).trim() && Number(s.strength) > 0
+  );
+  if (validSections.length === 0) {
+    return 'Add at least one section with a name and strength';
+  }
+  const invalidStrength = validSections.some(
+    (s) => !Number.isFinite(Number(s.strength)) || Number(s.strength) <= 0
+  );
+  if (invalidStrength) {
+    return 'Each section strength must be a positive number';
+  }
+  return null;
+};
+
+const getSectionRangeLabel = (sections, index) => {
+  const strength = Number(sections[index]?.strength) || 0;
+  if (!strength) return '';
+  const start = sections
+    .slice(0, index)
+    .reduce((sum, section) => sum + (Number(section.strength) || 0), 0) + 1;
+  return `${start}-${start + strength - 1}`;
+};
+
+const formatSectionAssignmentMessage = (sectionAssignment) => {
+  if (!sectionAssignment || sectionAssignment.skipped || !sectionAssignment.assignedCount) {
+    return '';
+  }
+  const summary = (sectionAssignment.sectionSummary || [])
+    .filter((item) => item.assigned > 0)
+    .map((item) => {
+      if (item.rangeStart && item.rangeEnd) {
+        return `${item.name} (${item.rangeStart}-${item.rangeEnd})`;
+      }
+      return `${item.name}: ${item.assigned}`;
+    })
+    .join(', ');
+  return summary
+    ? ` Students auto-filled: ${summary}`
+    : ` ${sectionAssignment.assignedCount} students auto-filled into sections`;
+};
+
+const BranchSectionsEditor = ({ value, onChange }) => {
+  const sections = value.sections || [defaultSectionRow()];
+
+  const updateSection = (index, field, fieldValue) => {
+    const nextSections = [...sections];
+    nextSections[index] = { ...nextSections[index], [field]: fieldValue };
+    onChange({ ...value, sections: nextSections });
+  };
+
+  const addSection = () => {
+    onChange({ ...value, sections: [...sections, defaultSectionRow()] });
+  };
+
+  const removeSection = (index) => {
+    if (sections.length <= 1) return;
+    onChange({ ...value, sections: sections.filter((_, i) => i !== index) });
+  };
+
+  const totalStrength = sections.reduce(
+    (sum, section) => sum + (Number(section.strength) || 0),
+    0
+  );
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={value.sectionsEnabled || false}
+          onChange={(e) => {
+            const enabled = e.target.checked;
+            onChange({
+              ...value,
+              sectionsEnabled: enabled,
+              sections: enabled && sections.length === 0 ? [defaultSectionRow()] : sections
+            });
+          }}
+          className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+        />
+        <span className="text-sm font-medium text-gray-700">Enable Section Breakdown (Optional)</span>
+      </label>
+
+      {value.sectionsEnabled && (
+        <>
+          <div className="space-y-2">
+            <div className="grid grid-cols-[1fr_90px_72px_32px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1">
+              <span>Section Name</span>
+              <span>Strength</span>
+              <span>Range</span>
+              <span />
+            </div>
+            {sections.map((section, index) => (
+              <div key={`section-row-${index}`} className="grid grid-cols-[1fr_90px_72px_32px] gap-2 items-center">
+                <input
+                  type="text"
+                  value={section.name}
+                  onChange={(e) => updateSection(index, 'name', e.target.value)}
+                  placeholder="e.g. A"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={section.strength}
+                  onChange={(e) => updateSection(index, 'strength', e.target.value)}
+                  placeholder="80"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm"
+                />
+                <span className="text-xs font-medium text-blue-700 text-center">
+                  {getSectionRangeLabel(sections, index) || '—'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeSection(index)}
+                  disabled={sections.length <= 1}
+                  className="p-1.5 text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Remove section"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addSection}
+              className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:text-orange-700"
+            >
+              <Plus size={14} />
+              Add Section
+            </button>
+          </div>
+
+          <div className="text-[11px] text-gray-500">
+            Total capacity: <span className="font-semibold text-gray-700">{totalStrength || 0}</span> students
+            {totalStrength > 0 && sections.length >= 2 && Number(sections[0].strength) > 0 && (
+              <span className="text-gray-400">
+                {' '}(e.g. {getSectionRangeLabel(sections, 0)} in {sections[0].name || 'section 1'},{' '}
+                {getSectionRangeLabel(sections, 1)} in {sections[1].name || 'section 2'})
+              </span>
+            )}
+          </div>
+
+          <p className="text-[11px] text-gray-400 leading-snug">
+            Students are automatically sorted by PIN number when available; otherwise by roll number.
+            They are then placed into sections when you save this branch (1st student → section 1, up to
+            strength limit, then next section). New or updated students in this branch are also re-assigned
+            automatically.
+          </p>
+        </>
+      )}
+    </div>
+  );
+};
+
 const Settings = () => {
   const [colleges, setColleges] = useState([]);
   const [selectedCollegeId, setSelectedCollegeId] = useState(null);
@@ -558,7 +767,7 @@ const Settings = () => {
   const [branchBatchFilter, setBranchBatchFilter] = useState(''); // Filter branches by batch
   const [isAddBranchModalOpen, setIsAddBranchModalOpen] = useState(false);
   const [branchModalCourseId, setBranchModalCourseId] = useState(null);
-  const [newBranch, setNewBranch] = useState({ name: '', code: '' });
+  const [newBranch, setNewBranch] = useState({ name: '', code: '', ...defaultBranchSectionsState() });
 
   // Academic Years state
   const [academicYears, setAcademicYears] = useState([]);
@@ -2318,7 +2527,7 @@ const Settings = () => {
   };
 
   const resetNewBranch = () => {
-    setNewBranch({ name: '', code: '' });
+    setNewBranch({ name: '', code: '', ...defaultBranchSectionsState() });
     setIsAddBranchModalOpen(false);
     setBranchModalCourseId(null);
   };
@@ -2338,6 +2547,12 @@ const Settings = () => {
       return;
     }
 
+    const sectionError = validateBranchSections(payload);
+    if (sectionError) {
+      toast.error(sectionError);
+      return;
+    }
+
     // If course is null, find the course from branchModalCourseId
     // Otherwise, use the provided course
     const courseToUse = course || coursesForSelectedCollege.find(c => c.id === branchModalCourseId);
@@ -2348,15 +2563,17 @@ const Settings = () => {
 
     try {
       setSavingBranchId(`new-${courseToUse.id}`);
-      await api.post(`/courses/${courseToUse.id}/branches`, {
+      const response = await api.post(`/courses/${courseToUse.id}/branches`, {
         name: payload.name.trim(),
         code: payload.code.trim(),
         totalYears: Number(payload.totalYears || courseToUse.totalYears),
         semestersPerYear: Number(payload.semestersPerYear || courseToUse.semestersPerYear),
         academicYearIds: [],
-        isActive: true
+        isActive: true,
+        metadata: buildBranchMetadata(payload)
       });
-      toast.success('Branch added successfully. You can add batches later if needed.');
+      const sectionMsg = formatSectionAssignmentMessage(response.data?.sectionAssignment);
+      toast.success(`Branch added successfully.${sectionMsg || ' You can add batches later if needed.'}`);
       resetNewBranch();
       setBranchForms((prev) => {
         const updated = { ...prev };
@@ -2376,6 +2593,7 @@ const Settings = () => {
   const startEditBranch = (courseId, branch, courseDefaults) => {
     setEditingBranch({ courseId, branchId: branch.id });
     const meta = branch.metadata || {};
+    const sectionState = parseBranchSectionsFromMetadata(meta);
     setBranchDrafts((prev) => ({
       ...prev,
       [branch.id]: {
@@ -2385,7 +2603,8 @@ const Settings = () => {
         semestersPerYear: branch.semestersPerYear ?? courseDefaults.semestersPerYear,
         hasAdditionalYear: meta.hasAdditionalYear || false,
         additionalYear: meta.additionalYear || '',
-        additionalYearSemesters: meta.additionalYearSemesters || ''
+        additionalYearSemesters: meta.additionalYearSemesters || '',
+        ...sectionState
       }
     }));
   };
@@ -2417,6 +2636,12 @@ const Settings = () => {
       return;
     }
 
+    const sectionError = validateBranchSections(draft);
+    if (sectionError) {
+      toast.error(sectionError);
+      return;
+    }
+
     // Validate additional year config
     if (draft.hasAdditionalYear) {
       const addYear = Number(draft.additionalYear);
@@ -2431,18 +2656,11 @@ const Settings = () => {
       }
     }
 
-    // Build metadata with additional year info
-    const metadata = draft.hasAdditionalYear
-      ? {
-          hasAdditionalYear: true,
-          additionalYear: Number(draft.additionalYear),
-          additionalYearSemesters: Number(draft.additionalYearSemesters)
-        }
-      : { hasAdditionalYear: false };
+    const metadata = buildBranchMetadata(draft);
 
     try {
       setSavingBranchId(branch.id);
-      await api.put(`/courses/${courseId}/branches/${branch.id}`, {
+      const response = await api.put(`/courses/${courseId}/branches/${branch.id}`, {
         name: draft.name.trim(),
         code: draft.code.trim(),
         totalYears: draft.totalYears ? Number(draft.totalYears) : undefined,
@@ -2450,7 +2668,8 @@ const Settings = () => {
         metadata
       });
 
-      toast.success('Branch updated successfully');
+      const sectionMsg = formatSectionAssignmentMessage(response.data?.sectionAssignment);
+      toast.success(`Branch updated successfully.${sectionMsg}`);
       cancelEditBranch();
       await loadBranches(courseId);
       await fetchCourses({ silent: true });
@@ -3195,6 +3414,11 @@ const Settings = () => {
                                         <span className="text-sm font-medium text-gray-800 truncate">{branch.name}</span>
                                         {branch.code && branch.code !== branch.name && (
                                           <span className="text-xs text-gray-500">({branch.code})</span>
+                                        )}
+                                        {branch.metadata?.sections?.enabled && (
+                                          <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                            {branch.metadata.sections.items?.length || 0} sections
+                                          </span>
                                         )}
                                       </div>
                                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -5262,8 +5486,8 @@ const Settings = () => {
 
         {/* Edit Branch Modal */}
         {editingBranch && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Pencil size={18} className="text-orange-600" />
@@ -5373,6 +5597,19 @@ const Settings = () => {
                     When enabled, course-completed students can be moved into this additional year from the student edit panel.
                   </p>
                 </div>
+
+                <BranchSectionsEditor
+                  value={branchDrafts[editingBranch.branchId] || defaultBranchSectionsState()}
+                  onChange={(nextValue) => {
+                    setBranchDrafts((prev) => ({
+                      ...prev,
+                      [editingBranch.branchId]: {
+                        ...(prev[editingBranch.branchId] || {}),
+                        ...nextValue
+                      }
+                    }));
+                  }}
+                />
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
@@ -5668,7 +5905,7 @@ const Settings = () => {
           }}
         >
           <div
-            className="w-full max-w-md rounded-lg bg-white shadow-2xl max-h-[90vh] overflow-y-auto relative"
+            className="w-full max-w-lg rounded-lg bg-white shadow-2xl max-h-[90vh] overflow-y-auto relative"
             onClick={(e) => e.stopPropagation()}
             style={{ zIndex: 10000 }}
           >
@@ -5732,6 +5969,11 @@ const Settings = () => {
                   Unique code for the branch (e.g., CSE, ECE)
                 </p>
               </div>
+
+              <BranchSectionsEditor
+                value={newBranch}
+                onChange={setNewBranch}
+              />
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">

@@ -29,6 +29,7 @@ router.get('/:courseId/branches', attachUserScope, courseController.getBranches)
 router.post('/:courseId/branches', courseController.createBranch);
 router.put('/:courseId/branches/:branchId', courseController.updateBranch);
 router.delete('/:courseId/branches/:branchId', courseController.deleteBranch);
+router.post('/:courseId/branches/:branchId/assign-sections', courseController.assignSectionsToStudents);
 
 // Preview affected students endpoints
 router.get('/:courseId/affected-students', courseController.getAffectedStudentsByCourse);

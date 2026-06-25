@@ -1,5 +1,6 @@
 const { masterPool } = require('../config/database');
 const { filterCoursesByScope, filterBranchesByScope } = require('../utils/scoping');
+const sectionAssignmentService = require('../services/sectionAssignmentService');
 
 const DEFAULT_SEMESTERS_PER_YEAR = 2;
 const MAX_YEARS = 10;
@@ -1186,6 +1187,18 @@ exports.createBranch = async (req, res) => {
       await connection.commit();
       connection.release();
 
+      let sectionAssignment = null;
+      const branchMetadata = sanitized.metadata && typeof sanitized.metadata === 'object'
+        ? sanitized.metadata
+        : {};
+      if (branchMetadata?.sections?.enabled) {
+        try {
+          sectionAssignment = await sectionAssignmentService.assignSectionsForBranchId(branchId);
+        } catch (assignError) {
+          console.error('Auto section assignment after branch create failed:', assignError);
+        }
+      }
+
       if (branchRows.length > 0) {
         const branchData = serializeBranchRow(branchRows[0], academicYears);
         res.status(isNewBranch ? 201 : 200).json({
@@ -1198,7 +1211,8 @@ exports.createBranch = async (req, res) => {
               ? `Branch updated successfully. Now associated with ${academicYears.length} batch(es)`
               : `Branch updated successfully. No batches associated yet.`),
           data: branchData,
-          count: academicYears.length
+          count: academicYears.length,
+          sectionAssignment
         });
       } else {
         res.status(500).json({
@@ -1498,13 +1512,26 @@ exports.updateBranch = async (req, res) => {
       await connection.commit();
       connection.release();
 
+      let sectionAssignment = null;
+      const updatedMetadata = req.body.metadata && typeof req.body.metadata === 'object'
+        ? req.body.metadata
+        : (sanitized.metadata && typeof sanitized.metadata === 'object' ? sanitized.metadata : {});
+      if (updatedMetadata?.sections?.enabled) {
+        try {
+          sectionAssignment = await sectionAssignmentService.assignSectionsForBranchId(branchId);
+        } catch (assignError) {
+          console.error('Auto section assignment after branch update failed:', assignError);
+        }
+      }
+
       res.json({
         success: true,
         message: studentsUpdated > 0
           ? `Branch updated successfully. ${studentsUpdated} student record(s) updated.`
           : 'Branch updated successfully',
         data: serializeBranchRow(branchRows[0], academicYears),
-        studentsUpdated
+        studentsUpdated,
+        sectionAssignment
       });
     } catch (error) {
       await connection.rollback();
@@ -1967,6 +1994,63 @@ exports.getAffectedStudentsByBranch = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch affected students'
+    });
+  }
+};
+
+/**
+ * POST /api/courses/:courseId/branches/:branchId/assign-sections
+ * Manually re-run sequential section assignment for a branch
+ */
+exports.assignSectionsToStudents = async (req, res) => {
+  const courseId = parseInt(req.params.courseId, 10);
+  const branchId = parseInt(req.params.branchId, 10);
+  const batch = req.body.batch ? String(req.body.batch).trim() : null;
+
+  if (!courseId || Number.isNaN(courseId) || !branchId || Number.isNaN(branchId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid course or branch ID'
+    });
+  }
+
+  try {
+    const [branchRows] = await masterPool.query(
+      `SELECT cb.id
+       FROM course_branches cb
+       WHERE cb.course_id = ? AND cb.id = ?
+       LIMIT 1`,
+      [courseId, branchId]
+    );
+
+    if (branchRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found for this course'
+      });
+    }
+
+    const result = await sectionAssignmentService.assignSectionsForBranchId(branchId, {
+      batch
+    });
+
+    if (result.skipped) {
+      return res.status(400).json({
+        success: false,
+        message: 'Section breakdown is not enabled or has no sections configured for this branch'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Assigned ${result.assignedCount} student(s) to sections`,
+      data: result
+    });
+  } catch (error) {
+    console.error('assignSectionsToStudents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to assign students to sections'
     });
   }
 };

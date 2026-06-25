@@ -43,6 +43,7 @@ export const useStudents = ({
           if (key === 'batch') queryParams.append('filter_batch', value);
           else if (key === 'course') queryParams.append('filter_course', value);
           else if (key === 'branch') queryParams.append('filter_branch', value);
+          else if (key === 'section') queryParams.append('filter_section', value);
           else if (key === 'year') queryParams.append('filter_year', value);
           else if (key === 'semester') queryParams.append('filter_semester', value);
           else if (key === 'dateFrom') queryParams.append('filter_dateFrom', value);
@@ -108,6 +109,7 @@ export const useAllStudents = ({ filters = {}, enabled = true } = {}) => {
           if (key === 'batch') queryParams.append('filter_batch', value);
           else if (key === 'course') queryParams.append('filter_course', value);
           else if (key === 'branch') queryParams.append('filter_branch', value);
+          else if (key === 'section') queryParams.append('filter_section', value);
           else if (key === 'year') queryParams.append('filter_year', value);
           else if (key === 'semester') queryParams.append('filter_semester', value);
           else if (key.startsWith('filter_')) {
