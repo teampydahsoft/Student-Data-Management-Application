@@ -42,6 +42,11 @@ const {
   appendSemesterCalendarFilter,
   validateStudentAttendanceDate
 } = require('../services/semesterCalendarService');
+const {
+  resolveAttendanceDisplayNumberFromRow,
+  STUDENT_ROLL_NUMBERS_JOIN,
+  STUDENT_ROLL_NUMBERS_SELECT
+} = require('../services/rollNumberService');
 
 const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
@@ -616,11 +621,13 @@ exports.getAttendance = async (req, res) => {
         s.course,
         s.branch,
         s.college,
+        ${STUDENT_ROLL_NUMBERS_SELECT},
         ar.id AS attendance_record_id,
         ar.status AS attendance_status,
         ar.holiday_reason,
         COALESCE(ar.sms_sent, 0) AS sms_sent
       FROM students s
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar
         ON ar.student_id = s.id
        AND ar.attendance_date = ?
@@ -725,11 +732,12 @@ exports.getAttendance = async (req, res) => {
         AND (
           s.admission_number LIKE ? 
           OR s.admission_no LIKE ? 
-          OR s.pin_no LIKE ? 
+          OR s.pin_no LIKE ?
+          OR srn.roll_number LIKE ?
           OR s.student_name LIKE ?
         )
       `;
-      params.push(keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword);
     }
 
     if (parentMobile) {
@@ -770,6 +778,7 @@ exports.getAttendance = async (req, res) => {
     let countQuery = `
       SELECT COUNT(DISTINCT s.id) AS total
       FROM students s
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar
         ON ar.student_id = s.id
         AND ar.attendance_date = ?
@@ -871,6 +880,7 @@ exports.getAttendance = async (req, res) => {
         AND (
           s.student_name LIKE ?
           OR s.pin_no LIKE ?
+          OR srn.roll_number LIKE ?
           OR (s.student_data IS NOT NULL AND (
             JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."Student Name"')) LIKE ?
             OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."student_name"')) LIKE ?
@@ -880,7 +890,7 @@ exports.getAttendance = async (req, res) => {
           ))
         )
       `;
-      countParams.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword);
+      countParams.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     if (parentMobile) {
@@ -935,6 +945,7 @@ exports.getAttendance = async (req, res) => {
         COUNT(DISTINCT CASE WHEN ${FINALIZED_ATTENDANCE_CLAUSE} THEN s.id END) AS marked_count,
         COUNT(DISTINCT CASE WHEN ${UNRESOLVED_ATTENDANCE_CLAUSE} THEN s.id END) AS unresolved_count
       FROM students s
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
       WHERE 1=1 AND s.student_status = 'Regular'
     `;
@@ -1021,6 +1032,7 @@ exports.getAttendance = async (req, res) => {
         AND (
           s.student_name LIKE ?
           OR s.pin_no LIKE ?
+          OR srn.roll_number LIKE ?
           OR (s.student_data IS NOT NULL AND (
             JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."Student Name"')) LIKE ?
             OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."student_name"')) LIKE ?
@@ -1030,7 +1042,7 @@ exports.getAttendance = async (req, res) => {
           ))
         )
       `;
-      statsParams.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword);
+      statsParams.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     if (parentMobile) {
@@ -1131,13 +1143,7 @@ exports.getAttendance = async (req, res) => {
       const branchValue =
         row.branch || studentData.Branch || studentData.branch || null;
 
-      const pinNumberValue =
-        row.pin_no ||
-        studentData['PIN Number'] ||
-        studentData['Pin Number'] ||
-        studentData['pin_number'] ||
-        studentData.pin_no ||
-        null;
+      const pinNumberValue = resolveAttendanceDisplayNumberFromRow(row, parseStudentData);
 
       const resolvedRegistrationStatus =
         (row.registration_status && String(row.registration_status).trim().length > 0)
@@ -1296,11 +1302,12 @@ exports.deleteAttendanceForDate = async (req, res) => {
         OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."Student Name"')) LIKE ?
         OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."student_name"')) LIKE ?
         OR s.pin_no LIKE ?
+        OR srn.roll_number LIKE ?
         OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."PIN Number"')) LIKE ?
         OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."Pin Number"')) LIKE ?
         OR JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."pin_number"')) LIKE ?
       )`);
-      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     if (parentMobile) {
@@ -1325,6 +1332,7 @@ exports.deleteAttendanceForDate = async (req, res) => {
     const queryBase = `
       FROM attendance_records AS ar
       INNER JOIN students AS s ON s.id = ar.student_id
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       ${whereClause}
       AND ar.attendance_date = ?
     `;
@@ -1456,8 +1464,10 @@ exports.markAttendance = async (req, res) => {
           s.college,
           s.course,
           s.branch,
-          s.student_data
+          s.student_data,
+          ${STUDENT_ROLL_NUMBERS_SELECT}
         FROM students s
+        ${STUDENT_ROLL_NUMBERS_JOIN}
         WHERE s.id IN (?)
           AND s.student_status = 'Regular'
       `,
@@ -1690,7 +1700,7 @@ exports.markAttendance = async (req, res) => {
       const studentDetails = {
         studentId: student.id,
         admissionNumber: student.admission_number || '',
-        pinNumber: student.pin_no || studentData['PIN Number'] || studentData['Pin Number'] || '',
+        pinNumber: resolveAttendanceDisplayNumberFromRow(student, (data) => data),
         studentName: student.student_name || studentData['Student Name'] || studentData['student_name'] || 'Unknown',
         college: student.college || studentData['College'] || studentData['college'] || '',
         course: student.course || studentData['Course'] || studentData['course'] || '',
@@ -3550,8 +3560,10 @@ exports.getStudentAttendanceHistory = async (req, res) => {
     try {
       [studentRows] = await masterPool.query(
         `SELECT s.id, s.student_name, s.pin_no, s.batch, s.course, s.branch, s.college, s.current_year, s.current_semester,
+                ${STUDENT_ROLL_NUMBERS_SELECT},
                 col.id as college_id, cb.id as branch_id
          FROM students s
+         ${STUDENT_ROLL_NUMBERS_JOIN}
           LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
           LEFT JOIN courses c ON s.course COLLATE utf8mb4_unicode_ci = c.name COLLATE utf8mb4_unicode_ci AND c.college_id = col.id
           LEFT JOIN course_branches cb ON s.branch COLLATE utf8mb4_unicode_ci = cb.name COLLATE utf8mb4_unicode_ci AND cb.course_id = c.id
@@ -3887,7 +3899,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         student: {
           id: student.id,
           name: student.student_name,
-          pin: student.pin_no,
+          pin: resolveAttendanceDisplayNumberFromRow(student),
           batch: student.batch,
           course: student.course,
           branch: student.branch,
@@ -4371,8 +4383,10 @@ exports.downloadAttendanceReport = async (req, res) => {
         s.branch,
         s.current_year,
         s.current_semester,
-        s.student_data
+        s.student_data,
+        ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       WHERE 1=1
     `;
     const studentParams = [];
@@ -4486,7 +4500,7 @@ exports.downloadAttendanceReport = async (req, res) => {
         studentMap.set(studentId, {
           id: studentId,
           admissionNumber: row.admission_number,
-          pinNumber: row.pin_no || studentData['PIN Number'] || studentData['Pin Number'] || null,
+          pinNumber: resolveAttendanceDisplayNumberFromRow(row, parseStudentData),
           studentName: row.student_name || studentData['Student Name'] || studentData['student_name'] || 'Unknown',
           batch: row.batch || studentData.Batch || null,
           course: row.course || studentData.Course || studentData.course || null,
@@ -4614,7 +4628,7 @@ exports.downloadAttendanceReport = async (req, res) => {
       // Detailed attendance sheet
       const headerRow = [
         'Admission Number',
-        'PIN Number',
+        'Roll Number',
         'Student Name',
         'Batch',
         'Course',
@@ -5462,8 +5476,10 @@ exports.getAttendanceReportForStudents = async (req, res) => {
         s.current_year,
         s.current_semester,
         s.college,
-        s.student_data
+        s.student_data,
+        ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s
+      ${STUDENT_ROLL_NUMBERS_JOIN}
       WHERE s.student_status = 'Regular'
     `;
     const studentParams = [];

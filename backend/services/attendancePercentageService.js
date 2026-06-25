@@ -5,6 +5,7 @@
 
 const { getNonWorkingDaysForRange } = require('./nonWorkingDayService');
 const { parseDateString } = require('../utils/dateUtils');
+const { resolveAttendanceDisplayNumberFromRow } = require('./rollNumberService');
 
 /**
  * Get date only string in YYYY-MM-DD format (IST-aware)
@@ -178,7 +179,7 @@ const processAttendanceData = async (studentRows, attendanceRows, fromDate, toDa
     studentMap.set(row.id, {
       id: row.id,
       admissionNumber: row.admission_number,
-      pinNumber: row.pin_no || studentData['PIN Number'] || studentData['Pin Number'] || null,
+      pinNumber: resolveAttendanceDisplayNumberFromRow(row, parseStudentData),
       studentName: row.student_name || studentData['Student Name'] || studentData['student_name'] || 'Unknown',
       batch: row.batch || studentData.Batch || null,
       course: row.course || studentData.Course || studentData.course || null,
