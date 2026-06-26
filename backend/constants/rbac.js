@@ -70,6 +70,7 @@ const MODULES = {
   PRE_REGISTRATION: 'pre_registration',
   STUDENT_MANAGEMENT: 'student_management',
   PROMOTIONS: 'promotions',
+  SECTION_PARTITION: 'section_partition',
   ATTENDANCE: 'attendance',
   FEE_MANAGEMENT: 'fee_management',
   SETTINGS: 'settings',
@@ -122,6 +123,13 @@ const MODULE_PERMISSIONS = {
     labels: {
       view: 'View Promotions',
       manage: 'Manage Promotions'
+    }
+  },
+  [MODULES.SECTION_PARTITION]: {
+    permissions: ['view', 'manage'],
+    labels: {
+      view: 'View Section Partition',
+      manage: 'Manage Section Partition'
     }
   },
   [MODULES.ATTENDANCE]: {
@@ -223,6 +231,7 @@ const MODULE_LABELS = {
   [MODULES.PRE_REGISTRATION]: 'Pre-Registration',
   [MODULES.STUDENT_MANAGEMENT]: 'Student Management',
   [MODULES.PROMOTIONS]: 'Promotions',
+  [MODULES.SECTION_PARTITION]: 'Section Partition',
   [MODULES.ATTENDANCE]: 'Attendance',
   [MODULES.FEE_MANAGEMENT]: 'Fee Management',
   [MODULES.SETTINGS]: 'Settings',

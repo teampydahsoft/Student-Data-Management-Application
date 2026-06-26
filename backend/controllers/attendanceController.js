@@ -1200,7 +1200,7 @@ exports.getAttendance = async (req, res) => {
         batch: row.batch || studentData.Batch || null,
         course: courseValue,
         branch: branchValue,
-        section: row.resolved_section || studentData.section || studentData.Section || null,
+        section: row.resolved_section || null,
         college: row.college || studentData.College || studentData.college || null,
         currentYear: row.current_year || studentData['Current Academic Year'] || null,
         currentSemester: row.current_semester || studentData['Current Semester'] || null,

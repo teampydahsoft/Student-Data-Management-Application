@@ -157,10 +157,17 @@ const SidebarDetailItem = ({ label, value, icon, editable, disabled, type = 'tex
 );
 
 const getStudentSection = (editData = {}, student = null) => {
-  const data = editData && Object.keys(editData).length > 0
-    ? editData
-    : (student?.student_data && typeof student.student_data === 'object' ? student.student_data : {});
-  return editData?.section || editData?.Section || data?.section || data?.Section || '';
+  if (editData && Object.prototype.hasOwnProperty.call(editData, 'section')) {
+    const value = editData.section;
+    return value === null || value === undefined ? '' : String(value).trim();
+  }
+  if (editData?.Section !== undefined && editData?.Section !== null) {
+    return String(editData.Section).trim();
+  }
+  if (student?.section !== undefined && student?.section !== null) {
+    return String(student.section).trim();
+  }
+  return '';
 };
 
 const getBranchSectionConfig = (coursesWithLevels, courseName, branchName) => {
@@ -647,6 +654,13 @@ const Students = () => {
     if (!filters.course || !filters.branch) return false;
     return getBranchSectionConfig(coursesWithLevels, filters.course, filters.branch).enabled;
   }, [filters.course, filters.branch, coursesWithLevels]);
+
+  const showSectionColumn = useMemo(() => {
+    if (filterBranchHasSections) return true;
+    return students.some((student) =>
+      getBranchSectionConfig(coursesWithLevels, student.course, student.branch).enabled
+    );
+  }, [filterBranchHasSections, students, coursesWithLevels]);
 
   useEffect(() => {
     if (!filters.section) return;
@@ -1918,8 +1932,8 @@ const Students = () => {
         'Branch': student.branch,
         'Branch Name': student.branch
       }),
-      section: getStudentSection(student.student_data || {}, student),
-      Section: getStudentSection(student.student_data || {}, student),
+      section: student.section || '',
+      Section: student.section || '',
       ...(student.stud_type && { stud_type: student.stud_type, 'StudType': student.stud_type }),
       ...(student.student_status && { student_status: student.student_status, 'Student Status': student.student_status }),
       // Always include scholar_status so it can be updated from blank
@@ -3119,6 +3133,11 @@ const Students = () => {
                         <div className="font-semibold truncate">Branch</div>
                       </th>
                     )}
+                    {showSectionColumn && (
+                      <th className="py-2 px-1 text-[10px] font-semibold text-gray-700 text-left max-w-[48px]">
+                        <div className="font-semibold truncate">Section</div>
+                      </th>
+                    )}
                     {!isCashier && (
                       <>
                         {canViewField('stud_type') && (
@@ -3273,6 +3292,11 @@ const Students = () => {
                             </div>
                           </td>
                         )}
+                        {showSectionColumn && (
+                          <td className="py-1 px-1 text-[10px] text-gray-700">
+                            {student.section || '-'}
+                          </td>
+                        )}
                         {!isCashier && (
                           <>
                             {canViewField('stud_type') && (
@@ -3412,6 +3436,12 @@ const Students = () => {
                           <div>
                             <p className="text-xs text-gray-500">Branch</p>
                             <p className="text-sm font-medium text-gray-900 truncate" title={student.branch || ''}>{student.branch || '-'}</p>
+                          </div>
+                        )}
+                        {showSectionColumn && (
+                          <div>
+                            <p className="text-xs text-gray-500">Section</p>
+                            <p className="text-sm font-medium text-gray-900">{student.section || '-'}</p>
                           </div>
                         )}
                         {!isCashier && (

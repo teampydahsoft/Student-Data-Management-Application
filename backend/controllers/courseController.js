@@ -1187,18 +1187,6 @@ exports.createBranch = async (req, res) => {
       await connection.commit();
       connection.release();
 
-      let sectionAssignment = null;
-      const branchMetadata = sanitized.metadata && typeof sanitized.metadata === 'object'
-        ? sanitized.metadata
-        : {};
-      if (branchMetadata?.sections?.enabled) {
-        try {
-          sectionAssignment = await sectionAssignmentService.assignSectionsForBranchId(branchId);
-        } catch (assignError) {
-          console.error('Auto section assignment after branch create failed:', assignError);
-        }
-      }
-
       if (branchRows.length > 0) {
         const branchData = serializeBranchRow(branchRows[0], academicYears);
         res.status(isNewBranch ? 201 : 200).json({
@@ -1211,8 +1199,7 @@ exports.createBranch = async (req, res) => {
               ? `Branch updated successfully. Now associated with ${academicYears.length} batch(es)`
               : `Branch updated successfully. No batches associated yet.`),
           data: branchData,
-          count: academicYears.length,
-          sectionAssignment
+          count: academicYears.length
         });
       } else {
         res.status(500).json({
@@ -1512,26 +1499,13 @@ exports.updateBranch = async (req, res) => {
       await connection.commit();
       connection.release();
 
-      let sectionAssignment = null;
-      const updatedMetadata = req.body.metadata && typeof req.body.metadata === 'object'
-        ? req.body.metadata
-        : (sanitized.metadata && typeof sanitized.metadata === 'object' ? sanitized.metadata : {});
-      if (updatedMetadata?.sections?.enabled) {
-        try {
-          sectionAssignment = await sectionAssignmentService.assignSectionsForBranchId(branchId);
-        } catch (assignError) {
-          console.error('Auto section assignment after branch update failed:', assignError);
-        }
-      }
-
       res.json({
         success: true,
         message: studentsUpdated > 0
           ? `Branch updated successfully. ${studentsUpdated} student record(s) updated.`
           : 'Branch updated successfully',
         data: serializeBranchRow(branchRows[0], academicYears),
-        studentsUpdated,
-        sectionAssignment
+        studentsUpdated
       });
     } catch (error) {
       await connection.rollback();
@@ -2000,7 +1974,7 @@ exports.getAffectedStudentsByBranch = async (req, res) => {
 
 /**
  * POST /api/courses/:courseId/branches/:branchId/assign-sections
- * Manually re-run sequential section assignment for a branch
+ * Optional manual re-run of sequential section assignment (not used on branch save).
  */
 exports.assignSectionsToStudents = async (req, res) => {
   const courseId = parseInt(req.params.courseId, 10);

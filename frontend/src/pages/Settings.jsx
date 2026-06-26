@@ -607,24 +607,6 @@ const getSectionRangeLabel = (sections, index) => {
   return `${start}-${start + strength - 1}`;
 };
 
-const formatSectionAssignmentMessage = (sectionAssignment) => {
-  if (!sectionAssignment || sectionAssignment.skipped || !sectionAssignment.assignedCount) {
-    return '';
-  }
-  const summary = (sectionAssignment.sectionSummary || [])
-    .filter((item) => item.assigned > 0)
-    .map((item) => {
-      if (item.rangeStart && item.rangeEnd) {
-        return `${item.name} (${item.rangeStart}-${item.rangeEnd})`;
-      }
-      return `${item.name}: ${item.assigned}`;
-    })
-    .join(', ');
-  return summary
-    ? ` Students auto-filled: ${summary}`
-    : ` ${sectionAssignment.assignedCount} students auto-filled into sections`;
-};
-
 const BranchSectionsEditor = ({ value, onChange }) => {
   const sections = value.sections || [defaultSectionRow()];
 
@@ -728,10 +710,8 @@ const BranchSectionsEditor = ({ value, onChange }) => {
           </div>
 
           <p className="text-[11px] text-gray-400 leading-snug">
-            Students are automatically sorted by PIN number when available; otherwise by roll number.
-            They are then placed into sections when you save this branch (1st student → section 1, up to
-            strength limit, then next section). New or updated students in this branch are also re-assigned
-            automatically.
+            Section names and strength limits are saved with this branch. Assign students to sections
+            manually from Students → Section Partition (bulk assign or per-row dropdown).
           </p>
         </>
       )}
@@ -2572,8 +2552,7 @@ const Settings = () => {
         isActive: true,
         metadata: buildBranchMetadata(payload)
       });
-      const sectionMsg = formatSectionAssignmentMessage(response.data?.sectionAssignment);
-      toast.success(`Branch added successfully.${sectionMsg || ' You can add batches later if needed.'}`);
+      toast.success('Branch added successfully. You can add batches later if needed.');
       resetNewBranch();
       setBranchForms((prev) => {
         const updated = { ...prev };
@@ -2668,8 +2647,7 @@ const Settings = () => {
         metadata
       });
 
-      const sectionMsg = formatSectionAssignmentMessage(response.data?.sectionAssignment);
-      toast.success(`Branch updated successfully.${sectionMsg}`);
+      toast.success('Branch updated successfully.');
       cancelEditBranch();
       await loadBranches(courseId);
       await fetchCourses({ silent: true });

@@ -71,17 +71,19 @@ const upsertStudentSectionRecord = async (connection, {
   studentId,
   branchId,
   batch,
-  sectionName
+  sectionName,
+  isManual = 0
 }) => {
   await connection.query(
-    `INSERT INTO student_sections (student_id, branch_id, batch, section_name)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO student_sections (student_id, branch_id, batch, section_name, is_manual)
+     VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        branch_id = VALUES(branch_id),
        batch = VALUES(batch),
        section_name = VALUES(section_name),
+       is_manual = VALUES(is_manual),
        updated_at = CURRENT_TIMESTAMP`,
-    [studentId, branchId, normalizeBatch(batch), sectionName]
+    [studentId, branchId, normalizeBatch(batch), sectionName, isManual ? 1 : 0]
   );
 };
 
@@ -110,14 +112,28 @@ const syncStudentSectionFromData = async ({
   }
 
   await masterPool.query(
-    `INSERT INTO student_sections (student_id, branch_id, batch, section_name)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO student_sections (student_id, branch_id, batch, section_name, is_manual)
+     VALUES (?, ?, ?, ?, 1)
      ON DUPLICATE KEY UPDATE
        branch_id = VALUES(branch_id),
        batch = VALUES(batch),
        section_name = VALUES(section_name),
+       is_manual = 1,
        updated_at = CURRENT_TIMESTAMP`,
     [studentId, branchRows[0].id, normalizeBatch(batch), String(sectionName).trim()]
+  );
+
+  await masterPool.query(
+    `UPDATE students
+     SET section = ?,
+         student_data = JSON_SET(
+           COALESCE(student_data, '{}'),
+           '$.section', ?,
+           '$.Section', ?
+         ),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [String(sectionName).trim(), String(sectionName).trim(), String(sectionName).trim(), studentId]
   );
 };
 
@@ -145,7 +161,8 @@ const assignSectionsToStudents = async ({
     SELECT s.id, s.batch
     FROM students s
     LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
-    WHERE s.course = ? AND s.branch = ?`;
+    LEFT JOIN student_sections ss_manual ON ss_manual.student_id = s.id AND ss_manual.is_manual = 1
+    WHERE s.course = ? AND s.branch = ? AND ss_manual.id IS NULL`;
   const params = [courseName, branchName];
 
   if (batch !== null && batch !== undefined) {
@@ -207,14 +224,15 @@ const assignSectionsToStudents = async ({
     for (const assignment of assignments) {
       await connection.query(
         `UPDATE students
-         SET student_data = JSON_SET(
+         SET section = ?,
+             student_data = JSON_SET(
            IFNULL(student_data, '{}'),
            '$.section', ?,
            '$.Section', ?
          ),
          updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [assignment.sectionName, assignment.sectionName, assignment.studentId]
+        [assignment.sectionName, assignment.sectionName, assignment.sectionName, assignment.studentId]
       );
 
       if (branchId) {
@@ -222,7 +240,8 @@ const assignSectionsToStudents = async ({
           studentId: assignment.studentId,
           branchId,
           batch: assignment.studentBatch,
-          sectionName: assignment.sectionName
+          sectionName: assignment.sectionName,
+          isManual: 0
         });
       }
     }
@@ -354,10 +373,103 @@ const reassignSectionsForStudentBranch = async (courseName, branchName, batch = 
   return assignSectionsForBranchId(branchRows[0].id, { batch });
 };
 
+const clearStudentSection = async (studentId) => {
+  if (!studentId) return;
+
+  await masterPool.query('DELETE FROM student_sections WHERE student_id = ?', [studentId]);
+  await masterPool.query(
+    `UPDATE students
+     SET section = NULL,
+         student_data = JSON_REMOVE(
+       JSON_REMOVE(COALESCE(student_data, '{}'), '$.section'),
+       '$.Section'
+     ),
+     updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [studentId]
+  );
+};
+
+const getBranchIdForCourseBranch = async (courseName, branchName) => {
+  const [branchRows] = await masterPool.query(
+    `SELECT cb.id
+     FROM course_branches cb
+     JOIN courses c ON cb.course_id = c.id
+     WHERE c.name = ? AND cb.name = ? AND c.is_active = 1 AND cb.is_active = 1
+     LIMIT 1`,
+    [courseName, branchName]
+  );
+  return branchRows.length > 0 ? branchRows[0].id : null;
+};
+
+/** Persist section to students.section, student_data JSON, and student_sections (manual partition save). */
+const applyStudentSectionValue = async ({
+  studentId,
+  courseName,
+  branchName,
+  batch,
+  sectionName
+}) => {
+  if (!studentId || !courseName || !branchName) {
+    return;
+  }
+
+  const branchId = await getBranchIdForCourseBranch(courseName, branchName);
+  if (!branchId) {
+    return;
+  }
+
+  const normalized =
+    sectionName === null || sectionName === undefined
+      ? ''
+      : String(sectionName).trim();
+
+  if (normalized) {
+    await masterPool.query(
+      `UPDATE students
+       SET section = ?,
+           student_data = JSON_SET(
+         COALESCE(student_data, '{}'),
+         '$.section', ?,
+         '$.Section', ?
+       ),
+       updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [normalized, normalized, normalized, studentId]
+    );
+  } else {
+    await masterPool.query(
+      `UPDATE students
+       SET section = NULL,
+           student_data = JSON_REMOVE(
+         JSON_REMOVE(COALESCE(student_data, '{}'), '$.section'),
+         '$.Section'
+       ),
+       updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [studentId]
+    );
+  }
+
+  await masterPool.query(
+    `INSERT INTO student_sections (student_id, branch_id, batch, section_name, is_manual)
+     VALUES (?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       branch_id = VALUES(branch_id),
+       batch = VALUES(batch),
+       section_name = VALUES(section_name),
+       is_manual = 1,
+       updated_at = CURRENT_TIMESTAMP`,
+    [studentId, branchId, normalizeBatch(batch), normalized]
+  );
+};
+
 module.exports = {
   assignSectionsToStudents,
   assignSectionsForBranchId,
   reassignSectionsForStudentBranch,
   syncStudentSectionFromData,
+  clearStudentSection,
+  applyStudentSectionValue,
   getDistinctBatchesForBranch
 };

@@ -30,6 +30,7 @@ import CollegeTransfer from './pages/CollegeTransfer';
 import TaskManagement from './pages/TaskManagement';
 import Announcements from './pages/Announcements';
 import StudentHistory from './pages/StudentHistory';
+import SectionPartition from './pages/SectionPartition';
 import ServicesConfig from './pages/ServicesConfig';
 import ServiceRequests from './pages/ServiceRequests';
 import CertificateDesigner from './pages/admin/CertificateDesigner';
@@ -213,6 +214,8 @@ function App() {
           <Route path="students/add" element={<AddStudent />} />
           <Route path="students/self-registration" element={<Submissions />} />
           <Route path="students/profile-change-requests" element={<ProfileChangeRequests />} />
+          <Route path="section-partition" element={<SectionPartition />} />
+          <Route path="students/section-partition" element={<Navigate to="/section-partition" replace />} />
           <Route path="promotions" element={<StudentPromotions />} />
           <Route path="college-transfer" element={<CollegeTransfer />} />
           <Route path="courses" element={<Settings />} />

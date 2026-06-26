@@ -1,10 +1,31 @@
 const { masterPool } = require('../config/database');
 
-const resolveStudentSectionSql = (alias = 'students') => `COALESCE(
-  (SELECT ss.section_name FROM student_sections ss WHERE ss.student_id = ${alias}.id LIMIT 1),
-  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.section'))), ''),
-  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.Section'))), '')
-)`;
+const SECTION_COLLATE = 'utf8mb4_unicode_ci';
+
+const collatedSectionExpr = (expr) =>
+  `NULLIF(TRIM(CAST(${expr} AS CHAR CHARACTER SET utf8mb4) COLLATE ${SECTION_COLLATE}), '' COLLATE ${SECTION_COLLATE})`;
+
+/** Canonical section value: students.section column only (entire application). */
+const resolveStudentSectionSql = (alias = 'students') =>
+  collatedSectionExpr(`${alias}.section`);
+
+/** @deprecated Use resolveStudentSectionSql — same source (students.section). */
+const resolveManualStudentSectionSql = resolveStudentSectionSql;
+
+const resolveStudentPinSql = (alias = 'students') => `NULLIF(TRIM(COALESCE(
+  NULLIF(TRIM(${alias}.pin_no), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.pin_no'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$."Pin Number"'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.pin_number'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.PIN'))), '')
+)), '')`;
+
+const resolveStudentNameSql = (alias = 'students') => `NULLIF(TRIM(COALESCE(
+  NULLIF(TRIM(${alias}.student_name), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.student_name'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$."Student Name"'))), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(${alias}.student_data, '$.name'))), '')
+)), '')`;
 
 const parseBranchMetadata = (metadata) => {
   if (!metadata) return null;
@@ -74,125 +95,59 @@ const getConfiguredSectionsForBranch = async ({ course, branch } = {}) => {
   return { courseName: null, configuredSections: [] };
 };
 
-const fetchSectionFilterOptions = async ({ course, branch, batch, year, semester, college } = {}) => {
-  if (!branch) {
-    return [];
+/** Distinct section values from students.section only. */
+const fetchStudentTableSectionOptions = async ({ course, branch, batch, year, semester, college } = {}) => {
+  const studentParams = [];
+  let studentWhere = 'WHERE section IS NOT NULL AND TRIM(section) <> \'\'';
+
+  if (branch) {
+    studentWhere += ' AND branch = ?';
+    studentParams.push(branch);
+  }
+  if (course) {
+    studentWhere += ' AND course = ?';
+    studentParams.push(course);
+  }
+  if (college) {
+    studentWhere += ' AND college = ?';
+    studentParams.push(college);
+  }
+  if (batch) {
+    studentWhere += ' AND batch = ?';
+    studentParams.push(batch);
+  }
+  if (year) {
+    studentWhere += ' AND current_year = ?';
+    studentParams.push(parseInt(year, 10));
+  }
+  if (semester) {
+    studentWhere += ' AND current_semester = ?';
+    studentParams.push(parseInt(semester, 10));
   }
 
   try {
-    const { courseName, configuredSections } = await getConfiguredSectionsForBranch({ course, branch });
-    if (configuredSections.length === 0) {
-      return [];
-    }
-
-    const studentParams = [];
-    let studentWhere = 'WHERE s.branch = ?';
-    studentParams.push(branch);
-
-    if (course) {
-      studentWhere += ' AND s.course = ?';
-      studentParams.push(course);
-    } else if (courseName) {
-      studentWhere += ' AND s.course = ?';
-      studentParams.push(courseName);
-    }
-
-    if (college) {
-      studentWhere += ' AND s.college = ?';
-      studentParams.push(college);
-    }
-    if (batch) {
-      studentWhere += ' AND s.batch = ?';
-      studentParams.push(batch);
-    }
-    if (year) {
-      studentWhere += ' AND s.current_year = ?';
-      studentParams.push(parseInt(year, 10));
-    }
-    if (semester) {
-      studentWhere += ' AND s.current_semester = ?';
-      studentParams.push(parseInt(semester, 10));
-    }
-
-    const [assignedRows] = await masterPool.query(
-      `SELECT DISTINCT ss.section_name AS section
-       FROM student_sections ss
-       INNER JOIN students s ON s.id = ss.student_id
+    const [rows] = await masterPool.query(
+      `SELECT DISTINCT TRIM(section) AS section
+       FROM students
        ${studentWhere}
-       ORDER BY ss.section_name ASC`,
+       ORDER BY section ASC`,
       studentParams
     );
-
-    let assignedSections = assignedRows.map((row) => row.section).filter(Boolean);
-
-    if (assignedSections.length === 0) {
-      let jsonWhere = `
-        WHERE branch = ?
-          AND (
-            (JSON_EXTRACT(student_data, '$.section') IS NOT NULL
-              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))) <> '')
-            OR (JSON_EXTRACT(student_data, '$.Section') IS NOT NULL
-              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))) <> '')
-          )`;
-      const jsonParams = [branch];
-
-      if (course) {
-        jsonWhere += ' AND course = ?';
-        jsonParams.push(course);
-      } else if (courseName) {
-        jsonWhere += ' AND course = ?';
-        jsonParams.push(courseName);
-      }
-      if (college) {
-        jsonWhere += ' AND college = ?';
-        jsonParams.push(college);
-      }
-      if (batch) {
-        jsonWhere += ' AND batch = ?';
-        jsonParams.push(batch);
-      }
-      if (year) {
-        jsonWhere += ' AND current_year = ?';
-        jsonParams.push(parseInt(year, 10));
-      }
-      if (semester) {
-        jsonWhere += ' AND current_semester = ?';
-        jsonParams.push(parseInt(semester, 10));
-      }
-
-      const [jsonRows] = await masterPool.query(
-        `SELECT DISTINCT COALESCE(
-           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.section'))), ''),
-           NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(student_data, '$.Section'))), '')
-         ) AS section
-         FROM students
-         ${jsonWhere}
-         ORDER BY section ASC`,
-        jsonParams
-      );
-      assignedSections = jsonRows.map((row) => row.section).filter(Boolean);
-    }
-
-    if (assignedSections.length === 0) {
-      if (batch || year || semester || college) {
-        return [];
-      }
-      return configuredSections;
-    }
-
-    const assignedSet = new Set(assignedSections);
-    const orderedConfigured = configuredSections.filter((name) => assignedSet.has(name));
-    const extras = assignedSections.filter((name) => !configuredSections.includes(name));
-
-    return [...orderedConfigured, ...extras];
+    return rows.map((row) => row.section).filter(Boolean);
   } catch (error) {
-    console.warn('Failed to fetch section filter options:', error);
+    console.warn('Failed to fetch student table section options:', error);
     return [];
   }
 };
 
+const fetchSectionFilterOptions = async (filters = {}) => fetchStudentTableSectionOptions(filters);
+
 module.exports = {
   resolveStudentSectionSql,
+  resolveManualStudentSectionSql,
+  resolveStudentPinSql,
+  resolveStudentNameSql,
   fetchSectionFilterOptions,
+  fetchStudentTableSectionOptions,
   getConfiguredSectionsForBranch
 };

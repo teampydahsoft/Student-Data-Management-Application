@@ -37,6 +37,7 @@ import {
   UserPlus,
   Clock,
   UserSquare,
+  LayoutGrid,
   MessageSquare,
   PieChart,
   Tag,
@@ -89,6 +90,12 @@ const NAV_ITEMS = [
         icon: ClipboardList,
         permission: FRONTEND_MODULES.STUDENTS,
         action: 'edit_student'
+      },
+      {
+        path: "/section-partition",
+        label: "Section Partition",
+        icon: LayoutGrid,
+        permission: FRONTEND_MODULES.SECTION_PARTITION,
       },
       {
         path: "/promotions",

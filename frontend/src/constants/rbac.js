@@ -10,6 +10,7 @@ export const BACKEND_MODULES = {
   PRE_REGISTRATION: 'pre_registration',
   STUDENT_MANAGEMENT: 'student_management',
   PROMOTIONS: 'promotions',
+  SECTION_PARTITION: 'section_partition',
   ATTENDANCE: 'attendance',
   FEE_MANAGEMENT: 'fee_management',
   SETTINGS: 'settings',
@@ -59,6 +60,13 @@ export const MODULE_PERMISSIONS = {
     labels: {
       view: 'View Promotions',
       manage: 'Manage Promotions'
+    }
+  },
+  [BACKEND_MODULES.SECTION_PARTITION]: {
+    permissions: ['view', 'manage'],
+    labels: {
+      view: 'View Section Partition',
+      manage: 'Manage Section Partition'
     }
   },
   [BACKEND_MODULES.ATTENDANCE]: {
@@ -159,6 +167,7 @@ export const MODULE_LABELS = {
   [BACKEND_MODULES.PRE_REGISTRATION]: 'Self Registration',
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: 'Student Management',
   [BACKEND_MODULES.PROMOTIONS]: 'Promotions',
+  [BACKEND_MODULES.SECTION_PARTITION]: 'Section Partition',
   [BACKEND_MODULES.ATTENDANCE]: 'Attendance',
   [BACKEND_MODULES.SETTINGS]: 'Settings',
   [BACKEND_MODULES.USER_MANAGEMENT]: 'User Management',
@@ -176,6 +185,7 @@ export const FRONTEND_MODULES = {
   SUBMISSIONS: 'submissions',
   STUDENTS: 'students',
   PROMOTIONS: 'promotions',
+  SECTION_PARTITION: 'section_partition',
   ATTENDANCE: 'attendance',
   FEES: 'fees',
   COURSES: 'courses',
@@ -195,6 +205,7 @@ export const FRONTEND_TO_BACKEND_MAP = {
   [FRONTEND_MODULES.SUBMISSIONS]: [BACKEND_MODULES.PRE_REGISTRATION],
   [FRONTEND_MODULES.STUDENTS]: [BACKEND_MODULES.STUDENT_MANAGEMENT],
   [FRONTEND_MODULES.PROMOTIONS]: [BACKEND_MODULES.PROMOTIONS],
+  [FRONTEND_MODULES.SECTION_PARTITION]: [BACKEND_MODULES.SECTION_PARTITION],
   [FRONTEND_MODULES.ATTENDANCE]: [BACKEND_MODULES.ATTENDANCE],
   [FRONTEND_MODULES.FEES]: [BACKEND_MODULES.FEE_MANAGEMENT],
   [FRONTEND_MODULES.COURSES]: [BACKEND_MODULES.SETTINGS],
@@ -213,6 +224,7 @@ export const BACKEND_TO_FRONTEND_MAP = {
   [BACKEND_MODULES.PRE_REGISTRATION]: [FRONTEND_MODULES.FORMS, FRONTEND_MODULES.SUBMISSIONS],
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: FRONTEND_MODULES.STUDENTS,
   [BACKEND_MODULES.PROMOTIONS]: FRONTEND_MODULES.PROMOTIONS,
+  [BACKEND_MODULES.SECTION_PARTITION]: FRONTEND_MODULES.SECTION_PARTITION,
   [BACKEND_MODULES.ATTENDANCE]: FRONTEND_MODULES.ATTENDANCE,
   [BACKEND_MODULES.FEE_MANAGEMENT]: FRONTEND_MODULES.FEES,
   [BACKEND_MODULES.SETTINGS]: FRONTEND_MODULES.COURSES,
@@ -230,6 +242,7 @@ export const MODULE_ROUTE_MAP = {
   [FRONTEND_MODULES.SUBMISSIONS]: '/students/self-registration',
   [FRONTEND_MODULES.STUDENTS]: '/students',
   [FRONTEND_MODULES.PROMOTIONS]: '/promotions',
+  [FRONTEND_MODULES.SECTION_PARTITION]: '/section-partition',
   [FRONTEND_MODULES.ATTENDANCE]: '/attendance',
   [FRONTEND_MODULES.FEES]: '/fees',
   [FRONTEND_MODULES.COURSES]: '/courses',
@@ -248,6 +261,9 @@ export const getModuleKeyForPath = (path = '/') => {
   if (path === '/' || path.startsWith('/dashboard')) return FRONTEND_MODULES.DASHBOARD;
   if (path.startsWith('/forms')) return FRONTEND_MODULES.FORMS;
   if (path.startsWith('/students/self-registration')) return FRONTEND_MODULES.SUBMISSIONS;
+  if (path.startsWith('/students/section-partition') || path.startsWith('/section-partition')) {
+    return FRONTEND_MODULES.SECTION_PARTITION;
+  }
   if (path.startsWith('/students')) return FRONTEND_MODULES.STUDENTS;
   if (path.startsWith('/promotions')) return FRONTEND_MODULES.PROMOTIONS;
   if (path.startsWith('/attendance')) return FRONTEND_MODULES.ATTENDANCE;

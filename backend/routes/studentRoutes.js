@@ -91,6 +91,22 @@ router.get(
   studentController.getBatchAcademicStatus
 );
 
+router.get(
+  '/section-partition',
+  authMiddleware,
+  verifyPermission(MODULES.SECTION_PARTITION, 'view'),
+  attachUserScope,
+  studentController.getSectionPartitionStudents
+);
+
+router.post(
+  '/section-partition/save',
+  authMiddleware,
+  verifyPermission(MODULES.SECTION_PARTITION, 'manage'),
+  attachUserScope,
+  studentController.bulkSaveSectionPartition
+);
+
 router.use('/reports', require('./reports'));
 
 router.get(
@@ -194,6 +210,13 @@ router.put(
   verifyPermission(MODULES.STUDENT_MANAGEMENT, 'update_pin'),
   attachUserScope,
   studentController.updatePinNumber
+);
+router.patch(
+  '/:admissionNumber/section',
+  authMiddleware,
+  verifyPermission(MODULES.SECTION_PARTITION, 'manage'),
+  attachUserScope,
+  studentController.updateStudentSection
 );
 router.get(
   '/:admissionNumber/password',

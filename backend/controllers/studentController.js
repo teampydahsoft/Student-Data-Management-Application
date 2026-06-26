@@ -15,17 +15,43 @@ const {
 } = require('../services/academicProgression');
 const sectionAssignmentService = require('../services/sectionAssignmentService');
 
-// Section assignment is per batch: each batch gets its own A/B/C/D split (strength limits apply within the batch).
-const maybeReassignBranchSections = async (course, branch, batch = null) => {
-  if (!course || !branch) return;
+// Sections are assigned manually via Section Partition — no auto-assignment on student changes.
+const maybeSyncManualStudentSection = async ({
+  studentId,
+  course,
+  branch,
+  batch,
+  studentRecord,
+  incomingStudentData,
+  mutableStudentData
+}) => {
+  const manualSection =
+    studentRecord?.section ||
+    incomingStudentData?.section ||
+    mutableStudentData?.section;
+  if (!studentId || !course || !branch || !manualSection) {
+    return;
+  }
   try {
-    await sectionAssignmentService.reassignSectionsForStudentBranch(course, branch, batch);
+    await sectionAssignmentService.syncStudentSectionFromData({
+      studentId,
+      courseName: course,
+      branchName: branch,
+      batch,
+      sectionName: manualSection
+    });
   } catch (error) {
-    console.error('Auto section assignment failed:', error);
+    console.error('Manual section sync failed:', error);
   }
 };
 
-const { resolveStudentSectionSql, fetchSectionFilterOptions } = require('../services/sectionFilterService');
+const {
+  resolveStudentSectionSql,
+  fetchStudentTableSectionOptions,
+  getConfiguredSectionsForBranch,
+  resolveStudentPinSql,
+  resolveStudentNameSql
+} = require('../services/sectionFilterService');
 const { buildStudentSearchCondition } = require('../services/rollNumberService');
 const { getScopeConditionString } = require('../utils/scoping');
 const { otpCache } = require('../services/cache'); // Import otpCache
@@ -2452,7 +2478,7 @@ exports.getAllStudents = async (req, res) => {
       SELECT 
         id, admission_number, admission_no, pin_no, student_name, student_data, 
         fee_status, registration_status, student_mobile, parent_mobile1, parent_mobile2, created_at, 
-        student_status, course, branch, current_year, current_semester, batch, 
+        student_status, course, branch, section, current_year, current_semester, batch,
         certificates_status, student_address, city_village, mandal_name, district, 
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
         previous_college, remarks, college, caste,
@@ -2538,7 +2564,7 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (normalizedFilterSection && normalizedFilterBranch) {
-      query += ` AND ${resolveStudentSectionSql()} = ?`;
+      query += ` AND ${resolveStudentSectionSql('students')} = ?`;
       params.push(normalizedFilterSection);
     }
 
@@ -2682,7 +2708,7 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (normalizedFilterSection && normalizedFilterBranch) {
-      countQuery += ` AND ${resolveStudentSectionSql()} = ?`;
+      countQuery += ` AND ${resolveStudentSectionSql('students')} = ?`;
       countParams.push(normalizedFilterSection);
     }
 
@@ -2821,6 +2847,7 @@ exports.getAllStudents = async (req, res) => {
         dob: sanitizeCellValue(student.dob),
         admission_date: sanitizeCellValue(student.admission_date),
         student_data: parsedData,
+        section: student.section && String(student.section).trim() ? String(student.section).trim() : null,
         fee_status: resolvedFeeStatus,
         registration_status: resolvedRegistrationStatus,
         scholar_status: normalizedScholarStatus,
@@ -2912,6 +2939,9 @@ exports.getStudentByAdmission = async (req, res) => {
       current_year: stage.year,
       current_semester: stage.semester,
       student_data: parsedData,
+      section: students[0].section && String(students[0].section).trim()
+        ? String(students[0].section).trim()
+        : null,
       // Ensure top-level fee/registration statuses are available even if columns are empty
       dob: sanitizeCellValue(students[0].dob),
       admission_date: sanitizeCellValue(students[0].admission_date),
@@ -3502,33 +3532,14 @@ exports.updateStudent = async (req, res) => {
     const finalCourse = auditChanges.course?.to ?? existingStudent.course;
     const finalBranch = auditChanges.branch?.to ?? existingStudent.branch;
     const finalBatch = auditChanges.batch?.to ?? existingStudent.batch;
-    const shouldReassignSections = ['course', 'branch', 'batch', 'pin_no'].some((key) => key in auditChanges);
-    if (shouldReassignSections && finalCourse && finalBranch) {
-      if (('course' in auditChanges || 'branch' in auditChanges || 'batch' in auditChanges) &&
-        existingStudent.course && existingStudent.branch) {
-        await maybeReassignBranchSections(
-          existingStudent.course,
-          existingStudent.branch,
-          existingStudent.batch
-        );
-      }
-      await maybeReassignBranchSections(finalCourse, finalBranch, finalBatch);
-    } else {
-      const manualSection =
-        incomingStudentData.section ||
-        incomingStudentData.Section ||
-        mutableStudentData.section ||
-        mutableStudentData.Section;
-      if (manualSection) {
-        await sectionAssignmentService.syncStudentSectionFromData({
-          studentId: existingStudent.id,
-          courseName: finalCourse,
-          branchName: finalBranch,
-          batch: finalBatch,
-          sectionName: manualSection
-        });
-      }
-    }
+    await maybeSyncManualStudentSection({
+      studentId: existingStudent.id,
+      course: finalCourse,
+      branch: finalBranch,
+      batch: finalBatch,
+      incomingStudentData,
+      mutableStudentData
+    });
 
     res.json({
       success: true,
@@ -3618,18 +3629,6 @@ exports.updatePinNumber = async (req, res) => {
     });
 
     clearStudentsCache();
-
-    const [studentRow] = await masterPool.query(
-      'SELECT course, branch, batch FROM students WHERE admission_number = ? LIMIT 1',
-      [admissionNumber]
-    );
-    if (studentRow.length > 0) {
-      await maybeReassignBranchSections(
-        studentRow[0].course,
-        studentRow[0].branch,
-        studentRow[0].batch
-      );
-    }
 
     console.log('[PIN UPDATE] ✅ SUCCESS - PIN updated to:', pinNumber);
 
@@ -4403,12 +4402,6 @@ exports.createStudent = async (req, res) => {
     }
 
     clearStudentsCache();
-
-    await maybeReassignBranchSections(
-      createdStudent.course,
-      createdStudent.branch,
-      createdStudent.batch
-    );
 
     res.status(201).json({
       success: true,
@@ -5298,7 +5291,7 @@ exports.getQuickFilterOptions = async (req, res) => {
         semesters: semesterRows.map((row) => row.currentSemester),
         courses: courseRows.map((row) => row.course),
         branches: branchRows.map((row) => row.branch),
-        sections: await fetchSectionFilterOptions({ course, branch, batch, year, semester, college })
+        sections: await fetchStudentTableSectionOptions({ course, branch, batch, year, semester, college })
       }
     });
   } catch (error) {
@@ -8196,6 +8189,316 @@ exports.bulkTransferStudents = async (req, res) => {
   } catch (error) {
     console.error('Bulk transfer error:', error);
     res.status(500).json({ success: false, message: 'Internal server error during transfer' });
+  }
+};
+
+exports.getSectionPartitionStudents = async (req, res) => {
+  try {
+    const { college, course, branch, batch, limit = 25, offset = 0 } = req.query;
+
+    const normalizedCollege = typeof college === 'string' && college.trim() ? college.trim() : null;
+    const normalizedCourse = typeof course === 'string' && course.trim() ? course.trim() : null;
+    const normalizedBranch = typeof branch === 'string' && branch.trim() ? branch.trim() : null;
+    const normalizedBatch = typeof batch === 'string' && batch.trim() ? batch.trim() : null;
+
+    if (!normalizedCollege || !normalizedCourse || !normalizedBranch || !normalizedBatch) {
+      return res.status(400).json({
+        success: false,
+        message: 'College, course, branch, and batch are required'
+      });
+    }
+
+    const { configuredSections } = await getConfiguredSectionsForBranch({
+      course: normalizedCourse,
+      branch: normalizedBranch
+    });
+
+    if (!configuredSections.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Section breakdown is not enabled for this branch'
+      });
+    }
+
+    const pageSize = Math.max(1, Math.min(parseInt(limit, 10) || 50, 200));
+    const pageOffset = Math.max(0, parseInt(offset, 10) || 0);
+
+    let scopeCondition = null;
+    let scopeParams = [];
+    if (req.userScope) {
+      const scope = getScopeConditionString(req.userScope, 's');
+      scopeCondition = scope.scopeCondition;
+      scopeParams = scope.params;
+    }
+
+    let whereClause = "WHERE s.college = ? AND s.course = ? AND s.branch = ? AND s.batch = ? AND s.student_status = 'Regular'";
+    const params = [normalizedCollege, normalizedCourse, normalizedBranch, normalizedBatch];
+
+    if (scopeCondition) {
+      whereClause += ` AND ${scopeCondition}`;
+      params.push(...scopeParams);
+    }
+
+    const sectionSql = resolveStudentSectionSql('s');
+    const pinSql = resolveStudentPinSql('s');
+    const nameSql = resolveStudentNameSql('s');
+
+    const [countRows] = await masterPool.query(
+      `SELECT COUNT(*) AS total FROM students s ${whereClause}`,
+      params
+    );
+    const total = countRows[0]?.total || 0;
+
+    const [rows] = await masterPool.query(
+      `SELECT
+         s.id,
+         s.admission_number,
+         s.batch,
+         s.course,
+         s.branch,
+         s.college,
+         ${pinSql} AS resolved_pin,
+         ${nameSql} AS student_name,
+         ${sectionSql} AS section
+       FROM students s
+       ${whereClause}
+       ORDER BY
+         CASE WHEN ${pinSql} IS NOT NULL AND ${pinSql} REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,
+         CASE WHEN ${pinSql} IS NOT NULL AND ${pinSql} REGEXP '^[0-9]+$' THEN CAST(${pinSql} AS UNSIGNED) END ASC,
+         ${pinSql} ASC,
+         s.admission_number ASC
+       LIMIT ? OFFSET ?`,
+      [...params, pageSize, pageOffset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        students: rows.map((row) => ({
+          id: row.id,
+          admissionNumber: row.admission_number,
+          batch: row.batch,
+          pinNo: row.resolved_pin || null,
+          studentName: row.student_name || null,
+          course: row.course,
+          branch: row.branch,
+          college: row.college,
+          section: row.section || null
+        })),
+        sections: configuredSections,
+        pagination: {
+          total,
+          limit: pageSize,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+          totalPages: Math.ceil(total / pageSize) || 1
+        }
+      }
+    });
+  } catch (error) {
+    console.error('getSectionPartitionStudents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch section partition students'
+    });
+  }
+};
+
+exports.updateStudentSection = async (req, res) => {
+  try {
+    const { admissionNumber } = req.params;
+    const { section } = req.body;
+
+    if (!admissionNumber) {
+      return res.status(400).json({ success: false, message: 'Admission number is required' });
+    }
+
+    const normalizedSection =
+      section === null || section === undefined || String(section).trim() === ''
+        ? null
+        : String(section).trim();
+
+    let scopeClause = '';
+    const scopeParams = [];
+    if (req.userScope) {
+      const { scopeCondition, params } = getScopeConditionString(req.userScope, 'students');
+      if (scopeCondition) {
+        scopeClause = ` AND ${scopeCondition}`;
+        scopeParams.push(...params);
+      }
+    }
+
+    const [studentRows] = await masterPool.query(
+      `SELECT id, course, branch, batch, college FROM students WHERE admission_number = ?${scopeClause} LIMIT 1`,
+      [admissionNumber, ...scopeParams]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const student = studentRows[0];
+    const { configuredSections } = await getConfiguredSectionsForBranch({
+      course: student.course,
+      branch: student.branch
+    });
+
+    if (!configuredSections.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Section breakdown is not enabled for this student branch'
+      });
+    }
+
+    if (normalizedSection && !configuredSections.includes(normalizedSection)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid section. Allowed: ${configuredSections.join(', ')}`
+      });
+    }
+
+    if (normalizedSection) {
+      await sectionAssignmentService.applyStudentSectionValue({
+        studentId: student.id,
+        courseName: student.course,
+        branchName: student.branch,
+        batch: student.batch,
+        sectionName: normalizedSection
+      });
+    } else {
+      await sectionAssignmentService.applyStudentSectionValue({
+        studentId: student.id,
+        courseName: student.course,
+        branchName: student.branch,
+        batch: student.batch,
+        sectionName: ''
+      });
+    }
+
+    clearStudentsCache();
+
+    await writeAuditLog(masterPool, {
+      actionType: 'UPDATE',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      actor: req.user || req.admin,
+      details: {
+        field: 'section',
+        from: null,
+        to: normalizedSection
+      }
+    });
+
+    res.json({
+      success: true,
+      message: normalizedSection ? 'Section updated successfully' : 'Section cleared successfully',
+      data: { section: normalizedSection }
+    });
+  } catch (error) {
+    console.error('updateStudentSection error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update student section'
+    });
+  }
+};
+
+exports.bulkSaveSectionPartition = async (req, res) => {
+  try {
+    const { assignments } = req.body;
+
+    if (!Array.isArray(assignments) || assignments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one section assignment is required'
+      });
+    }
+
+    let scopeClause = '';
+    const scopeParams = [];
+    if (req.userScope) {
+      const { scopeCondition, params } = getScopeConditionString(req.userScope, 'students');
+      if (scopeCondition) {
+        scopeClause = ` AND ${scopeCondition}`;
+        scopeParams.push(...params);
+      }
+    }
+
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (const item of assignments) {
+      const admissionNumber = item?.admissionNumber || item?.admission_number;
+      if (!admissionNumber) {
+        results.failed += 1;
+        results.errors.push({ admissionNumber: null, message: 'Missing admission number' });
+        continue;
+      }
+
+      const normalizedSection =
+        item.section === null || item.section === undefined || String(item.section).trim() === ''
+          ? ''
+          : String(item.section).trim();
+
+      try {
+        const [studentRows] = await masterPool.query(
+          `SELECT id, course, branch, batch FROM students WHERE admission_number = ?${scopeClause} LIMIT 1`,
+          [admissionNumber, ...scopeParams]
+        );
+
+        if (studentRows.length === 0) {
+          results.failed += 1;
+          results.errors.push({ admissionNumber, message: 'Student not found' });
+          continue;
+        }
+
+        const student = studentRows[0];
+        const { configuredSections } = await getConfiguredSectionsForBranch({
+          course: student.course,
+          branch: student.branch
+        });
+
+        if (!configuredSections.length) {
+          results.failed += 1;
+          results.errors.push({ admissionNumber, message: 'Section breakdown not enabled for branch' });
+          continue;
+        }
+
+        if (normalizedSection && !configuredSections.includes(normalizedSection)) {
+          results.failed += 1;
+          results.errors.push({ admissionNumber, message: `Invalid section: ${normalizedSection}` });
+          continue;
+        }
+
+        await sectionAssignmentService.applyStudentSectionValue({
+          studentId: student.id,
+          courseName: student.course,
+          branchName: student.branch,
+          batch: student.batch,
+          sectionName: normalizedSection
+        });
+
+        results.success += 1;
+      } catch (itemError) {
+        results.failed += 1;
+        results.errors.push({ admissionNumber, message: itemError.message || 'Update failed' });
+      }
+    }
+
+    if (results.success > 0) {
+      clearStudentsCache();
+    }
+
+    res.json({
+      success: results.failed === 0,
+      message: `Saved ${results.success} section assignment(s)${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
+      data: results
+    });
+  } catch (error) {
+    console.error('bulkSaveSectionPartition error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save section assignments'
+    });
   }
 };
 

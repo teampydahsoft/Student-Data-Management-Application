@@ -15,6 +15,11 @@ const AVAILABLE_OPERATIONS = [
     description: 'Promote students in bulk across academic stages.'
   },
   {
+    key: 'section_partition',
+    label: 'Section Partition',
+    description: 'Assign students to sections within a branch and batch.'
+  },
+  {
     key: 'attendance',
     label: 'Attendance',
     description: 'Mark daily attendance and review student attendance history.'

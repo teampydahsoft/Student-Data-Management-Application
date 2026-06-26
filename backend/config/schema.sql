@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS students (
   batch VARCHAR(50),
   course VARCHAR(100),
   branch VARCHAR(100),
+  section VARCHAR(100),
   stud_type VARCHAR(50),
   student_name VARCHAR(255) NOT NULL,
   student_status VARCHAR(50),
