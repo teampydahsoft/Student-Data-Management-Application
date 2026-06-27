@@ -1,5 +1,15 @@
 const { masterPool } = require('../config/database');
 const { validationResult } = require('express-validator');
+const {
+    getISTDateString,
+    parseTimeToMinutes,
+    formatMinutesToHHMM,
+    normalizeTimeHHMM,
+    getISTTimeMinutes,
+    getISTTimeHHMM,
+    isMinutesWithinRange,
+    IST_OFFSET_MS,
+} = require('../utils/dateUtils');
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -17,16 +27,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
     return R * c; // Distance in meters
 };
 
-// IST Timezone Helpers (India Standard Time: UTC+5:30)
-// Always derived from UTC epoch + fixed IST offset.
-// Do NOT use getTimezoneOffset() — the server TZ (Asia/Kolkata) makes it -330,
-// which cancels the offset and returns UTC instead of IST.
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const MARKING_WINDOW_MINUTES = 15;
 
-const getCurrentISTTime = () => {
-    // Add IST offset to UTC epoch, then read UTC fields to get IST wall clock time
-    return new Date(Date.now() + IST_OFFSET_MS);
-};
+const getCurrentISTTime = () => new Date(Date.now() + IST_OFFSET_MS);
 
 const getCurrentISTDayShort = () => {
     const istTime = getCurrentISTTime();
@@ -34,12 +37,51 @@ const getCurrentISTDayShort = () => {
     return days[istTime.getUTCDay()];
 };
 
-const getCurrentISTDate = () => {
-    const istTime = getCurrentISTTime();
-    const year = istTime.getUTCFullYear();
-    const month = String(istTime.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(istTime.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+const getCurrentISTDate = () => getISTDateString();
+
+/** Check-in: first MARKING_WINDOW_MINUTES after allowed start (capped at end). */
+const getCheckInWindow = (startTime, endTime) => {
+    const startMinutes = parseTimeToMinutes(startTime);
+    const endMinutes = parseTimeToMinutes(endTime);
+    if (startMinutes == null || endMinutes == null) return null;
+
+    const windowEnd = Math.min(startMinutes + MARKING_WINDOW_MINUTES, endMinutes);
+    return {
+        startMinutes,
+        endMinutes: windowEnd,
+        startLabel: formatMinutesToHHMM(startMinutes),
+        endLabel: formatMinutesToHHMM(windowEnd),
+    };
+};
+
+/** Check-out: last MARKING_WINDOW_MINUTES before allowed end (capped at start). */
+const getCheckOutWindow = (startTime, endTime) => {
+    const startMinutes = parseTimeToMinutes(startTime);
+    const endMinutes = parseTimeToMinutes(endTime);
+    if (startMinutes == null || endMinutes == null) return null;
+
+    const windowStart = Math.max(endMinutes - MARKING_WINDOW_MINUTES, startMinutes);
+    return {
+        startMinutes: windowStart,
+        endMinutes,
+        startLabel: formatMinutesToHHMM(windowStart),
+        endLabel: formatMinutesToHHMM(endMinutes),
+    };
+};
+
+const buildAttendanceWindowPayload = (startTime, endTime) => {
+    const checkIn = getCheckInWindow(startTime, endTime);
+    const checkOut = getCheckOutWindow(startTime, endTime);
+    if (!checkIn || !checkOut) return null;
+
+    return {
+        allowedStartTime: normalizeTimeHHMM(startTime),
+        allowedEndTime: normalizeTimeHHMM(endTime),
+        checkInWindow: { start: checkIn.startLabel, end: checkIn.endLabel },
+        checkOutWindow: { start: checkOut.startLabel, end: checkOut.endLabel },
+        serverTimeIST: getISTTimeHHMM(),
+        serverDateIST: getCurrentISTDate(),
+    };
 };
 
 // Helper: Re-validates attendance records against a (possibly new) internship location
@@ -156,7 +198,10 @@ exports.createInternship = async (req, res) => {
             `INSERT INTO internship_locations 
             (company_name, address, latitude, longitude, radius, allowed_start_time, allowed_end_time) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [companyName, address, latitude, longitude, radius || 200, allowedStartTime, allowedEndTime]
+            [
+                companyName, address, latitude, longitude, radius || 200,
+                normalizeTimeHHMM(allowedStartTime), normalizeTimeHHMM(allowedEndTime),
+            ]
         );
 
         console.log('Internship location created with ID:', result.insertId);
@@ -182,8 +227,8 @@ exports.getInternships = async (req, res) => {
             latitude: parseFloat(loc.latitude),
             longitude: parseFloat(loc.longitude),
             radius: loc.radius,
-            allowedStartTime: loc.allowed_start_time,
-            allowedEndTime: loc.allowed_end_time,
+            allowedStartTime: normalizeTimeHHMM(loc.allowed_start_time) || loc.allowed_start_time,
+            allowedEndTime: normalizeTimeHHMM(loc.allowed_end_time) || loc.allowed_end_time,
             isActive: loc.is_active,
             createdAt: loc.created_at
         }));
@@ -208,7 +253,8 @@ exports.updateInternshipLocation = async (req, res) => {
             WHERE id = ?
         `, [
             companyName, address, latitude, longitude, radius,
-            allowedStartTime, allowedEndTime, isActive !== undefined ? isActive : 1,
+            normalizeTimeHHMM(allowedStartTime), normalizeTimeHHMM(allowedEndTime),
+            isActive !== undefined ? isActive : 1,
             id
         ]);
 
@@ -580,22 +626,16 @@ async function autoMarkAbsentees(reportDate) {
     // For past dates, consider the day as ended (use a time past allowed_end_time)
     // For today, use current IST time
     const isToday = reportDate === istToday;
-    let nowTime;
+    let nowMinutes;
     if (isToday) {
-        const istTime = getCurrentISTTime();
-        const hour = istTime.getUTCHours().toString().padStart(2, '0');
-        const minute = istTime.getUTCMinutes().toString().padStart(2, '0');
-        nowTime = `${hour}:${minute}`;
+        nowMinutes = getISTTimeMinutes();
     } else {
-        // For past dates, use a time that's guaranteed to be past allowed_end_time
-        // This will mark all unmarked students as absent for past dates
-        nowTime = '23:59';
+        nowMinutes = 23 * 60 + 59;
     }
     try {
-        const [result] = await masterPool.query(
+        const [assignments] = await masterPool.query(
             `
-            INSERT INTO internship_attendance (student_id, internship_id, attendance_date, status, created_at)
-            SELECT ia.student_id, ia.internship_id, ?, 'Absent', NOW()
+            SELECT ia.student_id, ia.internship_id, il.allowed_end_time
             FROM internship_assignments ia
             JOIN internship_locations il ON ia.internship_id = il.id
             LEFT JOIN internship_attendance att 
@@ -603,12 +643,25 @@ async function autoMarkAbsentees(reportDate) {
                 AND att.attendance_date = ?
             WHERE ia.start_date <= ? AND ia.end_date >= ?
               AND att.id IS NULL
-              AND ? > il.allowed_end_time
             `,
-            [reportDate, reportDate, reportDate, reportDate, nowTime]
+            [reportDate, reportDate, reportDate]
         );
-        if (result && result.affectedRows) {
-            console.log(`autoMarkAbsentees on ${reportDate} inserted ${result.affectedRows} records (time ${nowTime})`);
+
+        let inserted = 0;
+        for (const row of assignments) {
+            const endMinutes = parseTimeToMinutes(row.allowed_end_time);
+            if (endMinutes == null || nowMinutes <= endMinutes) continue;
+
+            await masterPool.query(
+                `INSERT INTO internship_attendance (student_id, internship_id, attendance_date, status, created_at)
+                 VALUES (?, ?, ?, 'Absent', NOW())`,
+                [row.student_id, row.internship_id, reportDate]
+            );
+            inserted++;
+        }
+
+        if (inserted > 0) {
+            console.log(`autoMarkAbsentees on ${reportDate} inserted ${inserted} records (IST minutes ${nowMinutes})`);
         }
     } catch (err) {
         console.error('Error auto-marking absentees:', err);
@@ -971,17 +1024,44 @@ exports.markAttendance = async (req, res) => {
             console.log(`Student ${studentId} is outside radius but attendance recorded as Suspicious.`);
         }
 
-        // 5. Time Check (using IST)
-        const istTime = getCurrentISTTime();
-        const currentHour = istTime.getUTCHours().toString().padStart(2, '0');
-        const currentMinute = istTime.getUTCMinutes().toString().padStart(2, '0');
-        const currentTimeStr = `${currentHour}:${currentMinute}`;
+        const [existing] = await masterPool.query(
+            'SELECT * FROM internship_attendance WHERE student_id = ? AND internship_id = ? AND attendance_date = ?',
+            [studentId, internshipId, istDate]
+        );
 
-        if (currentTimeStr < internship.allowed_start_time || currentTimeStr > internship.allowed_end_time) {
-            console.warn(`Attendance attempt outside hours: ${currentTimeStr} (IST), Allowed: ${internship.allowed_start_time} - ${internship.allowed_end_time}`);
+        const attendance = existing[0];
+        const isCheckOut = Boolean(attendance && attendance.check_in_time && !attendance.check_out_time);
+
+        // 5. Time Check (IST) — 15-minute windows at start (check-in) and end (check-out)
+        const startMinutes = parseTimeToMinutes(internship.allowed_start_time);
+        const endMinutes = parseTimeToMinutes(internship.allowed_end_time);
+        const currentMinutes = getISTTimeMinutes();
+        const currentTimeStr = getISTTimeHHMM();
+
+        if (startMinutes == null || endMinutes == null) {
+            console.warn(`Invalid attendance window for internship ${internshipId}`);
+            return res.status(500).json({ success: false, message: 'Attendance time window is not configured for this location.' });
+        }
+
+        const activeWindow = isCheckOut
+            ? getCheckOutWindow(internship.allowed_start_time, internship.allowed_end_time)
+            : getCheckInWindow(internship.allowed_start_time, internship.allowed_end_time);
+
+        if (!activeWindow || !isMinutesWithinRange(currentMinutes, activeWindow.startMinutes, activeWindow.endMinutes)) {
+            const actionLabel = isCheckOut ? 'Check-out' : 'Check-in';
+            console.warn(
+                `${actionLabel} attempt outside window: ${currentTimeStr} (IST), ` +
+                `Allowed: ${activeWindow?.startLabel} - ${activeWindow?.endLabel}`
+            );
             return res.status(400).json({
                 success: false,
-                message: `Attendance is only allowed between ${internship.allowed_start_time} and ${internship.allowed_end_time} (IST).`
+                message: `${actionLabel} is only allowed between ${activeWindow?.startLabel} and ${activeWindow?.endLabel} (IST).`,
+                window: {
+                    type: isCheckOut ? 'CHECK_OUT' : 'CHECK_IN',
+                    start: activeWindow?.startLabel,
+                    end: activeWindow?.endLabel,
+                    serverTimeIST: currentTimeStr,
+                },
             });
         }
 
@@ -1002,13 +1082,6 @@ exports.markAttendance = async (req, res) => {
                 console.warn(`Suspicious: Device fingerprint ${deviceFingerprint} used by multiple students today.`);
             }
         }
-
-        const [existing] = await masterPool.query(
-            'SELECT * FROM internship_attendance WHERE student_id = ? AND internship_id = ? AND attendance_date = ?',
-            [studentId, internshipId, istDate]
-        );
-
-        let attendance = existing[0];
 
         if (attendance) {
             // existing record already present
@@ -1139,7 +1212,7 @@ exports.getStudentStatus = async (req, res) => {
         const today = getCurrentISTDate();
 
         const [rows] = await masterPool.query(`
-            SELECT ia.*, il.company_name, il.address 
+            SELECT ia.*, il.company_name, il.address, il.allowed_start_time, il.allowed_end_time
             FROM internship_attendance ia
             JOIN internship_locations il ON ia.internship_id = il.id
             WHERE ia.student_id = ? AND ia.attendance_date = ?
@@ -1147,9 +1220,28 @@ exports.getStudentStatus = async (req, res) => {
         `, [studentId, today]);
 
         const attendance = rows[0];
+        const [assignmentRows] = await masterPool.query(`
+            SELECT ia.*, il.allowed_start_time, il.allowed_end_time, il.company_name
+            FROM internship_assignments ia
+            JOIN internship_locations il ON ia.internship_id = il.id
+            WHERE ia.student_id = ?
+              AND ? BETWEEN ia.start_date AND ia.end_date
+            ORDER BY ia.start_date DESC
+            LIMIT 1
+        `, [studentId, today]);
+
+        const assignment = assignmentRows[0];
+        const windowSource = attendance || assignment;
+        const attendanceWindows = windowSource
+            ? buildAttendanceWindowPayload(windowSource.allowed_start_time, windowSource.allowed_end_time)
+            : null;
 
         if (!attendance) {
-            return res.json({ success: true, status: 'NOT_STARTED' });
+            return res.json({
+                success: true,
+                status: 'NOT_STARTED',
+                attendanceWindows,
+            });
         }
 
         const mappedAttendance = {
@@ -1163,14 +1255,24 @@ exports.getStudentStatus = async (req, res) => {
         };
 
         if (attendance.check_in_time && !attendance.check_out_time) {
-            return res.json({ success: true, status: 'CHECKED_IN', data: mappedAttendance });
+            return res.json({
+                success: true,
+                status: 'CHECKED_IN',
+                data: mappedAttendance,
+                attendanceWindows,
+            });
         }
 
         if (attendance.check_in_time && attendance.check_out_time) {
-            return res.json({ success: true, status: 'COMPLETED', data: mappedAttendance });
+            return res.json({
+                success: true,
+                status: 'COMPLETED',
+                data: mappedAttendance,
+                attendanceWindows,
+            });
         }
 
-        res.json({ success: true, status: 'UNKNOWN' });
+        res.json({ success: true, status: 'UNKNOWN', attendanceWindows });
 
     } catch (error) {
         console.error('Error getting student status:', error);
@@ -1181,21 +1283,33 @@ exports.getStudentStatus = async (req, res) => {
 exports.getMyAssignment = async (req, res) => {
     try {
         const studentId = req.user.id;
+        const today = getCurrentISTDate();
         const [assignments] = await masterPool.query(`
-            SELECT ia.*, il.company_name, il.address, il.latitude, il.longitude, il.radius
+            SELECT ia.*, il.company_name, il.address, il.latitude, il.longitude, il.radius,
+                   il.allowed_start_time, il.allowed_end_time
             FROM internship_assignments ia
             JOIN internship_locations il ON ia.internship_id = il.id
             WHERE ia.student_id = ?
-            AND ia.end_date >= CURDATE()
+            AND ia.end_date >= ?
             ORDER BY ia.start_date DESC
             LIMIT 1
-        `, [studentId]);
+        `, [studentId, today]);
 
         if (assignments.length === 0) {
             return res.json({ success: true, assignment: null });
         }
 
-        res.json({ success: true, assignment: assignments[0] });
+        const assignment = assignments[0];
+        const attendanceWindows = buildAttendanceWindowPayload(
+            assignment.allowed_start_time,
+            assignment.allowed_end_time
+        );
+
+        res.json({
+            success: true,
+            assignment,
+            attendanceWindows,
+        });
     } catch (error) {
         console.error('Error fetching my assignment:', error);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -1205,6 +1319,7 @@ exports.getMyAssignment = async (req, res) => {
 exports.getInternshipFilters = async (req, res) => {
     try {
         const { batch, college, course, branch, year, semester, location } = req.query;
+        const today = getCurrentISTDate();
 
         let query = `
             SELECT DISTINCT
@@ -1216,11 +1331,11 @@ exports.getInternshipFilters = async (req, res) => {
                 s.college
             FROM students s
             JOIN internship_assignments ia ON s.id = ia.student_id
-            WHERE ia.end_date >= CURDATE()
+            WHERE ia.end_date >= ?
             AND s.student_status = 'Regular'
         `;
 
-        const params = [];
+        const params = [today];
 
         // Apply filters dynamically for cascading
         if (location) { query += ' AND ia.internship_id = ?'; params.push(location); }
@@ -1252,11 +1367,11 @@ exports.getInternshipFilters = async (req, res) => {
                 DATE_FORMAT(MAX(ia.end_date), '%Y-%m-%d') as max_end
             FROM internship_locations il
             JOIN internship_assignments ia ON il.id = ia.internship_id
-            WHERE ia.end_date >= CURDATE()
+            WHERE ia.end_date >= ?
             AND il.is_active = 1
             GROUP BY il.id, il.company_name
             ORDER BY il.company_name
-        `);
+        `, [today]);
 
         const locations = locationRows.map(loc => ({
             id: loc.id,
@@ -1286,6 +1401,7 @@ exports.getInternshipFilters = async (req, res) => {
 exports.getEligibleStudents = async (req, res) => {
     try {
         const { batch, college, course, branch, year, semester } = req.query;
+        const today = getCurrentISTDate();
 
         // Base query for all regular students, with LEFT JOIN to find active internships
         let query = `
@@ -1302,11 +1418,11 @@ exports.getEligibleStudents = async (req, res) => {
                 ia.start_date AS current_start_date,
                 ia.end_date AS current_end_date
             FROM students s
-            LEFT JOIN internship_assignments ia ON s.id = ia.student_id AND ia.end_date >= CURDATE()
+            LEFT JOIN internship_assignments ia ON s.id = ia.student_id AND ia.end_date >= ?
             LEFT JOIN internship_locations il ON ia.internship_id = il.id
             WHERE s.student_status = 'Regular'
         `;
-        const params = [];
+        const params = [today];
 
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
         if (college) { query += ' AND s.college = ?'; params.push(college); }

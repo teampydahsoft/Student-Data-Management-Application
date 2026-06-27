@@ -7618,6 +7618,7 @@ exports.exportRegistrationReport = async (req, res) => {
         [''],
         ['Filters'],
         ['Batch', normalizedFilterBatch || 'All'],
+        ['College', normalizedFilterCollege || 'All'],
         ['Course', normalizedFilterCourse || 'All'],
         ['Branch', normalizedFilterBranch || 'All'],
         [''],
@@ -7636,16 +7637,18 @@ exports.exportRegistrationReport = async (req, res) => {
 
       processedData.forEach(student => {
         const batchKey = (student.Batch || 'Unknown').toString();
+        const collegeKey = (student.College || 'Unknown').toString();
         const courseKey = (student.Course || 'Unknown').toString();
         const branchKey = (student.Branch || 'Unknown').toString();
         const yearKey = (student.Year || '0').toString();
         const semKey = (student.Semester || '0').toString();
 
-        const uniqueKey = `${batchKey}|${courseKey}|${branchKey}|${yearKey}|${semKey}`;
+        const uniqueKey = `${batchKey}|${collegeKey}|${courseKey}|${branchKey}|${yearKey}|${semKey}`;
 
         if (!groupedData[uniqueKey]) {
           groupedData[uniqueKey] = {
             batch: batchKey,
+            college: collegeKey,
             course: courseKey,
             branch: branchKey,
             year: yearKey,
@@ -7682,6 +7685,7 @@ exports.exportRegistrationReport = async (req, res) => {
       // Convert to rows and sort
       const abstractExcelRows = Object.values(groupedData).sort((a, b) => {
         if (a.batch !== b.batch) return a.batch.localeCompare(b.batch);
+        if (a.college !== b.college) return a.college.localeCompare(b.college);
         if (a.course !== b.course) return a.course.localeCompare(b.course);
         if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
         if (a.year !== b.year) return a.year.localeCompare(b.year);
@@ -7689,9 +7693,10 @@ exports.exportRegistrationReport = async (req, res) => {
       });
 
       // Prepare Abstract Sheet Data
-      // Columns: Batch, Course, Branch, Year, Sem, Total, Overall Completed, Pending, Verify, Certs, Fees, Promo, Schol
+      // Columns: Batch, College, Course, Branch, Year, Sem, Total, Overall Completed, Pending, Verify, Certs, Fees, Promo, Schol
       const abstractSheetData = abstractExcelRows.map(row => ({
         Batch: row.batch,
+        College: row.college,
         Course: row.course,
         Branch: row.branch,
         Year: row.year,
@@ -7722,7 +7727,7 @@ exports.exportRegistrationReport = async (req, res) => {
 
       abstractSheetData.push({
         Batch: 'TOTAL',
-        Course: '', Branch: '', Year: '', Sem: '',
+        College: '', Course: '', Branch: '', Year: '', Sem: '',
         'Total Students': totals.total,
         'Overall Completed': totals.overall_completed,
         'Pending': totals.pending,

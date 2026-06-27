@@ -72,4 +72,63 @@ const parseDateString = (input) => {
   return ist.toISOString().slice(0, 10);
 };
 
-module.exports = { getISTDateString, parseDateString };
+/**
+ * Parse "H:MM", "HH:MM", or "HH:MM:SS" into minutes since midnight (0–1439).
+ * Returns null for invalid input.
+ */
+const parseTimeToMinutes = (timeStr) => {
+  if (timeStr == null || timeStr === '') return null;
+
+  const raw = String(timeStr).trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (
+    !Number.isInteger(hours) || !Number.isInteger(minutes) ||
+    hours < 0 || hours > 23 || minutes < 0 || minutes > 59
+  ) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+};
+
+/** Format minutes since midnight as "HH:MM". */
+const formatMinutesToHHMM = (totalMinutes) => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+/** Normalize any supported time string to "HH:MM". */
+const normalizeTimeHHMM = (timeStr) => {
+  const minutes = parseTimeToMinutes(timeStr);
+  return minutes == null ? null : formatMinutesToHHMM(minutes);
+};
+
+/** Current IST wall-clock time as minutes since midnight. */
+const getISTTimeMinutes = () => {
+  const ist = new Date(Date.now() + IST_OFFSET_MS);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+};
+
+/** Current IST wall-clock time as "HH:MM". */
+const getISTTimeHHMM = () => formatMinutesToHHMM(getISTTimeMinutes());
+
+/** True when value is within [startMinutes, endMinutes] (inclusive). */
+const isMinutesWithinRange = (valueMinutes, startMinutes, endMinutes) =>
+  valueMinutes >= startMinutes && valueMinutes <= endMinutes;
+
+module.exports = {
+  getISTDateString,
+  parseDateString,
+  parseTimeToMinutes,
+  formatMinutesToHHMM,
+  normalizeTimeHHMM,
+  getISTTimeMinutes,
+  getISTTimeHHMM,
+  isMinutesWithinRange,
+  IST_OFFSET_MS,
+};

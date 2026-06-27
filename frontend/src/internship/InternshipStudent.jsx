@@ -16,6 +16,33 @@ const InternshipStudent = () => {
     const [capturedImage, setCapturedImage] = useState(null);
     const [pendingLocationData, setPendingLocationData] = useState(null);
     const [showLocationModal, setShowLocationModal] = useState(false);
+    const [attendanceWindows, setAttendanceWindows] = useState(null);
+
+    const parseTimeToMinutes = (timeStr) => {
+        if (!timeStr) return null;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+        return hours * 60 + minutes;
+    };
+
+    const isWithinServerWindow = (window) => {
+        if (!window || !attendanceWindows?.serverTimeIST) return false;
+        const nowMinutes = parseTimeToMinutes(attendanceWindows.serverTimeIST);
+        const startMinutes = parseTimeToMinutes(window.start);
+        const endMinutes = parseTimeToMinutes(window.end);
+        if (nowMinutes == null || startMinutes == null || endMinutes == null) return false;
+        return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+    };
+
+    const activeMarkingWindow = status === 'CHECKED_IN'
+        ? attendanceWindows?.checkOutWindow
+        : attendanceWindows?.checkInWindow;
+
+    const canMarkAttendance = Boolean(activeMarkingWindow) && isWithinServerWindow(activeMarkingWindow);
+
+    const markingWindowMessage = activeMarkingWindow
+        ? `${status === 'CHECKED_IN' ? 'Check-out' : 'Check-in'} is allowed between ${activeMarkingWindow.start} and ${activeMarkingWindow.end} IST`
+        : null;
 
     // Initial Load
     useEffect(() => {
@@ -24,12 +51,24 @@ const InternshipStudent = () => {
         fetchMyAssignment();
     }, []);
 
+    // Refresh server IST clock every minute so the button state stays accurate
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchStatus();
+            fetchMyAssignment();
+        }, 60 * 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     const fetchMyAssignment = async () => {
         try {
             const res = await api.get('/internship/my-assignment');
             if (res.data.success && res.data.assignment) {
                 setAssignedInternship(res.data.assignment);
                 setSelectedLocation(res.data.assignment.internship_id);
+            }
+            if (res.data.attendanceWindows) {
+                setAttendanceWindows(res.data.attendanceWindows);
             }
         } catch (error) {
             console.error('Failed to fetch assignment', error);
@@ -52,6 +91,9 @@ const InternshipStudent = () => {
             const res = await api.get('/internship/status');
             if (res.data.success) {
                 setStatus(res.data.status);
+                if (res.data.attendanceWindows) {
+                    setAttendanceWindows(res.data.attendanceWindows);
+                }
                 if (res.data.data) {
                     setTodayRecord(res.data.data);
                     setSelectedLocation(res.data.data.internshipId._id);
@@ -106,6 +148,14 @@ const InternshipStudent = () => {
     const handleRequestLocation = () => {
         if (!selectedLocation && status === 'NOT_STARTED') {
             toast.error('Please select an internship location first.');
+            return;
+        }
+        if (!canMarkAttendance) {
+            toast.error(
+                markingWindowMessage
+                    ? `${markingWindowMessage}. Current server time: ${attendanceWindows?.serverTimeIST || '—'} IST.`
+                    : 'Attendance marking is not available at this time.'
+            );
             return;
         }
         setShowLocationModal(true);
@@ -306,11 +356,20 @@ const InternshipStudent = () => {
 
                     <button
                         onClick={handleRequestLocation}
-                        disabled={loading || fetchingLoc}
-                        className="w-full py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold rounded-xl shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2"
+                        disabled={loading || fetchingLoc || !canMarkAttendance}
+                        className={`w-full py-3 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${
+                            canMarkAttendance
+                                ? 'bg-red-600 hover:bg-red-700 active:bg-red-800 text-white shadow-red-200'
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                        }`}
                     >
                         <Navigation className="w-5 h-5" /> Mark Check Out
                     </button>
+                    {!canMarkAttendance && markingWindowMessage && (
+                        <p className="text-center text-xs text-amber-600 mt-3 px-4">
+                            {markingWindowMessage}. Server time: {attendanceWindows?.serverTimeIST} IST.
+                        </p>
+                    )}
                 </div>
             );
         }
@@ -343,16 +402,22 @@ const InternshipStudent = () => {
 
                 <button
                     onClick={handleRequestLocation}
-                    disabled={loading || fetchingLoc || !selectedLocation}
+                    disabled={loading || fetchingLoc || !selectedLocation || !canMarkAttendance}
                     className={`w-full py-4 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2
-                        ${!selectedLocation
-                            ? 'bg-gray-300 cursor-not-allowed'
+                        ${!selectedLocation || !canMarkAttendance
+                            ? 'bg-gray-300 cursor-not-allowed text-gray-500 shadow-none'
                             : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 shadow-indigo-200 hover:shadow-xl hover:-translate-y-1'}`}
                 >
                     <MapPin className="w-5 h-5" /> Mark Check In
                 </button>
 
-                <p className="text-center text-xs text-gray-400 mt-4 px-4">
+                {markingWindowMessage && (
+                    <p className={`text-center text-xs mt-4 px-4 ${canMarkAttendance ? 'text-gray-500' : 'text-amber-600'}`}>
+                        {markingWindowMessage}. Server time: {attendanceWindows?.serverTimeIST || '—'} IST.
+                    </p>
+                )}
+
+                <p className="text-center text-xs text-gray-400 mt-2 px-4">
                     Requires GPS permission. Accuracy must be within 100m.
                 </p>
             </div>

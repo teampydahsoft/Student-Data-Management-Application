@@ -1882,7 +1882,7 @@ const Reports = () => {
                   <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                     <tr>
                       <th className="px-4 py-3 whitespace-nowrap bg-gray-50">Batch</th>
-
+                      <th className="px-4 py-3 whitespace-nowrap bg-gray-50">College</th>
                       <th className="px-4 py-3 whitespace-nowrap bg-gray-50">Program</th>
                       <th className="px-4 py-3 bg-gray-50 max-w-[200px] whitespace-normal">Branch</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Year</th>
@@ -1909,6 +1909,7 @@ const Reports = () => {
                       return (
                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-gray-700">{row.batch || '-'}</td>
+                          <td className="px-4 py-3 text-gray-700">{row.college || '-'}</td>
                           <td className="px-4 py-3 font-medium text-gray-900">{row.course || '-'}</td>
                           <td className="px-4 py-3 text-gray-700">{row.branch || '-'}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{row.current_year || '-'}</td>
@@ -1953,7 +1954,7 @@ const Reports = () => {
                     {/* Grand Total Row */}
                     {abstractData.length > 0 && (
                       <tr>
-                        <td className="px-4 py-3" colSpan={5}>Total</td>
+                        <td className="px-4 py-3" colSpan={6}>Total</td>
                         <td className="px-4 py-3 text-center">{abstractData.reduce((acc, r) => acc + parseInt(r.total || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-green-700">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_completed || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-amber-600">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_temporary || 0), 0)}</td>

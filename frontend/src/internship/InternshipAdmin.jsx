@@ -1272,14 +1272,15 @@ const InternshipAdmin = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Work Start Time (IST)</label>
                                     <input type="time" required className="w-full px-4 py-2 border rounded-lg outline-none" value={formData.allowedStartTime} onChange={e => setFormData({ ...formData, allowedStartTime: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Work End Time (IST)</label>
                                     <input type="time" required className="w-full px-4 py-2 border rounded-lg outline-none" value={formData.allowedEndTime} onChange={e => setFormData({ ...formData, allowedEndTime: e.target.value })} />
                                 </div>
                             </div>
+                            <p className="text-xs text-gray-500">Check-in is allowed in the first 15 minutes after start; check-out in the last 15 minutes before end (IST).</p>
 
                             <button type="submit" disabled={loading} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg">{loading ? 'Creating...' : 'Create Location'}</button>
                         </form>

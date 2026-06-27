@@ -919,16 +919,18 @@ const generateRegistrationReportPDF = async ({
   students.forEach(student => {
     // Extract keys
     const batchKey = (student['Batch'] || student.student_data?.Batch || student.student_data?.batch || 'Unknown').toString();
+    const collegeKey = (student['College'] || 'Unknown').toString();
     const courseKey = (student['Course'] || 'Unknown').toString();
     const branchKey = (student['Branch'] || 'Unknown').toString();
     const yearKey = (student['Year'] || '0').toString();
     const semKey = (student['Semester'] || '0').toString();
 
-    const uniqueKey = `${batchKey}|${courseKey}|${branchKey}|${yearKey}|${semKey}`;
+    const uniqueKey = `${batchKey}|${collegeKey}|${courseKey}|${branchKey}|${yearKey}|${semKey}`;
 
     if (!groupedData[uniqueKey]) {
       groupedData[uniqueKey] = {
         batch: batchKey,
+        college: collegeKey,
         course: courseKey,
         branch: branchKey,
         year: yearKey,
@@ -967,6 +969,7 @@ const generateRegistrationReportPDF = async ({
   // Convert to array and sort
   const abstractRows = Object.values(groupedData).sort((a, b) => {
     if (a.batch !== b.batch) return a.batch.localeCompare(b.batch);
+    if (a.college !== b.college) return a.college.localeCompare(b.college);
     if (a.course !== b.course) return a.course.localeCompare(b.course);
     if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
     if (a.year !== b.year) return a.year.localeCompare(b.year);
@@ -1061,13 +1064,12 @@ const generateRegistrationReportPDF = async ({
   const tableHeaderHeight = 30;
   const rowHeight = 25;
 
-  // Columns: Batch(50), Course(90), Branch(90), Yr(30), Sem(30), Total(45), Comp(45), Pend(45), Ver(55), Cert(55), Fee(55), Pro(55), Schol(55)
-  // Total Width ~ 700. Landscape A4 width is 842. Margins 30+30=60. Content ~782.
-  // We have space.
+  // Columns: Batch(50), College(90), Course(90), Branch(90), Yr(30), Sem(30), Total(45), Comp(45), Pend(45), Ver(55), Cert(55), Fee(55), Pro(55), Schol(55)
   const cols = [
-    { name: 'Batch', width: 60, align: 'left' },
-    { name: 'Course', width: 100, align: 'left' },
-    { name: 'Branch', width: 100, align: 'left' },
+    { name: 'Batch', width: 50, align: 'left' },
+    { name: 'College', width: 90, align: 'left' },
+    { name: 'Course', width: 90, align: 'left' },
+    { name: 'Branch', width: 90, align: 'left' },
     { name: 'Yr', width: 40, align: 'center' },
     { name: 'Sem', width: 40, align: 'center' },
     { name: 'Total', width: 50, align: 'center' },
@@ -1115,6 +1117,7 @@ const generateRegistrationReportPDF = async ({
     // Cell Data
     const cells = [
       row.batch,
+      (row.college || '-').substring(0, 18) + ((row.college || '').length > 18 ? '...' : ''),
       row.course,
       row.branch.substring(0, 18) + (row.branch.length > 18 ? '...' : ''), // Truncate branch
       row.year,
@@ -1155,8 +1158,8 @@ const generateRegistrationReportPDF = async ({
   doc.font('Helvetica-Bold').fillColor('#000000');
 
   let x = leftMargin + 5;
-  // Span first 5 columns for "Total" label
-  const labelWidth = cols[0].width + cols[1].width + cols[2].width + cols[3].width + cols[4].width;
+  // Span first 6 columns for "Total" label
+  const labelWidth = cols[0].width + cols[1].width + cols[2].width + cols[3].width + cols[4].width + cols[5].width;
   doc.text('TOTAL', x, currentY + 8, { width: labelWidth, align: 'center' });
   x += labelWidth;
 

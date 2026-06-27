@@ -232,6 +232,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
                                         <tr>
                                             <th className="px-4 py-3 whitespace-nowrap">Batch</th>
+                                            <th className="px-4 py-3 whitespace-nowrap">College</th>
                                             <th className="px-4 py-3 whitespace-nowrap">Program</th>
                                             <th className="px-4 py-3 whitespace-nowrap">Branch</th>
                                             <th className="px-4 py-3 whitespace-nowrap text-center">Year</th>
@@ -256,8 +257,9 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                             if (idx >= 5) return null;
 
                                             return (
-                                                <tr key={`${row.batch}-${row.course}-${row.branch}-${row.current_year}-${row.current_semester}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                                                <tr key={`${row.batch}-${row.college}-${row.course}-${row.branch}-${row.current_year}-${row.current_semester}-${idx}`} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-4 py-3 text-gray-900">{row.batch || '-'}</td>
+                                                    <td className="px-4 py-3 text-gray-700">{row.college || '-'}</td>
                                                     <td className="px-4 py-3 text-gray-900 font-medium">{row.course || '-'}</td>
                                                     <td className="px-4 py-3 text-gray-700">{row.branch || '-'}</td>
                                                     <td className="px-4 py-3 text-center text-gray-600">{row.current_year}</td>
