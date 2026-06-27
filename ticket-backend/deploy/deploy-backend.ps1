@@ -37,7 +37,7 @@ Invoke-Ssh "mkdir -p $RemoteTmp"
 if ($LASTEXITCODE -ne 0) { throw "SCP failed" }
 
 Write-Host "==> Extracting and installing dependencies"
-Invoke-Ssh "mkdir -p $RemoteRoot && tar -xf $RemoteTmp/ticket-backend-deploy.tar -C $RemoteRoot && cd $RemoteRoot && npm install --production && pm2 restart sdbms-ticket --update-env && pm2 save && rm -f $RemoteTmp/ticket-backend-deploy.tar"
+Invoke-Ssh "mkdir -p $RemoteRoot && tar -xf $RemoteTmp/ticket-backend-deploy.tar -C $RemoteRoot && cd $RemoteRoot && npm install --production && (pm2 restart sdbms-ticket --update-env || pm2 start server.js --name sdbms-ticket --update-env) && pm2 save && rm -f $RemoteTmp/ticket-backend-deploy.tar"
 
 Write-Host "==> Backend deploy complete"
 Invoke-Ssh "curl -s http://127.0.0.1:5001/health"
