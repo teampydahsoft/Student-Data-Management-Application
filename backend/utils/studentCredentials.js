@@ -38,6 +38,87 @@ function resolveStudentLoginUsername({ pinNo, admissionNumber, admissionNo }) {
 }
 
 /**
+ * Rank credential rows so login checks the most relevant record first.
+ */
+function rankStudentCredentialMatch(row, username) {
+  if (row.username === username) return 0;
+  if (row.pin_no === username) return 1;
+  if (
+    row.admission_number === username ||
+    row.s_admission_number === username ||
+    row.admission_no === username
+  ) {
+    return 2;
+  }
+  return 3;
+}
+
+/**
+ * Authenticate a student login when duplicate credential rows may exist.
+ */
+async function authenticateStudentCredential(username, password) {
+  const [credentials] = await masterPool.query(
+    `SELECT sc.id, sc.student_id, sc.admission_number, sc.username, sc.password_hash, sc.updated_at,
+            s.admission_number AS s_admission_number, s.admission_no, s.pin_no
+     FROM student_credentials sc
+     JOIN students s ON s.id = sc.student_id
+     WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?`,
+    [username, username, username, username, username]
+  );
+
+  if (!credentials.length) {
+    return null;
+  }
+
+  const ranked = [...credentials].sort((a, b) => {
+    const diff = rankStudentCredentialMatch(a, username) - rankStudentCredentialMatch(b, username);
+    if (diff !== 0) return diff;
+    return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+  });
+
+  for (const candidate of ranked) {
+    if (candidate.password_hash && await bcrypt.compare(password, candidate.password_hash)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function saveStudentCredentials(studentId, admissionNumber, username, passwordHash) {
+  const [existingRows] = await masterPool.query(
+    'SELECT id FROM student_credentials WHERE student_id = ? ORDER BY updated_at DESC, id DESC',
+    [studentId]
+  );
+
+  if (existingRows.length > 0) {
+    const keepId = existingRows[0].id;
+    const staleIds = existingRows.slice(1).map((row) => row.id);
+
+    if (staleIds.length > 0) {
+      await masterPool.query(
+        'DELETE FROM student_credentials WHERE student_id = ? AND id IN (?)',
+        [studentId, staleIds]
+      );
+    }
+
+    await masterPool.query(
+      `UPDATE student_credentials
+       SET admission_number = ?, username = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [admissionNumber, username, passwordHash, keepId]
+    );
+    return;
+  }
+
+  await masterPool.query(
+    `INSERT INTO student_credentials (student_id, admission_number, username, password_hash)
+     VALUES (?, ?, ?, ?)`,
+    [studentId, admissionNumber, username, passwordHash]
+  );
+}
+
+/**
  * Generate and store student login credentials
  * Username: admission number (default) OR distinct PIN when assigned
  * Password: random 8-character alphanumeric
@@ -89,15 +170,7 @@ async function generateStudentCredentials(
     // Hash password
     const passwordHash = await bcrypt.hash(plainPassword, 10);
 
-    // Insert or update credentials
-    await masterPool.query(`
-      INSERT INTO student_credentials (student_id, admission_number, username, password_hash)
-      VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        password_hash = VALUES(password_hash),
-        username = VALUES(username),
-        updated_at = CURRENT_TIMESTAMP
-    `, [studentId, admissionNumber, username, passwordHash]);
+    await saveStudentCredentials(studentId, admissionNumber, username, passwordHash);
 
     // Send SMS notification with login credentials
     try {
@@ -191,6 +264,7 @@ async function generateCredentialsByAdmissionNumber(admissionNumber, isPasswordR
 
 module.exports = {
   resolveStudentLoginUsername,
+  authenticateStudentCredential,
   generateStudentCredentials,
   generateCredentialsByAdmissionNumber
 };

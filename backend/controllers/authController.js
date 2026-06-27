@@ -319,21 +319,10 @@ exports.unifiedLogin = async (req, res) => {
     }
 
     // 4. Check Student User (Optimized)
-    // First query ONLY the credentials table which is small and indexed.
-    // Avoids massive JOIN with students table for every login attempt.
-    const [credentials] = await masterPool.query(
-      `SELECT sc.id, sc.student_id, sc.admission_number, sc.username, sc.password_hash
-       FROM student_credentials sc
-       JOIN students s ON s.id = sc.student_id
-       WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?
-       LIMIT 1`,
-      [username, username, username, username, username]
-    );
+    const { authenticateStudentCredential } = require('../utils/studentCredentials');
+    const studentCred = await authenticateStudentCredential(username, password);
 
-    if (credentials && credentials.length > 0) {
-      const studentCred = credentials[0];
-
-      if (studentCred.password_hash && await bcrypt.compare(password, studentCred.password_hash)) {
+    if (studentCred) {
         // Validation Passed! NOW fetch the heavy student profile details.
         const [studentDetails] = await masterPool.query(
           `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
@@ -413,7 +402,6 @@ exports.unifiedLogin = async (req, res) => {
 
           return res.json({ success: true, message: 'Login successful', token, user });
         }
-      }
     }
 
     // --- 5. Failed All ---

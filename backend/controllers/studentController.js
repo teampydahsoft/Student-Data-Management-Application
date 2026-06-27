@@ -5404,47 +5404,39 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find student credential
-    const [credentials] = await masterPool.query(
-      `SELECT sc.*, s.admission_number, s.admission_no, s.pin_no, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, s.course, s.branch, s.college, s.batch
-       FROM student_credentials sc
-       JOIN students s ON sc.student_id = s.id
-       WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?`,
-      [username, username, username, username, username]
-    );
+    const { authenticateStudentCredential } = require('../utils/studentCredentials');
+    const studentValid = await authenticateStudentCredential(username, password);
 
-    if (credentials.length === 0) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials. Please check your username.'
-      });
-    }
-
-    const studentValid = credentials[0];
-
-    // Verify password if hash exists
-    if (!studentValid.password_hash) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account not initialized. Please contact administrator to generate credentials.'
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, studentValid.password_hash);
-
-    if (!isMatch) {
+    if (!studentValid) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
+    const [studentRows] = await masterPool.query(
+      `SELECT s.admission_number, s.admission_no, s.pin_no, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, s.course, s.branch, s.college, s.batch
+       FROM students s
+       WHERE s.id = ?
+       LIMIT 1`,
+      [studentValid.student_id]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    const studentProfile = studentRows[0];
+
     // Create Token
     const token = jwt.sign(
       {
         id: studentValid.student_id,
         admissionNumber: studentValid.admission_number,
-        pinNo: studentValid.pin_no || studentValid.username,
+        pinNo: studentProfile.pin_no || studentValid.username,
         role: 'student'
       },
       process.env.JWT_SECRET,
@@ -5454,15 +5446,15 @@ exports.login = async (req, res) => {
     // Filter sensitive data
     const user = {
       admission_number: studentValid.admission_number,
-      pin_no: studentValid.pin_no,
+      pin_no: studentProfile.pin_no,
       username: studentValid.username,
-      name: studentValid.student_name,
-      current_year: studentValid.current_year,
-      current_semester: studentValid.current_semester,
-      course: studentValid.course,
-      branch: studentValid.branch,
-      college: studentValid.college,
-      student_photo: studentValid.student_photo
+      name: studentProfile.student_name,
+      current_year: studentProfile.current_year,
+      current_semester: studentProfile.current_semester,
+      course: studentProfile.course,
+      branch: studentProfile.branch,
+      college: studentProfile.college,
+      student_photo: studentProfile.student_photo
     };
 
     res.json({

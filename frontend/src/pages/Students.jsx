@@ -351,7 +351,6 @@ const Students = () => {
   const [viewingPassword, setViewingPassword] = useState(false);
   const [studentPassword, setStudentPassword] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(false);
-  const [loadingPassword, setLoadingPassword] = useState(false);
   const [completionPercentages, setCompletionPercentages] = useState({});
   const [profileCompletion, setProfileCompletion] = useState({ percentage: 0, filledCount: 0, totalCount: 0 });
   const [showIdCardPreview, setShowIdCardPreview] = useState(false);
@@ -1852,29 +1851,10 @@ const Students = () => {
     );
   };
 
-  const handleViewPassword = async () => {
-    if (!selectedStudent) return;
-
-    setLoadingPassword(true);
-    try {
-      const response = await api.get(`/students/${selectedStudent.admission_number}/password`);
-      if (response.data.success) {
-        setStudentPassword(response.data.data);
-        setViewingPassword(true);
-      } else {
-        toast.error(response.data.message || 'Failed to retrieve password');
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to retrieve password');
-    } finally {
-      setLoadingPassword(false);
-    }
-  };
-
   const handleResetPassword = async () => {
     if (!selectedStudent) return;
 
-    if (!window.confirm('Are you sure you want to reset this student\'s password? A new password will be generated and sent via SMS.')) {
+    if (!window.confirm('Reset this student\'s password? A new login password will be generated, saved, and sent to the student\'s registered mobile via SMS.')) {
       return;
     }
 
@@ -3648,9 +3628,11 @@ const Students = () => {
                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Password</label>
                       <p className="font-mono text-lg font-bold text-indigo-600 break-all">{studentPassword.password}</p>
                     </div>
-                    <div className="flex items-start gap-2 text-[10px] text-gray-400 font-bold bg-blue-50/50 p-3 rounded-xl border border-blue-50">
-                      <AlertTriangle size={14} className="shrink-0 text-blue-500" />
-                      <p>FORMAT: FIRST 4 LETTERS OF NAME + LAST 4 DIGITS OF MOBILE</p>
+                    <div className="flex items-start gap-2 text-[10px] text-gray-500 font-bold bg-amber-50/80 p-3 rounded-xl border border-amber-100">
+                      <AlertTriangle size={14} className="shrink-0 text-amber-500" />
+                      <p>
+                        Use the username and password exactly as shown here. The password is case-sensitive and was also sent to the student&apos;s registered mobile via SMS.
+                      </p>
                     </div>
                   </div>
                   <div className="mt-8">
