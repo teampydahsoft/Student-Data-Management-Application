@@ -1,6 +1,7 @@
 const { masterPool } = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
+const { writeAuditLog } = require('../services/auditLogService');
 
 // Helper function to safely parse JSON fields
 const parseJSON = (data) => {
@@ -56,12 +57,13 @@ exports.createForm = async (req, res) => {
       [formId, formName, formDescription || '', JSON.stringify(formFields), qrCodeData, adminIdForDb]
     );
 
-    // Log action
-    await conn.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ['CREATE', 'FORM', formId, adminIdForDb, JSON.stringify({ formName })]
-    );
+    await writeAuditLog(conn, {
+      actionType: 'CREATE',
+      entityType: 'FORM',
+      entityId: formId,
+      req,
+      details: { formName }
+    });
 
     await conn.commit();
 
@@ -254,13 +256,13 @@ exports.updateForm = async (req, res) => {
       console.log(`✅ Synced schema for dynamic table ${destinationTable}`);
     }
 
-    // Log action
-    const adminIdForDb = getAdminIdForDb(req);
-    await conn.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ['UPDATE', 'FORM', formId, adminIdForDb, JSON.stringify(req.body)]
-    );
+    await writeAuditLog(conn, {
+      actionType: 'UPDATE',
+      entityType: 'FORM',
+      entityId: formId,
+      req,
+      details: req.body
+    });
 
     await conn.commit();
 
@@ -303,13 +305,12 @@ exports.deleteForm = async (req, res) => {
       });
     }
 
-    // Log action
-    const adminIdForDb = getAdminIdForDb(req);
-    await conn.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id)
-       VALUES (?, ?, ?, ?)`,
-      ['DELETE', 'FORM', formId, adminIdForDb]
-    );
+    await writeAuditLog(conn, {
+      actionType: 'DELETE',
+      entityType: 'FORM',
+      entityId: formId,
+      req
+    });
 
     await conn.commit();
 

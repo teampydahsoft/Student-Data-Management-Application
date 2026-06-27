@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { masterPool } = require('../config/database');
+const { logAudit } = require('../services/auditLogService');
 const {
   USER_ROLES,
   ROLE_HIERARCHY,
@@ -1056,6 +1057,17 @@ exports.createUser = async (req, res) => {
       }
     }
 
+    logAudit(req, {
+      actionType: 'CREATE',
+      entityType: 'RBAC_USER',
+      entityId: String(newUser.id),
+      details: {
+        username: newUser.username,
+        role: newUser.role,
+        name: newUser.name
+      }
+    });
+
     res.status(201).json({
       success: true,
       message: successMessage,
@@ -1338,6 +1350,13 @@ exports.updateUser = async (req, res) => {
       [id]
     );
 
+    logAudit(req, {
+      actionType: 'UPDATE',
+      entityType: 'RBAC_USER',
+      entityId: String(id),
+      details: { updatedFields: updates.map((u) => u.split(' ')[0]) }
+    });
+
     res.json({
       success: true,
       message: 'User updated successfully',
@@ -1400,6 +1419,12 @@ exports.deleteUser = async (req, res) => {
         message: 'User not found'
       });
     }
+
+    logAudit(req, {
+      actionType: 'DEACTIVATE',
+      entityType: 'RBAC_USER',
+      entityId: String(id)
+    });
 
     res.json({
       success: true,
@@ -1467,6 +1492,13 @@ exports.permanentDeleteUser = async (req, res) => {
         message: 'User not found'
       });
     }
+
+    logAudit(req, {
+      actionType: 'DELETE',
+      entityType: 'RBAC_USER',
+      entityId: String(id),
+      details: { username: targetUser.username, role: targetUser.role, permanent: true }
+    });
 
     res.json({
       success: true,

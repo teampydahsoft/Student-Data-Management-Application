@@ -1,4 +1,5 @@
 const { masterPool } = require('../config/database');
+const { logAudit } = require('../services/auditLogService');
 
 /**
  * GET /api/semesters
@@ -318,6 +319,19 @@ exports.createSemester = async (req, res) => {
       const m = l.match(/^(\d{4})/);
       return m && y ? String(parseInt(m[1], 10) - y + 1) : null;
     })();
+    logAudit(req, {
+      actionType: 'CREATE',
+      entityType: 'SEMESTER',
+      entityId: String(row.id),
+      details: {
+        courseId: row.course_id,
+        batch: batchLabel,
+        yearOfStudy: row.year_of_study,
+        semesterNumber: row.semester_number,
+        startDate: row.start_date,
+        endDate: row.end_date
+      }
+    });
     res.status(201).json({
       success: true,
       data: {
@@ -491,6 +505,16 @@ exports.updateSemester = async (req, res) => {
       const m = l.match(/^(\d{4})/);
       return m && y ? String(parseInt(m[1], 10) - y + 1) : null;
     })();
+    logAudit(req, {
+      actionType: 'UPDATE',
+      entityType: 'SEMESTER',
+      entityId: String(row.id),
+      details: {
+        startDate: row.start_date,
+        endDate: row.end_date,
+        batch: batchLabel
+      }
+    });
     res.json({
       success: true,
       data: {
@@ -549,7 +573,13 @@ exports.deleteSemester = async (req, res) => {
     }
     
     await masterPool.query('DELETE FROM semesters WHERE id = ?', [semesterId]);
-    
+
+    logAudit(req, {
+      actionType: 'DELETE',
+      entityType: 'SEMESTER',
+      entityId: String(semesterId)
+    });
+
     res.json({
       success: true,
       message: 'Semester deleted successfully'

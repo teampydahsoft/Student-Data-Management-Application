@@ -1,6 +1,7 @@
 const { masterPool } = require('../config/database');
 const { filterCoursesByScope, filterBranchesByScope } = require('../utils/scoping');
 const sectionAssignmentService = require('../services/sectionAssignmentService');
+const { logAudit } = require('../services/auditLogService');
 
 const DEFAULT_SEMESTERS_PER_YEAR = 2;
 const MAX_YEARS = 10;
@@ -635,6 +636,13 @@ exports.createCourse = async (req, res) => {
       [courseId]
     );
 
+    logAudit(req, {
+      actionType: 'CREATE',
+      entityType: 'COURSE',
+      entityId: String(courseId),
+      details: { name: createdCourseRows[0]?.name }
+    });
+
     res.status(201).json({
       success: true,
       message: 'Course created successfully',
@@ -834,6 +842,13 @@ exports.updateCourse = async (req, res) => {
       [courseId]
     );
 
+    logAudit(req, {
+      actionType: 'UPDATE',
+      entityType: 'COURSE',
+      entityId: String(courseId),
+      details: { studentsUpdated, name: courseRows[0]?.name }
+    });
+
     res.json({
       success: true,
       message: studentsUpdated > 0
@@ -1002,6 +1017,13 @@ exports.deleteCourse = async (req, res) => {
         await connection.commit();
         connection.release();
 
+        logAudit(req, {
+          actionType: 'DELETE',
+          entityType: 'COURSE',
+          entityId: String(courseId),
+          details: { hardDelete: true }
+        });
+
         res.json({
           success: true,
           message: 'Course deleted successfully'
@@ -1024,6 +1046,12 @@ exports.deleteCourse = async (req, res) => {
 
         await connection.commit();
         connection.release();
+
+        logAudit(req, {
+          actionType: 'DEACTIVATE',
+          entityType: 'COURSE',
+          entityId: String(courseId)
+        });
 
         res.json({
           success: true,

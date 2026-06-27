@@ -23,7 +23,8 @@ import {
     ClipboardEdit,
     Check,
     X,
-    CalendarClock
+    CalendarClock,
+    Briefcase
 } from 'lucide-react';
 import api from '../../config/api';
 import { formatDate } from '../../utils/dateUtils';
@@ -68,11 +69,18 @@ const ACTION_CONFIG = {
     COURSE_COMPLETED: { label: 'Course Completed', icon: Star, dot: 'bg-yellow-500', badge: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
     DELETE: { label: 'Record Deleted', icon: Trash2, dot: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-100' },
     BULK_UPLOAD: { label: 'Bulk Upload', icon: Upload, dot: 'bg-teal-500', badge: 'bg-teal-50 text-teal-700 border-teal-100' },
+    BULK_DELETE: { label: 'Bulk Delete', icon: Trash2, dot: 'bg-red-600', badge: 'bg-red-50 text-red-700 border-red-100' },
+    BULK_UPDATE_PIN_NUMBERS: { label: 'Bulk PIN Update', icon: KeyRound, dot: 'bg-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-100' },
+    RESET_PASSWORD: { label: 'Password Reset', icon: KeyRound, dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-100' },
+    VIEW_PASSWORD: { label: 'Password Viewed', icon: KeyRound, dot: 'bg-orange-400', badge: 'bg-orange-50 text-orange-700 border-orange-100' },
     STATUS_CHANGE: { label: 'Status Changed', icon: RefreshCw, dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-100' },
     UPDATE_FEE_STATUS: { label: 'Fee Updated', icon: CreditCard, dot: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 border-rose-100' },
     UPDATE_REGISTRATION_STATUS: { label: 'Reg. Status Updated', icon: Star, dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-100' },
     REJOIN: { label: 'Student Rejoined', icon: LogIn, dot: 'bg-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
     TRANSFER: { label: 'College Transfer', icon: ArrowRightLeft, dot: 'bg-indigo-500', badge: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+    INTERNSHIP_ASSIGN: { label: 'Internship Assigned', icon: Briefcase, dot: 'bg-sky-500', badge: 'bg-sky-50 text-sky-700 border-sky-100' },
+    INTERNSHIP_UPDATE: { label: 'Internship Updated', icon: Briefcase, dot: 'bg-sky-600', badge: 'bg-sky-50 text-sky-800 border-sky-100' },
+    INTERNSHIP_REMOVE: { label: 'Internship Removed', icon: Briefcase, dot: 'bg-slate-500', badge: 'bg-slate-50 text-slate-700 border-slate-100' },
     PROFILE_CHANGE_REQUEST: { label: 'Profile Change Request', icon: ClipboardEdit, dot: 'bg-cyan-500', badge: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
     DEFAULT: { label: 'Action', icon: FileText, dot: 'bg-gray-400', badge: 'bg-gray-50 text-gray-700 border-gray-100' },
 };
@@ -195,6 +203,54 @@ const LogDetails = ({ log }) => {
                     <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 italic">
                         "{d.remarks}"
                     </p>
+                )}
+            </div>
+        );
+    }
+
+    // INTERNSHIP
+    if (type === 'INTERNSHIP_ASSIGN' || type === 'INTERNSHIP_UPDATE' || type === 'INTERNSHIP_REMOVE') {
+        const company = d.companyName || d.company_name;
+        const start = d.startDate || d.start_date;
+        const end = d.endDate || d.end_date;
+        const allowedDays = Array.isArray(d.allowedDays) ? d.allowedDays : (Array.isArray(d.allowed_days) ? d.allowed_days : []);
+
+        if (type === 'INTERNSHIP_REMOVE') {
+            return (
+                <div className="mt-3 space-y-2">
+                    {company && (
+                        <p className="text-xs text-gray-600">
+                            Removed from <span className="font-semibold text-gray-800">{company}</span>
+                        </p>
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <div className="mt-3 space-y-2">
+                {company && (
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="font-bold text-gray-400 uppercase tracking-tighter w-16">Site</span>
+                        <span className="px-2 py-1 bg-sky-50 text-sky-800 rounded-lg border border-sky-100 font-semibold">{company}</span>
+                    </div>
+                )}
+                {(start || end) && (
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="font-bold text-gray-400 uppercase tracking-tighter w-16">Dates</span>
+                        <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded-lg border border-gray-100">{start || '—'}</span>
+                        <ArrowRight className="w-3 h-3 text-gray-300" />
+                        <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded-lg border border-gray-100">{end || '—'}</span>
+                    </div>
+                )}
+                {allowedDays.length > 0 && (
+                    <div className="flex items-start gap-2 text-xs">
+                        <span className="font-bold text-gray-400 uppercase tracking-tighter w-16 pt-1">Days</span>
+                        <span className="text-gray-600">{allowedDays.join(', ')}</span>
+                    </div>
+                )}
+                {d.fromAssignmentRecord && (
+                    <p className="text-[10px] text-gray-400 italic">Recorded from internship assignment record</p>
                 )}
             </div>
         );
@@ -443,8 +499,33 @@ const RegistrationSnapshot = ({ student }) => {
 
 // ─── Role Badge ────────────────────────────────────────────────────────────────
 const ROLE_LABELS = {
-    super_admin: 'Super Admin', admin: 'Admin', college_principal: 'Principal',
-    hod: 'HOD', ao: 'Admin Officer', cashier: 'Cashier', faculty: 'Faculty',
+    super_admin: 'Super Admin',
+    admin: 'Admin',
+    college_principal: 'Principal',
+    branch_hod: 'HOD',
+    hod: 'HOD',
+    college_ao: 'AO',
+    ao: 'Admin Officer',
+    cashier: 'Cashier',
+    office_assistant: 'Office Assistant',
+    faculty: 'Faculty',
+    manager: 'Manager',
+};
+
+const formatPerformerLabel = (log) => {
+    const name = log.performed_by_name || log.admin_full_name || log.rbac_user_name;
+    const username = log.rbac_username || log.admin_username;
+    if (name && username && name !== username) {
+        return `${name} (@${username})`;
+    }
+    return name || username || null;
+};
+
+const resolvePerformerDisplay = (log) => {
+    const label = formatPerformerLabel(log);
+    if (label) return label;
+    if (log.admin_id || log.rbac_user_id) return 'Unknown user';
+    return 'System';
 };
 
 const RoleBadge = ({ role }) => {
@@ -472,8 +553,8 @@ const StudentHistoryLogs = ({ student }) => {
         setError(null);
         try {
             const [auditRes, profileRes] = await Promise.allSettled([
-                api.get('/logs', {
-                    params: { entityType: 'STUDENT', entityId: student.admission_number, limit: 200 }
+                api.get(`/student-history/audit/${encodeURIComponent(student.admission_number)}`, {
+                    params: { limit: 500 }
                 }),
                 api.get(`/profile-changes/by-student/${student.admission_number}`)
             ]);
@@ -606,8 +687,8 @@ const StudentHistoryLogs = ({ student }) => {
                             const isProfileChange = log._type === 'profile_change';
                             const performerName = isProfileChange
                                 ? (log.reviewed_by ? `Reviewed by ${log.reviewed_by}` : 'Awaiting review')
-                                : (log.admin_full_name || log.admin_username || 'System');
-                            const performerRole = isProfileChange ? null : log.admin_role;
+                                : resolvePerformerDisplay(log);
+                            const performerRole = isProfileChange ? null : (log.performed_by_role || log.admin_role);
 
                             return (
                                 <div key={log.id} className="flex gap-3 group">

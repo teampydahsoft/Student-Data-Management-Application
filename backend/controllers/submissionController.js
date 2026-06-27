@@ -5,6 +5,7 @@ const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
+const { writeAuditLog } = require('../services/auditLogService');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -1766,15 +1767,16 @@ exports.approveSubmission = async (req, res) => {
       }
     }
 
-    // Log action
-    await masterConn.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details) 
-       VALUES (?, ?, ?, ?, ?)`,
-      ['APPROVE', 'SUBMISSION', submissionId, req.admin.id, JSON.stringify({
+    await writeAuditLog(masterConn, {
+      actionType: 'APPROVE',
+      entityType: 'SUBMISSION',
+      entityId: submissionId,
+      req,
+      details: {
         admissionNumber: finalAdmissionNumber,
         documentsUploaded: Object.keys(uploadedDocuments).length
-      })]
-    );
+      }
+    });
 
     await masterConn.commit();
 
@@ -1828,13 +1830,13 @@ exports.rejectSubmission = async (req, res) => {
     }
 
     // Log action
-    const masterConn2 = await masterPool.getConnection();
-    await masterConn2.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ['REJECT', 'SUBMISSION', submissionId, req.admin.id, JSON.stringify({ reason })]
-    );
-    masterConn2.release();
+    await writeAuditLog(masterPool, {
+      actionType: 'REJECT',
+      entityType: 'SUBMISSION',
+      entityId: submissionId,
+      req,
+      details: { reason }
+    });
 
     res.json({
       success: true,
@@ -1901,15 +1903,14 @@ exports.deleteSubmission = async (req, res) => {
 
     // Log action
     try {
-      const masterConn3 = await masterPool.getConnection();
-      await masterConn3.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['DELETE', 'SUBMISSION', submissionId, req.admin?.id || user?.id, JSON.stringify({
-          status: existingSubmission[0].status
-        })]
-      );
-      masterConn3.release();
+      await writeAuditLog(masterPool, {
+        actionType: 'DELETE',
+        entityType: 'SUBMISSION',
+        entityId: submissionId,
+        req,
+        actor: user || req.admin,
+        details: { status: existingSubmission[0].status }
+      });
     } catch (logError) {
       console.error('Error logging delete action:', logError);
       // Don't fail the request if logging fails
@@ -2524,7 +2525,6 @@ exports.bulkUploadSubmissions = async (req, res) => {
 
     // Enhanced logging with detailed statistics and performance metrics
     const totalUploadTime = Date.now() - uploadStartTime;
-    const masterConn4 = await masterPool.getConnection();
 
     const auditDetails = {
       successCount,
@@ -2553,12 +2553,13 @@ exports.bulkUploadSubmissions = async (req, res) => {
       processedRows: processedRows.slice(0, 20) // Limit for audit log
     };
 
-    await masterConn4.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ['ENHANCED_BULK_UPLOAD', 'SUBMISSION', formId, req.admin.id, JSON.stringify(auditDetails)]
-    );
-    masterConn4.release();
+    await writeAuditLog(masterPool, {
+      actionType: 'ENHANCED_BULK_UPLOAD',
+      entityType: 'SUBMISSION',
+      entityId: formId,
+      req,
+      details: auditDetails
+    });
 
     // Comprehensive final summary logging
     logPerformanceMetrics('TOTAL_BULK_UPLOAD', uploadStartTime, Date.now(), {
@@ -3469,16 +3470,14 @@ exports.bulkDeleteSubmissions = async (req, res) => {
 
     // Log action
     try {
-      const masterConn = await masterPool.getConnection();
-      await masterConn.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['BULK_DELETE', 'SUBMISSION', JSON.stringify(submissionIds), user?.id || req.admin?.id, JSON.stringify({
-          deletedCount,
-          failedCount
-        })]
-      );
-      masterConn.release();
+      await writeAuditLog(masterPool, {
+        actionType: 'BULK_DELETE',
+        entityType: 'SUBMISSION',
+        entityId: JSON.stringify(submissionIds),
+        req,
+        actor: user || req.admin,
+        details: { deletedCount, failedCount }
+      });
     } catch (logError) {
       console.error('Error logging bulk delete action:', logError);
       // Don't fail the request if logging fails
@@ -3590,17 +3589,17 @@ exports.bulkApproveSubmissions = async (req, res) => {
     const totalTime = Date.now() - startTime;
 
     // Log action
-    const masterConn2 = await masterPool.getConnection();
-    await masterConn2.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ['BULK_APPROVE', 'SUBMISSION', JSON.stringify(submissionIds), req.admin.id, JSON.stringify({
+    await writeAuditLog(masterPool, {
+      actionType: 'BULK_APPROVE',
+      entityType: 'SUBMISSION',
+      entityId: JSON.stringify(submissionIds),
+      req,
+      details: {
         approvedCount,
         failedCount,
         totalTime: `${totalTime}ms`
-      })]
-    );
-    masterConn2.release();
+      }
+    });
 
     console.log(`✅ Bulk approval completed: ${approvedCount} approved, ${failedCount} failed in ${totalTime}ms`);
 

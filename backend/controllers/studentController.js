@@ -14,6 +14,7 @@ const {
   normalizeStage
 } = require('../services/academicProgression');
 const sectionAssignmentService = require('../services/sectionAssignmentService');
+const { writeAuditLog, logAudit } = require('../services/auditLogService');
 
 // Sections are assigned manually via Section Partition — no auto-assignment on student changes.
 const maybeSyncManualStudentSection = async ({
@@ -72,27 +73,6 @@ exports.uploadMiddleware = upload.single('file');
 const clearStudentsCache = () => {
   if (studentsCache && typeof studentsCache.clear === 'function') {
     studentsCache.clear();
-  }
-};
-
-/**
- * Write an audit log entry safely, supporting both legacy admins (admins table)
- * and RBAC users (rbac_users table). If the actor has a non-'admin' role,
- * it is treated as an RBAC user and its id is stored in rbac_user_id.
- */
-const writeAuditLog = async (pool, { actionType, entityType, entityId, actor, details }) => {
-  try {
-    const isRbacUser = actor && actor.role && actor.role !== 'admin';
-    const adminId = isRbacUser ? null : (actor?.id || null);
-    const rbacUserId = isRbacUser ? (actor?.id || null) : null;
-
-    await pool.query(
-      `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, rbac_user_id, details)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [actionType, entityType, entityId, adminId, rbacUserId, details ? JSON.stringify(details) : null]
-    );
-  } catch (err) {
-    console.error('Audit log error (non-critical):', err.message);
   }
 };
 
@@ -1230,7 +1210,7 @@ const checkCourseCompletion = (currentStage, courseConfig) => {
   return currentYear === totalYears && currentSemester === semestersForFinalYear;
 };
 
-const performPromotion = async ({ connection, admissionNumber, targetStage, adminId, courseConfigCache = null }) => {
+const performPromotion = async ({ connection, admissionNumber, targetStage, adminId, actor, courseConfigCache = null }) => {
   const [students] = await connection.query(
     `SELECT id, admission_number, admission_no, current_year, current_semester, course, student_data
      FROM students WHERE admission_number = ? OR admission_no = ? FOR UPDATE`,
@@ -1306,36 +1286,16 @@ const performPromotion = async ({ connection, admissionNumber, targetStage, admi
           [student.id]
         );
 
-        // Validate admin_id exists before inserting audit log
-        let validAdminId = null;
-        if (adminId) {
-          try {
-            const [adminRows] = await connection.query(
-              'SELECT id FROM admins WHERE id = ? LIMIT 1',
-              [adminId]
-            );
-            if (adminRows.length > 0) {
-              validAdminId = adminId;
-            }
-          } catch (adminCheckError) {
-            console.warn('Failed to validate admin_id for audit log:', adminCheckError.message);
+        await writeAuditLog(connection, {
+          actionType: 'COURSE_COMPLETED',
+          entityType: 'STUDENT',
+          entityId: student.admission_number || admissionNumber,
+          actor: actor || (adminId ? { id: adminId, role: 'admin' } : null),
+          details: {
+            stage: currentStage,
+            message: 'Student has completed all years and semesters of the course'
           }
-        }
-
-        await connection.query(
-          `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            'COURSE_COMPLETED',
-            'STUDENT',
-            student.admission_number || admissionNumber,
-            validAdminId,
-            JSON.stringify({
-              stage: currentStage,
-              message: 'Student has completed all years and semesters of the course'
-            })
-          ]
-        );
+        });
 
         return {
           status: 'COURSE_COMPLETED',
@@ -1412,36 +1372,16 @@ const performPromotion = async ({ connection, admissionNumber, targetStage, admi
     console.error('Error expiring hostel status during promotion:', err);
   }
 
-  // Validate admin_id exists before inserting audit log
-  let validAdminId = null;
-  if (adminId) {
-    try {
-      const [adminRows] = await connection.query(
-        'SELECT id FROM admins WHERE id = ? LIMIT 1',
-        [adminId]
-      );
-      if (adminRows.length > 0) {
-        validAdminId = adminId;
-      }
-    } catch (adminCheckError) {
-      console.warn('Failed to validate admin_id for audit log:', adminCheckError.message);
+  await writeAuditLog(connection, {
+    actionType: 'PROMOTE',
+    entityType: 'STUDENT',
+    entityId: student.admission_number || admissionNumber,
+    actor: actor || (adminId ? { id: adminId, role: 'admin' } : null),
+    details: {
+      from: currentStage,
+      to: nextStage
     }
-  }
-
-  await connection.query(
-    `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-     VALUES (?, ?, ?, ?, ?)`,
-    [
-      'PROMOTE',
-      'STUDENT',
-      student.admission_number || admissionNumber,
-      validAdminId,
-      JSON.stringify({
-        from: currentStage,
-        to: nextStage
-      })
-    ]
-  );
+  });
 
   // -- CLUB FEE UPDATE LOGIC --
   try {
@@ -2303,26 +2243,13 @@ exports.commitBulkUploadStudents = async (req, res) => {
         }
       }
 
-      // Log action (safe)
-      try {
-        await connection.query(
-          `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-           VALUES (?, ?, ?, ?, ?)`,
-          ['BULK_UPLOAD', 'STUDENT', sanitized.admission_number, req.admin.id, studentDataJson]
-        );
-      } catch (auditError) {
-        console.error('Audit log error:', auditError.message);
-        try {
-          // Retry with NULL admin
-          await connection.query(
-            `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-             VALUES (?, ?, ?, NULL, ?)`,
-            ['BULK_UPLOAD', 'STUDENT', sanitized.admission_number, studentDataJson]
-          );
-        } catch (e) {
-          console.error('Audit log retry failed:', e.message);
-        }
-      }
+      await writeAuditLog(connection, {
+        actionType: 'BULK_UPLOAD',
+        entityType: 'STUDENT',
+        entityId: sanitized.admission_number,
+        req,
+        details: studentDataJson
+      });
 
       await updateStagingStudentStage(
         sanitized.admission_number,
@@ -3701,6 +3628,13 @@ exports.viewStudentPassword = async (req, res) => {
     // Combine to create password
     const plainPassword = firstFourLetters + lastFourDigits;
 
+    logAudit(req, {
+      actionType: 'VIEW_PASSWORD',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      details: { username: cred.username }
+    });
+
     res.json({
       success: true,
       data: {
@@ -3759,16 +3693,13 @@ exports.resetStudentPassword = async (req, res) => {
       });
     }
 
-    // Log action
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['RESET_PASSWORD', 'STUDENT', admissionNumber, req.admin?.id || null, JSON.stringify({ username: credResult.username })]
-      );
-    } catch (auditError) {
-      console.error('Audit log error (non-critical):', auditError.message);
-    }
+    await writeAuditLog(masterPool, {
+      actionType: 'RESET_PASSWORD',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      req,
+      details: { username: credResult.username }
+    });
 
     res.json({
       success: true,
@@ -3841,17 +3772,13 @@ exports.bulkDeleteStudents = async (req, res) => {
     const deletedCount = deleteResult.affectedRows || 0;
 
     if (deletedCount > 0) {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          'BULK_DELETE',
-          'STUDENT',
-          'bulk',
-          req.admin?.id || null,
-          JSON.stringify({ admissionNumbers: existingNumbers })
-        ]
-      );
+      await writeAuditLog(masterPool, {
+        actionType: 'BULK_DELETE',
+        entityType: 'STUDENT',
+        entityId: 'bulk',
+        req,
+        details: { admissionNumbers: existingNumbers }
+      });
 
       clearStudentsCache();
     }
@@ -3888,24 +3815,12 @@ exports.deleteStudent = async (req, res) => {
       });
     }
 
-    // Log action
-    // Log action (safe)
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id)
-         VALUES (?, ?, ?, ?)`,
-        ['DELETE', 'STUDENT', admissionNumber, req.admin.id]
-      );
-    } catch (auditError) {
-      console.error('Delete audit log error:', auditError.message);
-      try {
-        await masterPool.query(
-          `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id)
-           VALUES (?, ?, ?, NULL)`,
-          ['DELETE', 'STUDENT', admissionNumber]
-        );
-      } catch (e) { }
-    }
+    await writeAuditLog(masterPool, {
+      actionType: 'DELETE',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      req
+    });
 
     clearStudentsCache();
 
@@ -4377,29 +4292,13 @@ exports.createStudent = async (req, res) => {
     await updateStagingStudentStage(admissionNumber, resolvedStage, serializedStudentData);
 
     // Log action
-    // Log action
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['CREATE', 'STUDENT', admissionNumber, req.admin.id, serializedStudentData]
-      );
-    } catch (auditError) {
-      console.error('Failed to create audit log:', auditError.message);
-      // If admin doesn't exist (FK violation), try with NULL admin
-      if (auditError.code === 'ER_NO_REFERENCED_ROW_2') {
-        try {
-          await masterPool.query(
-            `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-             VALUES (?, ?, ?, NULL, ?)`,
-            ['CREATE', 'STUDENT', admissionNumber, serializedStudentData]
-          );
-          console.log('⚠️ Created audit log with NULL admin due to missing admin reference');
-        } catch (retryError) {
-          console.error('Failed to create audit log fallback:', retryError.message);
-        }
-      }
-    }
+    await writeAuditLog(masterPool, {
+      actionType: 'CREATE',
+      entityType: 'STUDENT',
+      entityId: admissionNumber,
+      req,
+      details: serializedStudentData
+    });
 
     clearStudentsCache();
 
@@ -4456,7 +4355,8 @@ exports.promoteStudent = async (req, res) => {
       connection,
       admissionNumber,
       targetStage,
-      adminId: req.admin?.id || null
+      adminId: req.admin?.id || req.user?.id || null,
+      actor: req.user || req.admin || null
     });
 
     if (promotionResult.status === 'NOT_FOUND') {
@@ -4631,7 +4531,8 @@ exports.bulkPromoteStudents = async (req, res) => {
           connection,
           admissionNumber,
           targetStage,
-          adminId: req.admin?.id || null,
+          adminId: req.admin?.id || req.user?.id || null,
+          actor: req.user || req.admin || null,
           courseConfigCache
         });
 
@@ -5452,25 +5353,13 @@ exports.bulkUpdatePinNumbers = async (req, res) => {
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
-    // Log action
-    try {
-      await masterPool.query(
-        `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-         VALUES (?, ?, ?, ?, ?)`,
-        ['BULK_UPDATE_PIN_NUMBERS', 'STUDENT', 'bulk', req.admin.id,
-          JSON.stringify({ successCount, failedCount, notFoundCount, totalRows: results.length })]
-      );
-    } catch (auditError) {
-      console.error('Bulk Pin audit error:', auditError.message);
-      try {
-        await masterPool.query(
-          `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-           VALUES (?, ?, ?, NULL, ?)`,
-          ['BULK_UPDATE_PIN_NUMBERS', 'STUDENT', 'bulk',
-            JSON.stringify({ successCount, failedCount, notFoundCount, totalRows: results.length })]
-        );
-      } catch (e) { }
-    }
+    await writeAuditLog(masterPool, {
+      actionType: 'BULK_UPDATE_PIN_NUMBERS',
+      entityType: 'STUDENT',
+      entityId: 'bulk',
+      req,
+      details: { successCount, failedCount, notFoundCount, totalRows: results.length }
+    });
 
     if (successCount > 0) {
       clearStudentsCache();
@@ -7977,7 +7866,7 @@ exports.getBatchAcademicStatus = async (req, res) => {
 };
 
 // Perform transfer for a single student
-const performTransfer = async ({ connection, admissionNumber, targetCollege, targetBatch, targetCourse, targetBranch, targetStage, adminId }) => {
+const performTransfer = async ({ connection, admissionNumber, targetCollege, targetBatch, targetCourse, targetBranch, targetStage, adminId, actor }) => {
   const [students] = await connection.query(
     `SELECT id, admission_number, admission_no, current_year, current_semester, college, course, branch, batch, student_data
      FROM students WHERE admission_number = ? OR admission_no = ? FOR UPDATE`,
@@ -8039,41 +7928,28 @@ const performTransfer = async ({ connection, admissionNumber, targetCollege, tar
 
   await connection.query(updateQuery, updateParams);
 
-  // Audit Log
-  let validAdminId = null;
-  if (adminId) {
-    try {
-      const [adminRows] = await connection.query('SELECT id FROM admins WHERE id = ? LIMIT 1', [adminId]);
-      if (adminRows.length > 0) validAdminId = adminId;
-    } catch (e) { console.warn('Admin check failed', e); }
-  }
-
-  await connection.query(
-    `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-     VALUES (?, ?, ?, ?, ?)`,
-    [
-      'TRANSFER',
-      'STUDENT',
-      student.admission_number || admissionNumber,
-      validAdminId,
-      JSON.stringify({
-        from: {
-          college: student.college,
-          batch: student.batch,
-          course: student.course,
-          branch: student.branch,
-          ...currentStage
-        },
-        to: {
-          college: targetCollege || student.college,
-          batch: targetBatch || student.batch,
-          course: targetCourse || student.course,
-          branch: targetBranch || student.branch,
-          ...nextStage
-        }
-      })
-    ]
-  );
+  await writeAuditLog(connection, {
+    actionType: 'TRANSFER',
+    entityType: 'STUDENT',
+    entityId: student.admission_number || admissionNumber,
+    actor: actor || (adminId ? { id: adminId, role: 'admin' } : null),
+    details: {
+      from: {
+        college: student.college,
+        batch: student.batch,
+        course: student.course,
+        branch: student.branch,
+        ...currentStage
+      },
+      to: {
+        college: targetCollege || student.college,
+        batch: targetBatch || student.batch,
+        course: targetCourse || student.course,
+        branch: targetBranch || student.branch,
+        ...nextStage
+      }
+    }
+  });
 
   return {
     status: 'SUCCESS',
@@ -8137,7 +8013,8 @@ exports.bulkTransferStudents = async (req, res) => {
           targetCourse,
           targetBranch,
           targetStage,
-          adminId: req.admin?.id || null
+          adminId: req.admin?.id || req.user?.id || null,
+          actor: req.user || req.admin || null
         });
 
         if (transferResult.status === 'NOT_FOUND') {

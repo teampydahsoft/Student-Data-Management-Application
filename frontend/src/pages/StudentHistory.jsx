@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Search, User, Clock, Plus, Loader2, Filter,
-    ChevronDown, Eye, X, MessageSquare, Edit2, Trash2, Check
+    ChevronDown, Eye, X, MessageSquare, Edit2, Trash2, Check, History
 } from 'lucide-react';
 import api from '../config/api';
 import toast from 'react-hot-toast';
 import TargetSelector from '../components/TargetSelector';
 import useAuthStore from '../store/authStore';
+import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 
 const StudentHistory = () => {
     // Selection state
@@ -86,7 +87,7 @@ const StudentHistory = () => {
             <div className="bg-white border-b px-6 py-4 shadow-sm z-10 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Student History & Remarks</h1>
-                    <p className="text-sm text-gray-500">View detailed history and remarks for regular students</p>
+                    <p className="text-sm text-gray-500">View audit activity and remarks for regular students</p>
                 </div>
             </div>
 
@@ -209,6 +210,7 @@ const StudentHistory = () => {
 };
 
 const StudentHistoryModal = ({ student, onClose }) => {
+    const [activeTab, setActiveTab] = useState('audit');
     const [remarks, setRemarks] = useState([]);
     const [loadingRemarks, setLoadingRemarks] = useState(false);
     const [newRemark, setNewRemark] = useState('');
@@ -340,8 +342,40 @@ const StudentHistoryModal = ({ student, onClose }) => {
                     </button>
                 </div>
 
+                {/* Tabs */}
+                <div className="px-6 border-b bg-white flex gap-1">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('audit')}
+                        className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                            activeTab === 'audit'
+                                ? 'border-indigo-600 text-indigo-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <History size={16} /> Activity & Audit Log
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('remarks')}
+                        className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                            activeTab === 'remarks'
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <MessageSquare size={16} /> Remarks
+                    </button>
+                </div>
+
                 {/* Modal Content */}
-                <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <div className="flex-1 overflow-hidden flex flex-col bg-gray-50">
+                    {activeTab === 'audit' ? (
+                        <div className="flex-1 overflow-hidden">
+                            <StudentHistoryLogs student={student} />
+                        </div>
+                    ) : (
+                <div className="flex-1 overflow-y-auto p-6">
                     <div className="space-y-6">
                         {/* Info Grid */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-4 rounded-xl border shadow-sm text-sm">
@@ -488,6 +522,8 @@ const StudentHistoryModal = ({ student, onClose }) => {
                             </p>
                         </div>
                     </div>
+                </div>
+                    )}
                 </div>
             </div>
         </div>

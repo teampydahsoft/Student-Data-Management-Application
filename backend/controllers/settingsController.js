@@ -1,4 +1,14 @@
 const { masterPool } = require('../config/database');
+const { logAudit } = require('../services/auditLogService');
+
+const auditSettingChange = (req, settingKey, details) => {
+  logAudit(req, {
+    actionType: 'UPDATE',
+    entityType: 'SETTINGS',
+    entityId: settingKey,
+    details
+  });
+};
 
 const NOTIFICATION_TYPES = {
   user_creation: {
@@ -164,6 +174,8 @@ exports.updateNotificationSettings = async (req, res) => {
       }
     }
 
+    auditSettingChange(req, 'notification_settings', { keys: settingsToSave.map((s) => s.key) });
+
     res.json({
       success: true,
       message: 'Notification settings saved successfully'
@@ -319,6 +331,8 @@ exports.updateAttendanceSettings = async (req, res) => {
       ['attendance_config', value, new Date(), value, new Date()]
     );
 
+    auditSettingChange(req, 'attendance_config', config);
+
     res.json({
       success: true,
       message: 'Attendance settings saved successfully',
@@ -405,6 +419,8 @@ exports.updateStudentLayoutSettings = async (req, res) => {
        ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
       ['student_portal_layout', value, new Date(), value, new Date()]
     );
+
+    auditSettingChange(req, 'student_portal_layout', { layoutKeys: Object.keys(layout) });
 
     res.json({
       success: true,
@@ -500,6 +516,8 @@ exports.updateCertificateSettings = async (req, res) => {
       ['certificate_config', value, new Date(), value, new Date()]
     );
 
+    auditSettingChange(req, 'certificate_config', { configKeys: Object.keys(config) });
+
     res.json({
       success: true,
       message: 'Certificate settings saved successfully',
@@ -581,6 +599,8 @@ exports.updateFrozenBatches = async (req, res) => {
       ['frozen_batches', value, new Date(), value, new Date()]
     );
 
+    auditSettingChange(req, 'frozen_batches', { batchKeys: Object.keys(batches) });
+
     res.json({
       success: true,
       message: 'Frozen batches settings saved successfully',
@@ -656,6 +676,8 @@ exports.updateProfileUpdateFields = async (req, res) => {
        ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
       ['profile_update_config', value, new Date(), value, new Date()]
     );
+
+    auditSettingChange(req, 'profile_update_config', config);
 
     res.json({
       success: true,

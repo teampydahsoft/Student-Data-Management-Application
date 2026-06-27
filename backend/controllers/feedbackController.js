@@ -1,6 +1,7 @@
 const { masterPool } = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
+const { writeAuditLog } = require('../services/auditLogService');
 
 // Helper to get admin ID
 const getAdminIdForDb = (req) => (req.admin && req.admin.role === 'admin' ? req.admin.id : null);
@@ -41,12 +42,13 @@ exports.createFeedbackForm = async (req, res) => {
             [formId, formName, formDescription || '', JSON.stringify(formFields), qrCodeData, adminIdForDb, recurrence ? JSON.stringify(recurrence) : null, 'feedback']
         );
 
-        // Log action
-        await conn.query(
-            `INSERT INTO audit_logs (action_type, entity_type, entity_id, admin_id, details)
-       VALUES (?, ?, ?, ?, ?)`,
-            ['CREATE', 'FEEDBACK_FORM', formId, adminIdForDb, JSON.stringify({ formName })]
-        );
+        await writeAuditLog(conn, {
+            actionType: 'CREATE',
+            entityType: 'FEEDBACK_FORM',
+            entityId: formId,
+            req,
+            details: { formName }
+        });
 
         await conn.commit();
 

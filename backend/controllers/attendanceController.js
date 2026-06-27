@@ -51,6 +51,7 @@ const {
   resolveStudentSectionSql,
   fetchSectionFilterOptions
 } = require('../services/sectionFilterService');
+const { logAudit } = require('../services/auditLogService');
 
 const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
@@ -1407,6 +1408,22 @@ exports.deleteAttendanceForDate = async (req, res) => {
       params
     );
 
+    logAudit(req, {
+      actionType: 'DELETE',
+      entityType: 'ATTENDANCE',
+      entityId: attendanceDate,
+      details: {
+        deletedCount: result.affectedRows,
+        filters: {
+          batch: batch || null,
+          course: course || null,
+          branch: branch || null,
+          currentYear: currentYear || null,
+          currentSemester: currentSemester || null
+        }
+      }
+    });
+
     res.json({
       success: true,
       message: `Deleted ${result.affectedRows} attendance record(s) for ${attendanceDate}`,
@@ -2539,6 +2556,21 @@ exports.markAttendance = async (req, res) => {
 
     // Combine report results
     const allReportResults = [...reportResults, ...dayEndReportResults];
+
+    logAudit(req, {
+      actionType: 'MARK',
+      entityType: 'ATTENDANCE',
+      entityId: normalizedDate,
+      details: {
+        recordCount: normalizedRecords.length,
+        updatedCount,
+        insertedCount,
+        statusSummary: normalizedRecords.reduce((acc, record) => {
+          acc[record.status] = (acc[record.status] || 0) + 1;
+          return acc;
+        }, {})
+      }
+    });
 
     res.json({
       success: true,

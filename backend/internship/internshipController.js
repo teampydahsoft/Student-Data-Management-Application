@@ -10,6 +10,23 @@ const {
     isMinutesWithinRange,
     IST_OFFSET_MS,
 } = require('../utils/dateUtils');
+const { logAudit } = require('../services/auditLogService');
+
+const logStudentInternshipAudit = (req, admissionNumber, actionType, details) => {
+    if (!admissionNumber) return;
+    logAudit(req, {
+        actionType,
+        entityType: 'STUDENT',
+        entityId: String(admissionNumber),
+        details
+    });
+};
+
+const formatDateKey = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
+};
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -213,6 +230,13 @@ exports.createInternship = async (req, res) => {
 
         const [rows] = await masterPool.query('SELECT * FROM internship_locations WHERE id = ?', [result.insertId]);
 
+        logAudit(req, {
+          actionType: 'CREATE',
+          entityType: 'INTERNSHIP_LOCATION',
+          entityId: String(result.insertId),
+          details: { companyName, address }
+        });
+
         res.status(201).json({ success: true, data: rows[0], message: 'Internship location created successfully.' });
     } catch (error) {
         console.error('Error creating internship:', error);
@@ -285,6 +309,13 @@ exports.updateInternshipLocation = async (req, res) => {
         } finally {
             connection.release();
         }
+
+        logAudit(req, {
+          actionType: 'UPDATE',
+          entityType: 'INTERNSHIP_LOCATION',
+          entityId: String(id),
+          details: { companyName, address, isActive }
+        });
 
         res.json({ success: true, message: 'Internship location updated and attendance records re-validated successfully.' });
     } catch (error) {
@@ -751,7 +782,7 @@ exports.assignInternship = async (req, res) => {
         // 1. Find eligible students
         if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
             const [rows] = await connection.query(
-                `SELECT id FROM students 
+                `SELECT id, admission_number FROM students 
                  WHERE id IN (?) 
                     OR admission_number IN (?) 
                     OR pin_no IN (?)`,
@@ -759,7 +790,7 @@ exports.assignInternship = async (req, res) => {
             );
             students = rows;
         } else {
-            let query = `SELECT id FROM students WHERE 1=1 AND student_status = 'Regular'`;
+            let query = `SELECT id, admission_number FROM students WHERE 1=1 AND student_status = 'Regular'`;
             const params = [];
 
             if (filters) {
@@ -844,6 +875,39 @@ exports.assignInternship = async (req, res) => {
             }
 
             await connection.commit();
+
+            const [locationRows] = await masterPool.query(
+                'SELECT company_name FROM internship_locations WHERE id = ? LIMIT 1',
+                [internshipId]
+            );
+            const companyName = locationRows[0]?.company_name || null;
+
+            const internshipAuditDetails = {
+                internshipId: Number(internshipId),
+                companyName,
+                startDate: formatDateKey(startDate),
+                endDate: formatDateKey(endDate),
+                allowedDays,
+                overwrite: !!overwrite
+            };
+
+            students.forEach((studentRow) => {
+                logStudentInternshipAudit(req, studentRow.admission_number, 'INTERNSHIP_ASSIGN', internshipAuditDetails);
+            });
+
+            logAudit(req, {
+              actionType: 'ASSIGN',
+              entityType: 'INTERNSHIP_ASSIGNMENT',
+              entityId: String(internshipId),
+              details: {
+                studentCount: students.length,
+                startDate,
+                endDate,
+                allowedDays,
+                filters: filters || null,
+                overwrite: !!overwrite
+              }
+            });
             res.json({
                 success: true,
                 message: overwrite 
@@ -940,11 +1004,39 @@ exports.updateStudentAssignment = async (req, res) => {
     try {
         const { assignmentId, internshipId, startDate, endDate, allowedDays } = req.body;
 
+        const [existingRows] = await masterPool.query(`
+            SELECT ia.id, ia.student_id, s.admission_number, il.company_name
+            FROM internship_assignments ia
+            JOIN students s ON s.id = ia.student_id
+            JOIN internship_locations il ON il.id = ?
+            WHERE ia.id = ?
+            LIMIT 1
+        `, [internshipId, assignmentId]);
+
         await masterPool.query(`
             UPDATE internship_assignments 
             SET internship_id = ?, start_date = ?, end_date = ?, allowed_days = ?
             WHERE id = ?
         `, [internshipId, startDate, endDate, JSON.stringify(allowedDays), assignmentId]);
+
+        const existing = existingRows[0];
+        if (existing?.admission_number) {
+            logStudentInternshipAudit(req, existing.admission_number, 'INTERNSHIP_UPDATE', {
+                assignmentId: Number(assignmentId),
+                internshipId: Number(internshipId),
+                companyName: existing.company_name,
+                startDate: formatDateKey(startDate),
+                endDate: formatDateKey(endDate),
+                allowedDays
+            });
+        }
+
+        logAudit(req, {
+          actionType: 'UPDATE',
+          entityType: 'INTERNSHIP_ASSIGNMENT',
+          entityId: String(assignmentId),
+          details: { internshipId, startDate, endDate, allowedDays }
+        });
 
         res.json({ success: true, message: 'Assignment updated successfully' });
     } catch (error) {
@@ -956,7 +1048,35 @@ exports.updateStudentAssignment = async (req, res) => {
 exports.removeStudentAssignment = async (req, res) => {
     try {
         const { assignmentId } = req.params;
+
+        const [existingRows] = await masterPool.query(`
+            SELECT ia.id, s.admission_number, il.company_name, ia.internship_id,
+                   ia.start_date, ia.end_date
+            FROM internship_assignments ia
+            JOIN students s ON s.id = ia.student_id
+            JOIN internship_locations il ON il.id = ia.internship_id
+            WHERE ia.id = ?
+            LIMIT 1
+        `, [assignmentId]);
+
         await masterPool.query('DELETE FROM internship_assignments WHERE id = ?', [assignmentId]);
+
+        const existing = existingRows[0];
+        if (existing?.admission_number) {
+            logStudentInternshipAudit(req, existing.admission_number, 'INTERNSHIP_REMOVE', {
+                assignmentId: Number(assignmentId),
+                internshipId: existing.internship_id,
+                companyName: existing.company_name,
+                startDate: formatDateKey(existing.start_date),
+                endDate: formatDateKey(existing.end_date)
+            });
+        }
+
+        logAudit(req, {
+          actionType: 'DELETE',
+          entityType: 'INTERNSHIP_ASSIGNMENT',
+          entityId: String(assignmentId)
+        });
         res.json({ success: true, message: 'Assignment removed successfully' });
     } catch (error) {
         console.error('Error removing assignment:', error);
@@ -1471,6 +1591,12 @@ exports.deleteInternshipLocation = async (req, res) => {
         }
 
         await masterPool.query('DELETE FROM internship_locations WHERE id = ?', [id]);
+
+        logAudit(req, {
+          actionType: 'DELETE',
+          entityType: 'INTERNSHIP_LOCATION',
+          entityId: String(id)
+        });
 
         res.json({ success: true, message: 'Location deleted successfully' });
     } catch (error) {
@@ -2162,6 +2288,13 @@ exports.grantBackdateRights = async (req, res) => {
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE is_active = 1
         `, [internship_id, batch, date, granted_by]);
+
+        logAudit(req, {
+          actionType: 'GRANT',
+          entityType: 'INTERNSHIP_BACKDATE_RIGHTS',
+          entityId: `${internship_id}:${batch}:${date}`,
+          details: { internship_id, batch, date }
+        });
 
         res.json({ success: true, message: 'Marking rights granted successfully.' });
     } catch (error) {
