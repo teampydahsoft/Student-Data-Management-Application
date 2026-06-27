@@ -1272,15 +1272,15 @@ const InternshipAdmin = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Work Start Time (IST)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Time (IST)</label>
                                     <input type="time" required className="w-full px-4 py-2 border rounded-lg outline-none" value={formData.allowedStartTime} onChange={e => setFormData({ ...formData, allowedStartTime: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Work End Time (IST)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Time (IST)</label>
                                     <input type="time" required className="w-full px-4 py-2 border rounded-lg outline-none" value={formData.allowedEndTime} onChange={e => setFormData({ ...formData, allowedEndTime: e.target.value })} />
                                 </div>
                             </div>
-                            <p className="text-xs text-gray-500">Check-in is allowed in the first 15 minutes after start; check-out in the last 15 minutes before end (IST).</p>
+                            <p className="text-xs text-gray-500">Check-in: from 15 minutes before until 15 minutes after the check-in time. Check-out: from the check-out time until 15 minutes after (all IST).</p>
 
                             <button type="submit" disabled={loading} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg">{loading ? 'Creating...' : 'Create Location'}</button>
                         </form>
@@ -2651,7 +2651,7 @@ const InternshipAdmin = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Time (IST)</label>
                                     <input
                                         type="time"
                                         required
@@ -2661,7 +2661,7 @@ const InternshipAdmin = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Time (IST)</label>
                                     <input
                                         type="time"
                                         required
@@ -2671,6 +2671,7 @@ const InternshipAdmin = () => {
                                     />
                                 </div>
                             </div>
+                            <p className="text-xs text-gray-500">Check-in: 15 min before/after check-in time. Check-out: at check-out time through 15 min after (IST).</p>
                             <div className="flex items-center gap-2">
                                 <input
                                     type="checkbox"

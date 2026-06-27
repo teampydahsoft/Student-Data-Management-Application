@@ -28,6 +28,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const MARKING_WINDOW_MINUTES = 15;
+const MINUTES_IN_DAY = 24 * 60;
 
 const getCurrentISTTime = () => new Date(Date.now() + IST_OFFSET_MS);
 
@@ -39,39 +40,43 @@ const getCurrentISTDayShort = () => {
 
 const getCurrentISTDate = () => getISTDateString();
 
-/** Check-in: first MARKING_WINDOW_MINUTES after allowed start (capped at end). */
-const getCheckInWindow = (startTime, endTime) => {
-    const startMinutes = parseTimeToMinutes(startTime);
-    const endMinutes = parseTimeToMinutes(endTime);
-    if (startMinutes == null || endMinutes == null) return null;
+const clampDayMinutes = (minutes) => Math.max(0, Math.min(MINUTES_IN_DAY - 1, minutes));
 
-    const windowEnd = Math.min(startMinutes + MARKING_WINDOW_MINUTES, endMinutes);
+/** Check-in: from 15 minutes before the configured check-in time until 15 minutes after (IST). */
+const getCheckInWindow = (startTime) => {
+    const startMinutes = parseTimeToMinutes(startTime);
+    if (startMinutes == null) return null;
+
+    const windowStart = clampDayMinutes(startMinutes - MARKING_WINDOW_MINUTES);
+    const windowEnd = clampDayMinutes(startMinutes + MARKING_WINDOW_MINUTES);
+
     return {
-        startMinutes,
+        startMinutes: windowStart,
         endMinutes: windowEnd,
-        startLabel: formatMinutesToHHMM(startMinutes),
+        startLabel: formatMinutesToHHMM(windowStart),
         endLabel: formatMinutesToHHMM(windowEnd),
     };
 };
 
-/** Check-out: last MARKING_WINDOW_MINUTES before allowed end (capped at start). */
-const getCheckOutWindow = (startTime, endTime) => {
-    const startMinutes = parseTimeToMinutes(startTime);
+/** Check-out: from the configured check-out time until 15 minutes after (IST). */
+const getCheckOutWindow = (endTime) => {
     const endMinutes = parseTimeToMinutes(endTime);
-    if (startMinutes == null || endMinutes == null) return null;
+    if (endMinutes == null) return null;
 
-    const windowStart = Math.max(endMinutes - MARKING_WINDOW_MINUTES, startMinutes);
+    const windowStart = clampDayMinutes(endMinutes);
+    const windowEnd = clampDayMinutes(endMinutes + MARKING_WINDOW_MINUTES);
+
     return {
         startMinutes: windowStart,
-        endMinutes,
+        endMinutes: windowEnd,
         startLabel: formatMinutesToHHMM(windowStart),
-        endLabel: formatMinutesToHHMM(endMinutes),
+        endLabel: formatMinutesToHHMM(windowEnd),
     };
 };
 
 const buildAttendanceWindowPayload = (startTime, endTime) => {
-    const checkIn = getCheckInWindow(startTime, endTime);
-    const checkOut = getCheckOutWindow(startTime, endTime);
+    const checkIn = getCheckInWindow(startTime);
+    const checkOut = getCheckOutWindow(endTime);
     if (!checkIn || !checkOut) return null;
 
     return {
@@ -650,7 +655,10 @@ async function autoMarkAbsentees(reportDate) {
         let inserted = 0;
         for (const row of assignments) {
             const endMinutes = parseTimeToMinutes(row.allowed_end_time);
-            if (endMinutes == null || nowMinutes <= endMinutes) continue;
+            const checkoutDeadline = endMinutes == null
+                ? null
+                : clampDayMinutes(endMinutes + MARKING_WINDOW_MINUTES);
+            if (checkoutDeadline == null || nowMinutes <= checkoutDeadline) continue;
 
             await masterPool.query(
                 `INSERT INTO internship_attendance (student_id, internship_id, attendance_date, status, created_at)
@@ -1044,8 +1052,8 @@ exports.markAttendance = async (req, res) => {
         }
 
         const activeWindow = isCheckOut
-            ? getCheckOutWindow(internship.allowed_start_time, internship.allowed_end_time)
-            : getCheckInWindow(internship.allowed_start_time, internship.allowed_end_time);
+            ? getCheckOutWindow(internship.allowed_end_time)
+            : getCheckInWindow(internship.allowed_start_time);
 
         if (!activeWindow || !isMinutesWithinRange(currentMinutes, activeWindow.startMinutes, activeWindow.endMinutes)) {
             const actionLabel = isCheckOut ? 'Check-out' : 'Check-in';
