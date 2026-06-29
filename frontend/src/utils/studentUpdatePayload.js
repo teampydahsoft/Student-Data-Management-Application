@@ -15,7 +15,10 @@ export const READONLY_STUDENT_PAYLOAD_KEYS = new Set([
   'synchronizedData',
   'student_marks',
   'student_attendance',
-  'today_attendance_status'
+  'today_attendance_status',
+  'scholar_status',
+  'Scholar Status',
+  'scholarstatus'
 ]);
 
 export function stripReadonlyStudentPayloadFields(obj) {

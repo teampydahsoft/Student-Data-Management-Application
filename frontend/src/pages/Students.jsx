@@ -738,7 +738,7 @@ const Students = () => {
         setScholarshipData(data);
         const status = data.currentYearEligible || '';
         if (status) {
-          setEditData((prev) => ({ ...prev, scholar_status: status }));
+          setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
         }
         return data;
       }
@@ -1733,6 +1733,14 @@ const Students = () => {
       return;
     }
 
+    // Scholarship status is managed only via the Scholarship tab
+    if (field === 'scholar_status') {
+      setEditingCell(null);
+      setCellEditValue('');
+      toast.error('Update scholarship status from the Scholarship tab');
+      return;
+    }
+
     // Special handling for student_status -> 'Rejoined' (requires batch selection)
     if (field === 'student_status' && newValue === 'Rejoined') {
       // Open rejoin modal
@@ -1904,12 +1912,13 @@ const Students = () => {
     }
   };
 
-  const handleViewDetails = (student) => {
+  const handleViewDetails = (student, initialTab = 'details') => {
     setEditMode(false);
     setEditingRollNumber(false);
     setTempRollNumber(student.pin_no || '');
     setViewingPassword(false);
     setStudentPassword(null);
+    setActiveStudentTab(initialTab);
 
     // Prepare all possible fields including hidden ones
     const allFields = {
@@ -1945,8 +1954,6 @@ const Students = () => {
       Section: student.section || '',
       ...(student.stud_type && { stud_type: student.stud_type, 'StudType': student.stud_type }),
       ...(student.student_status && { student_status: student.student_status, 'Student Status': student.student_status }),
-      // Always include scholar_status so it can be updated from blank
-      scholar_status: student.scholar_status || '',
       ...(student.student_address && { student_address: student.student_address }),
       ...(student.city_village && { city_village: student.city_village }),
       ...(student.mandal_name && { mandal_name: student.mandal_name }),
@@ -2128,7 +2135,10 @@ const Students = () => {
         prev
           ? {
             ...prev,
-            scholar_status: synchronizedData.scholar_status ?? prev.scholar_status,
+            scholar_status: getCurrentScholarshipStatus(scholarshipData, {
+              ...prev,
+              ...synchronizedData
+            }) || prev.scholar_status,
             current_year:
               synchronizedData.current_year ?? prev.current_year,
             current_semester:
@@ -3349,8 +3359,19 @@ const Students = () => {
                         {(!isCashier || canAddRemarks || canManageRemarks) && (
                           <>
                             {canViewField('scholar_status') && !isCashier && (
-                              <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[100px] truncate" onClick={(e) => e.stopPropagation()}>
-                                {renderEditableCell(student, 'scholar_status', 'select', SCHOLAR_STATUS_OPTIONS)}
+                              <td
+                                className="py-1 px-1 text-[10px] text-gray-700 max-w-[100px] truncate capitalize"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetails(student, 'scholarship');
+                                }}
+                              >
+                                <div
+                                  className="px-2 py-1 rounded hover:bg-purple-50 hover:text-purple-700 transition-colors cursor-pointer capitalize"
+                                  title="Open scholarship details"
+                                >
+                                  {student.scholar_status || 'pending'}
+                                </div>
                               </td>
                             )}
                             {canViewField('registration_status') && !isCashier && (
@@ -3498,9 +3519,27 @@ const Students = () => {
                         {!isCashier && (
                           <>
                             {canViewField('scholar_status') && (
-                              <div>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetails(student, 'scholarship');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleViewDetails(student, 'scholarship');
+                                  }
+                                }}
+                                className="rounded-lg p-1 -m-1 hover:bg-purple-50 cursor-pointer"
+                                title="Open scholarship details"
+                              >
                                 <p className="text-xs text-gray-500">Scholar Status</p>
-                                <p className="text-sm font-medium text-gray-900 truncate" title={student.scholar_status || 'Pending'}>{student.scholar_status || 'Pending'}</p>
+                                <p className="text-sm font-medium text-gray-900 truncate capitalize" title={student.scholar_status || 'Pending'}>
+                                  {student.scholar_status || 'Pending'}
+                                </p>
                               </div>
                             )}
                             {canViewField('registration_status') && (
@@ -4223,7 +4262,6 @@ const Students = () => {
                         setScholarshipData(data);
                         const status = data?.currentYearEligible || getCurrentScholarshipStatus(data, selectedStudent);
                         if (status) {
-                          setEditData((prev) => ({ ...prev, scholar_status: status }));
                           setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
                         }
                       }}
@@ -4962,32 +5000,18 @@ const Students = () => {
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
                                   Scholarship Status
                                 </label>
-                                {editMode ? (
-                                  <select
-                                    value={
-                                      editData.scholar_status
-                                      ?? getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData })
-                                      ?? ''
-                                    }
-                                    onChange={(e) => updateEditField('scholar_status', e.target.value)}
-                                    disabled={isFieldFrozen(selectedStudent, 'scholar_status')}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed capitalize"
-                                  >
-                                    <option value="">Select status</option>
-                                    {SCHOLARSHIP_ELIGIBLE_OPTIONS.map((opt) => (
-                                      <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-medium capitalize">
-                                    {scholarshipLoading
-                                      ? 'Loading...'
-                                      : (getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData }) || 'pending')}
-                                  </p>
-                                )}
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                  Current year status from scholarship records
+                                <p className="text-sm text-gray-900 font-medium capitalize">
+                                  {scholarshipLoading
+                                    ? 'Loading...'
+                                    : (getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData }) || 'pending')}
                                 </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveStudentTab('scholarship')}
+                                  className="mt-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                                >
+                                  Update in Scholarship tab →
+                                </button>
                               </div>
                             )}
                             {canViewField('fee_status') && (
