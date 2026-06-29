@@ -1,5 +1,5 @@
 const { masterPool } = require('../config/database');
-const { syncScholarStatusColumn } = require('../services/studentScholarshipSync');
+const { syncScholarStatusColumn, archiveScholarshipYear, resolveHistoryActor, buildYearSnapshotFromRows } = require('../services/studentScholarshipSync');
 
 const DEFAULT_TOTAL_YEARS = 4;
 
@@ -108,7 +108,7 @@ const fetchScholarshipPayload = async (student) => {
 
     const entry = yearMap[year];
     if (!entry.application_id && row.application_id) entry.application_id = row.application_id;
-    if (!entry.eligible && row.eligible) entry.eligible = row.eligible;
+    if (row.eligible) entry.eligible = row.eligible;
     if (!entry.sanctioned_amount && row.sanctioned_amount) {
       entry.sanctioned_amount = toNumber(row.sanctioned_amount);
     }
@@ -125,6 +125,8 @@ const fetchScholarshipPayload = async (student) => {
     return yearMap[studentYear] || buildEmptyYear(studentYear);
   });
 
+  const archivedHistory = await fetchArchivedHistory(student.id);
+
   return {
     student: {
       id: student.id,
@@ -137,7 +139,8 @@ const fetchScholarshipPayload = async (student) => {
     totalYears,
     currentYear: Math.max(1, toNumber(student.current_year) || 1),
     currentYearEligible: yearMap[Math.max(1, toNumber(student.current_year) || 1)]?.eligible || '',
-    years
+    years,
+    archivedHistory
   };
 };
 
@@ -153,6 +156,57 @@ const hasReleaseData = (release) => (
   || release.to_date
   || (release.proceeding && String(release.proceeding).trim())
 );
+
+const buildIncomingYearSnapshot = (yearEntry) => {
+  const releases = (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
+    .filter(hasReleaseData)
+    .map((release) => ({
+      from_date: formatDbDate(release.from_date) || null,
+      to_date: formatDbDate(release.to_date) || null,
+      proceeding: release.proceeding || '',
+      released_amount: toNumber(release.released_amount)
+    }));
+
+  return {
+    application_id: yearEntry.application_id || null,
+    eligible: yearEntry.eligible || null,
+    sanctioned_amount: toNumber(yearEntry.sanctioned_amount),
+    released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
+    releases
+  };
+};
+
+const snapshotsEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+const parseHistoryNotes = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { summary: String(value) };
+  }
+};
+
+const fetchArchivedHistory = async (studentId) => {
+  const [rows] = await masterPool.query(
+    `SELECT id, scholar_status, academic_year, academic_semester, source, notes, created_at
+     FROM student_scholarship_history
+     WHERE student_id = ?
+     ORDER BY created_at DESC, id DESC`,
+    [studentId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    scholar_status: row.scholar_status || '',
+    academic_year: row.academic_year,
+    academic_semester: row.academic_semester,
+    source: row.source || '',
+    archived_at: row.created_at,
+    snapshot: parseHistoryNotes(row.notes)
+  }));
+};
 
 exports.getScholarshipHistory = async (req, res) => {
   try {
@@ -189,6 +243,8 @@ exports.saveScholarshipHistory = async (req, res) => {
 
     await connection.beginTransaction();
 
+    const historyActor = resolveHistoryActor(req.user);
+
     for (const yearEntry of years) {
       const studentYear = toNumber(yearEntry.student_year);
       if (!studentYear || studentYear < 1) continue;
@@ -200,6 +256,29 @@ exports.saveScholarshipHistory = async (req, res) => {
         eligible: yearEntry.eligible || null,
         sanctioned_amount: toNumber(yearEntry.sanctioned_amount)
       };
+
+      const [existingRows] = await connection.query(
+        `SELECT application_id, eligible, sanctioned_amount, released_amount,
+                DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
+                DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
+                proceeding
+         FROM student_scholarship
+         WHERE student_id = ? AND student_year = ?`,
+        [student.id, studentYear]
+      );
+
+      const incomingSnapshot = buildIncomingYearSnapshot(yearEntry);
+      const existingSnapshot = existingRows.length > 0
+        ? buildYearSnapshotFromRows(existingRows)
+        : null;
+
+      if (existingSnapshot && !snapshotsEqual(existingSnapshot, incomingSnapshot)) {
+        await archiveScholarshipYear(connection, student, studentYear, historyActor);
+      }
+
+      if (existingRows.length > 0 && snapshotsEqual(existingSnapshot, incomingSnapshot)) {
+        continue;
+      }
 
       await connection.query(
         'DELETE FROM student_scholarship WHERE student_id = ? AND student_year = ?',

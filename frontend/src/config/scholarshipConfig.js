@@ -8,9 +8,14 @@ export const getScholarshipStatusForYear = (scholarshipData, studentYear) => {
 
 export const getCurrentScholarshipStatus = (scholarshipData, student) => {
   const currentYear = Number(student?.current_year) || 1;
-  const fromTable = getScholarshipStatusForYear(scholarshipData, currentYear);
-  if (fromTable) return fromTable;
-  const legacy = String(student?.scholar_status || '').trim().toLowerCase();
-  if (SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(legacy)) return legacy;
-  return '';
+  return getScholarshipStatusForYear(scholarshipData, currentYear);
+};
+
+export const isScholarshipStatusAssigned = (status) => (
+  SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(String(status || '').trim().toLowerCase())
+);
+
+export const formatScholarshipStatusDisplay = (status) => {
+  const normalized = String(status || '').trim();
+  return normalized || '—';
 };

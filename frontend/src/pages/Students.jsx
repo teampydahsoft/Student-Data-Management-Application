@@ -26,6 +26,7 @@ import {
   MessageSquare,
   User,
   AlertTriangle,
+  Shield,
   Mail,
   CreditCard,
   Loader2,
@@ -66,8 +67,17 @@ import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasM
 import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
 import {
   SCHOLARSHIP_ELIGIBLE_OPTIONS,
-  getCurrentScholarshipStatus
+  getCurrentScholarshipStatus,
+  formatScholarshipStatusDisplay,
+  isScholarshipStatusAssigned
 } from '../config/scholarshipConfig';
+import {
+  isVerificationCompleteForCycle,
+  isStudentMobileVerifiedForCycle,
+  isParentMobileVerifiedForCycle,
+  isPromotionCompleteForCycle,
+  REGISTRATION_EMPTY_DISPLAY
+} from '../config/registrationCycle';
 import { CASTE_OPTIONS } from '../config/casteConfig';
 
 // Student status options
@@ -388,18 +398,16 @@ const Students = () => {
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showRemarksHistoryModal, setShowRemarksHistoryModal] = useState(false);
 
-  const handleVerificationComplete = (updatedStatus) => {
-    setSelectedStudent(prev => ({
-      ...prev,
-      student_data: {
-        ...(prev.student_data || {}),
-        ...updatedStatus
+  const handleVerificationComplete = async () => {
+    if (!selectedStudent?.admission_number) return;
+    try {
+      const response = await api.get(`/students/${selectedStudent.admission_number}`);
+      if (response.data?.success) {
+        setSelectedStudent(response.data.data);
       }
-    }));
-    setEditData(prev => ({
-      ...prev,
-      ...updatedStatus
-    }));
+    } catch (error) {
+      console.error('Failed to refresh student after verification:', error);
+    }
   };
 
   const updateStudentMutation = useUpdateStudent();
@@ -4023,9 +4031,24 @@ const Students = () => {
                   {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
                     const studentData = selectedStudent.student_data || {};
 
-                    const isStudentVerified = studentData.is_student_mobile_verified === true;
-                    const isParentVerified = studentData.is_parent_mobile_verified === true;
-                    const isVerificationComplete = isStudentVerified && isParentVerified;
+                    const currentYear = selectedStudent.current_year || studentData.current_year;
+                    const currentSem = selectedStudent.current_semester || studentData.current_semester;
+
+                    const isStudentVerified = isStudentMobileVerifiedForCycle(
+                      studentData,
+                      currentYear,
+                      currentSem
+                    );
+                    const isParentVerified = isParentMobileVerifiedForCycle(
+                      studentData,
+                      currentYear,
+                      currentSem
+                    );
+                    const isVerificationComplete = isVerificationCompleteForCycle(
+                      studentData,
+                      currentYear,
+                      currentSem
+                    );
 
                     const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
                     const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
@@ -4033,24 +4056,28 @@ const Students = () => {
                     const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
                     const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));
 
-                    const currentYear = selectedStudent.current_year || studentData.current_year;
-                    const currentSem = selectedStudent.current_semester || studentData.current_semester;
-                    const isPromotionActive = !!currentYear;
+                    const isPromotionComplete = isPromotionCompleteForCycle(
+                      studentData,
+                      currentYear,
+                      currentSem
+                    );
 
                     const scholarStatus = getCurrentScholarshipStatus(scholarshipData, {
                       ...selectedStudent,
                       ...studentData
-                    }) || 'pending';
-                    const isScholarshipComplete = SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(
-                      String(scholarStatus).trim().toLowerCase()
-                    );
+                    });
+                    const isScholarshipComplete = isScholarshipStatusAssigned(scholarStatus);
+
+                    const studentMobile = selectedStudent.student_mobile || studentData.student_mobile;
+                    const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
+                    const canVerifyMobile = canViewField('registration_status');
 
                     const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete;
 
                     const StatusBadge = ({ completed, text }) => (
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completed ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                         }`}>
-                        {completed ? 'Completed' : text || 'Pending'}
+                        {completed ? 'Completed' : formatScholarshipStatusDisplay(text)}
                       </span>
                     );
 
@@ -4080,34 +4107,45 @@ const Students = () => {
                         </h4>
 
                         <div className="grid grid-cols-1 gap-4">
-                          <div
-                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
-                            onDoubleClick={() => canViewField('registration_status') && setShowVerificationModal(true)}
-                            title="Double-click to manually verify"
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                                <MessageSquare size={20} />
-                              </div>
-                              <div>
-                                <h5 className="font-semibold text-gray-900">1. Mobile Verification</h5>
-                                <div className="flex flex-col gap-1 mt-1">
-                                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                                    <span className={isStudentVerified ? 'text-green-600' : 'text-red-500'}>
-                                      {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                      Student Mobile
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                                    <span className={isParentVerified ? 'text-green-600' : 'text-red-500'}>
-                                      {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                      Parent Mobile
-                                    </span>
+                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                              <div className="flex items-start gap-3">
+                                <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                  <MessageSquare size={20} />
+                                </div>
+                                <div>
+                                  <h5 className="font-semibold text-gray-900">1. Mobile Verification</h5>
+                                  <p className="text-xs text-gray-500 mt-0.5">Send OTP to student or parent mobile for this semester</p>
+                                  <div className="flex flex-col gap-1.5 mt-2">
+                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                      <span className={isStudentVerified ? 'text-green-600' : 'text-red-500'}>
+                                        {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                        Student: {studentMobile || 'No number'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                      <span className={isParentVerified ? 'text-green-600' : 'text-red-500'}>
+                                        {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                        Parent: {parentMobile || 'No number'}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+                              <div className="flex flex-col sm:items-end gap-2 shrink-0">
+                                <StatusBadge completed={isVerificationComplete} />
+                                {canVerifyMobile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowVerificationModal(true)}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                                  >
+                                    <Shield size={16} />
+                                    {isVerificationComplete ? 'View / Re-verify' : 'Verify with OTP'}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <StatusBadge completed={isVerificationComplete} />
                           </div>
 
                           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -4142,20 +4180,24 @@ const Students = () => {
 
                           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isPromotionActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <div className={`mt-1 p-2 rounded-full ${isPromotionComplete ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
                                 <TrendingUp size={20} />
                               </div>
                               <div>
                                 <h5 className="font-semibold text-gray-900">4. Promotion Status</h5>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  Current Academic Stage
+                                  Acknowledged for current semester
                                 </p>
                               </div>
                             </div>
-                            <div className="ml-auto flex items-center">
+                            <div className="ml-auto flex items-center gap-2">
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100">
                                 Year {currentYear || '-'} • Sem {currentSem || '-'}
                               </span>
+                              <StatusBadge
+                                completed={isPromotionComplete}
+                                text={isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY}
+                              />
                             </div>
                           </div>
 
@@ -4167,7 +4209,7 @@ const Students = () => {
                               <div>
                                 <h5 className="font-semibold text-gray-900">5. Scholarship Status</h5>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  Applicability
+                                  Year {selectedStudent.current_year || studentData.current_year || 1} status from scholarship records
                                 </p>
                               </div>
                             </div>
@@ -4940,7 +4982,9 @@ const Students = () => {
                                 <p className="text-sm text-gray-900 font-medium capitalize">
                                   {scholarshipLoading
                                     ? 'Loading...'
-                                    : (getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData }) || 'pending')}
+                                    : formatScholarshipStatusDisplay(
+                                      getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData })
+                                    )}
                                 </p>
                                 <button
                                   type="button"

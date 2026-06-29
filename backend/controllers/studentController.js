@@ -2,7 +2,7 @@ const { masterPool, stagingPool } = require('../config/database');
 const { fetchActiveQuotaCodes } = require('./quotaController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { studentsCache } = require('../services/cache');
+const { studentsCache, registrationAbstractCache } = require('../services/cache');
 const multer = require('multer');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
@@ -15,6 +15,29 @@ const {
 } = require('../services/academicProgression');
 const sectionAssignmentService = require('../services/sectionAssignmentService');
 const { writeAuditLog, logAudit } = require('../services/auditLogService');
+const {
+  scholarshipHasCurrentYearStatusSql,
+  getScholarshipFilterClause,
+  scholarshipAssignedSumSql,
+  scholarshipPendingSumSql,
+  buildCurrentYearScholarshipMap,
+  resolveRegistrationScholarshipStage,
+  isScholarshipDisplayUnassigned
+} = require('../services/studentScholarshipSync');
+const {
+  isVerificationCompleteForCycle,
+  isPromotionCompleteForCycle,
+  stampVerificationForCycle,
+  stampPromotionForCycle,
+  resetRegistrationCycle,
+  verificationCompletedSumSql,
+  promotionCompletedSumSql,
+  verificationCompletedSql,
+  promotionCompletedSql,
+  REGISTRATION_EMPTY_DISPLAY
+} = require('../services/registrationCycle');
+const { buildRegistrationAbstractQuery } = require('../services/registrationReportSql');
+const crypto = require('crypto');
 
 // Sections are assigned manually via Section Partition — no auto-assignment on student changes.
 const maybeSyncManualStudentSection = async ({
@@ -1309,12 +1332,8 @@ const performPromotion = async ({ connection, admissionNumber, targetStage, admi
     }
   }
 
-  // Ensure verification flags are preserved if they exist in current data
-  if (parsedStudentData.is_student_mobile_verified === undefined && student.student_data) {
-    // If for some reason they aren't in the parsed data but might be in the database, 
-    // we should have them already in parsedStudentData from the parseJSON call above.
-  }
-
+  resetRegistrationCycle(parsedStudentData);
+  parsedStudentData.registration_cycle_reset_at = new Date().toISOString();
   applyStageToPayload(parsedStudentData, nextStage);
   const serializedStudentData = JSON.stringify(parsedStudentData);
 
@@ -3184,12 +3203,16 @@ exports.updateStudent = async (req, res) => {
     // If student mobile number changed, reset student mobile verification
     if (normalizedNewStudentMobile && normalizedNewStudentMobile !== normalizedOldStudentMobile) {
       mutableStudentData.is_student_mobile_verified = false;
+      delete mutableStudentData.mobile_verified_year;
+      delete mutableStudentData.mobile_verified_semester;
       console.log(`🔄 Student mobile number changed for ${admissionNumber}. Resetting student mobile verification status.`);
     }
 
     // If parent mobile number changed, reset parent mobile verification
     if (normalizedNewParentMobile && normalizedNewParentMobile !== normalizedOldParentMobile) {
       mutableStudentData.is_parent_mobile_verified = false;
+      delete mutableStudentData.parent_verified_year;
+      delete mutableStudentData.parent_verified_semester;
       console.log(`🔄 Parent mobile number changed for ${admissionNumber}. Resetting parent mobile verification status.`);
     }
 
@@ -3243,6 +3266,7 @@ exports.updateStudent = async (req, res) => {
       Number(resolvedStage.year) !== Number(existingStudent.current_year) ||
       Number(resolvedStage.semester) !== Number(existingStudent.current_semester)
     ) {
+      resetRegistrationCycle(mutableStudentData);
       updateFields.push('current_year = ?', 'current_semester = ?');
       updateValues.push(resolvedStage.year, resolvedStage.semester);
       updatedColumns.add('current_year');
@@ -5705,7 +5729,7 @@ exports.verifyOtp = async (req, res) => {
     if (type) {
       try {
         const [rows] = await masterPool.query(
-          'SELECT id, student_data FROM students WHERE admission_number = ?',
+          'SELECT id, student_data, current_year, current_semester FROM students WHERE admission_number = ?',
           [admissionNumber]
         );
 
@@ -5720,8 +5744,12 @@ exports.verifyOtp = async (req, res) => {
             data = {};
           }
 
-          const key = type.toLowerCase() === 'student' ? 'is_student_mobile_verified' : 'is_parent_mobile_verified';
-          data[key] = true;
+          stampVerificationForCycle(
+            data,
+            type,
+            student.current_year,
+            student.current_semester
+          );
 
           await masterPool.query(
             'UPDATE students SET student_data = ? WHERE id = ?',
@@ -5999,8 +6027,10 @@ exports.updateFeeStatus = async (req, res) => {
 // Helper: Check for registration auto-completion (column-first; JSON sync only when needed)
 const checkAndAutoCompleteRegistration = async (admissionNumber) => {
   try {
+    const { getScholarshipEligibleForYear, isScholarshipCompleteForRegistration } = require('../services/studentScholarshipSync');
+
     const [rows] = await masterPool.query(
-      `SELECT student_data, certificates_status, fee_status, scholar_status,
+      `SELECT id, student_data, certificates_status, fee_status, scholar_status,
               current_year, current_semester, registration_status
        FROM students WHERE admission_number = ?`,
       [admissionNumber]
@@ -6011,9 +6041,11 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
     const student = rows[0];
     const studentData = parseJSON(student.student_data) || {};
 
-    const isMobileVerified = studentData.is_student_mobile_verified === true;
-    const isParentVerified = studentData.is_parent_mobile_verified === true;
-    const verificationCompleted = isMobileVerified && isParentVerified;
+    const isMobileVerified = isVerificationCompleteForCycle(
+      studentData,
+      student.current_year,
+      student.current_semester
+    );
 
     const certStatus = student.certificates_status || '';
     const certificatesCompleted =
@@ -6023,18 +6055,19 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
     const feeStatus = (student.fee_status || '').toLowerCase();
     const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].includes(feeStatus);
 
-    const promotionCompleted = student.current_year && student.current_semester;
+    const promotionCompleted = isPromotionCompleteForCycle(
+      studentData,
+      student.current_year,
+      student.current_semester
+    );
 
-    const scholarStatus = (student.scholar_status || '').trim();
-    const scholarshipCompleted =
-      scholarStatus &&
-      scholarStatus !== '' &&
-      scholarStatus.toLowerCase() !== 'null' &&
-      scholarStatus.toLowerCase() !== 'undefined';
+    const currentYear = Math.max(1, Number(student.current_year) || 1);
+    const yearEligible = await getScholarshipEligibleForYear(masterPool, student.id, currentYear);
+    const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible);
 
     const hasRegColumn = await columnExists('registration_status');
     const allConditionsMet =
-      verificationCompleted &&
+      isMobileVerified &&
       certificatesCompleted &&
       feeCompleted &&
       promotionCompleted &&
@@ -6837,15 +6870,9 @@ exports.getRegistrationReport = async (req, res) => {
       params.push(...searchParams);
     }
 
-    // Scholarship status filter (pending = empty, eligible = has eligible/jvd/yes, not_eligible = not eligible)
+    // Scholarship status filter — current academic year from student_scholarship only
     const scholarshipFilter = (filter_scholarship_status || '').trim().toLowerCase();
-    if (scholarshipFilter === 'pending') {
-      baseQuery += " AND (scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '')";
-    } else if (scholarshipFilter === 'eligible') {
-      baseQuery += " AND scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' AND (LOWER(scholar_status) LIKE '%eligible%' OR LOWER(scholar_status) LIKE '%jvd%' OR LOWER(scholar_status) LIKE '%yes%')";
-    } else if (scholarshipFilter === 'not_eligible') {
-      baseQuery += " AND LOWER(IFNULL(scholar_status,'')) LIKE '%not%' AND LOWER(scholar_status) LIKE '%eligible%'";
-    }
+    baseQuery += getScholarshipFilterClause(scholarshipFilter);
 
     // Get Total Count
     const countQuery = `SELECT COUNT(id) as total ${baseQuery}`;
@@ -6857,28 +6884,26 @@ exports.getRegistrationReport = async (req, res) => {
     const statsQuery = `
       SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN (student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') THEN 1 ELSE 0 END) as verification_completed,
+        ${verificationCompletedSumSql} as verification_completed,
         SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
         SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
-        SUM(CASE WHEN current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '' THEN 1 ELSE 0 END) as promotion_completed,
-        SUM(CASE WHEN scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' THEN 1 ELSE 0 END) as scholarship_assigned,
-        SUM(CASE WHEN scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '' THEN 1 ELSE 0 END) as scholarship_pending,
+        ${promotionCompletedSumSql} as promotion_completed,
+        ${scholarshipAssignedSumSql} as scholarship_assigned,
+        ${scholarshipPendingSumSql} as scholarship_pending,
         SUM(CASE WHEN 
-             (registration_status = 'Completed' OR registration_status = 'completed') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+             ((${verificationCompletedSql}) AND
               (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+              (${promotionCompletedSql}) AND
+              (${scholarshipHasCurrentYearStatusSql}))
              THEN 1 ELSE 0 END) as overall_completed,
         SUM(CASE WHEN 
-             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+             ((${verificationCompletedSql}) AND
               (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+              (${promotionCompletedSql}) AND
+              (${scholarshipHasCurrentYearStatusSql}))
              THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
@@ -6935,6 +6960,7 @@ exports.getRegistrationReport = async (req, res) => {
     const dataParams = [...params, limitNum, offset];
 
     const [students] = await masterPool.query(dataQuery, dataParams);
+    const scholarshipMap = await buildCurrentYearScholarshipMap(masterPool, students);
 
     // Process students to calculate 5 stages status
     const reportData = students.map(student => {
@@ -6953,10 +6979,12 @@ exports.getRegistrationReport = async (req, res) => {
         };
       }
 
-      // Stage 1: Verification
-      const isStudentVerified = !!studentData.is_student_mobile_verified;
-      const isParentVerified = !!studentData.is_parent_mobile_verified;
-      const verificationStatus = (isStudentVerified && isParentVerified) ? 'completed' : 'pending';
+      // Stage 1: Verification — must match current academic cycle
+      const verificationStatus = isVerificationCompleteForCycle(
+        studentData,
+        student.current_year,
+        student.current_semester
+      ) ? 'completed' : 'pending';
 
       // Stage 2: Certificates
       const certStatusRaw = (student.certificates_status || '').toLowerCase();
@@ -6984,37 +7012,22 @@ exports.getRegistrationReport = async (req, res) => {
       const isFeeCleared = ['completed', 'no_due', 'nodue', 'no due', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s));
       const feeStatus = isFeeCleared ? 'completed' : 'pending';
 
-      // Stage 4: Promotion
-      const promotionStatus = (student.current_year && student.current_semester) ? 'completed' : 'pending';
+      // Stage 4: Promotion — acknowledged for current academic cycle
+      const promotionStatus = isPromotionCompleteForCycle(
+        studentData,
+        student.current_year,
+        student.current_semester
+      ) ? 'completed' : 'pending';
 
-      // Stage 5: Scholarship (MANDATORY - must have a status)
-      const scholarRaw = (student.scholar_status || '').toLowerCase();
-      let scholarshipStatusDisplay = student.scholar_status || 'Pending';
+      // Stage 5: Scholarship — current academic year from student_scholarship only
+      const scholarshipStage = resolveRegistrationScholarshipStage(scholarshipMap.get(student.id));
+      const scholarshipStatusDisplay = scholarshipStage.display;
+      const scholarshipStatus = scholarshipStage.status;
 
-      if (scholarRaw.includes('jvd') || scholarRaw.includes('yes') || scholarRaw.includes('eligible')) {
-        // Keep valid status as is
-      } else if (!student.scholar_status || scholarRaw === '' || scholarRaw === 'null' || scholarRaw === 'undefined') {
-        // Empty scholarship is NOT acceptable - step is mandatory
-        scholarshipStatusDisplay = 'Pending';
-      } else {
-        // Any other status (not eligible, etc.) is considered reviewed/completed
-        scholarshipStatusDisplay = student.scholar_status || 'Pending';
-      }
-
-      // Scholarship is MANDATORY - must have a status (not empty/null)
-      const scholarshipStatus = (!student.scholar_status || scholarRaw === '' || scholarRaw === 'null' || scholarRaw === 'undefined')
-        ? 'pending'  // Empty is NOT acceptable - step is mandatory
-        : 'completed'; // Any status (including not eligible) means it's been reviewed
-
-      // Overall Registration Status (All 5 steps must be completed including Scholarship)
-      // Also consider the DB column if it's already marked as Completed or Temporary
+      // Overall Registration Status — all 5 stages required for current cycle
       let overallStatus = 'pending';
 
-      if (student.registration_status && student.registration_status.toLowerCase() === 'completed') {
-        overallStatus = 'completed';
-      } else if (student.registration_status && student.registration_status.toLowerCase() === 'temporary') {
-        overallStatus = 'Temporary';
-      } else if (
+      if (
         verificationStatus === 'completed' &&
         certificatesStatus === 'completed' &&
         feeStatus === 'completed' &&
@@ -7089,8 +7102,27 @@ exports.getRegistrationAbstract = async (req, res) => {
       search
     } = req.query;
 
-    // Fetch exclude settings
-    let excludedCourses = [];
+    const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
+    const cacheKey = crypto.createHash('md5').update(JSON.stringify({
+      scope: req.userScope || null,
+      userId: req.user?.id || null,
+      filter_batch,
+      filter_course,
+      filter_branch,
+      filter_year,
+      filter_semester,
+      filter_college,
+      filter_level,
+      filter_scholarship_status: scholarshipFilterAbstract,
+      search
+    })).digest('hex');
+
+    const cached = registrationAbstractCache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    // Fetch exclude settings (cached in memory for 10 min via filterOptionsCache pattern)
     let excludedStudents = [];
     try {
       const [settings] = await masterPool.query(
@@ -7099,44 +7131,30 @@ exports.getRegistrationAbstract = async (req, res) => {
       );
       if (settings && settings.length > 0) {
         const config = JSON.parse(settings[0].value);
-        if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
         if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
       }
     } catch (err) {
       console.warn('Failed to fetch attendance config for abstract:', err);
     }
 
-    let baseQuery = 'FROM students WHERE 1=1';
+    const whereParts = ['1=1'];
     const params = [];
 
-    // Apply user scope filtering
     if (req.userScope) {
-      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'base');
       if (scopeCondition) {
-        baseQuery += ` AND ${scopeCondition}`;
+        whereParts.push(scopeCondition);
         params.push(...scopeParams);
       }
     }
 
-
-
-    // Filter for REGULAR students only
-    baseQuery += " AND student_status = 'Regular'";
-
-    // Apply Exclusions
-    /*
-    if (excludedCourses.length > 0) {
-      baseQuery += ` AND course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
-      params.push(...excludedCourses);
-    }
-    */
+    whereParts.push("base.student_status = 'Regular'");
 
     if (excludedStudents.length > 0) {
-      baseQuery += ` AND admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+      whereParts.push(`base.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`);
       params.push(...excludedStudents);
     }
 
-    // Apply Filters
     const normalizedFilterBatch = filter_batch && filter_batch.trim().length > 0 ? filter_batch.trim() : null;
     const normalizedFilterCollege = filter_college && filter_college.trim().length > 0 ? filter_college.trim() : null;
     const normalizedFilterCourse = filter_course && filter_course.trim().length > 0 ? filter_course.trim() : null;
@@ -7144,29 +7162,25 @@ exports.getRegistrationAbstract = async (req, res) => {
     const parsedFilterYear = filter_year ? parseInt(filter_year, 10) : null;
     const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
 
-    if (normalizedFilterBatch) { baseQuery += ' AND batch = ?'; params.push(normalizedFilterBatch); }
-    if (normalizedFilterCollege) { baseQuery += ' AND college = ?'; params.push(normalizedFilterCollege); }
-    if (normalizedFilterCourse) { baseQuery += ' AND course = ?'; params.push(normalizedFilterCourse); }
-    if (normalizedFilterBranch) { baseQuery += ' AND branch = ?'; params.push(normalizedFilterBranch); }
-    if (parsedFilterYear) { baseQuery += ' AND current_year = ?'; params.push(parsedFilterYear); }
-    if (parsedFilterSemester) { baseQuery += ' AND current_semester = ?'; params.push(parsedFilterSemester); }
+    if (normalizedFilterBatch) { whereParts.push('base.batch = ?'); params.push(normalizedFilterBatch); }
+    if (normalizedFilterCollege) { whereParts.push('base.college = ?'); params.push(normalizedFilterCollege); }
+    if (normalizedFilterCourse) { whereParts.push('base.course = ?'); params.push(normalizedFilterCourse); }
+    if (normalizedFilterBranch) { whereParts.push('base.branch = ?'); params.push(normalizedFilterBranch); }
+    if (parsedFilterYear) { whereParts.push('base.current_year = ?'); params.push(parsedFilterYear); }
+    if (parsedFilterSemester) { whereParts.push('base.current_semester = ?'); params.push(parsedFilterSemester); }
 
-    // Filter by level if provided
     if (filter_level) {
       try {
-        // Get courses with the specified level
         const [levelCourses] = await masterPool.query(
           'SELECT name FROM courses WHERE level = ? AND is_active = 1',
           [filter_level]
         );
-        const validCourseNames = levelCourses.map(c => c.name);
+        const validCourseNames = levelCourses.map((c) => c.name);
         if (validCourseNames.length > 0) {
-          const placeholders = validCourseNames.map(() => '?').join(',');
-          baseQuery += ` AND course IN (${placeholders})`;
+          whereParts.push(`base.course IN (${validCourseNames.map(() => '?').join(',')})`);
           params.push(...validCourseNames);
         } else {
-          // No courses with this level, return empty result
-          baseQuery += ' AND 1=0';
+          whereParts.push('1=0');
         }
       } catch (err) {
         console.warn('Failed to filter by level:', err);
@@ -7174,73 +7188,31 @@ exports.getRegistrationAbstract = async (req, res) => {
     }
 
     if (search) {
-      const { clause, params: searchParams } = buildStudentSearchCondition(search);
-      baseQuery += clause;
+      const { clause, params: searchParams } = buildStudentSearchCondition(search, 'base');
+      whereParts.push(clause.replace(/^\s*AND\s+/i, ''));
       params.push(...searchParams);
     }
 
-    const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
-    if (scholarshipFilterAbstract === 'pending') {
-      baseQuery += " AND (scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '')";
-    } else if (scholarshipFilterAbstract === 'eligible') {
-      baseQuery += " AND scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' AND (LOWER(scholar_status) LIKE '%eligible%' OR LOWER(scholar_status) LIKE '%jvd%' OR LOWER(scholar_status) LIKE '%yes%')";
-    } else if (scholarshipFilterAbstract === 'not_eligible') {
-      baseQuery += " AND LOWER(IFNULL(scholar_status,'')) LIKE '%not%' AND LOWER(scholar_status) LIKE '%eligible%'";
-    }
+    const { query, params: queryParams } = buildRegistrationAbstractQuery({
+      whereClause: whereParts.join(' AND '),
+      params,
+      scholarshipFilter: scholarshipFilterAbstract
+    });
 
-    // Grouping Logic:
-    // If college is selected, group by Course? Or just College?
-    // User asked for "with the collge wise". This usually means rows are colleges.
-    // If a college IS filtered, we should probably drill down to Course.
-    // Let's implement dynamic grouping based on filters level.
-    // Detailed Grouping for Abstract View (User Request: "courses braches year and sem toatl clear wise with the all the 5 steps")
-    const query = `
-      SELECT 
-        batch,
-        college,
-        course,
-        branch,
-        current_year,
-        current_semester,
-        COUNT(*) as total,
-        SUM(CASE WHEN (student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') THEN 1 ELSE 0 END) as verification_completed,
-        SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
-        SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
-        SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
-        SUM(CASE WHEN current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '' THEN 1 ELSE 0 END) as promotion_completed,
-        SUM(CASE WHEN scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' THEN 1 ELSE 0 END) as scholarship_assigned,
-        SUM(CASE WHEN scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '' THEN 1 ELSE 0 END) as scholarship_pending,
-        SUM(CASE WHEN 
-             (registration_status = 'Completed' OR registration_status = 'completed') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
-              (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
-             THEN 1 ELSE 0 END) as overall_completed,
-        SUM(CASE WHEN 
-             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
-              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
-             THEN 1 ELSE 0 END) as overall_temporary
-      ${baseQuery}
-      GROUP BY batch, college, course, branch, current_year, current_semester
-      ORDER BY batch, college, course, branch, current_year, current_semester ASC
-    `;
+    const [rows] = await masterPool.query(query, queryParams);
 
-    const [rows] = await masterPool.query(query, params);
-
-    res.json({
+    const payload = {
       success: true,
       data: rows,
       groupingParams: {
         key: 'custom',
         label: 'Detailed'
       }
-    });
+    };
+
+    registrationAbstractCache.set(cacheKey, payload);
+
+    res.json(payload);
 
   } catch (error) {
     console.error('Error fetching registration abstract:', error);
@@ -7354,36 +7326,28 @@ exports.exportRegistrationReport = async (req, res) => {
     }
 
     const scholarshipFilterExport = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
-    if (scholarshipFilterExport === 'pending') {
-      baseQuery += " AND (scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '')";
-    } else if (scholarshipFilterExport === 'eligible') {
-      baseQuery += " AND scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' AND (LOWER(scholar_status) LIKE '%eligible%' OR LOWER(scholar_status) LIKE '%jvd%' OR LOWER(scholar_status) LIKE '%yes%')";
-    } else if (scholarshipFilterExport === 'not_eligible') {
-      baseQuery += " AND LOWER(IFNULL(scholar_status,'')) LIKE '%not%' AND LOWER(scholar_status) LIKE '%eligible%'";
-    }
+    baseQuery += getScholarshipFilterClause(scholarshipFilterExport);
 
     // --- Statistics Query (For Abstract) ---
     const statsQuery = `
       SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN (student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') THEN 1 ELSE 0 END) as verification_completed,
+        ${verificationCompletedSumSql} as verification_completed,
         SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
         SUM(CASE WHEN 
-             (registration_status = 'Completed' OR registration_status = 'completed') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+             ((${verificationCompletedSql}) AND
               (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+              (${promotionCompletedSql}) AND
+              (${scholarshipHasCurrentYearStatusSql}))
              THEN 1 ELSE 0 END) as overall_completed,
         SUM(CASE WHEN 
-             (registration_status = 'Temporary' OR registration_status = 'temporary') OR
-             (((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+             ((${verificationCompletedSql}) AND
               (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-              (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != ''))
+              (${promotionCompletedSql}) AND
+              (${scholarshipHasCurrentYearStatusSql}))
              THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
@@ -7414,6 +7378,7 @@ exports.exportRegistrationReport = async (req, res) => {
     `;
 
     const [students] = await masterPool.query(dataQuery, params);
+    const scholarshipMap = await buildCurrentYearScholarshipMap(masterPool, students);
 
     // Process Data
     const processedData = students.map(student => {
@@ -7434,9 +7399,11 @@ exports.exportRegistrationReport = async (req, res) => {
         };
       }
 
-      const isStudentVerified = studentData.is_student_mobile_verified === true;
-      const isParentVerified = studentData.is_parent_mobile_verified === true;
-      const verificationStatus = (isStudentVerified && isParentVerified) ? 'Completed' : 'Pending';
+      const verificationStatus = isVerificationCompleteForCycle(
+        studentData,
+        student.current_year,
+        student.current_semester
+      ) ? 'Completed' : REGISTRATION_EMPTY_DISPLAY;
 
       const certStatusRaw = (student.certificates_status || '').toLowerCase();
       const isCertVerified = certStatusRaw.includes('verified') || certStatusRaw === 'completed';
@@ -7457,22 +7424,25 @@ exports.exportRegistrationReport = async (req, res) => {
       // Same fee-cleared logic as main report and stats query (including partial/permitted)
       const isFeeCleared = ['completed', 'no_due', 'nodue', 'no due', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s));
 
-      let scholarshipStatus = student.scholar_status || 'Pending';
-      const scholarRaw = (student.scholar_status || '').toLowerCase();
-      if (!student.scholar_status || scholarRaw === '') scholarshipStatus = 'Pending';
+      const scholarshipStage = resolveRegistrationScholarshipStage(scholarshipMap.get(student.id));
+      const scholarshipStatus = scholarshipStage.display;
 
-      const promotionStatus = (student.current_year && student.current_semester) ? 'Completed' : 'Pending';
+      const promotionStatus = isPromotionCompleteForCycle(
+        studentData,
+        student.current_year,
+        student.current_semester
+      ) ? 'Completed' : REGISTRATION_EMPTY_DISPLAY;
 
       // Overall Status Logic - must match main report and stats query (all 5 steps including scholarship)
-      // Also prioritize the database column if it's already marked as Completed or Temporary
-      const isScholarshipCompleted = student.scholar_status && student.scholar_status.trim() !== '' && student.scholar_status.toLowerCase() !== 'null' && student.scholar_status.toLowerCase() !== 'undefined';
+      const isScholarshipCompleted = !isScholarshipDisplayUnassigned(
+        resolveRegistrationScholarshipStage(scholarshipMap.get(student.id)).display
+      );
+      const isVerificationCompleted = verificationStatus === 'Completed';
+      const isPromotionCompleted = promotionStatus === 'Completed';
 
+      // Overall Status — all 5 stages required for current cycle
       let overallStatus = 'Pending';
-      if (student.registration_status && student.registration_status.toLowerCase() === 'completed') {
-        overallStatus = 'Completed';
-      } else if (student.registration_status && student.registration_status.toLowerCase() === 'temporary') {
-        overallStatus = 'Temporary';
-      } else if (
+      if (
         verificationStatus === 'Completed' &&
         certificatesStatus === 'Verified' &&
         isFeeCleared &&
@@ -7580,8 +7550,8 @@ exports.exportRegistrationReport = async (req, res) => {
         if (student['Certificates'] === 'Verified' || student['Certificates'] === 'completed') group.certificates_verified++;
         if (student['Fees'] === 'No Due' || student['Fees'] === 'Permitted' || student['Fees'] === 'completed') group.fee_cleared++;
         if (student['Promotion'] === 'Completed') group.promotion_completed++;
-        if (student['Scholarship'] && student['Scholarship'] !== 'Pending') group.scholarship_assigned++;
-        if (student['Scholarship'] === 'Pending') group.scholarship_pending++;
+        if (!isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_assigned++;
+        if (isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_pending++;
       });
 
       // Convert to rows and sort
@@ -7723,7 +7693,7 @@ exports.adminVerifyMobile = async (req, res) => {
 
     // 1. Fetch student
     const [students] = await masterPool.query(
-      'SELECT id, student_data, pin_no FROM students WHERE admission_number = ?',
+      'SELECT id, student_data, current_year, current_semester, pin_no FROM students WHERE admission_number = ?',
       [admissionNumber]
     );
 
@@ -7744,9 +7714,9 @@ exports.adminVerifyMobile = async (req, res) => {
 
     // 2. Update status based on type
     if (type === 'student') {
-      studentData.is_student_mobile_verified = true;
+      stampVerificationForCycle(studentData, 'student', student.current_year, student.current_semester);
     } else if (type === 'parent') {
-      studentData.is_parent_mobile_verified = true;
+      stampVerificationForCycle(studentData, 'parent', student.current_year, student.current_semester);
     } else {
       return res.status(400).json({ success: false, message: 'Invalid verification type' });
     }
@@ -7778,6 +7748,46 @@ exports.adminVerifyMobile = async (req, res) => {
       success: false,
       message: 'Server error while verifying mobile'
     });
+  }
+};
+
+exports.acknowledgeRegistrationPromotion = async (req, res) => {
+  try {
+    const { admissionNumber } = req.params;
+
+    const [students] = await masterPool.query(
+      'SELECT id, student_data, current_year, current_semester FROM students WHERE admission_number = ?',
+      [admissionNumber]
+    );
+
+    if (students.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const student = students[0];
+    let studentData = parseJSON(student.student_data) || {};
+
+    stampPromotionForCycle(studentData, student.current_year, student.current_semester);
+
+    await masterPool.query(
+      'UPDATE students SET student_data = ? WHERE id = ?',
+      [JSON.stringify(studentData), student.id]
+    );
+
+    clearStudentsCache();
+    await checkAndAutoCompleteRegistration(admissionNumber);
+
+    res.json({
+      success: true,
+      message: 'Promotion acknowledged for current semester',
+      data: {
+        registration_promotion_year: studentData.registration_promotion_year,
+        registration_promotion_semester: studentData.registration_promotion_semester
+      }
+    });
+  } catch (error) {
+    console.error('Acknowledge registration promotion error:', error);
+    res.status(500).json({ success: false, message: 'Failed to acknowledge promotion' });
   }
 };
 

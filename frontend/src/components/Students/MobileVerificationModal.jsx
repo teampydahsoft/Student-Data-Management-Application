@@ -2,6 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, Shield, AlertCircle, Send, KeyRound, Smartphone } from 'lucide-react';
 import api from '../../config/api';
 import { toast } from 'react-hot-toast';
+import {
+  isStudentMobileVerifiedForCycle,
+  isParentMobileVerifiedForCycle
+} from '../../config/registrationCycle';
+
+const parseStudentData = (student) => {
+  const raw = student?.student_data;
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw || '{}');
+  } catch {
+    return {};
+  }
+};
 
 const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationComplete }) => {
     const [loading, setLoading] = useState(false);
@@ -27,6 +42,7 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
 
     const fetchConfigAndFields = async () => {
         setConfigLoading(true);
+        const studentData = parseStudentData(student);
         try {
             // Fetch enabled fields config
             const configRes = await api.get('/settings/profile-update-fields');
@@ -44,7 +60,7 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
                 // Initialize field values from student data
                 const initialValues = {};
                 enabledFields.forEach(fieldKey => {
-                    initialValues[fieldKey] = student[fieldKey] || student.student_data?.[fieldKey] || '';
+                    initialValues[fieldKey] = student[fieldKey] || studentData[fieldKey] || '';
                 });
                 setFieldValues(initialValues);
             }
@@ -69,11 +85,15 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
 
     if (!isOpen || !student) return null;
 
-    const studentMobile = student.student_mobile || student.student_data?.student_mobile;
-    const parentMobile = student.parent_mobile1 || student.student_data?.parent_mobile1;
+    const studentData = parseStudentData(student);
+    const currentYear = student.current_year || studentData.current_year;
+    const currentSem = student.current_semester || studentData.current_semester;
 
-    const isStudentVerified = student.student_data?.is_student_mobile_verified === true;
-    const isParentVerified = student.student_data?.is_parent_mobile_verified === true;
+    const studentMobile = student.student_mobile || studentData.student_mobile;
+    const parentMobile = student.parent_mobile1 || studentData.parent_mobile1;
+
+    const isStudentVerified = isStudentMobileVerifiedForCycle(studentData, currentYear, currentSem);
+    const isParentVerified = isParentMobileVerifiedForCycle(studentData, currentYear, currentSem);
 
     const getCurrentMobile = () => {
         return selectedType === 'student' ? studentMobile : parentMobile;
@@ -97,7 +117,7 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
             const modifiedFields = {};
             let hasChanges = false;
             profileUpdateConfig.enabledFields.forEach(fieldKey => {
-                const originalValue = student[fieldKey] || student.student_data?.[fieldKey] || '';
+                const originalValue = student[fieldKey] || studentData[fieldKey] || '';
                 if (String(fieldValues[fieldKey] || '').trim() !== String(originalValue || '').trim()) {
                     modifiedFields[fieldKey] = fieldValues[fieldKey];
                     hasChanges = true;
@@ -164,20 +184,10 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
 
             if (response.data.success) {
                 toast.success('Mobile verified successfully');
+                await onVerificationComplete?.();
 
-                // Construct the updated status object to pass back
-                const updatedStatus = {
-                    [selectedType === 'student' ? 'is_student_mobile_verified' : 'is_parent_mobile_verified']: true
-                };
-
-                onVerificationComplete(updatedStatus);
-
-                // Reset check to see if we should close or switch
                 setOtpSent(false);
                 setOtp('');
-
-                // If the other one is already verified, close modal?
-                // Or just let user close it.
             } else {
                 toast.error(response.data.message || 'Invalid OTP');
             }

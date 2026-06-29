@@ -42,18 +42,18 @@ import { formatDateToLocalISO } from '../utils/dateUtils';
 const StatusBadge = ({ status, type = 'icon' }) => {
   const isCompleted = status === 'completed' || status === 'Verified' || status === 'No Due';
   const isPermitted = status === 'Permitted';
-  const isPending = status === 'pending' || status === 'Unverified' || status === 'Pending';
+  const isPending = status === 'pending' || status === 'Unverified' || status === 'Pending' || status === '—';
   const isTemporary = status === 'Temporary' || status === 'temporary';
 
   if (type === 'text') {
     let colorClass = 'bg-gray-100 text-gray-700'; // Default
-    if (status === 'No Due' || status === 'Verified' || status === 'completed') colorClass = 'bg-green-100 text-green-700';
+    if (status === 'No Due' || status === 'Verified' || status === 'completed' || status === 'eligible' || status === 'rejected') colorClass = 'bg-green-100 text-green-700';
     else if (status === 'Permitted') colorClass = 'bg-orange-100 text-orange-700';
-    else if (status === 'Unverified' || status === 'Pending' || status === 'pending') colorClass = 'bg-red-50 text-red-600';
+    else if (status === 'Unverified' || status === 'Pending' || status === 'pending' || status === '—') colorClass = 'bg-gray-100 text-gray-500';
     else if (isTemporary) colorClass = 'bg-amber-100 text-amber-700';
 
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${colorClass}`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap capitalize ${colorClass}`}>
         {status === 'completed' ? 'Completed' : status === 'pending' ? 'Pending' : status}
       </span>
     );
@@ -137,6 +137,7 @@ const Reports = () => {
 
   // Abstract Data State
   const [abstractData, setAbstractData] = useState([]);
+  const [abstractLoading, setAbstractLoading] = useState(false);
   const [groupingParams, setGroupingParams] = useState({ key: 'college', label: 'College' });
 
   // Attendance Reports State
@@ -206,7 +207,7 @@ const Reports = () => {
   useEffect(() => {
     if (reportType === 'registration' && activeTab === 'abstract') {
       const fetchAbstract = async () => {
-        setLoading(true);
+        setAbstractLoading(true);
         try {
           const params = new URLSearchParams();
           if (filters.college) params.append('filter_college', filters.college);
@@ -228,7 +229,7 @@ const Reports = () => {
           console.error('Failed to load abstract:', error);
           toast.error('Failed to load abstract report');
         } finally {
-          setLoading(false);
+          setAbstractLoading(false);
         }
       };
       fetchAbstract();
@@ -1354,7 +1355,7 @@ const Reports = () => {
     if (filters.branch) entries.push({ key: 'branch', label: `Branch: ${filters.branch}` });
     if (filters.year) entries.push({ key: 'year', label: `Year: ${filters.year}` });
     if (filters.semester) entries.push({ key: 'semester', label: `Semester: ${filters.semester}` });
-    if (filters.scholarshipStatus) entries.push({ key: 'scholarshipStatus', label: `Scholarship: ${filters.scholarshipStatus === 'pending' ? 'Pending' : filters.scholarshipStatus === 'eligible' ? 'Eligible' : 'Not eligible'}` });
+    if (filters.scholarshipStatus) entries.push({ key: 'scholarshipStatus', label: `Scholarship: ${filters.scholarshipStatus === 'pending' ? 'Not assigned' : filters.scholarshipStatus === 'eligible' ? 'Eligible' : 'Rejected'}` });
     return entries;
   }, [filters]);
 
@@ -1836,9 +1837,9 @@ const Reports = () => {
                 title="Filter by scholarship status to find students"
               >
                 <option value="">All Scholarship</option>
-                <option value="pending">Pending (empty)</option>
+                <option value="pending">Not assigned (—)</option>
                 <option value="eligible">Eligible</option>
-                <option value="not_eligible">Not eligible</option>
+                <option value="not_eligible">Rejected</option>
               </select>
             </div>
 
@@ -1865,7 +1866,7 @@ const Reports = () => {
             </div>
           )}
 
-          {loading ? (
+          {abstractLoading && abstractData.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500" >
               <RefreshCw className="animate-spin" size={24} />
               Loading abstract data...
@@ -1876,7 +1877,12 @@ const Reports = () => {
               <p>No summary data found matching current filters.</p>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
+              {abstractLoading && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                  <RefreshCw className="animate-spin text-gray-500" size={24} />
+                </div>
+              )}
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-sm text-left relative">
                   <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200 sticky top-0 z-10 shadow-sm">

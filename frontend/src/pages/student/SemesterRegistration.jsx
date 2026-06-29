@@ -20,6 +20,15 @@ import { SkeletonBox } from '../../components/SkeletonLoader';
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import api from '../../config/api';
+import {
+  getCurrentScholarshipStatus,
+  isScholarshipStatusAssigned,
+  formatScholarshipStatusDisplay
+} from '../../config/scholarshipConfig';
+import {
+  isVerificationCompleteForCycle,
+  REGISTRATION_EMPTY_DISPLAY
+} from '../../config/registrationCycle';
 
 const SemesterRegistration = () => {
     const { user } = useAuthStore();
@@ -27,6 +36,7 @@ const SemesterRegistration = () => {
     const [loading, setLoading] = useState(false); // Action loading
     const [initialLoading, setInitialLoading] = useState(true);
     const [studentData, setStudentData] = useState(null);
+    const [scholarshipData, setScholarshipData] = useState(null);
     const [activeStepId, setActiveStepId] = useState(null); // For Modal
 
     // Step 1 State: Verification
@@ -47,13 +57,17 @@ const SemesterRegistration = () => {
             if (!user?.admission_number) return;
             // setInitialLoading(true); // Don't full reload UI on refresh
             const response = await api.get(`/students/${user.admission_number}`);
+            const scholarshipResponse = await api.get(`/student-scholarship/${encodeURIComponent(user.admission_number)}`);
 
             if (response.data.success) {
                 const student = response.data.data;
                 const sData = student.student_data || {};
-                // Verification flags: ensure unverified students always show as pending (first stage)
-                const studentVerified = sData.is_student_mobile_verified === true;
-                const parentVerified = sData.is_parent_mobile_verified === true;
+                const studentVerified = isVerificationCompleteForCycle(sData, student.current_year, student.current_semester)
+                  ? sData.is_student_mobile_verified === true
+                  : false;
+                const parentVerified = isVerificationCompleteForCycle(sData, student.current_year, student.current_semester)
+                  ? sData.is_parent_mobile_verified === true
+                  : false;
 
                 setStudentData(student);
                 setVerificationState(prev => ({
@@ -63,6 +77,12 @@ const SemesterRegistration = () => {
                     studentVerified,
                     parentVerified
                 }));
+            }
+
+            if (scholarshipResponse.data?.success) {
+                setScholarshipData(scholarshipResponse.data.data);
+            } else {
+                setScholarshipData(null);
             }
         } catch (error) {
             console.error('Error fetching student details:', error);
@@ -150,28 +170,31 @@ const SemesterRegistration = () => {
     const getStepStatus = (id) => {
         if (!studentData) return 'pending';
 
+        const parsedStudentData = typeof studentData.student_data === 'string'
+            ? (() => {
+                try { return JSON.parse(studentData.student_data || '{}'); } catch { return {}; }
+            })()
+            : (studentData.student_data || {});
+
         switch (id) {
-            case 1: // Verification — only completed when both student and parent are verified; else pending
-                return (verificationState.studentVerified === true && verificationState.parentVerified === true) ? 'completed' : 'pending';
+            case 1: // Verification — must match current academic cycle
+                return isVerificationCompleteForCycle(
+                    parsedStudentData,
+                    studentData.current_year,
+                    studentData.current_semester
+                ) ? 'completed' : 'pending';
             case 2: // Certificates
                 return (studentData.certificates_status || '').toLowerCase().includes('verified') ? 'completed' : 'pending';
             case 3: // Fee
                 const feeRaw = (studentData.fee_status || '').toLowerCase().replace(/\s+/g, '_');
                 return ['completed', 'no_due', 'nodue', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s))
                     ? 'completed' : 'pending';
-            case 4: // Promotion
-                // Assume automatic promotion status check logic or just showing it counts as "checked"
-                // Ideally, we consider it "completed" if data exists.
-                return (studentData.current_year && studentData.current_semester) ? 'completed' : 'pending';
-            case 5: // Scholarship
-                // Scholarship is MANDATORY - must have a status (not empty/null)
-                const scholarStatus = (studentData.scholar_status || '').trim();
-                // Scholarship status must exist and not be empty/null/undefined
-                if (!scholarStatus || scholarStatus === '' || scholarStatus.toLowerCase() === 'null' || scholarStatus.toLowerCase() === 'undefined') {
-                    return 'pending'; // Empty scholarship is NOT acceptable - step is mandatory
-                }
-                // If status exists (eligible, jvd, yes, not eligible, etc.), it's considered reviewed/completed
+            case 4: // Promotion — always complete for current placement
                 return 'completed';
+            case 5: // Scholarship — current academic year only (from student_scholarship table)
+                return isScholarshipStatusAssigned(
+                    getCurrentScholarshipStatus(scholarshipData, studentData)
+                ) ? 'completed' : 'pending';
             case 6: // Confirmation
                 // Always pending until finalized
                 return 'pending';
@@ -240,7 +263,7 @@ const SemesterRegistration = () => {
         {
             id: 4,
             title: 'Promotion',
-            description: 'Check academic promotion eligibility.',
+            description: 'Your current academic year and semester placement.',
             icon: Zap,
             color: 'orange'
         },
@@ -534,8 +557,11 @@ const SemesterRegistration = () => {
                                     <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 flex items-start gap-3">
                                         <Zap className="text-blue-600 mt-1 flex-shrink-0" />
                                         <div>
-                                            <h4 className="font-bold text-blue-900">Promotion Eligibility</h4>
-                                            <p className="text-blue-800 text-sm mt-1">Based on your academic records and fee status, you are eligible for the next semester registration.</p>
+                                            <h4 className="font-bold text-blue-900">Current semester placement</h4>
+                                            <p className="text-blue-800 text-sm mt-1">
+                                                You are registered for the year and semester shown above.
+                                                Complete the other registration steps to finish semester registration.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -546,7 +572,12 @@ const SemesterRegistration = () => {
                                 <div className="text-center py-8">
                                     <Award size={48} className="text-indigo-200 mx-auto mb-4" />
                                     <h3 className="text-lg font-bold text-gray-900">Scholarship Status</h3>
-                                    <p className="text-2xl font-bold text-indigo-600 my-4 capitalize">{studentData?.scholar_status || 'Pending'}</p>
+                                    <p className="text-xs text-gray-400 mb-2">
+                                        Year {studentData?.current_year || 1}
+                                    </p>
+                                    <p className={`text-2xl font-bold my-4 capitalize ${getCurrentScholarshipStatus(scholarshipData, studentData) ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                        {formatScholarshipStatusDisplay(getCurrentScholarshipStatus(scholarshipData, studentData))}
+                                    </p>
                                     <p className="text-gray-500 text-sm">If you believe this is incorrect, please contact the admin office.</p>
                                 </div>
                             )}
@@ -556,7 +587,19 @@ const SemesterRegistration = () => {
                         {/* Modal Footer */}
                         <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
                             <button
-                                onClick={() => setActiveStepId(null)}
+                                onClick={async () => {
+                                    if (activeStepId === 4 && user?.admission_number) {
+                                        try {
+                                            await api.post(`/students/${encodeURIComponent(user.admission_number)}/registration/acknowledge-promotion`);
+                                            await fetchStudentDetails();
+                                        } catch (error) {
+                                            console.error('Promotion acknowledge error:', error);
+                                            toast.error(error.response?.data?.message || 'Failed to save promotion acknowledgement');
+                                            return;
+                                        }
+                                    }
+                                    setActiveStepId(null);
+                                }}
                                 className="px-6 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
                             >
                                 Done

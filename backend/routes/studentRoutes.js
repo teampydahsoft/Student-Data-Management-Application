@@ -247,6 +247,13 @@ router.put(
   studentController.updateRegistrationStatus
 );
 router.post(
+  '/:admissionNumber/registration/acknowledge-promotion',
+  authMiddleware,
+  allowStudentOwnProfileOrPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+  attachUserScope,
+  studentController.acknowledgeRegistrationPromotion
+);
+router.post(
   '/check-expired-permits',
   authMiddleware,
   verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),

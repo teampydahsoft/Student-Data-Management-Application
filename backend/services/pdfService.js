@@ -5,6 +5,7 @@ const os = require('os');
 const https = require('https');
 const http = require('http');
 const { masterPool } = require('../config/database');
+const { isScholarshipDisplayUnassigned } = require('./studentScholarshipSync');
 
 const { downloadLogo } = require('./pdf/utils');
 const {
@@ -962,8 +963,8 @@ const generateRegistrationReportPDF = async ({
     if (student['Certificates'] === 'Verified') group.certificates_verified++;
     if (student['Fees'] === 'No Due' || student['Fees'] === 'Permitted') group.fee_cleared++;
     if (student['Promotion'] === 'Completed') group.promotion_completed++;
-    if (student['Scholarship'] !== 'Pending') group.scholarship_assigned++;
-    if (student['Scholarship'] === 'Pending') group.scholarship_pending++;
+    if (student['Scholarship'] && !isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_assigned++;
+    if (isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_pending++;
   });
 
   // Convert to array and sort

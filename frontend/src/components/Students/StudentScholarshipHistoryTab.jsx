@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History } from 'lucide-react';
 import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
 import toast from 'react-hot-toast';
@@ -54,6 +54,19 @@ const mapReleasesFromApi = (releases = []) => (
   }))
 );
 
+const formatArchivedAt = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,6 +111,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       released_amount: sumReleased(year.releases)
     })),
     [years]
+  );
+
+  const archivedHistory = useMemo(
+    () => (meta?.archivedHistory || []).slice(),
+    [meta]
   );
 
   const updateYearField = (yearIndex, field, value) => {
@@ -415,6 +433,88 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 bg-amber-50/60">
+          <div className="flex items-center gap-2">
+            <History size={16} className="text-amber-700" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">Archived Scholarship History</h4>
+          </div>
+          <p className="text-[11px] text-amber-700/80 mt-1">
+            Previous year-wise records saved automatically before an overwrite.
+          </p>
+        </div>
+
+        {archivedHistory.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500 text-center">No archived scholarship records yet.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {archivedHistory.map((entry) => {
+              const snapshot = entry.snapshot || {};
+              const releases = Array.isArray(snapshot.releases) ? snapshot.releases : [];
+
+              return (
+                <div key={entry.id} className="p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">
+                        Year {entry.academic_year}
+                        {entry.scholar_status ? (
+                          <span className="ml-2 capitalize text-indigo-700">{entry.scholar_status}</span>
+                        ) : null}
+                      </p>
+                      <p className="text-[11px] text-gray-500">{formatArchivedAt(entry.archived_at)}</p>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wide font-semibold text-gray-400">
+                      {entry.source || 'archived'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-bold">Application ID</p>
+                      <p className="text-gray-800">{snapshot.application_id || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-bold">Sanctioned</p>
+                      <p className="text-gray-800">{formatCurrency(snapshot.sanctioned_amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-bold">Released</p>
+                      <p className="text-gray-800">{formatCurrency(snapshot.released_amount)}</p>
+                    </div>
+                  </div>
+
+                  {releases.length > 0 && (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+                            <th className="px-2 py-1">From</th>
+                            <th className="px-2 py-1">To</th>
+                            <th className="px-2 py-1">Proceeding</th>
+                            <th className="px-2 py-1 text-right">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {releases.map((release, index) => (
+                            <tr key={`${entry.id}-release-${index}`}>
+                              <td className="px-2 py-1">{formatCalendarDate(release.from_date) || '—'}</td>
+                              <td className="px-2 py-1">{formatCalendarDate(release.to_date) || '—'}</td>
+                              <td className="px-2 py-1">{release.proceeding || '—'}</td>
+                              <td className="px-2 py-1 text-right">{formatCurrency(release.released_amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
