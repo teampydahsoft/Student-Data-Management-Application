@@ -1,4 +1,5 @@
 const { masterPool, stagingPool } = require('../config/database');
+const { upsertScholarshipEligible } = require('../services/studentScholarshipSync');
 const { fetchActiveQuotaCodes } = require('./quotaController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -3352,6 +3353,14 @@ exports.updateStudent = async (req, res) => {
         success: false,
         message: 'Student not found'
       });
+    }
+
+    if (updatedColumns.has('scholar_status')) {
+      const scholarValue = mutableStudentData.scholar_status
+        ?? mutableStudentData['Scholar Status']
+        ?? null;
+      const studentYear = Number(resolvedStage.year) || Number(existingStudent.current_year) || 1;
+      await upsertScholarshipEligible(masterPool, existingStudent.id, studentYear, scholarValue);
     }
 
     // Get PIN number for logging

@@ -29,7 +29,8 @@ import {
   Mail,
   CreditCard,
   Loader2,
-  GitBranch
+  GitBranch,
+  GraduationCap
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -43,6 +44,7 @@ import MobileVerificationModal from '../components/Students/MobileVerificationMo
 import StudentRemarksModal from '../components/Students/StudentRemarksModal';
 import StudentRemarksContent from '../components/Students/StudentRemarksContent';
 import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
+import StudentScholarshipHistoryTab from '../components/Students/StudentScholarshipHistoryTab';
 import BulkRollNumberModal from '../components/BulkRollNumberModal';
 import BulkUploadModal from '../components/BulkUploadModal';
 import ManualRollNumberModal from '../components/ManualRollNumberModal';
@@ -61,6 +63,10 @@ import useStudentQuotas from '../hooks/useStudentQuotas';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
 import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
+import {
+  SCHOLARSHIP_ELIGIBLE_OPTIONS,
+  getCurrentScholarshipStatus
+} from '../config/scholarshipConfig';
 
 // Student status options
 const STUDENT_STATUS_OPTIONS = [
@@ -91,16 +97,8 @@ const FEE_STATUS_OPTIONS = [
   'permitted'
 ];
 
-// Scholar status options
-const SCHOLAR_STATUS_OPTIONS = [
-  'eligible',
-  'not eligible',
-  'approved',
-  'rejected from the first year',
-  'rejected from the second year',
-  'rejected from the third year',
-  'rejected from the final year'
-];
+// Scholarship status options (synced with student_scholarship table)
+const SCHOLAR_STATUS_OPTIONS = SCHOLARSHIP_ELIGIBLE_OPTIONS;
 
 
 // Registration status options
@@ -306,6 +304,8 @@ const Students = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [scholarshipData, setScholarshipData] = useState(null);
+  const [scholarshipLoading, setScholarshipLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [activeStudentTab, setActiveStudentTab] = useState('details');
   const [historySubTab, setHistorySubTab] = useState('remarks');
@@ -721,7 +721,35 @@ const Students = () => {
   // Reset ID card preview when switching between students
   useEffect(() => {
     setShowIdCardPreview(false);
+    setScholarshipData(null);
   }, [selectedStudent?.admission_number]);
+
+  const fetchScholarshipForStudent = useCallback(async (admissionNumber) => {
+    if (!admissionNumber) {
+      setScholarshipData(null);
+      return null;
+    }
+
+    setScholarshipLoading(true);
+    try {
+      const response = await api.get(`/student-scholarship/${encodeURIComponent(admissionNumber)}`);
+      if (response.data.success) {
+        const data = response.data.data;
+        setScholarshipData(data);
+        const status = data.currentYearEligible || '';
+        if (status) {
+          setEditData((prev) => ({ ...prev, scholar_status: status }));
+        }
+        return data;
+      }
+    } catch (error) {
+      console.error('Failed to fetch scholarship data:', error);
+      setScholarshipData(null);
+    } finally {
+      setScholarshipLoading(false);
+    }
+    return null;
+  }, []);
 
   // Fetch certificate settings and forms on mount
   useEffect(() => {
@@ -757,7 +785,8 @@ const Students = () => {
     };
 
     fetchFullDetails();
-  }, [showModal, selectedStudent?.admission_number]);
+    fetchScholarshipForStudent(selectedStudent?.admission_number);
+  }, [showModal, selectedStudent?.admission_number, fetchScholarshipForStudent]);
 
   useEffect(() => {
     pageSizeRef.current = pageSize;
@@ -2091,6 +2120,7 @@ const Students = () => {
 
       // Invalidate students query to ensure fresh data
       invalidateStudents();
+      await fetchScholarshipForStudent(selectedStudent.admission_number);
 
       setEditMode(false);
       setEditData(synchronizedData);
@@ -2098,6 +2128,7 @@ const Students = () => {
         prev
           ? {
             ...prev,
+            scholar_status: synchronizedData.scholar_status ?? prev.scholar_status,
             current_year:
               synchronizedData.current_year ?? prev.current_year,
             current_semester:
@@ -3988,6 +4019,12 @@ const Students = () => {
                       </button>
                     )}
                     <button
+                      onClick={() => setActiveStudentTab('scholarship')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'scholarship' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                    >
+                      <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
+                    </button>
+                    <button
                       onClick={() => setActiveStudentTab('history')}
                       className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
                     >
@@ -4027,7 +4064,13 @@ const Students = () => {
                     const currentSem = selectedStudent.current_semester || studentData.current_semester;
                     const isPromotionActive = !!currentYear;
 
-                    const scholarStatus = selectedStudent.scholar_status || studentData.scholar_status || 'Pending';
+                    const scholarStatus = getCurrentScholarshipStatus(scholarshipData, {
+                      ...selectedStudent,
+                      ...studentData
+                    }) || 'pending';
+                    const isScholarshipComplete = SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(
+                      String(scholarStatus).trim().toLowerCase()
+                    );
 
                     const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete;
 
@@ -4156,9 +4199,7 @@ const Students = () => {
                               </div>
                             </div>
                             <div className="ml-auto flex items-center">
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
-                                {scholarStatus}
-                              </span>
+                              <StatusBadge completed={isScholarshipComplete} text={scholarStatus} />
                             </div>
                           </div>
 
@@ -4173,6 +4214,20 @@ const Students = () => {
 
                   {activeStudentTab === 'sms_tracking' && (
                     <StudentSmsTab student={selectedStudent} />
+                  )}
+
+                  {activeStudentTab === 'scholarship' && (
+                    <StudentScholarshipHistoryTab
+                      student={selectedStudent}
+                      onUpdated={(data) => {
+                        setScholarshipData(data);
+                        const status = data?.currentYearEligible || getCurrentScholarshipStatus(data, selectedStudent);
+                        if (status) {
+                          setEditData((prev) => ({ ...prev, scholar_status: status }));
+                          setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
+                        }
+                      }}
+                    />
                   )}
 
                   {activeStudentTab === 'history' && (
@@ -4905,27 +4960,34 @@ const Students = () => {
                             {canViewField('scholar_status') && (
                               <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                  Scholar Status
+                                  Scholarship Status
                                 </label>
                                 {editMode ? (
                                   <select
-                                    value={editData.scholar_status ?? editData['Scholar Status'] ?? selectedStudent?.scholar_status ?? ''}
+                                    value={
+                                      editData.scholar_status
+                                      ?? getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData })
+                                      ?? ''
+                                    }
                                     onChange={(e) => updateEditField('scholar_status', e.target.value)}
                                     disabled={isFieldFrozen(selectedStudent, 'scholar_status')}
-                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed capitalize"
                                   >
-                                    {!editData.scholar_status && !editData['Scholar Status'] && !selectedStudent?.scholar_status && (
-                                      <option value="">Select Scholar Status</option>
-                                    )}
-                                    {scholarStatusOptions.map((opt) => (
+                                    <option value="">Select status</option>
+                                    {SCHOLARSHIP_ELIGIBLE_OPTIONS.map((opt) => (
                                       <option key={opt} value={opt}>{opt}</option>
                                     ))}
                                   </select>
                                 ) : (
-                                  <p className="text-sm text-gray-900 font-medium">
-                                    {editData.scholar_status || editData['Scholar Status'] || selectedStudent?.scholar_status || 'Pending'}
+                                  <p className="text-sm text-gray-900 font-medium capitalize">
+                                    {scholarshipLoading
+                                      ? 'Loading...'
+                                      : (getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData }) || 'pending')}
                                   </p>
                                 )}
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                  Current year status from scholarship records
+                                </p>
                               </div>
                             )}
                             {canViewField('fee_status') && (

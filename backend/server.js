@@ -7,7 +7,6 @@ require("dotenv").config();
 
 const { testConnection } = require("./config/database");
 const { createDefaultForm } = require("./scripts/createDefaultForm");
-const { runMigrations } = require("./scripts/runMigrations");
 const mysql = require("mysql2/promise");
 
 // Import routes
@@ -163,6 +162,7 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/certificate-templates", certificateTemplateRoutes);
 app.use("/api/events", require("./routes/eventRoutes"));
 app.use("/api/student-history", require("./routes/studentHistoryRoutes"));
+app.use("/api/student-scholarship", require("./routes/studentScholarshipRoutes"));
 app.use("/api/sms-templates", require("./routes/smsTemplateRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes")); // [NEW] Notification Routes
 app.use("/api/feedback-forms", require("./routes/feedbackRoutes")); // [NEW] Feedback Form Routes
@@ -398,13 +398,6 @@ const startServer = async () => {
           console.error("❌ Database connection failed!");
           console.error("❌ API calls may fail but server is running");
         } else {
-          // Run database migrations first
-          try {
-            await runMigrations();
-          } catch (migrationError) {
-            console.error("⚠️  Migration warning:", migrationError.message);
-          }
-
           // Create a default form if none exists
           try {
             await createDefaultForm();

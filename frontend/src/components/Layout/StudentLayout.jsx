@@ -40,7 +40,9 @@ import {
     RiMapPinLine,
     RiMapPinFill,
     RiBookOpenLine,
-    RiBookOpenFill
+    RiBookOpenFill,
+    RiAwardLine,
+    RiAwardFill
 } from 'react-icons/ri';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
@@ -220,6 +222,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiTicketLine, activeIcon: RiTicketFill, label: 'Maintenance', path: '/student/my-tickets', isExternal: true, isTicketApp: true },
         { icon: RiBusLine, activeIcon: RiBusFill, label: 'Transport', path: '/student/transport' },
         { icon: RiWallet3Line, activeIcon: RiWallet3Fill, label: 'Fee Management', path: '/student/fees' },
+        { icon: RiAwardLine, activeIcon: RiAwardFill, label: 'Scholarship', path: '/student/scholarship' },
         { icon: RiQuestionAnswerLine, activeIcon: RiQuestionAnswerFill, label: 'Feed Back', path: '/student/feedback' },
         { icon: RiFolderLine, activeIcon: RiFolderFill, label: 'My Documents', path: '/student/my-documents' }
     ].filter(item => {

@@ -371,7 +371,8 @@ exports.getStudentLayoutSettings = async (req, res) => {
       'my-tickets': true,
       feedback: true,
       transport: false,
-      fees: false
+      fees: false,
+      scholarship: true
     };
 
     if (settings && settings.length > 0) {

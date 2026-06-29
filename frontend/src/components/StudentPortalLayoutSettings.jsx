@@ -17,7 +17,8 @@ import {
     Eye,
     EyeOff,
     Bus,
-    Wallet
+    Wallet,
+    Award
 } from 'lucide-react';
 import api from '../config/api';
 
@@ -36,8 +37,9 @@ const StudentPortalLayoutSettings = () => {
         services: true,
         'my-tickets': true,
         feedback: true,
-        transport: false,
-        fees: false
+      transport: false,
+      fees: false,
+      scholarship: true
     });
 
     useEffect(() => {
@@ -95,6 +97,7 @@ const StudentPortalLayoutSettings = () => {
         { key: 'feedback', label: 'Feed Back', icon: MessageSquare, description: 'Feedback forms for faculty and courses' },
         { key: 'transport', label: 'Transport', icon: Bus, description: 'College bus routes and tracking' },
         { key: 'fees', label: 'Fee Management', icon: Wallet, description: 'Fee payments and receipts' },
+        { key: 'scholarship', label: 'Scholarship', icon: Award, description: 'Scholarship status and release history' },
     ];
 
     if (loading) {
