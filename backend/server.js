@@ -234,6 +234,7 @@ app.use("/services", serviceRoutes);
 app.use("/certificate-templates", certificateTemplateRoutes);
 app.use("/events", require("./routes/eventRoutes"));
 app.use("/student-history", require("./routes/studentHistoryRoutes"));
+app.use("/student-scholarship", require("./routes/studentScholarshipRoutes"));
 app.use("/sms-templates", require("./routes/smsTemplateRoutes"));
 app.use("/notifications", require("./routes/notificationRoutes"));
 app.use("/feedback-forms", require("./routes/feedbackRoutes"));
