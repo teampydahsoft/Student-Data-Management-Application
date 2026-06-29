@@ -144,6 +144,51 @@ const FINALIZED_STATUSES = new Set(['present', 'absent', 'holiday']);
 const UNRESOLVED_ATTENDANCE_CLAUSE = `(ar.id IS NULL OR ar.status = 'pending')`;
 const FINALIZED_ATTENDANCE_CLAUSE = `ar.status IN ('present', 'absent', 'holiday')`;
 
+const fetchAttendanceConfig = async () => {
+  let excludedCourses = [];
+  let excludedStudents = [];
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['attendance_config']
+    );
+    if (settings && settings.length > 0) {
+      const config = JSON.parse(settings[0].value);
+      if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
+      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+    }
+  } catch (err) {
+    console.warn('Failed to fetch attendance config:', err);
+  }
+  return { excludedCourses, excludedStudents };
+};
+
+/** Same eligibility rules as the main attendance list (getAttendance). */
+const buildAttendancePageEligibilityClause = (attendanceDate, { excludedCourses = [], excludedStudents = [] } = {}) => {
+  const params = [];
+  let sql = `
+    AND NOT EXISTS (
+      SELECT 1 FROM internship_assignments ia
+      WHERE ia.student_id = s.id
+      AND ? BETWEEN ia.start_date AND ia.end_date
+      AND JSON_CONTAINS(ia.allowed_days, JSON_QUOTE(DATE_FORMAT(?, '%a')))
+    )
+  `;
+  params.push(attendanceDate, attendanceDate);
+
+  if (excludedCourses.length > 0) {
+    sql += ` AND s.course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
+    params.push(...excludedCourses);
+  }
+
+  if (excludedStudents.length > 0) {
+    sql += ` AND s.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+    params.push(...excludedStudents);
+  }
+
+  return { sql, params };
+};
+
 const countUnresolvedAttendance = async ({
   attendanceDate,
   batch,
@@ -153,6 +198,7 @@ const countUnresolvedAttendance = async ({
   currentSemester,
   userScope
 }) => {
+  const { excludedCourses, excludedStudents } = await fetchAttendanceConfig();
   let query = `
     SELECT COUNT(DISTINCT s.id) AS pending_count
     FROM students s
@@ -198,6 +244,13 @@ const countUnresolvedAttendance = async ({
       params.push(...scopeParams);
     }
   }
+
+  const { sql: eligibilitySql, params: eligibilityParams } = buildAttendancePageEligibilityClause(
+    attendanceDate,
+    { excludedCourses, excludedStudents }
+  );
+  query += eligibilitySql;
+  params.push(...eligibilityParams);
 
   query = applySemesterCalendarFilter(query, params, attendanceDate);
 
@@ -3301,15 +3354,7 @@ const buildWhereClause = (filters, alias, options = {}) => {
 
 exports.getAttendanceSummary = async (req, res) => {
   try {
-    const [settings] = await masterPool.query(
-      'SELECT value FROM settings WHERE `key` = ?',
-      ['attendance_config']
-    );
-    let excludedCourses = [];
-    if (settings && settings.length > 0) {
-      const config = JSON.parse(settings[0].value);
-      if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
-    }
+    const { excludedCourses, excludedStudents } = await fetchAttendanceConfig();
 
     const referenceDate = safeDate(req.query.date) || new Date();
     const todayKey = formatDateKey(referenceDate);
@@ -3341,13 +3386,12 @@ exports.getAttendanceSummary = async (req, res) => {
 
     const { conditions, params } = buildStudentFilterConditions(filters, 's');
 
-    if (excludedCourses.length > 0) {
-      conditions.push(`s.course NOT IN (${excludedCourses.map(() => '?').join(',')})`);
-      params.push(...excludedCourses);
-    }
-
     const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '';
     const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(todayKey);
+    const { sql: eligibilitySql, params: eligibilityParams } = buildAttendancePageEligibilityClause(
+      todayKey,
+      { excludedCourses, excludedStudents }
+    );
 
     // Apply user scope filtering (uses s.college so compatible with students table without college_id)
     let scopeCondition = '';
@@ -3361,8 +3405,8 @@ exports.getAttendanceSummary = async (req, res) => {
     }
 
     const [studentCountRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${semesterSql}${scopeCondition}`,
-      [...params, ...semesterParams, ...scopeParams]
+      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${eligibilitySql}${semesterSql}${scopeCondition}`,
+      [...params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
     const totalStudents = studentCountRows[0]?.totalStudents || 0;
 
@@ -3372,10 +3416,10 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date = ?${dailyFilter.clause}${semesterSql}${scopeCondition}
+        WHERE ar.attendance_date = ?${dailyFilter.clause}${eligibilitySql}${semesterSql}${scopeCondition}
         GROUP BY ar.status
       `,
-      [todayKey, ...dailyFilter.params, ...semesterParams, ...scopeParams]
+      [todayKey, ...dailyFilter.params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
 
     const windowFilter = buildWhereClause(filters, 's');
@@ -3384,11 +3428,11 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.attendance_date, ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date BETWEEN ? AND ?${windowFilter.clause}${semesterSql}${scopeCondition}
+        WHERE ar.attendance_date BETWEEN ? AND ?${windowFilter.clause}${eligibilitySql}${semesterSql}${scopeCondition}
         GROUP BY attendance_date, status
         ORDER BY attendance_date ASC
       `,
-      [formatDateKey(weekStart), todayKey, ...windowFilter.params, ...semesterParams, ...scopeParams]
+      [formatDateKey(weekStart), todayKey, ...windowFilter.params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
 
     const monthFilter = buildWhereClause(filters, 's');
@@ -3397,11 +3441,11 @@ exports.getAttendanceSummary = async (req, res) => {
         SELECT ar.attendance_date, ar.status, COUNT(*) AS count
         FROM attendance_records ar
         INNER JOIN students s ON s.id = ar.student_id
-        WHERE ar.attendance_date BETWEEN ? AND ?${monthFilter.clause}${semesterSql}${scopeCondition}
+        WHERE ar.attendance_date BETWEEN ? AND ?${monthFilter.clause}${eligibilitySql}${semesterSql}${scopeCondition}
         GROUP BY attendance_date, status
         ORDER BY attendance_date ASC
       `,
-      [formatDateKey(monthStart), todayKey, ...monthFilter.params, ...semesterParams, ...scopeParams]
+      [formatDateKey(monthStart), todayKey, ...monthFilter.params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
 
     const [groupedRows] = await masterPool.query(
@@ -3423,11 +3467,11 @@ exports.getAttendanceSummary = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
-        WHERE 1=1${whereClause}${semesterSql}${scopeCondition}
+        WHERE 1=1${whereClause}${eligibilitySql}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [todayKey, ...params, ...semesterParams, ...scopeParams]
+      [todayKey, ...params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
 
 
