@@ -256,7 +256,10 @@ const Attendance = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loadedPages, setLoadedPages] = useState(1);
+  const loadedPagesRef = useRef(1);
   const scrollObserverRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+  const FILTER_PAGE_SIZE = 50;
   const [attendanceStatistics, setAttendanceStatistics] = useState({
     total: 0,
     present: 0,
@@ -1122,11 +1125,32 @@ const Attendance = () => {
     return JSON.stringify(keyObj);
   };
 
-  const hydrateFromCache = (cacheEntry) => {
-    setStudents(cacheEntry.students || []);
-    setStatusMap(cacheEntry.statusMap || {});
-    setInitialStatusMap(cacheEntry.initialStatusMap || {});
-    setTotalStudents(cacheEntry.totalStudents || 0);
+  const hydrateFromCache = (cacheEntry, { hasFilters = false, pageToUse = 1, append = false } = {}) => {
+    const cachedStudents = cacheEntry.students || [];
+    const total = cacheEntry.totalStudents || 0;
+
+    if (append && hasFilters) {
+      setStudents((prevStudents) => {
+        const existingIds = new Set(prevStudents.map((s) => s.id));
+        const newStudents = cachedStudents.filter((s) => !existingIds.has(s.id));
+        const updatedStudents = [...prevStudents, ...newStudents];
+        setHasMore(updatedStudents.length < total);
+        return updatedStudents;
+      });
+      setStatusMap((prev) => ({ ...prev, ...(cacheEntry.statusMap || {}) }));
+      setInitialStatusMap((prev) => ({ ...prev, ...(cacheEntry.initialStatusMap || {}) }));
+      setSmsStatusMap((prev) => ({ ...prev, ...(cacheEntry.smsStatusMap || {}) }));
+    } else {
+      setStudents(cachedStudents);
+      setStatusMap(cacheEntry.statusMap || {});
+      setInitialStatusMap(cacheEntry.initialStatusMap || {});
+      setSmsStatusMap(cacheEntry.smsStatusMap || {});
+      if (hasFilters) {
+        setHasMore(cachedStudents.length < total);
+      }
+    }
+
+    setTotalStudents(total);
     setAttendanceStatistics(cacheEntry.attendanceStatistics || {
       total: 0,
       present: 0,
@@ -1135,7 +1159,6 @@ const Attendance = () => {
       unmarked: 0
     });
     setSmsResults([]); // keep workflow same
-    setSmsStatusMap(cacheEntry.smsStatusMap || {});
     setLastUpdatedAt(null);
     setSelectedDateHolidayInfo(cacheEntry.holidayInfo || null);
     setSemesterCalendar(cacheEntry.semesterCalendar || {
@@ -1150,6 +1173,11 @@ const Attendance = () => {
       pendingCount: 0,
       message: null
     });
+
+    if (hasFilters) {
+      setLoadedPages(pageToUse);
+      loadedPagesRef.current = pageToUse;
+    }
   };
 
   // Helper function to extract holiday reason from grouped data
@@ -1599,6 +1627,7 @@ const Attendance = () => {
       });
       setTotalStudents(0); // Clear total students count to show loading state
       setLoadedPages(1); // Reset loaded pages when starting fresh
+      loadedPagesRef.current = 1;
     }
 
     try {
@@ -1620,7 +1649,7 @@ const Attendance = () => {
       if (hasFilters) {
         if (append) {
           // When appending, load the next page
-          pageToUse = loadedPages + 1;
+          pageToUse = loadedPagesRef.current + 1;
         } else {
           // When starting fresh, reset to page 1
           pageToUse = 1;
@@ -1633,9 +1662,13 @@ const Attendance = () => {
       // Check cache and use it immediately if fresh, otherwise continue with fetch
       const cached = attendanceCache.current.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        hydrateFromCache(cached);
+        hydrateFromCache(cached, { hasFilters, pageToUse, append });
         setCurrentPage(pageToUse);
-        setLoading(false);
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
         return cached.attendanceStatistics || {
           total: 0,
           present: 0,
@@ -1667,10 +1700,8 @@ const Attendance = () => {
       // When filters are applied, use infinite scroll with 50 students per page
       // When no filters, use pagination normally
       if (hasFilters) {
-        // Use 50 students per page for infinite scroll when filters are applied
-        const filterPageSize = 50;
-        params.append('limit', filterPageSize.toString());
-        params.append('offset', ((pageToUse - 1) * filterPageSize).toString());
+        params.append('limit', FILTER_PAGE_SIZE.toString());
+        params.append('offset', ((pageToUse - 1) * FILTER_PAGE_SIZE).toString());
       } else {
         // When no filters, use pagination for better performance
         params.append('limit', pageSize.toString());
@@ -1862,8 +1893,7 @@ const Attendance = () => {
           const existingIds = new Set(prevStudents.map(s => s.id));
           const newStudents = fetchedStudents.filter(s => !existingIds.has(s.id));
           const updatedStudents = [...prevStudents, ...newStudents];
-          // Update hasMore based on whether we got a full page and if there are more to load
-          setHasMore(fetchedStudents.length === 50 && updatedStudents.length < total);
+          setHasMore(updatedStudents.length < total);
           return updatedStudents;
         });
         // Merge status maps
@@ -1871,6 +1901,7 @@ const Attendance = () => {
         setInitialStatusMap(prev => ({ ...prev, ...initialSnapshot }));
         setSmsStatusMap(prev => ({ ...prev, ...newSmsStatusMap }));
         setLoadedPages(pageToUse);
+        loadedPagesRef.current = pageToUse;
       } else {
         // Replace students (initial load or no filters)
         setStudents(fetchedStudents);
@@ -1879,8 +1910,8 @@ const Attendance = () => {
         setSmsStatusMap(newSmsStatusMap);
         if (hasFilters) {
           setLoadedPages(1);
-          // Check if there are more pages to load
-          setHasMore(fetchedStudents.length === 50 && fetchedStudents.length < total);
+          loadedPagesRef.current = 1;
+          setHasMore(fetchedStudents.length < total);
         }
       }
 
@@ -2008,7 +2039,7 @@ const Attendance = () => {
   // Load more students for infinite scroll
   const loadMoreStudents = async () => {
     const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
-    if (!hasFilters || loadingMore || !hasMore) {
+    if (!hasFilters || loadingMore || students.length >= totalStudents) {
       return;
     }
     await loadAttendance(null, true);
@@ -2017,33 +2048,33 @@ const Attendance = () => {
   // Set up Intersection Observer for infinite scroll when filters are applied
   useEffect(() => {
     const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
+    const scrollRoot = scrollContainerRef.current;
+    const sentinel = scrollObserverRef.current;
 
-    if (!hasFilters || !scrollObserverRef.current) {
+    if (!hasFilters || !scrollRoot || !sentinel) {
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (entry.isIntersecting && hasMore && !loadingMore) {
+        if (entry.isIntersecting && !loadingMore && students.length < totalStudents) {
           loadMoreStudents();
         }
       },
       {
-        root: null,
-        rootMargin: '100px', // Start loading 100px before reaching the bottom
+        root: scrollRoot,
+        rootMargin: '100px',
         threshold: 0.1
       }
     );
 
-    observer.observe(scrollObserverRef.current);
+    observer.observe(sentinel);
 
     return () => {
-      if (scrollObserverRef.current) {
-        observer.unobserve(scrollObserverRef.current);
-      }
+      observer.disconnect();
     };
-  }, [filters.batch, filters.course, filters.branch, filters.currentYear, filters.currentSemester, hasMore, loadingMore, students.length]);
+  }, [filters.batch, filters.course, filters.branch, filters.section, filters.currentYear, filters.currentSemester, hasMore, loadingMore, students.length, totalStudents]);
 
   useEffect(() => {
     if (!calendarMonthKey) return;
@@ -2132,6 +2163,7 @@ const Attendance = () => {
 
     setCurrentPage(1);
     setLoadedPages(1); // Reset loaded pages when filters change
+    loadedPagesRef.current = 1;
     setHasMore(false); // Reset hasMore when filters change
 
     // Debounce filter changes to avoid excessive API calls
@@ -4190,7 +4222,7 @@ const Attendance = () => {
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto no-scrollbar">
+            <div ref={scrollContainerRef} className="flex-1 overflow-auto no-scrollbar">
               {/* Desktop Table View */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -4571,7 +4603,8 @@ const Attendance = () => {
               {/* Infinite scroll observer and loading indicator */}
               {(() => {
                 const hasFilters = !!(filters.batch || filters.course || filters.branch || filters.section || filters.currentYear || filters.currentSemester);
-                if (hasFilters && hasMore) {
+                const canLoadMore = hasFilters && students.length < totalStudents;
+                if (canLoadMore) {
                   return (
                     <div ref={scrollObserverRef} className="py-4 flex justify-center">
                       {loadingMore && (
