@@ -45,6 +45,7 @@ import StudentRemarksModal from '../components/Students/StudentRemarksModal';
 import StudentRemarksContent from '../components/Students/StudentRemarksContent';
 import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 import StudentScholarshipHistoryTab from '../components/Students/StudentScholarshipHistoryTab';
+import StudentExportModal from '../components/Students/StudentExportModal';
 import BulkRollNumberModal from '../components/BulkRollNumberModal';
 import BulkUploadModal from '../components/BulkUploadModal';
 import ManualRollNumberModal from '../components/ManualRollNumberModal';
@@ -67,6 +68,7 @@ import {
   SCHOLARSHIP_ELIGIBLE_OPTIONS,
   getCurrentScholarshipStatus
 } from '../config/scholarshipConfig';
+import { CASTE_OPTIONS } from '../config/casteConfig';
 
 // Student status options
 const STUDENT_STATUS_OPTIONS = [
@@ -370,6 +372,7 @@ const Students = () => {
   const [pendingFeeStatusChange, setPendingFeeStatusChange] = useState(null);
   const [pendingPermitAdmissionNumber, setPendingPermitAdmissionNumber] = useState(null);
   const [showRejoinModal, setShowRejoinModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [rejoinStudent, setRejoinStudent] = useState(null);
   const [editingCell, setEditingCell] = useState(null); // { studentId, field }
   const [cellEditValue, setCellEditValue] = useState('');
@@ -2340,80 +2343,11 @@ const Students = () => {
   };
 
   const handleExportCSV = () => {
-    if (students.length === 0) {
+    if (totalStudents === 0 && students.length === 0) {
       toast.error('No data to export');
       return;
     }
-
-    const firstStudentData = students[0]?.student_data;
-    const dataKeys = firstStudentData && typeof firstStudentData === 'object' ? Object.keys(firstStudentData) : [];
-    const headers = [
-      'Admission Number',
-      'PIN Number',
-      'Current Year',
-      'Current Semester',
-      'Name',
-      'Mobile Number',
-      ...dataKeys
-    ];
-    const csvContent = [
-      headers.join(','),
-      ...students.map((student) => {
-        const data = student.student_data;
-        if (!data || typeof data !== 'object') {
-          return [
-            student.admission_number,
-            student.pin_no || '',
-            student.current_year || '',
-            student.current_semester || '',
-            '-',
-            '-',
-            ...Object.keys(student).filter(key => key !== 'student_data' && key !== 'admission_number' && key !== 'pin_no').map(key => student[key] || '')
-          ].join(',');
-        }
-        const nameField = Object.keys(data).find(key =>
-          key.toLowerCase().includes('name') ||
-          key.toLowerCase().includes('student name') ||
-          key.toLowerCase() === 'name'
-        );
-        const mobileField = Object.keys(data).find(key =>
-          key.toLowerCase().includes('mobile') ||
-          key.toLowerCase().includes('phone') ||
-          key.toLowerCase().includes('contact')
-        );
-
-        const row = [
-          student.admission_number,
-          student.pin_no || '',
-          student.current_year || student.student_data?.current_year || '',
-          student.current_semester || student.student_data?.current_semester || '',
-          nameField ? data[nameField] : '',
-          mobileField ? data[mobileField] : '',
-          ...Object.values(student.student_data).map((val) =>
-            Array.isArray(val) ? `"${val.join(', ')}"` : `"${val}"`
-          ),
-        ];
-        return row.join(',');
-      }),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const hasFilters = Object.keys(filters).length > 0 || searchTerm;
-    const filename = hasFilters
-      ? `students_filtered_${new Date().toISOString().split('T')[0]}.csv`
-      : `students_all_${new Date().toISOString().split('T')[0]}.csv`;
-
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
-    const message = hasFilters
-      ? `Exported ${students.length} filtered students`
-      : `Exported ${students.length} students`;
-    toast.success(message);
+    setShowExportModal(true);
   };
 
   const updateEditField = (key, value) => {
@@ -2945,7 +2879,7 @@ const Students = () => {
                   className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 >
                   <option value="">All</option>
-                  {(dropdownFilterOptions.caste || []).map((caste) => (
+                  {CASTE_OPTIONS.map((caste) => (
                     <option key={caste} value={caste}>{caste}</option>
                   ))}
                 </select>
@@ -3325,7 +3259,7 @@ const Students = () => {
                             )}
                             {canViewField('caste') && (
                               <td className="py-1 px-1 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
-                                <div className="max-w-[80px]">{renderEditableCell(student, 'caste', 'text')}</div>
+                                <div className="max-w-[80px]">{renderEditableCell(student, 'caste', 'select', CASTE_OPTIONS)}</div>
                               </td>
                             )}
                             {canViewField('gender') && (
@@ -4770,14 +4704,17 @@ const Students = () => {
                                     Caste
                                   </label>
                                   {editMode ? (
-                                    <input
-                                      type="text"
+                                    <select
                                       value={editData.caste ?? editData.Caste ?? ''}
                                       onChange={(e) => updateEditField('caste', e.target.value)}
-                                      placeholder="Enter caste"
                                       disabled={isFieldFrozen(selectedStudent, 'caste')}
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    />
+                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                    >
+                                      <option value="">Select caste</option>
+                                      {CASTE_OPTIONS.map((caste) => (
+                                        <option key={caste} value={caste}>{caste}</option>
+                                      ))}
+                                    </select>
                                   ) : (
                                     <p className="text-sm text-gray-900 font-medium">
                                       {editData.caste || editData.Caste || selectedStudent?.caste || '-'}
@@ -5442,6 +5379,16 @@ const Students = () => {
         </div >
       )
       }
+
+      <StudentExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        filters={memoizedFilters}
+        search={debouncedSearch}
+        forms={forms}
+        canViewField={canViewField}
+        totalCount={totalStudents}
+      />
 
       <BulkRollNumberModal
         isOpen={showBulkRollNumber}

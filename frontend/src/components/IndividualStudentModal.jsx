@@ -15,7 +15,7 @@ const STUDENT_STATUS_OPTIONS = [
   'Rejoined'
 ];
 const SCHOLAR_STATUS_OPTIONS = ['Eligible', 'Not Eligible'];
-const CASTE_OPTIONS = ['OC', 'BC-A', 'BC-B', 'BC-C', 'BC-D', 'BC-E', 'SC', 'ST', 'EWS', 'Other'];
+import { CASTE_OPTIONS } from '../config/casteConfig';
 const CERTIFICATES_STATUS_OPTIONS = ['Submitted', 'Pending', 'Partial', 'Originals Returned', 'Not Required'];
 
 const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false, onSubmitComplete }) => {

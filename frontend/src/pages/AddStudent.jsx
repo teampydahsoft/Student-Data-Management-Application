@@ -22,7 +22,7 @@ const STUDENT_STATUS_OPTIONS = [
 const SCHOLAR_STATUS_OPTIONS = ['Eligible', 'Not Eligible'];
 const FEE_STATUS_OPTIONS = ['no due', 'due', 'permitted'];
 const REGISTRATION_STATUS_OPTIONS = ['Pending', 'Completed'];
-const CASTE_OPTIONS = ['OC', 'BC-A', 'BC-B', 'BC-C', 'BC-D', 'BC-E', 'SC', 'ST', 'EWS', 'Other'];
+import { CASTE_OPTIONS } from '../config/casteConfig';
 const CERTIFICATES_STATUS_OPTIONS = ['Verified', 'Unverified', 'Submitted', 'Pending', 'Partial', 'Originals Returned', 'Not Required'];
 
 const AddStudent = () => {

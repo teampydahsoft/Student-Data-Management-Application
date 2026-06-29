@@ -2354,6 +2354,14 @@ exports.getAllStudents = async (req, res) => {
       'student_address', 'city_village', 'mandal_name', 'district',
       'previous_college', 'certificates_status', 'remarks', 'college'
     ];
+    const exactMatchStudentFilterFields = new Set([
+      'caste',
+      'gender',
+      'stud_type',
+      'student_status',
+      'scholar_status',
+      'certificates_status'
+    ]);
 
     // Create cache key that includes user ID and scope to prevent cache sharing between users
     const user = req.user || req.admin;
@@ -2522,6 +2530,12 @@ exports.getAllStudents = async (req, res) => {
         // Special handling for null certificate status
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           query += ` AND ${field} IS NULL`;
+        } else if (field === 'caste') {
+          query += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
+          params.push(filterValue.trim());
+        } else if (exactMatchStudentFilterFields.has(field)) {
+          query += ` AND ${field} = ?`;
+          params.push(filterValue.trim());
         } else {
           query += ` AND ${field} LIKE ?`;
           params.push(`%${filterValue.trim()}%`);
@@ -2659,6 +2673,12 @@ exports.getAllStudents = async (req, res) => {
         // Special handling for null certificate status
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           countQuery += ` AND ${field} IS NULL`;
+        } else if (field === 'caste') {
+          countQuery += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
+          countParams.push(filterValue.trim());
+        } else if (exactMatchStudentFilterFields.has(field)) {
+          countQuery += ` AND ${field} = ?`;
+          countParams.push(filterValue.trim());
         } else {
           countQuery += ` AND ${field} LIKE ?`;
           countParams.push(`%${filterValue.trim()}%`);
