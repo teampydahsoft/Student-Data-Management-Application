@@ -727,15 +727,21 @@ const SectionPartition = () => {
                     return (
                       <tr
                         key={studentKey}
-                        className={`hover:bg-gray-50 ${isDirty ? 'bg-amber-50/50' : ''} ${isSelected ? 'bg-indigo-50/40' : ''}`}
+                        onClick={() => {
+                          if (canEditSection) {
+                            toggleStudentSelection(studentKey);
+                          }
+                        }}
+                        className={`hover:bg-gray-50 ${isDirty ? 'bg-amber-50/50' : ''} ${isSelected ? 'bg-indigo-50/40' : ''} ${canEditSection ? 'cursor-pointer' : ''}`}
                       >
                         {canEditSection && (
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleStudentSelection(studentKey)}
                               className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                              aria-label={`Select ${student.studentName || student.pinNo || 'student'}`}
                             />
                           </td>
                         )}
@@ -745,7 +751,7 @@ const SectionPartition = () => {
                         <td className="px-4 py-3 text-gray-900">{student.studentName || '-'}</td>
                         <td className="px-4 py-3 text-gray-700">{student.course || '-'}</td>
                         <td className="px-4 py-3 text-gray-700">{student.branch || '-'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <select
                             value={draftValue}
                             onChange={(e) =>
