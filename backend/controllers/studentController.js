@@ -22,7 +22,13 @@ const {
   scholarshipPendingSumSql,
   buildCurrentYearScholarshipMap,
   resolveRegistrationScholarshipStage,
-  isScholarshipDisplayUnassigned
+  isScholarshipDisplayUnassigned,
+  normalizeScholarStatusForResponse,
+  STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS,
+  getScholarStatusColumnFilterClause,
+  syncIneligibleQuotaScholarshipsForStudents,
+  syncIneligibleQuotaScholarshipForStudent,
+  resolveScholarStatusForStudent
 } = require('../services/studentScholarshipSync');
 const {
   isVerificationCompleteForCycle,
@@ -2549,6 +2555,10 @@ exports.getAllStudents = async (req, res) => {
         // Special handling for null certificate status
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           query += ` AND ${field} IS NULL`;
+        } else if (field === 'scholar_status') {
+          const { clause, params: scholarParams } = getScholarStatusColumnFilterClause(filterValue);
+          query += clause;
+          params.push(...scholarParams);
         } else if (field === 'caste') {
           query += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
           params.push(filterValue.trim());
@@ -2600,6 +2610,8 @@ exports.getAllStudents = async (req, res) => {
     }
 
     const [students] = await masterPool.query(query, params);
+
+    await syncIneligibleQuotaScholarshipsForStudents(masterPool, students);
 
     // Get total count
     let countQuery = 'SELECT COUNT(*) as total FROM students WHERE 1=1';
@@ -2692,6 +2704,10 @@ exports.getAllStudents = async (req, res) => {
         // Special handling for null certificate status
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           countQuery += ` AND ${field} IS NULL`;
+        } else if (field === 'scholar_status') {
+          const { clause, params: scholarParams } = getScholarStatusColumnFilterClause(filterValue);
+          countQuery += clause;
+          countParams.push(...scholarParams);
         } else if (field === 'caste') {
           countQuery += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
           countParams.push(filterValue.trim());
@@ -2791,12 +2807,8 @@ exports.getAllStudents = async (req, res) => {
         ? 'Completed'
         : (student.registration_status_computed || dbRegistrationStatus || 'pending');
 
-      // Normalize scholarship status - empty/null should show as "Pending"
-      const rawScholarStatus = student.scholar_status || parsedData?.scholar_status || parsedData?.['Scholar Status'] || '';
-      const normalizedScholarStatus = (rawScholarStatus && String(rawScholarStatus).trim().length > 0 &&
-        rawScholarStatus.toLowerCase() !== 'null' && rawScholarStatus.toLowerCase() !== 'undefined')
-        ? rawScholarStatus
-        : 'Pending';
+      // Scholarship status — auto-synced for Management / Spot / Lateral Spot quotas
+      const normalizedScholarStatus = resolveScholarStatusForStudent(student, parsedData);
 
       // Determine accommodation
       let accommodation = 'Own Transport';
@@ -2885,6 +2897,8 @@ exports.getStudentByAdmission = async (req, res) => {
       });
     }
 
+    await syncIneligibleQuotaScholarshipForStudent(masterPool, students[0]);
+
     const parsedData = parseJSON(students[0].student_data) || {};
     const stage = resolveStageFromData(parsedData, {
       year: students[0].current_year || 1,
@@ -2893,12 +2907,7 @@ exports.getStudentByAdmission = async (req, res) => {
 
     applyStageToPayload(parsedData, stage);
 
-    // Normalize scholarship status - empty/null should show as "Pending"
-    const rawScholarStatus = students[0].scholar_status || parsedData?.scholar_status || parsedData?.['Scholar Status'] || '';
-    const normalizedScholarStatus = (rawScholarStatus && String(rawScholarStatus).trim().length > 0 &&
-      rawScholarStatus.toLowerCase() !== 'null' && rawScholarStatus.toLowerCase() !== 'undefined')
-      ? rawScholarStatus
-      : 'Pending';
+    const normalizedScholarStatus = resolveScholarStatusForStudent(students[0], parsedData);
 
     const student = {
       ...students[0],
@@ -3512,6 +3521,19 @@ exports.updateStudent = async (req, res) => {
       incomingStudentData,
       mutableStudentData
     });
+
+    try {
+      const { syncIneligibleQuotaScholarshipForStudent } = require('../services/studentScholarshipSync');
+      await syncIneligibleQuotaScholarshipForStudent(masterPool, {
+        id: existingStudent.id,
+        stud_type: auditChanges.stud_type?.to ?? existingStudent.stud_type,
+        course: finalCourse,
+        branch: finalBranch,
+        current_year: auditChanges.current_year?.to ?? existingStudent.current_year
+      });
+    } catch (syncErr) {
+      console.error('Failed to sync ineligible-quota scholarship:', syncErr.message);
+    }
 
     res.json({
       success: true,
@@ -4314,6 +4336,13 @@ exports.createStudent = async (req, res) => {
       student_data: parseJSON(createdStudents[0].student_data)
     };
 
+    try {
+      const { syncIneligibleQuotaScholarshipForStudent } = require('../services/studentScholarshipSync');
+      await syncIneligibleQuotaScholarshipForStudent(masterPool, createdStudent);
+    } catch (syncErr) {
+      console.error('Failed to sync ineligible-quota scholarship for new student:', syncErr.message);
+    }
+
     // Generate student login credentials automatically
     try {
       const { generateStudentCredentials } = require('../utils/studentCredentials');
@@ -4871,10 +4900,7 @@ exports.getFilterOptions = async (req, res) => {
       `SELECT DISTINCT student_status FROM students ${whereClause} AND student_status IS NOT NULL AND student_status <> '' ORDER BY student_status ASC`,
       params
     );
-    const [scholarStatusRows] = await masterPool.query(
-      `SELECT DISTINCT scholar_status FROM students ${whereClause} AND scholar_status IS NOT NULL AND scholar_status <> '' ORDER BY scholar_status ASC`,
-      params
-    );
+    const scholarStatusOptions = STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS;
     const [casteRows] = await masterPool.query(
       `SELECT DISTINCT caste FROM students ${whereClause} AND caste IS NOT NULL AND caste <> '' ORDER BY caste ASC`,
       params
@@ -4905,7 +4931,7 @@ exports.getFilterOptions = async (req, res) => {
       data: {
         stud_type: studTypeOptions,
         student_status: studentStatusRows.map((row) => row.student_status),
-        scholar_status: scholarStatusRows.map((row) => row.scholar_status),
+        scholar_status: scholarStatusOptions,
         caste: casteRows.map((row) => row.caste),
         gender: genderRows.map((row) => row.gender),
         certificates_status: certificatesStatusRows.map((row) => row.certificates_status),
@@ -5545,6 +5571,8 @@ exports.getStudentByAdmission = async (req, res) => {
 
     const student = students[0];
 
+    await syncIneligibleQuotaScholarshipForStudent(masterPool, student);
+
     // Parse JSON student_data and resolve current stage
     const parsedData = parseJSON(student.student_data) || {};
     const stage = resolveStageFromData(parsedData, {
@@ -5618,12 +5646,7 @@ exports.getStudentByAdmission = async (req, res) => {
       }
     }
 
-    // Normalize scholarship status - empty/null should show as "Pending"
-    const rawScholarStatus = student.scholar_status || parsedData?.scholar_status || parsedData?.['Scholar Status'] || '';
-    const normalizedScholarStatus = (rawScholarStatus && String(rawScholarStatus).trim().length > 0 &&
-      rawScholarStatus.toLowerCase() !== 'null' && rawScholarStatus.toLowerCase() !== 'undefined')
-      ? rawScholarStatus
-      : 'Pending';
+    const normalizedScholarStatus = resolveScholarStatusForStudent(student, parsedData);
 
     const responsePayload = {
       ...student,

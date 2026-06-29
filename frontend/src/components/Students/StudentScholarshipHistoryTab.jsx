@@ -4,15 +4,20 @@ import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
 import toast from 'react-hot-toast';
 
-import { SCHOLARSHIP_ELIGIBLE_OPTIONS } from '../../config/scholarshipConfig';
+import {
+  SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS,
+  isScholarshipQuotaLocked,
+  formatScholarshipStatusDisplay,
+  normalizeScholarshipStatusValue,
+  getAcademicYearLabel
+} from '../../config/scholarshipConfig';
 
-const ELIGIBLE_OPTIONS = ['', ...SCHOLARSHIP_ELIGIBLE_OPTIONS];
+const ELIGIBLE_OPTIONS = SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS;
 
 const emptyRelease = () => ({
   id: null,
-  from_date: '',
-  to_date: '',
-  proceeding: '',
+  academic_year: '',
+  rtf_released_date: '',
   released_amount: ''
 });
 
@@ -45,11 +50,13 @@ const formatCalendarDate = (value) => {
   return date.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const mapReleasesFromApi = (releases = []) => (
+const mapReleasesFromApi = (releases = [], academicYearLabel = '') => (
   (releases.length ? releases : [emptyRelease()]).map((release) => ({
     ...release,
-    from_date: normalizeDateForInput(release.from_date),
-    to_date: normalizeDateForInput(release.to_date),
+    academic_year: release.academic_year || academicYearLabel || '',
+    rtf_released_date: normalizeDateForInput(
+      release.rtf_released_date || release.rtf_date || release.from_date
+    ),
     released_amount: release.released_amount === 0 ? '' : String(release.released_amount)
   }))
 );
@@ -74,6 +81,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const [meta, setMeta] = useState(null);
 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
+  const quotaLocked = isScholarshipQuotaLocked(student, meta);
+  const isEditingDisabled = readOnly || quotaLocked;
 
   const fetchScholarship = useCallback(async () => {
     if (!admissionNumber) return;
@@ -87,7 +96,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         setYears(
           (payload.years || []).map((year) => ({
             ...year,
-            releases: mapReleasesFromApi(year.releases)
+            releases: mapReleasesFromApi(
+              year.releases,
+              year.academic_year_label || getAcademicYearLabel(payload, year.student_year, student)
+            )
           }))
         );
       } else {
@@ -137,7 +149,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const addReleaseRow = (yearIndex) => {
     setYears((prev) => prev.map((year, index) => (
       index === yearIndex
-        ? { ...year, releases: [...year.releases, emptyRelease()] }
+        ? {
+          ...year,
+          releases: [
+            ...year.releases,
+            {
+              ...emptyRelease(),
+              academic_year: year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student)
+            }
+          ]
+        }
         : year
     )));
   };
@@ -158,19 +179,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const payload = years.map((year) => ({
         student_year: year.student_year,
         application_id: year.application_id || '',
-        eligible: year.eligible || '',
+        eligible: normalizeScholarshipStatusValue(year.eligible) || '',
         sanctioned_amount: parseAmount(year.sanctioned_amount),
         releases: year.releases
           .filter((release) => (
             parseAmount(release.released_amount) > 0
-            || release.from_date
-            || release.to_date
-            || (release.proceeding && release.proceeding.trim())
+            || release.rtf_released_date
           ))
           .map((release) => ({
-            from_date: normalizeDateForInput(release.from_date) || null,
-            to_date: normalizeDateForInput(release.to_date) || null,
-            proceeding: release.proceeding || '',
+            academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
+            rtf_released_date: normalizeDateForInput(release.rtf_released_date) || null,
             released_amount: parseAmount(release.released_amount)
           }))
       }));
@@ -183,7 +201,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         setYears(
           (payloadData.years || []).map((year) => ({
             ...year,
-            releases: mapReleasesFromApi(year.releases)
+            releases: mapReleasesFromApi(
+              year.releases,
+              year.academic_year_label || getAcademicYearLabel(payloadData, year.student_year, student)
+            )
           }))
         );
         onUpdated?.(payloadData);
@@ -217,6 +238,12 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
   return (
     <div className="space-y-6">
+      {quotaLocked && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This student is under Management Quota, Spot Admission, or Lateral Spot. Scholarship is automatically
+          marked as <span className="font-semibold">Not eligible</span> for all years and cannot be edited.
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-pink-50 text-pink-600">
@@ -226,11 +253,12 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             <h3 className="text-sm font-bold text-gray-900">Student Scholarship</h3>
             <p className="text-xs text-gray-500">
               {meta?.student?.student_name || student?.student_name || admissionNumber}
+              {meta?.firstAcademicYear ? ` · First academic year ${meta.firstAcademicYear}` : ''}
               {meta?.totalYears ? ` · ${meta.totalYears} year(s)` : ''}
             </p>
           </div>
         </div>
-        {!readOnly && (
+        {!isEditingDisabled && (
           <button
             type="button"
             onClick={handleSave}
@@ -261,9 +289,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             <tbody className="divide-y divide-gray-100">
               {summaryYears.map((year, yearIndex) => (
                 <tr key={year.student_year} className="hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">Year {year.student_year}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                    Year {year.student_year}
+                  </td>
                   <td className="px-4 py-3">
-                    {readOnly ? (
+                    {isEditingDisabled ? (
                       <span className="text-gray-700">{year.application_id || '—'}</span>
                     ) : (
                       <input
@@ -276,24 +306,27 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {readOnly ? (
-                      <span className="text-gray-700 capitalize">{year.eligible || '—'}</span>
+                    {isEditingDisabled ? (
+                      <span className="text-gray-700 capitalize">{formatScholarshipStatusDisplay(year.eligible)}</span>
                     ) : (
                       <select
-                        value={year.eligible || ''}
-                        onChange={(e) => updateYearField(yearIndex, 'eligible', e.target.value)}
-                        className="w-full min-w-[140px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs capitalize"
+                        value={normalizeScholarshipStatusValue(year.eligible) || ''}
+                        onChange={(e) => {
+                          const nextValue = e.target.value === 'not_eligible' ? 'rejected' : e.target.value;
+                          updateYearField(yearIndex, 'eligible', nextValue);
+                        }}
+                        className="w-full min-w-[140px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
                       >
                         {ELIGIBLE_OPTIONS.map((option) => (
-                          <option key={option || 'blank'} value={option}>
-                            {option ? option : 'Select status'}
+                          <option key={option.value || 'blank'} value={option.value}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {readOnly ? (
+                    {isEditingDisabled ? (
                       <span className="font-medium text-gray-800">{formatCurrency(year.sanctioned_amount)}</span>
                     ) : (
                       <input
@@ -317,16 +350,20 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         </div>
       </div>
 
+      {!quotaLocked && (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Release Transactions</h4>
           <p className="text-[11px] text-gray-400 mt-1">
-            Add multiple release entries per year. Released amounts are summed into the summary table above.
+            Academic year, RTF released date, and amount per release entry.
           </p>
         </div>
 
         <div className="divide-y divide-gray-100">
-          {years.map((year, yearIndex) => (
+          {years.map((year, yearIndex) => {
+            const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
+
+            return (
             <div key={`releases-${year.student_year}`} className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <h5 className="text-sm font-bold text-gray-800">Year {year.student_year}</h5>
@@ -339,55 +376,34 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">From Date</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">To Date</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">Proceeding No.</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Released Date</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Released Amount</th>
-                      {!readOnly && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Add</th>}
+                      {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Add</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {year.releases.map((release, releaseIndex) => (
                       <tr key={`${year.student_year}-${releaseIndex}`}>
                         <td className="px-2 py-2">
-                          {readOnly ? (
-                            <span className="text-gray-700">{formatCalendarDate(release.from_date) || '—'}</span>
+                          <span className="text-gray-700 whitespace-nowrap">
+                            {release.academic_year || academicYearLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">
+                          {isEditingDisabled ? (
+                            <span className="text-gray-700">{formatCalendarDate(release.rtf_released_date) || '—'}</span>
                           ) : (
                             <input
                               type="date"
-                              value={release.from_date || ''}
-                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'from_date', e.target.value)}
+                              value={release.rtf_released_date || ''}
+                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'rtf_released_date', e.target.value)}
                               className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
-                            />
-                          )}
-                        </td>
-                        <td className="px-2 py-2">
-                          {readOnly ? (
-                            <span className="text-gray-700">{formatCalendarDate(release.to_date) || '—'}</span>
-                          ) : (
-                            <input
-                              type="date"
-                              value={release.to_date || ''}
-                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'to_date', e.target.value)}
-                              className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
-                            />
-                          )}
-                        </td>
-                        <td className="px-2 py-2">
-                          {readOnly ? (
-                            <span className="text-gray-700">{release.proceeding || '—'}</span>
-                          ) : (
-                            <input
-                              type="text"
-                              value={release.proceeding || ''}
-                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'proceeding', e.target.value)}
-                              className="w-full min-w-[140px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
-                              placeholder="Proceeding no."
                             />
                           )}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          {readOnly ? (
+                          {isEditingDisabled ? (
                             <span className="font-medium text-gray-800">{formatCurrency(release.released_amount)}</span>
                           ) : (
                             <input
@@ -401,7 +417,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             />
                           )}
                         </td>
-                        {!readOnly && (
+                        {!isEditingDisabled && (
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-center gap-1">
                               <button
@@ -431,9 +447,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 </table>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-amber-50/60">
@@ -461,7 +479,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       <p className="text-sm font-bold text-gray-900">
                         Year {entry.academic_year}
                         {entry.scholar_status ? (
-                          <span className="ml-2 capitalize text-indigo-700">{entry.scholar_status}</span>
+                          <span className="ml-2 text-indigo-700">{formatScholarshipStatusDisplay(entry.scholar_status)}</span>
                         ) : null}
                       </p>
                       <p className="text-[11px] text-gray-500">{formatArchivedAt(entry.archived_at)}</p>
@@ -491,18 +509,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
-                            <th className="px-2 py-1">From</th>
-                            <th className="px-2 py-1">To</th>
-                            <th className="px-2 py-1">Proceeding</th>
+                            <th className="px-2 py-1">Academic Year</th>
+                            <th className="px-2 py-1">RTF Released</th>
                             <th className="px-2 py-1 text-right">Amount</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {releases.map((release, index) => (
                             <tr key={`${entry.id}-release-${index}`}>
-                              <td className="px-2 py-1">{formatCalendarDate(release.from_date) || '—'}</td>
-                              <td className="px-2 py-1">{formatCalendarDate(release.to_date) || '—'}</td>
-                              <td className="px-2 py-1">{release.proceeding || '—'}</td>
+                              <td className="px-2 py-1">{release.academic_year || getAcademicYearLabel(meta, entry.academic_year, student)}</td>
+                              <td className="px-2 py-1">{formatCalendarDate(release.rtf_released_date || release.rtf_date || release.from_date) || '—'}</td>
                               <td className="px-2 py-1 text-right">{formatCurrency(release.released_amount)}</td>
                             </tr>
                           ))}

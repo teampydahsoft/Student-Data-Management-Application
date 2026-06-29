@@ -67,6 +67,7 @@ import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasM
 import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
 import {
   SCHOLARSHIP_ELIGIBLE_OPTIONS,
+  SCHOLARSHIP_STATUS_FILTER_OPTIONS,
   getCurrentScholarshipStatus,
   formatScholarshipStatusDisplay,
   isScholarshipStatusAssigned
@@ -110,7 +111,7 @@ const FEE_STATUS_OPTIONS = [
 ];
 
 // Scholarship status options (synced with student_scholarship table)
-const SCHOLAR_STATUS_OPTIONS = SCHOLARSHIP_ELIGIBLE_OPTIONS;
+const SCHOLAR_STATUS_OPTIONS = SCHOLARSHIP_STATUS_FILTER_OPTIONS.map((option) => option.value);
 
 
 // Registration status options
@@ -486,9 +487,6 @@ const Students = () => {
 
   const students = studentsData?.students || [];
   const totalStudents = studentsData?.pagination?.total || 0;
-  const scholarStatusOptions = dropdownFilterOptions.scholar_status?.length
-    ? dropdownFilterOptions.scholar_status
-    : SCHOLAR_STATUS_OPTIONS;
 
   // Helper function to extract numeric part from PIN (last 4-5 digits)
   const extractPinNumeric = (pinString) => {
@@ -1369,7 +1367,7 @@ const Students = () => {
         setDropdownFilterOptions({
           stud_type: data.stud_type || [],
           student_status: data.student_status || [],
-          scholar_status: mergeOptions(data.scholar_status, SCHOLAR_STATUS_OPTIONS),
+          scholar_status: SCHOLAR_STATUS_OPTIONS,
           caste: data.caste || [],
           gender: data.gender || [],
           certificates_status: data.certificates_status || [],
@@ -2871,11 +2869,8 @@ const Students = () => {
                   className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 >
                   <option value="">All</option>
-                  {(dropdownFilterOptions.scholar_status && dropdownFilterOptions.scholar_status.length > 0
-                    ? dropdownFilterOptions.scholar_status
-                    : SCHOLAR_STATUS_OPTIONS
-                  ).map((status) => (
-                    <option key={status} value={status}>{status}</option>
+                  {SCHOLARSHIP_STATUS_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </div>
@@ -3312,7 +3307,7 @@ const Students = () => {
                                   className="px-2 py-1 rounded hover:bg-purple-50 hover:text-purple-700 transition-colors cursor-pointer capitalize"
                                   title="Open scholarship details"
                                 >
-                                  {student.scholar_status || 'pending'}
+                                  {formatScholarshipStatusDisplay(student.scholar_status)}
                                 </div>
                               </td>
                             )}
@@ -3479,8 +3474,8 @@ const Students = () => {
                                 title="Open scholarship details"
                               >
                                 <p className="text-xs text-gray-500">Scholar Status</p>
-                                <p className="text-sm font-medium text-gray-900 truncate capitalize" title={student.scholar_status || 'Pending'}>
-                                  {student.scholar_status || 'Pending'}
+                                <p className="text-sm font-medium text-gray-900 truncate" title={formatScholarshipStatusDisplay(student.scholar_status)}>
+                                  {formatScholarshipStatusDisplay(student.scholar_status)}
                                 </p>
                               </div>
                             )}
