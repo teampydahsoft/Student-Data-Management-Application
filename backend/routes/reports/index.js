@@ -3,6 +3,7 @@ const router = express.Router();
 const studentController = require('../../controllers/studentController');
 const categoryReportController = require('../../controllers/reports/categoryReportController');
 const smsReportController = require('../../controllers/reports/smsReportController');
+const scholarshipReportController = require('../../controllers/reports/scholarshipReportController');
 const authMiddleware = require('../../middleware/auth');
 const { attachUserScope, verifyPermission } = require('../../middleware/rbac');
 const { MODULES } = require('../../constants/rbac');
@@ -60,6 +61,22 @@ router.get(
   verifyPermission(MODULES.REPORTS, 'view_sms_reports'),
   attachUserScope,
   smsReportController.getSmsReportLogs
+);
+
+// Scholarship report — per-student year-wise sanctioned, released, due
+router.get(
+  '/scholarship',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_scholarship'),
+  attachUserScope,
+  scholarshipReportController.getScholarshipReport
+);
+router.get(
+  '/scholarship/export',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_scholarship'),
+  attachUserScope,
+  scholarshipReportController.exportScholarshipReport
 );
 
 module.exports = router;

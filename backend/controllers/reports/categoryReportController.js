@@ -245,3 +245,5 @@ async function doExport(req, res, format, data, categoryColumns) {
   }
   return res.status(400).json({ success: false, message: 'Invalid format. Use excel or pdf.' });
 }
+
+module.exports.buildReportFilters = buildReportFilters;

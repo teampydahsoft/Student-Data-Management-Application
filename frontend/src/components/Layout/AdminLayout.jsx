@@ -41,6 +41,7 @@ import {
   MessageSquare,
   PieChart,
   Tag,
+  Award,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -168,6 +169,13 @@ const NAV_ITEMS = [
         icon: Tag,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_category'
+      },
+      {
+        path: "/reports/scholarship",
+        label: "Scholarship Report",
+        icon: Award,
+        permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_scholarship'
       },
       {
         path: "/reports/sms",

@@ -25,6 +25,7 @@ import StudentFieldPermissions from './pages/StudentFieldPermissions';
 import Reports from './pages/Reports';
 import CategoryReport from './pages/CategoryReport';
 import SmsReport from './pages/SmsReport';
+import ScholarshipReport from './pages/ScholarshipReport';
 import StudentPromotions from './pages/StudentPromotions';
 import CollegeTransfer from './pages/CollegeTransfer';
 import TaskManagement from './pages/TaskManagement';
@@ -229,6 +230,7 @@ function App() {
           <Route path="reports/day-end" element={<Reports />} />
           <Route path="reports/category" element={<CategoryReport />} />
           <Route path="reports/sms" element={<SmsReport />} />
+          <Route path="reports/scholarship" element={<ScholarshipReport />} />
           <Route path="tickets" element={<TicketAppRedirect redirectPath="/task-management" />} />
           <Route path="task-management" element={<TaskManagement />} />
           <Route path="announcements" element={<Announcements />} />
