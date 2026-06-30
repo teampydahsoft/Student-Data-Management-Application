@@ -3567,7 +3567,7 @@ const Students = () => {
           }}
         >
           <div
-            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
+            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-[min(86vw,1380px)] max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

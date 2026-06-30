@@ -133,7 +133,7 @@ exports.getStudentsForHistory = async (req, res) => {
 // Add a new remark to a student's history
 exports.addRemark = async (req, res) => {
     try {
-        const { admission_number, remark } = req.body;
+        const { admission_number, remark, student_year, student_semester, remark_category } = req.body;
 
         if (!admission_number || !remark) {
             return res.status(400).json({
@@ -156,10 +156,17 @@ exports.addRemark = async (req, res) => {
         }
 
         const student = studentRows[0];
+        const targetYear = student_year != null && student_year !== ''
+            ? Number(student_year)
+            : student.current_year;
+        const targetSemester = student_semester != null && student_semester !== ''
+            ? Number(student_semester)
+            : student.current_semester;
+        const isScholarshipRemark = String(remark_category || '').trim().toLowerCase() === 'scholarship';
         const legacyRemark = student.remarks;
 
         // Preserve legacy remark if it exists and hasn't been saved to student_remarks yet
-        if (legacyRemark && legacyRemark.trim() !== '') {
+        if (!isScholarshipRemark && legacyRemark && legacyRemark.trim() !== '') {
             const [existingLegacy] = await masterPool.query(
                 'SELECT id FROM student_remarks WHERE admission_number = ? AND remark = ?',
                 [admission_number, legacyRemark]
@@ -178,20 +185,22 @@ exports.addRemark = async (req, res) => {
         // Get user info from request (populated by auth middleware)
         const createdBy = req.user.id;
         const createdByName = req.user.username;
-        const remarkCategory = getCategoryFromRole(req.user.role);
+        const resolvedCategory = remark_category || getCategoryFromRole(req.user.role);
 
         const [result] = await masterPool.query(
             `INSERT INTO student_remarks 
              (admission_number, remark, remark_category, student_year, student_semester, created_by, created_by_name) 
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [admission_number, remark, remarkCategory, student.current_year, student.current_semester, createdBy, createdByName]
+            [admission_number, remark, resolvedCategory, targetYear, targetSemester, createdBy, createdByName]
         );
 
-        // SYNC: Update the main students table with the latest remark
-        await masterPool.query(
-            'UPDATE students SET remarks = ? WHERE admission_number = ?',
-            [remark, admission_number]
-        );
+        // SYNC: Update the main students table with the latest general remark only
+        if (!isScholarshipRemark) {
+            await masterPool.query(
+                'UPDATE students SET remarks = ? WHERE admission_number = ?',
+                [remark, admission_number]
+            );
+        }
 
         res.status(201).json({
             success: true,
@@ -200,9 +209,9 @@ exports.addRemark = async (req, res) => {
                 id: result.insertId,
                 admission_number,
                 remark,
-                remark_category: remarkCategory,
-                student_year: student.current_year,
-                student_semester: student.current_semester,
+                remark_category: resolvedCategory,
+                student_year: targetYear,
+                student_semester: targetSemester,
                 created_by: createdBy,
                 created_by_name: createdByName,
                 created_at: new Date()

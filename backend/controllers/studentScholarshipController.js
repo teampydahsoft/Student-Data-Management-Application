@@ -11,7 +11,11 @@ const {
   enrichScholarshipYears,
   mapReleaseRowForApi,
   normalizeReleaseForSave,
-  resolveTotalYears: resolveScholarshipTotalYears
+  resolveTotalYears: resolveScholarshipTotalYears,
+  resolveSemestersPerYear,
+  buildDefaultSemesters,
+  isReleaseRow,
+  isSemesterSummaryRow
 } = require('../services/studentScholarshipSync');
 
 const DEFAULT_TOTAL_YEARS = 4;
@@ -33,24 +37,57 @@ const normalizeDateForSave = (value) => {
 };
 
 const resolveTotalYears = async (student) => resolveScholarshipTotalYears(masterPool, student);
+const resolveSemestersPerYearForStudent = async (student) => resolveSemestersPerYear(masterPool, student);
 
-const buildEmptyYear = (studentYear) => ({
+const buildEmptyYear = (studentYear, semestersPerYear = 2) => ({
   student_year: studentYear,
   application_id: '',
-  eligible: '',
   sanctioned_amount: 0,
   released_amount: 0,
+  semesters: buildDefaultSemesters(semestersPerYear),
   releases: []
 });
 
-const mapReleaseRow = (row) => mapReleaseRowForApi(row);
+const buildYearEntryFromRows = (rows, semestersPerYear) => {
+  let applicationId = '';
+  let sanctionedAmount = 0;
+  const semesterMap = {};
+  let legacyEligible = '';
+  const releases = [];
 
-const isReleaseRow = (row) => (
-  toNumber(row.released_amount) > 0
-  || row.from_date
-  || row.rtf_released_date
-  || row.rtf_date
-);
+  for (const row of rows) {
+    if (!applicationId && row.application_id) applicationId = row.application_id;
+    if (!sanctionedAmount && row.sanctioned_amount) {
+      sanctionedAmount = toNumber(row.sanctioned_amount);
+    }
+
+    if (isReleaseRow(row)) {
+      releases.push(mapReleaseRowForApi(row));
+    } else if (isSemesterSummaryRow(row)) {
+      semesterMap[row.student_semester] = row.eligible || '';
+    } else if (row.eligible) {
+      legacyEligible = row.eligible;
+    }
+  }
+
+  if (!Object.keys(semesterMap).length && legacyEligible) {
+    semesterMap[1] = legacyEligible;
+  }
+
+  const semesters = buildDefaultSemesters(semestersPerYear).map((semester) => ({
+    student_semester: semester.student_semester,
+    eligible: semesterMap[semester.student_semester] || ''
+  }));
+
+  return {
+    application_id: applicationId || '',
+    eligible: semesters[0]?.eligible || legacyEligible || '',
+    sanctioned_amount: sanctionedAmount,
+    released_amount: releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0),
+    semesters,
+    releases
+  };
+};
 
 const getStudentByAdmissionNumber = async (admissionNumber) => {
   const [rows] = await masterPool.query(
@@ -103,13 +140,16 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
       admission_number: student.admission_number,
       student_name: student.student_name,
       current_year: student.current_year,
+      current_semester: student.current_semester,
       course: student.course,
       branch: student.branch,
       batch: student.batch,
       stud_type: student.stud_type
     },
     totalYears,
+    semestersPerYear: extra.semestersPerYear ?? 2,
     currentYear: Math.max(1, toNumber(student.current_year) || 1),
+    currentSemester: Math.max(1, toNumber(student.current_semester) || 1),
     firstAcademicYear: academicContext.firstAcademicYear,
     academicYearLabels: academicContext.labels,
     currentYearEligible: extra.currentYearEligible ?? '',
@@ -122,6 +162,7 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
 const fetchScholarshipPayload = async (student) => {
   const quotaLocked = isScholarshipIneligibleQuota(student.stud_type);
   const totalYears = await resolveTotalYears(student);
+  const semestersPerYear = await resolveSemestersPerYearForStudent(student);
 
   if (quotaLocked) {
     await syncIneligibleQuotaScholarshipForStudent(masterPool, student);
@@ -131,23 +172,24 @@ const fetchScholarshipPayload = async (student) => {
     return buildScholarshipResponse(
       student,
       totalYears,
-      buildIneligibleQuotaYears(totalYears),
+      buildIneligibleQuotaYears(totalYears, semestersPerYear),
       archivedHistory,
       {
         currentYearEligible: 'rejected',
-        scholarshipQuotaLocked: true
+        scholarshipQuotaLocked: true,
+        semestersPerYear
       }
     );
   }
 
   const [rows] = await masterPool.query(
-    `SELECT id, student_year, application_id, eligible, sanctioned_amount,
+    `SELECT id, student_year, student_semester, application_id, eligible, sanctioned_amount,
             DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
             DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
             proceeding, released_amount
      FROM student_scholarship
      WHERE student_id = ?
-     ORDER BY student_year ASC, id ASC`,
+     ORDER BY student_year ASC, student_semester ASC, id ASC`,
     [student.id]
   );
 
@@ -156,37 +198,31 @@ const fetchScholarshipPayload = async (student) => {
   for (const row of rows) {
     const year = row.student_year;
     if (!yearMap[year]) {
-      yearMap[year] = {
-        student_year: year,
-        application_id: row.application_id || '',
-        eligible: row.eligible || '',
-        sanctioned_amount: toNumber(row.sanctioned_amount),
-        released_amount: 0,
-        releases: []
-      };
+      yearMap[year] = [];
     }
-
-    const entry = yearMap[year];
-    if (!entry.application_id && row.application_id) entry.application_id = row.application_id;
-    if (row.eligible) entry.eligible = row.eligible;
-    if (!entry.sanctioned_amount && row.sanctioned_amount) {
-      entry.sanctioned_amount = toNumber(row.sanctioned_amount);
-    }
-
-    entry.released_amount += toNumber(row.released_amount);
-
-    if (isReleaseRow(row)) {
-      entry.releases.push(mapReleaseRow(row));
-    }
+    yearMap[year].push(row);
   }
 
   const years = Array.from({ length: totalYears }, (_, index) => {
     const studentYear = index + 1;
-    return yearMap[studentYear] || buildEmptyYear(studentYear);
+    const yearRows = yearMap[studentYear] || [];
+    if (!yearRows.length) {
+      return buildEmptyYear(studentYear, semestersPerYear);
+    }
+
+    return {
+      student_year: studentYear,
+      ...buildYearEntryFromRows(yearRows, semestersPerYear)
+    };
   });
 
   const archivedHistory = await fetchArchivedHistory(student.id);
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
+  const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
+  const currentYearData = years.find((entry) => entry.student_year === currentYear);
+  const currentSemesterEligible = currentYearData?.semesters?.find(
+    (semester) => semester.student_semester === currentSemester
+  )?.eligible || currentYearData?.eligible || '';
 
   return buildScholarshipResponse(
     student,
@@ -194,17 +230,22 @@ const fetchScholarshipPayload = async (student) => {
     years,
     archivedHistory,
     {
-      currentYearEligible: yearMap[currentYear]?.eligible || '',
-      scholarshipQuotaLocked: false
+      currentYearEligible: currentSemesterEligible,
+      scholarshipQuotaLocked: false,
+      semestersPerYear
     }
   );
 };
 
-const hasYearSummaryData = (yearEntry) => (
-  (yearEntry.application_id && String(yearEntry.application_id).trim())
-  || (yearEntry.eligible && String(yearEntry.eligible).trim())
-  || toNumber(yearEntry.sanctioned_amount) > 0
-);
+const hasYearSummaryData = (yearEntry) => {
+  const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
+  return (
+    (yearEntry.application_id && String(yearEntry.application_id).trim())
+    || toNumber(yearEntry.sanctioned_amount) > 0
+    || semesters.some((semester) => semester.eligible && String(semester.eligible).trim())
+    || (yearEntry.eligible && String(yearEntry.eligible).trim())
+  );
+};
 
 const hasReleaseData = (release) => {
   const normalized = normalizeReleaseForSave(release);
@@ -226,11 +267,17 @@ const buildIncomingYearSnapshot = (yearEntry) => {
       };
     });
 
+  const semesters = (Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [])
+    .map((semester) => ({
+      student_semester: Math.max(1, toNumber(semester.student_semester) || 1),
+      eligible: semester.eligible || null
+    }));
+
   return {
     application_id: yearEntry.application_id || null,
-    eligible: yearEntry.eligible || null,
     sanctioned_amount: toNumber(yearEntry.sanctioned_amount),
     released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
+    semesters,
     releases
   };
 };
@@ -280,6 +327,7 @@ exports.saveScholarshipHistory = async (req, res) => {
     await connection.beginTransaction();
 
     const historyActor = resolveHistoryActor(req.user);
+    const semestersPerYear = await resolveSemestersPerYearForStudent(student);
 
     for (const yearEntry of years) {
       const studentYear = toNumber(yearEntry.student_year);
@@ -287,14 +335,16 @@ exports.saveScholarshipHistory = async (req, res) => {
 
       const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
       const validReleases = releases.filter(hasReleaseData);
+      const semesters = Array.isArray(yearEntry.semesters) && yearEntry.semesters.length
+        ? yearEntry.semesters
+        : buildDefaultSemesters(semestersPerYear);
       const summaryData = {
         application_id: yearEntry.application_id || null,
-        eligible: yearEntry.eligible || null,
         sanctioned_amount: toNumber(yearEntry.sanctioned_amount)
       };
 
       const [existingRows] = await connection.query(
-        `SELECT application_id, eligible, sanctioned_amount, released_amount,
+        `SELECT application_id, eligible, sanctioned_amount, released_amount, student_semester,
                 DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
                 DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
                 proceeding
@@ -305,7 +355,7 @@ exports.saveScholarshipHistory = async (req, res) => {
 
       const incomingSnapshot = buildIncomingYearSnapshot(yearEntry);
       const existingSnapshot = existingRows.length > 0
-        ? buildYearSnapshotFromRows(existingRows)
+        ? buildYearSnapshotFromRows(existingRows, semestersPerYear)
         : null;
 
       if (existingSnapshot && !snapshotsEqual(existingSnapshot, incomingSnapshot)) {
@@ -321,19 +371,54 @@ exports.saveScholarshipHistory = async (req, res) => {
         [student.id, studentYear]
       );
 
+      const semesterRowsToSave = semesters.filter(
+        (semester) => semester.eligible && String(semester.eligible).trim()
+      );
+
+      if (semesterRowsToSave.length > 0 || hasYearSummaryData(yearEntry)) {
+        for (const semester of buildDefaultSemesters(semestersPerYear)) {
+          const semesterEntry = semesters.find(
+            (entry) => toNumber(entry.student_semester) === semester.student_semester
+          ) || semester;
+          const eligible = semesterEntry.eligible || null;
+          const shouldSaveSemester = (eligible && String(eligible).trim())
+            || (semester.student_semester === 1 && (
+              summaryData.application_id
+              || summaryData.sanctioned_amount > 0
+            ));
+
+          if (!shouldSaveSemester) continue;
+
+          await connection.query(
+            `INSERT INTO student_scholarship
+             (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount, released_amount)
+             VALUES (?, ?, ?, ?, ?, ?, 0)`,
+            [
+              student.id,
+              studentYear,
+              semester.student_semester,
+              semester.student_semester === 1 ? summaryData.application_id : null,
+              eligible,
+              semester.student_semester === 1 ? summaryData.sanctioned_amount : 0
+            ]
+          );
+        }
+      }
+
       if (validReleases.length > 0) {
+        const primaryEligible = semesters.find((semester) => semester.eligible)?.eligible || null;
         for (const release of validReleases) {
           const normalizedRelease = normalizeReleaseForSave(release);
           await connection.query(
             `INSERT INTO student_scholarship
-             (student_id, student_year, application_id, eligible, sanctioned_amount,
+             (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
               from_date, to_date, proceeding, released_amount)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
             [
               student.id,
               studentYear,
               summaryData.application_id,
-              summaryData.eligible,
+              primaryEligible,
               summaryData.sanctioned_amount,
               normalizedRelease.rtf_released_date || null,
               null,
@@ -342,27 +427,18 @@ exports.saveScholarshipHistory = async (req, res) => {
             ]
           );
         }
-      } else if (hasYearSummaryData(yearEntry)) {
-        await connection.query(
-          `INSERT INTO student_scholarship
-           (student_id, student_year, application_id, eligible, sanctioned_amount, released_amount)
-           VALUES (?, ?, ?, ?, ?, 0)`,
-          [
-            student.id,
-            studentYear,
-            summaryData.application_id,
-            summaryData.eligible,
-            summaryData.sanctioned_amount
-          ]
-        );
       }
     }
 
     await connection.commit();
 
     const currentYear = Math.max(1, toNumber(student.current_year) || 1);
+    const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
     const currentYearEntry = years.find((entry) => toNumber(entry.student_year) === currentYear);
-    await syncScholarStatusColumn(masterPool, student.id, currentYearEntry?.eligible || '');
+    const currentSemesterEligible = currentYearEntry?.semesters?.find(
+      (semester) => toNumber(semester.student_semester) === currentSemester
+    )?.eligible || currentYearEntry?.eligible || '';
+    await syncScholarStatusColumn(masterPool, student.id, currentSemesterEligible);
 
     const data = await fetchScholarshipPayload(student);
     res.json({ success: true, message: 'Scholarship history saved successfully', data });

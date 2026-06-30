@@ -1,8 +1,9 @@
 const { masterPool } = require('../config/database');
 
-const VALID_ELIGIBLE = ['eligible', 'pending', 'rejected'];
+const VALID_ELIGIBLE = ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'];
 const SCHOLARSHIP_INELIGIBLE_QUOTA_CODES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
 const DEFAULT_TOTAL_YEARS = 4;
+const DEFAULT_SEMESTERS_PER_YEAR = 2;
 
 const normalizeStudTypeCode = (value) => {
   const code = String(value || '').trim().toUpperCase();
@@ -16,8 +17,11 @@ const isScholarshipIneligibleQuota = (studType) => (
 
 const normalizeEligible = (value) => {
   let normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'not eligible' || normalized === 'not_eligible') {
-    normalized = 'rejected';
+  if (normalized === 'not eligible' || normalized === 'not-eligible') {
+    normalized = 'not_eligible';
+  }
+  if (normalized === 'not applied' || normalized === 'not-applied') {
+    normalized = 'not_applied';
   }
   return VALID_ELIGIBLE.includes(normalized) ? normalized : null;
 };
@@ -31,7 +35,13 @@ const getScholarStatusColumnFilterClause = (filterValue) => {
   if (!normalized) return { clause: '', params: [] };
   if (normalized === 'not_eligible' || normalized === 'not eligible') {
     return {
-      clause: ` AND LOWER(TRIM(IFNULL(scholar_status,''))) IN ('rejected', 'not eligible', 'not_eligible')`,
+      clause: ` AND LOWER(TRIM(IFNULL(scholar_status,''))) IN ('not eligible', 'not_eligible')`,
+      params: []
+    };
+  }
+  if (normalized === 'rejected') {
+    return {
+      clause: ` AND LOWER(TRIM(IFNULL(scholar_status,''))) = 'rejected'`,
       params: []
     };
   }
@@ -41,7 +51,7 @@ const getScholarStatusColumnFilterClause = (filterValue) => {
       params: []
     };
   }
-  if (normalized === 'eligible' || normalized === 'rejected') {
+  if (normalized === 'eligible' || normalized === 'rejected' || normalized === 'not_eligible') {
     return { clause: ' AND LOWER(TRIM(scholar_status)) = ?', params: [normalized] };
   }
   return { clause: ' AND scholar_status = ?', params: [String(filterValue).trim()] };
@@ -125,6 +135,7 @@ const enrichScholarshipYears = (student, years, totalYears) => {
     return {
       ...year,
       academic_year_label: academicYearLabel,
+      semesters: year.semesters || buildDefaultSemesters(DEFAULT_SEMESTERS_PER_YEAR),
       releases: (year.releases || []).map((release) => ({
         ...mapReleaseRowForApi(release),
         academic_year: release.academic_year || academicYearLabel
@@ -156,12 +167,60 @@ const resolveTotalYears = async (pool, student) => {
   return Math.min(totalYears, 10);
 };
 
-const buildIneligibleQuotaYearEntry = (studentYear) => ({
+const resolveSemestersPerYear = async (pool, student) => {
+  let configuredSemesters = 0;
+
+  if (student?.course) {
+    const [courseRows] = await pool.query(
+      `SELECT c.semesters_per_year, cb.semesters_per_year AS branch_semesters_per_year
+       FROM courses c
+       LEFT JOIN course_branches cb ON cb.course_id = c.id AND cb.name = ?
+       WHERE c.name = ?
+       LIMIT 1`,
+      [student.branch || '', student.course]
+    );
+
+    if (courseRows.length > 0) {
+      configuredSemesters = toNumber(courseRows[0].branch_semesters_per_year)
+        || toNumber(courseRows[0].semesters_per_year);
+    }
+  }
+
+  const currentSemester = Math.max(1, toNumber(student?.current_semester) || 1);
+  const semestersPerYear = Math.max(
+    DEFAULT_SEMESTERS_PER_YEAR,
+    configuredSemesters || DEFAULT_SEMESTERS_PER_YEAR,
+    currentSemester
+  );
+  return Math.min(semestersPerYear, 4);
+};
+
+const buildDefaultSemesters = (semestersPerYear, eligible = '') => (
+  Array.from({ length: Math.max(1, semestersPerYear) }, (_, index) => ({
+    student_semester: index + 1,
+    eligible
+  }))
+);
+
+const isReleaseRow = (row) => (
+  Number(row.released_amount) > 0
+  || row.from_date
+  || row.rtf_released_date
+  || row.rtf_date
+);
+
+const isSemesterSummaryRow = (row) => (
+  row.student_semester != null
+  && !isReleaseRow(row)
+);
+
+const buildIneligibleQuotaYearEntry = (studentYear, semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR) => ({
   student_year: studentYear,
   application_id: '',
   eligible: 'rejected',
   sanctioned_amount: 0,
   released_amount: 0,
+  semesters: buildDefaultSemesters(semestersPerYear, 'rejected'),
   releases: []
 });
 
@@ -175,8 +234,10 @@ const scholarshipRowHasExtraData = (row) => (
   || (row.proceeding && String(row.proceeding).trim())
 );
 
-const buildIneligibleQuotaYears = (totalYears) => (
-  Array.from({ length: totalYears }, (_, index) => buildIneligibleQuotaYearEntry(index + 1))
+const buildIneligibleQuotaYears = (totalYears, semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR) => (
+  Array.from({ length: totalYears }, (_, index) => (
+    buildIneligibleQuotaYearEntry(index + 1, semestersPerYear)
+  ))
 );
 
 const upsertScholarshipEligible = async (pool, studentId, studentYear, eligible) => {
@@ -239,13 +300,16 @@ const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
   if (!needsSync) return false;
 
   await pool.query('DELETE FROM student_scholarship WHERE student_id = ?', [student.id]);
+  const semestersPerYear = await resolveSemestersPerYear(pool, student);
   for (let year = 1; year <= totalYears; year += 1) {
-    await pool.query(
-      `INSERT INTO student_scholarship
-       (student_id, student_year, eligible, sanctioned_amount, released_amount)
-       VALUES (?, ?, 'rejected', 0, 0)`,
-      [student.id, year]
-    );
+    for (let semester = 1; semester <= semestersPerYear; semester += 1) {
+      await pool.query(
+        `INSERT INTO student_scholarship
+         (student_id, student_year, student_semester, eligible, sanctioned_amount, released_amount)
+         VALUES (?, ?, ?, 'rejected', 0, 0)`,
+        [student.id, year, semester]
+      );
+    }
   }
 
   await syncScholarStatusColumn(pool, student.id, 'rejected');
@@ -307,16 +371,24 @@ const resolveScholarStatusForStudent = (student, parsedData = null) => {
   return normalizeScholarStatusForResponse(rawScholarStatus);
 };
 
-const getScholarshipEligibleForYear = async (pool, studentId, studentYear, studType = null) => {
+const getScholarshipEligibleForYear = async (
+  pool,
+  studentId,
+  studentYear,
+  studType = null,
+  studentSemester = null
+) => {
   const year = Math.max(1, Number(studentYear) || 1);
 
   let quotaCode = studType;
-  if (!quotaCode) {
+  let semester = Math.max(1, Number(studentSemester) || 0);
+  if (!quotaCode || !semester) {
     const [studentRows] = await pool.query(
-      'SELECT stud_type FROM students WHERE id = ? LIMIT 1',
+      'SELECT stud_type, current_semester FROM students WHERE id = ? LIMIT 1',
       [studentId]
     );
-    quotaCode = studentRows[0]?.stud_type;
+    if (!quotaCode) quotaCode = studentRows[0]?.stud_type;
+    if (!semester) semester = Math.max(1, toNumber(studentRows[0]?.current_semester) || 1);
   }
 
   if (isScholarshipIneligibleQuota(quotaCode)) {
@@ -324,26 +396,26 @@ const getScholarshipEligibleForYear = async (pool, studentId, studentYear, studT
   }
 
   const [rows] = await pool.query(
-    `SELECT eligible
+    `SELECT eligible, student_semester
      FROM student_scholarship
      WHERE student_id = ? AND student_year = ?
        AND eligible IS NOT NULL AND TRIM(eligible) != ''
-     ORDER BY updated_at DESC, id DESC
+     ORDER BY
+       CASE
+         WHEN student_semester = ? THEN 0
+         WHEN student_semester IS NULL THEN 1
+         ELSE 2
+       END,
+       updated_at DESC,
+       id DESC
      LIMIT 1`,
-    [studentId, year]
+    [studentId, year, semester]
   );
   return normalizeEligible(rows[0]?.eligible);
 };
 
 const isScholarshipCompleteForRegistration = (eligible) => (
   VALID_ELIGIBLE.includes(String(eligible || '').trim().toLowerCase())
-);
-
-const isReleaseRow = (row) => (
-  Number(row.released_amount) > 0
-  || row.from_date
-  || row.rtf_released_date
-  || row.rtf_date
 );
 
 const resolveHistoryActor = (user) => {
@@ -355,18 +427,19 @@ const resolveHistoryActor = (user) => {
   return { adminId: null, rbacId: user.id };
 };
 
-const buildYearSnapshotFromRows = (rows) => {
+const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR) => {
   let applicationId = '';
-  let eligible = '';
   let sanctionedAmount = 0;
+  const semesterMap = {};
+  let legacyEligible = '';
   const releases = [];
 
   for (const row of rows) {
     if (!applicationId && row.application_id) applicationId = row.application_id;
-    if (row.eligible) eligible = row.eligible;
     if (!sanctionedAmount && row.sanctioned_amount) {
       sanctionedAmount = Number(row.sanctioned_amount) || 0;
     }
+
     if (isReleaseRow(row)) {
       releases.push({
         academic_year: row.academic_year || null,
@@ -374,21 +447,35 @@ const buildYearSnapshotFromRows = (rows) => {
         from_date: row.from_date || null,
         released_amount: Number(row.released_amount) || 0
       });
+    } else if (isSemesterSummaryRow(row)) {
+      semesterMap[row.student_semester] = row.eligible || '';
+    } else if (row.eligible) {
+      legacyEligible = row.eligible;
     }
   }
 
+  if (!Object.keys(semesterMap).length && legacyEligible) {
+    semesterMap[1] = legacyEligible;
+  }
+
+  const semesters = buildDefaultSemesters(semestersPerYear).map((semester) => ({
+    student_semester: semester.student_semester,
+    eligible: semesterMap[semester.student_semester] || ''
+  }));
+
   return {
     application_id: applicationId || null,
-    eligible: eligible || null,
+    eligible: semesters[0]?.eligible || legacyEligible || null,
     sanctioned_amount: sanctionedAmount,
     released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
+    semesters,
     releases
   };
 };
 
 const archiveScholarshipYear = async (connection, student, studentYear, actor = null) => {
   const [rows] = await connection.query(
-    `SELECT application_id, eligible, sanctioned_amount, released_amount,
+    `SELECT application_id, eligible, sanctioned_amount, released_amount, student_semester,
             DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
             DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
             proceeding
@@ -435,13 +522,22 @@ const archiveScholarshipYear = async (connection, student, studentYear, actor = 
 const REGISTRATION_SCHOLARSHIP_EMPTY_DISPLAY = '—';
 
 const SCHOLARSHIP_YEAR_MATCH_SQL = 'ss.student_year = GREATEST(1, IFNULL(students.current_year, 1))';
+const SCHOLARSHIP_SEMESTER_MATCH_SQL = `(
+  ss.student_semester = GREATEST(1, IFNULL(students.current_semester, 1))
+  OR (
+    ss.student_semester IS NULL
+    AND IFNULL(ss.released_amount, 0) = 0
+    AND ss.from_date IS NULL
+  )
+)`;
 
 const scholarshipHasCurrentYearStatusSql = `EXISTS (
   SELECT 1 FROM student_scholarship ss
   WHERE ss.student_id = students.id
     AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+    AND ${SCHOLARSHIP_SEMESTER_MATCH_SQL}
     AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-    AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'pending', 'rejected')
+    AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
 )`;
 
 const getScholarshipFilterClause = (filter) => {
@@ -458,6 +554,14 @@ const getScholarshipFilterClause = (filter) => {
     )`;
   }
   if (normalized === 'not_eligible') {
+    return ` AND EXISTS (
+      SELECT 1 FROM student_scholarship ss
+      WHERE ss.student_id = students.id
+        AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+        AND LOWER(TRIM(ss.eligible)) IN ('not_eligible', 'not eligible')
+    )`;
+  }
+  if (normalized === 'rejected') {
     return ` AND EXISTS (
       SELECT 1 FROM student_scholarship ss
       WHERE ss.student_id = students.id
@@ -504,8 +608,23 @@ const buildCurrentYearScholarshipMap = async (pool, students) => {
      INNER JOIN students s ON s.id = ss.student_id
      WHERE ss.student_id IN (?)
        AND ss.student_year = GREATEST(1, IFNULL(s.current_year, 1))
+       AND (
+         ss.student_semester = GREATEST(1, IFNULL(s.current_semester, 1))
+         OR (
+           ss.student_semester IS NULL
+           AND IFNULL(ss.released_amount, 0) = 0
+           AND ss.from_date IS NULL
+         )
+       )
        AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-     ORDER BY ss.student_id ASC, ss.updated_at DESC, ss.id DESC`,
+     ORDER BY
+       ss.student_id ASC,
+       CASE
+         WHEN ss.student_semester = GREATEST(1, IFNULL(s.current_semester, 1)) THEN 0
+         ELSE 1
+       END,
+       ss.updated_at DESC,
+       ss.id DESC`,
     [studentIds]
   );
 
@@ -527,6 +646,8 @@ module.exports = {
   upsertScholarshipEligible,
   syncScholarStatusColumn,
   resolveTotalYears,
+  resolveSemestersPerYear,
+  buildDefaultSemesters,
   buildIneligibleQuotaYearEntry,
   buildIneligibleQuotaYears,
   ensureIneligibleQuotaScholarship,
@@ -556,5 +677,7 @@ module.exports = {
   enrichScholarshipYears,
   mapReleaseRowForApi,
   normalizeReleaseForSave,
-  formatDbDate
+  formatDbDate,
+  isReleaseRow,
+  isSemesterSummaryRow
 };
