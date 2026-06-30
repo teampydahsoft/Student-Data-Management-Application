@@ -118,6 +118,8 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
     courseId: ''
   });
   const [downloadingReport, setDownloadingReport] = useState(false);
+  const [editingReportRowKey, setEditingReportRowKey] = useState(null);
+  const [reportRowDrafts, setReportRowDrafts] = useState({});
 
   const [cascadeOptions, setCascadeOptions] = useState({
     colleges: [],
@@ -478,13 +480,77 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
     resetConfigureSelections();
   };
 
-  const loadSavedIntoConfigure = (config) => {
-    setActiveSubTab('configure');
-    setSelectedBatch(config.batch);
-    setSelectedCollegeId(config.collegeId ? String(config.collegeId) : '');
-    setSelectedCourseId(String(config.courseId));
-    setSelectedBranch(BRANCH_ALL);
-    resetConfigureSelections();
+  const startEditReportRow = (row) => {
+    setEditingReportRowKey(row.key);
+    setReportRowDrafts((prev) => ({
+      ...prev,
+      [row.key]: {
+        startDate: toDateInput(row.startDate) || '',
+        endDate: toDateInput(row.endDate) || ''
+      }
+    }));
+  };
+
+  const cancelEditReportRow = (rowKey) => {
+    setEditingReportRowKey((current) => (current === rowKey ? null : current));
+    setReportRowDrafts((prev) => {
+      const next = { ...prev };
+      delete next[rowKey];
+      return next;
+    });
+  };
+
+  const updateReportDraft = (rowKey, field, value) => {
+    setReportRowDrafts((prev) => ({
+      ...prev,
+      [rowKey]: { ...prev[rowKey], [field]: value }
+    }));
+  };
+
+  const saveReportRow = async (row) => {
+    const draft = reportRowDrafts[row.key] || {};
+    const startDate = draft.startDate || '';
+    const endDate = draft.endDate || '';
+
+    if (!startDate || !endDate) {
+      toast.error(`Set start and end dates for ${row.yearSemLabel}`);
+      return false;
+    }
+    if (new Date(startDate) >= new Date(endDate)) {
+      toast.error('End date must be after start date');
+      return false;
+    }
+
+    const payload = {
+      collegeId: row.collegeId ? parseInt(row.collegeId, 10) : null,
+      courseId: parseInt(row.courseId, 10),
+      batch: row.batch,
+      yearOfStudy: row.yearOfStudy,
+      semesterNumber: row.semesterNumber,
+      startDate,
+      endDate,
+      academicYearLabel: row.academicYearLabel || deriveAcademicYearLabel(row.batch, row.yearOfStudy)
+    };
+
+    try {
+      setSavingKey(row.key);
+      if (row.semesterId) {
+        await api.put(`/semesters/${row.semesterId}`, payload);
+        toast.success(`Updated ${row.yearSemLabel}`);
+      } else {
+        await api.post('/semesters', payload);
+        toast.success(`Saved ${row.yearSemLabel}`);
+      }
+      cancelEditReportRow(row.key);
+      await fetchSemesters();
+      return true;
+    } catch (error) {
+      console.error('Failed to save semester from report', error);
+      toast.error(error.response?.data?.message || 'Failed to save semester');
+      return false;
+    } finally {
+      setSavingKey(null);
+    }
   };
 
   const handleReportFilterChange = (field, value) => {
@@ -492,6 +558,8 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
   };
 
   const handleReportAcademicYearChange = (academicYear) => {
+    setEditingReportRowKey(null);
+    setReportRowDrafts({});
     setReportFilters({
       academicYear,
       batch: '',
@@ -1068,10 +1136,23 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {filteredReportRows.map((row) => (
+                          {filteredReportRows.map((row) => {
+                            const isEditing = editingReportRowKey === row.key;
+                            const draft = reportRowDrafts[row.key];
+                            const displayStatus = isEditing
+                              ? (draft?.startDate && draft?.endDate ? 'Configured' : 'Pending')
+                              : row.status;
+
+                            return (
                             <tr
                               key={row.key}
-                              className={row.status === 'Pending' ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-gray-50'}
+                              className={
+                                isEditing
+                                  ? 'bg-blue-50/60'
+                                  : row.status === 'Pending'
+                                    ? 'bg-amber-50/40 hover:bg-amber-50/70'
+                                    : 'hover:bg-gray-50'
+                              }
                             >
                               <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-gray-900">
                                 {row.academicYearLabel}
@@ -1084,14 +1165,37 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                                   {row.yearSemLabel}
                                 </span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                                {row.startDate ? formatDate(row.startDate) : '-'}
-                              </td>
-                              <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                                {row.endDate ? formatDate(row.endDate) : '-'}
+                              <td className="px-3 py-2">
+                                {isEditing ? (
+                                  <input
+                                    type="date"
+                                    value={draft?.startDate || ''}
+                                    onChange={(e) => updateReportDraft(row.key, 'startDate', e.target.value)}
+                                    className="w-full min-w-[130px] rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                                  />
+                                ) : (
+                                  <span className="whitespace-nowrap text-xs text-gray-600">
+                                    {row.startDate ? formatDate(row.startDate) : '-'}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-3 py-2">
-                                {row.status === 'Configured' ? (
+                                {isEditing ? (
+                                  <input
+                                    type="date"
+                                    value={draft?.endDate || ''}
+                                    min={draft?.startDate || undefined}
+                                    onChange={(e) => updateReportDraft(row.key, 'endDate', e.target.value)}
+                                    className="w-full min-w-[130px] rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                                  />
+                                ) : (
+                                  <span className="whitespace-nowrap text-xs text-gray-600">
+                                    {row.endDate ? formatDate(row.endDate) : '-'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                {displayStatus === 'Configured' ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                                     <Check size={12} />
                                     Configured
@@ -1104,22 +1208,47 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                                 )}
                               </td>
                               <td className="px-3 py-2 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    loadSavedIntoConfigure({
-                                      batch: row.batch,
-                                      collegeId: row.collegeId,
-                                      courseId: row.courseId
-                                    })
-                                  }
-                                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                                >
-                                  {row.status === 'Configured' ? 'Edit' : 'Configure'}
-                                </button>
+                                {isEditing ? (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => cancelEditReportRow(row.key)}
+                                      disabled={savingKey === row.key}
+                                      className="text-xs font-medium text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveReportRow(row)}
+                                      disabled={
+                                        savingKey === row.key ||
+                                        !draft?.startDate ||
+                                        !draft?.endDate
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                    >
+                                      {savingKey === row.key ? (
+                                        <Loader2 size={12} className="animate-spin" />
+                                      ) : (
+                                        <Save size={12} />
+                                      )}
+                                      Save
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditReportRow(row)}
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                  >
+                                    {row.status === 'Configured' ? 'Edit' : 'Configure'}
+                                  </button>
+                                )}
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

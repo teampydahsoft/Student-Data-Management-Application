@@ -17,6 +17,14 @@ const {
   isReleaseRow,
   isSemesterSummaryRow
 } = require('../services/studentScholarshipSync');
+const {
+  normalizeApplicationIdInput,
+  normalizeScholarshipAmountInput,
+  validateScholarshipYearsPayload,
+  normalizeRtfReleasedDate,
+  clampScholarshipAmount,
+  checkApplicationIdAvailability
+} = require('../utils/scholarshipValidation');
 
 const DEFAULT_TOTAL_YEARS = 4;
 
@@ -25,11 +33,7 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const formatDbDate = (value) => {
-  if (value == null || value === '') return '';
-  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : '';
-};
+const formatDbDate = (value) => normalizeRtfReleasedDate(value);
 
 const normalizeDateForSave = (value) => {
   const formatted = formatDbDate(value);
@@ -284,6 +288,38 @@ const buildIncomingYearSnapshot = (yearEntry) => {
 
 const snapshotsEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
+exports.checkApplicationId = async (req, res) => {
+  try {
+    const {
+      application_id: applicationId,
+      admission_number: admissionNumber,
+      student_year: studentYear
+    } = req.query;
+
+    if (!admissionNumber) {
+      return res.status(400).json({ success: false, message: 'admission_number is required' });
+    }
+
+    const student = await getStudentByAdmissionNumber(admissionNumber);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const parsedYear = toNumber(studentYear);
+    const result = await checkApplicationIdAvailability(
+      masterPool,
+      applicationId,
+      student.id,
+      parsedYear
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Check application ID error:', error);
+    res.status(500).json({ success: false, message: 'Failed to check application number' });
+  }
+};
+
 exports.getScholarshipHistory = async (req, res) => {
   try {
     const { admission_number: admissionNumber } = req.params;
@@ -324,6 +360,11 @@ exports.saveScholarshipHistory = async (req, res) => {
       });
     }
 
+    const validation = await validateScholarshipYearsPayload(connection, student.id, years);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
+
     await connection.beginTransaction();
 
     const historyActor = resolveHistoryActor(req.user);
@@ -339,8 +380,8 @@ exports.saveScholarshipHistory = async (req, res) => {
         ? yearEntry.semesters
         : buildDefaultSemesters(semestersPerYear);
       const summaryData = {
-        application_id: yearEntry.application_id || null,
-        sanctioned_amount: toNumber(yearEntry.sanctioned_amount)
+        application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
+        sanctioned_amount: clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
       };
 
       const [existingRows] = await connection.query(

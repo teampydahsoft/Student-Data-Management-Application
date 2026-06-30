@@ -6,6 +6,13 @@ const { MODULES } = require('../constants/rbac');
 const studentScholarshipController = require('../controllers/studentScholarshipController');
 
 router.get(
+  '/check-application-id',
+  protect,
+  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+  studentScholarshipController.checkApplicationId
+);
+
+router.get(
   '/:admission_number',
   protect,
   allowStudentOwnProfileOrPermission(MODULES.STUDENT_MANAGEMENT, 'view'),

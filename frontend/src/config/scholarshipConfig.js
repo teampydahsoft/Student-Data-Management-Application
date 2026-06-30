@@ -139,3 +139,79 @@ export const getAcademicYearLabel = (scholarshipMeta, studentYear, student) => {
   );
   return formatAcademicYearLabel(batchStartYear, year);
 };
+
+export const SCHOLARSHIP_APPLICATION_ID_LENGTH = 12;
+export const SCHOLARSHIP_MAX_AMOUNT = 99999;
+
+export const normalizeApplicationIdInput = (value) => (
+  String(value || '').replace(/\D/g, '').slice(0, SCHOLARSHIP_APPLICATION_ID_LENGTH)
+);
+
+export const normalizeScholarshipAmountInput = (value) => {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  const trimmed = digits.slice(0, 5);
+  const amount = Number(trimmed);
+  if (!Number.isFinite(amount)) return '';
+  return String(Math.min(Math.max(0, amount), SCHOLARSHIP_MAX_AMOUNT));
+};
+
+export const formatScholarshipAmountForInput = (value) => (
+  normalizeScholarshipAmountInput(value)
+);
+
+export const isValidApplicationId = (value) => {
+  const normalized = normalizeApplicationIdInput(value);
+  return !normalized || normalized.length === SCHOLARSHIP_APPLICATION_ID_LENGTH;
+};
+
+export const isValidScholarshipAmount = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return true;
+  if (!/^\d{1,5}$/.test(raw)) return false;
+  const amount = Number(raw);
+  return Number.isFinite(amount) && amount >= 0 && amount <= SCHOLARSHIP_MAX_AMOUNT;
+};
+
+export const parseScholarshipAmount = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.min(Math.max(0, Math.trunc(amount)), SCHOLARSHIP_MAX_AMOUNT);
+};
+
+export const RTF_RELEASED_DATE_MIN = '1900-01-01';
+export const RTF_RELEASED_DATE_MAX = '2099-12-31';
+export const RTF_RELEASED_MIN_YEAR = 1900;
+export const RTF_RELEASED_MAX_YEAR = 2099;
+
+export const normalizeRtfReleasedDateForInput = (value) => {
+  if (!value) return '';
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (year < RTF_RELEASED_MIN_YEAR || year > RTF_RELEASED_MAX_YEAR) return '';
+  if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) {
+    return '';
+  }
+
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+export const isValidRtfReleasedDate = (value, { allowEmpty = true } = {}) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return allowEmpty;
+  return normalizeRtfReleasedDateForInput(raw) !== '';
+};

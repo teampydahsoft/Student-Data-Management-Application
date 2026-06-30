@@ -1,4 +1,8 @@
 const { masterPool } = require('../config/database');
+const {
+  normalizeRtfReleasedDate,
+  clampScholarshipAmount
+} = require('../utils/scholarshipValidation');
 
 const VALID_ELIGIBLE = ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'];
 const SCHOLARSHIP_INELIGIBLE_QUOTA_CODES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
@@ -118,10 +122,10 @@ const mapReleaseRowForApi = (row) => ({
 });
 
 const normalizeReleaseForSave = (release = {}) => ({
-  rtf_released_date: formatDbDate(
+  rtf_released_date: normalizeRtfReleasedDate(
     release.rtf_released_date ?? release.rtf_date ?? release.from_date
   ),
-  released_amount: toNumber(release.released_amount)
+  released_amount: clampScholarshipAmount(release.released_amount)
 });
 
 const enrichScholarshipYears = (student, years, totalYears) => {

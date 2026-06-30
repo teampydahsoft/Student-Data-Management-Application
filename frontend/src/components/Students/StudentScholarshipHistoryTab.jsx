@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History, X } from 'lucide-react';
 import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
@@ -10,7 +10,19 @@ import {
   formatScholarshipStatusDisplay,
   normalizeScholarshipStatusValue,
   getAcademicYearLabel,
-  getScholarshipStatusDropdownLabel
+  getScholarshipStatusDropdownLabel,
+  SCHOLARSHIP_APPLICATION_ID_LENGTH,
+  SCHOLARSHIP_MAX_AMOUNT,
+  normalizeApplicationIdInput,
+  normalizeScholarshipAmountInput,
+  isValidApplicationId,
+  isValidScholarshipAmount,
+  parseScholarshipAmount,
+  formatScholarshipAmountForInput,
+  RTF_RELEASED_DATE_MIN,
+  RTF_RELEASED_DATE_MAX,
+  normalizeRtfReleasedDateForInput,
+  isValidRtfReleasedDate
 } from '../../config/scholarshipConfig';
 
 const ELIGIBLE_OPTIONS = SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS;
@@ -45,6 +57,7 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
 
   return {
     ...year,
+    sanctioned_amount: formatScholarshipAmountForInput(year.sanctioned_amount),
     semesters: normalizedSemesters,
     releases: mapReleasesFromApi(
       year.releases,
@@ -67,21 +80,14 @@ const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 0
 }).format(Number(amount) || 0);
 
-const parseAmount = (value) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
+const parseAmount = (value) => parseScholarshipAmount(value);
 
 const sumReleased = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.released_amount), 0);
 
-const normalizeDateForInput = (value) => {
-  if (!value) return '';
-  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : '';
-};
+const normalizeDateForInput = (value) => normalizeRtfReleasedDateForInput(value);
 
 const formatCalendarDate = (value) => {
-  const normalized = normalizeDateForInput(value);
+  const normalized = normalizeRtfReleasedDateForInput(value);
   if (!normalized) return '';
   const [year, month, day] = normalized.split('-').map(Number);
   const date = new Date(year, month - 1, day);
@@ -93,10 +99,13 @@ const mapReleasesFromApi = (releases = [], academicYearLabel = '') => (
   (releases.length ? releases : [emptyRelease()]).map((release) => ({
     ...release,
     academic_year: release.academic_year || academicYearLabel || '',
-    rtf_released_date: normalizeDateForInput(
+    rtf_released_date: normalizeRtfReleasedDateForInput(
       release.rtf_released_date || release.rtf_date || release.from_date
     ),
-    released_amount: release.released_amount === 0 ? '' : String(release.released_amount)
+    released_amount: (() => {
+      const normalized = formatScholarshipAmountForInput(release.released_amount);
+      return normalized === '' || normalized === '0' ? '' : normalized;
+    })()
   }))
 );
 
@@ -216,7 +225,7 @@ const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
                           <thead>
                             <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
                               <th className="px-2 py-1">Academic Year</th>
-                              <th className="px-2 py-1">RTF Released</th>
+                              <th className="px-2 py-1">RTF Emitted</th>
                               <th className="px-2 py-1 text-right">Amount</th>
                             </tr>
                           </thead>
@@ -254,6 +263,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const [meta, setMeta] = useState(null);
   const [scholarshipRemarks, setScholarshipRemarks] = useState([]);
   const [historyYear, setHistoryYear] = useState(null);
+  const [remoteAppIdStatus, setRemoteAppIdStatus] = useState({});
+  const remoteAppIdTimersRef = useRef({});
 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
@@ -320,6 +331,146 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     () => years.filter((year) => isYearScholarshipEligible(year)),
     [years]
   );
+
+  const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
+    if (remoteAppIdTimersRef.current[studentYear]) {
+      clearTimeout(remoteAppIdTimersRef.current[studentYear]);
+    }
+
+    if (!appId || appId.length !== SCHOLARSHIP_APPLICATION_ID_LENGTH || !admissionNumber) {
+      setRemoteAppIdStatus((prev) => {
+        if (!prev[studentYear]) return prev;
+        const next = { ...prev };
+        delete next[studentYear];
+        return next;
+      });
+      return;
+    }
+
+    remoteAppIdTimersRef.current[studentYear] = setTimeout(async () => {
+      setRemoteAppIdStatus((prev) => ({ ...prev, [studentYear]: { loading: true } }));
+      try {
+        const response = await api.get('/student-scholarship/check-application-id', {
+          params: {
+            application_id: appId,
+            admission_number: admissionNumber,
+            student_year: studentYear
+          }
+        });
+        if (response.data?.success) {
+          setRemoteAppIdStatus((prev) => ({
+            ...prev,
+            [studentYear]: {
+              loading: false,
+              available: response.data.available,
+              message: response.data.message,
+              conflict: response.data.conflict || null
+            }
+          }));
+        }
+      } catch (error) {
+        console.error('Application ID check error:', error);
+        setRemoteAppIdStatus((prev) => ({
+          ...prev,
+          [studentYear]: {
+            loading: false,
+            available: false,
+            message: 'Could not verify application number'
+          }
+        }));
+      }
+    }, 400);
+  }, [admissionNumber]);
+
+  const applicationIdFeedbackByYear = useMemo(() => {
+    const feedback = {};
+    const idToYears = new Map();
+
+    years.forEach((year) => {
+      const studentYear = year.student_year;
+      const appId = normalizeApplicationIdInput(year.application_id);
+
+      if (!appId) {
+        feedback[studentYear] = null;
+        return;
+      }
+
+      if (appId.length < SCHOLARSHIP_APPLICATION_ID_LENGTH) {
+        feedback[studentYear] = {
+          type: 'warning',
+          message: `${SCHOLARSHIP_APPLICATION_ID_LENGTH - appId.length} more digit(s) required`
+        };
+        return;
+      }
+
+      if (!idToYears.has(appId)) idToYears.set(appId, []);
+      idToYears.get(appId).push(studentYear);
+    });
+
+    idToYears.forEach((yearList) => {
+      if (yearList.length > 1) {
+        yearList.forEach((studentYear) => {
+          const otherYears = yearList.filter((year) => year !== studentYear);
+          feedback[studentYear] = {
+            type: 'error',
+            message: `Already entered for Year ${otherYears.join(', Year ')}`
+          };
+        });
+      }
+    });
+
+    years.forEach((year) => {
+      const studentYear = year.student_year;
+      const appId = normalizeApplicationIdInput(year.application_id);
+      if (!appId || appId.length !== SCHOLARSHIP_APPLICATION_ID_LENGTH) return;
+      if (feedback[studentYear]?.type === 'error') return;
+
+      const remote = remoteAppIdStatus[studentYear];
+      if (!remote) return;
+
+      if (remote.loading) {
+        feedback[studentYear] = { type: 'checking', message: 'Checking availability...' };
+        return;
+      }
+
+      if (!remote.available) {
+        const conflict = remote.conflict;
+        const conflictLabel = conflict?.student_name || conflict?.admission_number || 'another student';
+        feedback[studentYear] = {
+          type: 'error',
+          message: conflict
+            ? `Already used by ${conflictLabel} (Year ${conflict.student_year})`
+            : (remote.message || 'Application number already exists')
+        };
+        return;
+      }
+
+      feedback[studentYear] = {
+        type: 'success',
+        message: remote.message || 'Application number is available'
+      };
+    });
+
+    return feedback;
+  }, [years, remoteAppIdStatus]);
+
+  const hasApplicationIdErrors = useMemo(
+    () => Object.values(applicationIdFeedbackByYear).some(
+      (feedback) => ['error', 'checking', 'warning'].includes(feedback?.type)
+    ),
+    [applicationIdFeedbackByYear]
+  );
+
+  useEffect(() => {
+    years.forEach((year) => {
+      const appId = normalizeApplicationIdInput(year.application_id);
+      scheduleApplicationIdCheck(year.student_year, appId);
+    });
+  }, [years, scheduleApplicationIdCheck]);
+
+  useEffect(() => () => {
+    Object.values(remoteAppIdTimersRef.current).forEach((timerId) => clearTimeout(timerId));
+  }, []);
 
   const archivedHistory = useMemo(
     () => (meta?.archivedHistory || []).slice(),
@@ -407,19 +558,48 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   };
 
   const updateYearField = (yearIndex, field, value) => {
+    let nextValue = value;
+    if (field === 'application_id') {
+      nextValue = normalizeApplicationIdInput(value);
+    } else if (field === 'sanctioned_amount') {
+      nextValue = normalizeScholarshipAmountInput(value);
+    }
     setYears((prev) => prev.map((year, index) => (
-      index === yearIndex ? { ...year, [field]: value } : year
+      index === yearIndex ? { ...year, [field]: nextValue } : year
     )));
+    if (field === 'application_id') {
+      const studentYear = years[yearIndex]?.student_year;
+      if (studentYear) scheduleApplicationIdCheck(studentYear, nextValue);
+    }
   };
 
   const updateReleaseField = (yearIndex, releaseIndex, field, value) => {
+    let nextValue = value;
+    if (field === 'released_amount') {
+      nextValue = normalizeScholarshipAmountInput(value);
+    } else if (field === 'rtf_released_date') {
+      if (!value) {
+        nextValue = '';
+      } else {
+        const normalized = normalizeRtfReleasedDateForInput(value);
+        if (!normalized) return;
+        nextValue = normalized;
+      }
+    }
     setYears((prev) => prev.map((year, yIndex) => {
       if (yIndex !== yearIndex) return year;
       const releases = year.releases.map((release, rIndex) => (
-        rIndex === releaseIndex ? { ...release, [field]: value } : release
+        rIndex === releaseIndex ? { ...release, [field]: nextValue } : release
       ));
       return { ...year, releases };
     }));
+  };
+
+  const handleReleaseDateBlur = (yearIndex, releaseIndex, value) => {
+    if (!value) return;
+    if (isValidRtfReleasedDate(value, { allowEmpty: false })) return;
+    toast.error(`RTF emitted date must use a valid 4-digit year (${RTF_RELEASED_DATE_MIN} to ${RTF_RELEASED_DATE_MAX})`);
+    updateReleaseField(yearIndex, releaseIndex, 'rtf_released_date', '');
   };
 
   const addReleaseRow = (yearIndex) => {
@@ -450,13 +630,51 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const handleSave = async () => {
     if (!admissionNumber) return;
 
+    for (const year of years) {
+      const appId = normalizeApplicationIdInput(year.application_id);
+      if (!appId) continue;
+
+      const feedback = applicationIdFeedbackByYear[year.student_year];
+      if (feedback?.type === 'error' || feedback?.type === 'checking' || feedback?.type === 'warning') {
+        return;
+      }
+
+      if (!isValidApplicationId(appId)) {
+        return;
+      }
+    }
+
+    for (const year of years) {
+      if (!isYearScholarshipEligible(year)) continue;
+
+      if (!isValidScholarshipAmount(year.sanctioned_amount)) {
+        toast.error(`Year ${year.student_year}: Sanctioned amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+        return;
+      }
+
+      for (let index = 0; index < year.releases.length; index += 1) {
+        const release = year.releases[index];
+        const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
+        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
+        if (!hasReleaseValue) continue;
+        if (String(release.rtf_released_date || '').trim() && !releaseDate) {
+          toast.error(`Year ${year.student_year}, release row ${index + 1}: RTF emitted date must use a valid 4-digit year`);
+          return;
+        }
+        if (!isValidScholarshipAmount(release.released_amount)) {
+          toast.error(`Year ${year.student_year}, release row ${index + 1}: Amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const payload = years.map((year) => {
         const releasesEligible = isYearScholarshipEligible(year);
         return {
           student_year: year.student_year,
-          application_id: year.application_id || '',
+          application_id: normalizeApplicationIdInput(year.application_id) || '',
           sanctioned_amount: releasesEligible ? parseAmount(year.sanctioned_amount) : 0,
           semesters: (year.semesters || buildDefaultSemesters(meta?.semestersPerYear || 2)).map((semester) => ({
             student_semester: semester.student_semester,
@@ -466,11 +684,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             ? year.releases
               .filter((release) => (
                 parseAmount(release.released_amount) > 0
-                || release.rtf_released_date
+                || normalizeRtfReleasedDateForInput(release.rtf_released_date)
               ))
               .map((release) => ({
                 academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
-                rtf_released_date: normalizeDateForInput(release.rtf_released_date) || null,
+                rtf_released_date: normalizeRtfReleasedDateForInput(release.rtf_released_date) || null,
                 released_amount: parseAmount(release.released_amount)
               }))
             : []
@@ -494,7 +712,26 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       }
     } catch (error) {
       console.error('Scholarship save error:', error);
-      toast.error(error.response?.data?.message || 'Failed to save scholarship history');
+      const message = error.response?.data?.message || 'Failed to save scholarship history';
+      if (message.toLowerCase().includes('application number')) {
+        const appIdMatch = message.match(/\d{12}/);
+        if (appIdMatch) {
+          years.forEach((year) => {
+            if (normalizeApplicationIdInput(year.application_id) === appIdMatch[0]) {
+              setRemoteAppIdStatus((prev) => ({
+                ...prev,
+                [year.student_year]: {
+                  loading: false,
+                  available: false,
+                  message: 'Application number already exists'
+                }
+              }));
+            }
+          });
+        }
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSaving(false);
     }
@@ -543,7 +780,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || hasApplicationIdErrors}
             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-60"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -597,13 +834,39 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         {isEditingDisabled ? (
                           <span className="text-gray-700">{year.application_id || '—'}</span>
                         ) : (
-                          <input
-                            type="text"
-                            value={year.application_id || ''}
-                            onChange={(e) => updateYearField(yearIndex, 'application_id', e.target.value)}
-                            className="w-full min-w-[100px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center"
-                            placeholder="Application ID"
-                          />
+                          <div className="flex flex-col items-center gap-1 min-w-[140px]">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={SCHOLARSHIP_APPLICATION_ID_LENGTH}
+                              value={year.application_id || ''}
+                              onChange={(e) => updateYearField(yearIndex, 'application_id', e.target.value)}
+                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center tracking-wider ${
+                                applicationIdFeedbackByYear[year.student_year]?.type === 'error'
+                                  ? 'border-red-300 bg-red-50/40'
+                                  : applicationIdFeedbackByYear[year.student_year]?.type === 'success'
+                                    ? 'border-green-300 bg-green-50/40'
+                                    : 'border-gray-200'
+                              }`}
+                              placeholder={`${SCHOLARSHIP_APPLICATION_ID_LENGTH}-digit number`}
+                            />
+                            {applicationIdFeedbackByYear[year.student_year]?.message && (
+                              <p
+                                className={`text-[10px] leading-tight text-center max-w-[140px] ${
+                                  applicationIdFeedbackByYear[year.student_year]?.type === 'error'
+                                    ? 'text-red-600'
+                                    : applicationIdFeedbackByYear[year.student_year]?.type === 'success'
+                                      ? 'text-green-600'
+                                      : applicationIdFeedbackByYear[year.student_year]?.type === 'checking'
+                                        ? 'text-gray-500'
+                                        : 'text-amber-600'
+                                }`}
+                              >
+                                {applicationIdFeedbackByYear[year.student_year].message}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </td>
                     )}
@@ -641,13 +904,14 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             </span>
                           ) : (
                             <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={5}
                               value={year.sanctioned_amount ?? ''}
                               onChange={(e) => updateYearField(yearIndex, 'sanctioned_amount', e.target.value)}
                               className="w-full min-w-[100px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center"
-                              placeholder="0"
+                              placeholder={`Max ${SCHOLARSHIP_MAX_AMOUNT}`}
                             />
                           )
                         ) : (
@@ -739,7 +1003,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Released Date</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Emitted Date</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Released Amount</th>
                       {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Add</th>}
                     </tr>
@@ -758,8 +1022,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           ) : (
                             <input
                               type="date"
-                              value={release.rtf_released_date || ''}
+                              min={RTF_RELEASED_DATE_MIN}
+                              max={RTF_RELEASED_DATE_MAX}
+                              value={normalizeRtfReleasedDateForInput(release.rtf_released_date)}
                               onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'rtf_released_date', e.target.value)}
+                              onBlur={(e) => handleReleaseDateBlur(yearIndex, releaseIndex, e.target.value)}
                               className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
                             />
                           )}
@@ -769,13 +1036,14 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             <span className="font-medium text-gray-800">{formatCurrency(release.released_amount)}</span>
                           ) : (
                             <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={5}
                               value={release.released_amount}
                               onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'released_amount', e.target.value)}
                               className="w-full min-w-[110px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-right"
-                              placeholder="0"
+                              placeholder={`Max ${SCHOLARSHIP_MAX_AMOUNT}`}
                             />
                           )}
                         </td>
