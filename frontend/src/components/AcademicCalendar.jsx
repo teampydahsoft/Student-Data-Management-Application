@@ -8,9 +8,12 @@ import {
   Loader2,
   GitBranch,
   Settings2,
-  Archive
+  FileSpreadsheet,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 import api from '../config/api';
 import LoadingAnimation from './LoadingAnimation';
 
@@ -73,6 +76,25 @@ const toDateInput = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const getSemestersPerYearForCourse = (course, yearOfStudy) => {
+  if (!course) return 2;
+  if (course.yearSemesterConfig && Array.isArray(course.yearSemesterConfig) && yearOfStudy) {
+    const yearConfig = course.yearSemesterConfig.find((y) => y.year === yearOfStudy);
+    if (yearConfig?.semesters) return yearConfig.semesters;
+  }
+  return course.semestersPerYear || 2;
+};
+
+const matchesAcademicYearLabel = (candidateLabel, selectedLabel) => {
+  const candidate = String(candidateLabel || '').trim();
+  const selected = String(selectedLabel || '').trim();
+  if (!candidate || !selected) return false;
+  if (candidate === selected) return true;
+  if (candidate.startsWith(`${selected}-`) || candidate.endsWith(`-${selected}`)) return true;
+  if (/^\d{4}$/.test(selected) && candidate.includes(selected)) return true;
+  return false;
+};
+
 const selectClass =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 disabled:cursor-not-allowed';
 
@@ -88,6 +110,14 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
   const [selectedCollegeId, setSelectedCollegeId] = useState('');
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedBranch, setSelectedBranch] = useState(BRANCH_ALL);
+
+  const [reportFilters, setReportFilters] = useState({
+    academicYear: '',
+    batch: '',
+    collegeId: '',
+    courseId: ''
+  });
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const [cascadeOptions, setCascadeOptions] = useState({
     colleges: [],
@@ -141,41 +171,144 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
       });
   }, [academicYears, studentBatches, semesters]);
 
-  const savedSemesterRows = useMemo(() => {
-    return semesters
-      .filter((s) => s.startDate && s.endDate)
-      .map((s) => ({
-        ...s,
-        batch: getBatchLabel(s),
-        yearSemLabel: `${s.yearOfStudy}-${s.semesterNumber}`
-      }))
-      .sort((a, b) => {
-        if (a.batch !== b.batch) return (b.batch || '').localeCompare(a.batch || '');
-        if (a.collegeName !== b.collegeName) return (a.collegeName || '').localeCompare(b.collegeName || '');
-        if (a.courseName !== b.courseName) return (a.courseName || '').localeCompare(b.courseName || '');
-        if (a.yearOfStudy !== b.yearOfStudy) return a.yearOfStudy - b.yearOfStudy;
-        return a.semesterNumber - b.semesterNumber;
-      });
-  }, [semesters]);
+  const academicYearReportRows = useMemo(() => {
+    const selectedAcademicYear = reportFilters.academicYear;
+    if (!selectedAcademicYear) return [];
 
-  const savedConfigurations = useMemo(() => {
-    const map = new Map();
-    savedSemesterRows.forEach((s) => {
-      const key = `${s.batch}|${s.collegeId || ''}|${s.courseId}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          batch: s.batch,
-          collegeId: s.collegeId,
-          collegeName: s.collegeName || 'All Colleges',
-          courseId: s.courseId,
-          courseName: s.courseName,
-          semesterCount: 0
-        });
-      }
-      map.get(key).semesterCount += 1;
+    const rows = [];
+    const activeCourses = courses.filter((course) => course.isActive !== false);
+
+    activeCourses.forEach((course) => {
+      const college = colleges.find((c) => c.id === course.collegeId);
+      const collegeName = college?.name || 'All Colleges';
+      const collegeId = course.collegeId || null;
+
+      allBatches.forEach((batch) => {
+        const totalYears = course.totalYears || 4;
+        for (let yearOfStudy = 1; yearOfStudy <= totalYears; yearOfStudy += 1) {
+          const session = deriveAcademicYearLabel(batch, yearOfStudy);
+          if (!matchesAcademicYearLabel(session, selectedAcademicYear)) continue;
+
+          const semesterCount = getSemestersPerYearForCourse(course, yearOfStudy);
+          for (let semesterNumber = 1; semesterNumber <= semesterCount; semesterNumber += 1) {
+            const existing = semesters.find((semester) => {
+              const semesterBatch = semester.batch || semester.batchLabel || getBatchLabel(semester);
+              const collegeMatch = collegeId == null
+                ? semester.collegeId == null
+                : semester.collegeId === collegeId || semester.collegeId == null;
+              return (
+                matchesAcademicYearLabel(semester.academicYearLabel, selectedAcademicYear) &&
+                String(semesterBatch) === String(batch) &&
+                semester.courseId === course.id &&
+                collegeMatch &&
+                semester.yearOfStudy === yearOfStudy &&
+                semester.semesterNumber === semesterNumber
+              );
+            });
+
+            const isConfigured = Boolean(existing?.startDate && existing?.endDate);
+
+            rows.push({
+              key: `${selectedAcademicYear}|${batch}|${collegeId}|${course.id}|${yearOfStudy}|${semesterNumber}`,
+              semesterId: existing?.id || null,
+              academicYearLabel: selectedAcademicYear,
+              batch,
+              collegeName,
+              collegeId,
+              courseName: course.name,
+              courseId: course.id,
+              yearSemLabel: `${yearOfStudy}-${semesterNumber}`,
+              yearOfStudy,
+              semesterNumber,
+              startDate: existing?.startDate || null,
+              endDate: existing?.endDate || null,
+              status: isConfigured ? 'Configured' : 'Pending'
+            });
+          }
+        }
+      });
     });
-    return Array.from(map.values());
-  }, [savedSemesterRows]);
+
+    return rows.sort((a, b) => {
+      if (a.batch !== b.batch) return (b.batch || '').localeCompare(a.batch || '');
+      if (a.collegeName !== b.collegeName) return (a.collegeName || '').localeCompare(b.collegeName || '');
+      if (a.courseName !== b.courseName) return (a.courseName || '').localeCompare(b.courseName || '');
+      if (a.yearOfStudy !== b.yearOfStudy) return a.yearOfStudy - b.yearOfStudy;
+      return a.semesterNumber - b.semesterNumber;
+    });
+  }, [reportFilters.academicYear, courses, colleges, allBatches, semesters]);
+
+  const reportFilterOptions = useMemo(() => {
+    const batches = new Set();
+    const collegesMap = new Map();
+    const coursesMap = new Map();
+
+    academicYearReportRows.forEach((row) => {
+      if (row.batch) batches.add(row.batch);
+      if (row.collegeId) {
+        collegesMap.set(row.collegeId, row.collegeName || `College ${row.collegeId}`);
+      }
+      if (row.courseId) {
+        coursesMap.set(row.courseId, row.courseName || `Program ${row.courseId}`);
+      }
+    });
+
+    return {
+      batches: Array.from(batches).sort((a, b) => {
+        const na = parseInt(a, 10);
+        const nb = parseInt(b, 10);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return nb - na;
+        return b.localeCompare(a);
+      }),
+      colleges: Array.from(collegesMap.entries())
+        .map(([id, name]) => ({ id: String(id), name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      courses: Array.from(coursesMap.entries())
+        .map(([id, name]) => ({ id: String(id), name }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    };
+  }, [academicYearReportRows]);
+
+  const filteredReportRows = useMemo(() => {
+    return academicYearReportRows.filter((row) => {
+      if (reportFilters.batch && row.batch !== reportFilters.batch) return false;
+      if (reportFilters.collegeId && String(row.collegeId || '') !== reportFilters.collegeId) return false;
+      if (reportFilters.courseId && String(row.courseId) !== reportFilters.courseId) return false;
+      return true;
+    });
+  }, [academicYearReportRows, reportFilters]);
+
+  const reportSummary = useMemo(() => {
+    const configured = filteredReportRows.filter((row) => row.status === 'Configured').length;
+    const pending = filteredReportRows.filter((row) => row.status === 'Pending').length;
+    return { configured, pending, total: filteredReportRows.length };
+  }, [filteredReportRows]);
+
+  const academicYearOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    const addOption = (id, label) => {
+      const normalized = String(label || '').trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      options.push({ id: id || null, label: normalized });
+    };
+    academicYears
+      .filter((y) => y.isActive !== false)
+      .forEach((y) => addOption(y.id, y.yearLabel));
+    semesters.forEach((s) => addOption(s.academicYearId, s.academicYearLabel));
+    allBatches.forEach((batch) => {
+      courses.forEach((course) => {
+        const totalYears = course.totalYears || 4;
+        for (let yearOfStudy = 1; yearOfStudy <= totalYears; yearOfStudy += 1) {
+          const session = deriveAcademicYearLabel(batch, yearOfStudy);
+          if (session) addOption(null, session);
+        }
+      });
+    });
+    return options.sort((a, b) => b.label.localeCompare(a.label));
+  }, [academicYears, semesters, allBatches, courses]);
+
 
   useEffect(() => {
     if (!selectedBatch) {
@@ -264,14 +397,10 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
     [courses, selectedCourseId]
   );
 
-  const getSemestersPerYear = useCallback((course, yearOfStudy) => {
-    if (!course) return 2;
-    if (course.yearSemesterConfig && Array.isArray(course.yearSemesterConfig) && yearOfStudy) {
-      const yearConfig = course.yearSemesterConfig.find((y) => y.year === yearOfStudy);
-      if (yearConfig?.semesters) return yearConfig.semesters;
-    }
-    return course.semestersPerYear || 2;
-  }, []);
+  const getSemestersPerYear = useCallback(
+    (course, yearOfStudy) => getSemestersPerYearForCourse(course, yearOfStudy),
+    []
+  );
 
   const flatSemesterRows = useMemo(() => {
     if (!selectedCourse || !selectedBatch) return [];
@@ -358,6 +487,75 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
     resetConfigureSelections();
   };
 
+  const handleReportFilterChange = (field, value) => {
+    setReportFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleReportAcademicYearChange = (academicYear) => {
+    setReportFilters({
+      academicYear,
+      batch: '',
+      collegeId: '',
+      courseId: ''
+    });
+  };
+
+  const handleDownloadReportExcel = async () => {
+    if (!reportFilters.academicYear) {
+      toast.error('Select an academic year first');
+      return;
+    }
+    if (filteredReportRows.length === 0) {
+      toast.error('No report data to download');
+      return;
+    }
+
+    setDownloadingReport(true);
+    const downloadToast = toast.loading('Preparing Excel...');
+    try {
+      const header = [
+        'Academic Year',
+        'Batch',
+        'College',
+        'Program',
+        'Year-Sem',
+        'Start Date',
+        'End Date',
+        'Status'
+      ];
+      const dataRows = filteredReportRows.map((row) => [
+        row.academicYearLabel,
+        row.batch,
+        row.collegeName,
+        row.courseName,
+        row.yearSemLabel,
+        row.startDate ? formatDate(row.startDate) : '',
+        row.endDate ? formatDate(row.endDate) : '',
+        row.status
+      ]);
+      const summaryRows = [
+        [],
+        ['Summary'],
+        ['Academic Year', reportFilters.academicYear],
+        ['Total Rows', reportSummary.total],
+        ['Configured', reportSummary.configured],
+        ['Pending', reportSummary.pending]
+      ];
+      const worksheet = XLSX.utils.aoa_to_sheet([header, ...dataRows, ...summaryRows]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Academic Year Report');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const safeYear = String(reportFilters.academicYear).replace(/[^\w-]+/g, '_');
+      XLSX.writeFile(workbook, `academic_year_report_${safeYear}_${dateStr}.xlsx`);
+      toast.success('Excel downloaded', { id: downloadToast });
+    } catch (error) {
+      console.error('Failed to download academic year report', error);
+      toast.error('Failed to download Excel', { id: downloadToast });
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   const updateDraft = (key, field, value) => {
     setSemesterDrafts((prev) => {
       const current = prev[key] || {};
@@ -438,19 +636,6 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
     }
   };
 
-  const handleDeleteSemester = async (semester) => {
-    if (!window.confirm(`Delete semester ${semester.yearOfStudy}-${semester.semesterNumber} for Batch ${getBatchLabel(semester)}?`)) {
-      return;
-    }
-    try {
-      await api.delete(`/semesters/${semester.id}`);
-      toast.success('Semester deleted');
-      await fetchSemesters();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete semester');
-    }
-  };
-
   const canShowSemesterGrid = selectedBatch && selectedCollegeId && selectedCourseId;
   const branchLabel = selectedBranch === BRANCH_ALL ? 'All Branches' : selectedBranch;
 
@@ -487,18 +672,18 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
         </button>
         <button
           type="button"
-          onClick={() => setActiveSubTab('saved')}
+          onClick={() => setActiveSubTab('report')}
           className={`inline-flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
-            activeSubTab === 'saved'
+            activeSubTab === 'report'
               ? 'bg-white text-emerald-700 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
-          <Archive size={16} />
-          Saved
-          {savedSemesterRows.length > 0 && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-              {savedSemesterRows.length}
+          <FileSpreadsheet size={16} />
+          Academic Year Wise Report
+          {reportSummary.pending > 0 && reportFilters.academicYear && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+              {reportSummary.pending} pending
             </span>
           )}
         </button>
@@ -720,115 +905,229 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
         </div>
       )}
 
-      {/* Saved tab */}
-      {activeSubTab === 'saved' && (
+      {/* Academic Year Wise Report tab */}
+      {activeSubTab === 'report' && (
         <div className="space-y-4">
-          {savedConfigurations.length > 0 && (
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                Quick Open ({savedConfigurations.length} configurations)
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Report Filters
               </p>
-              <div className="flex flex-wrap gap-2">
-                {savedConfigurations.map((config) => (
-                  <button
-                    key={`${config.batch}-${config.collegeId}-${config.courseId}`}
-                    type="button"
-                    onClick={() => loadSavedIntoConfigure(config)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-50"
-                  >
-                    <Check size={12} />
-                    Batch {config.batch} · {config.collegeName} · {config.courseName}
-                    <span className="text-emerald-500">({config.semesterCount} sem)</span>
-                  </button>
-                ))}
+              <button
+                type="button"
+                onClick={handleDownloadReportExcel}
+                disabled={downloadingReport || !reportFilters.academicYear || filteredReportRows.length === 0}
+                className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {downloadingReport ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Download Excel
+              </button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <Calendar size={14} className="text-gray-400" />
+                  Academic Year
+                </label>
+                <select
+                  value={reportFilters.academicYear}
+                  onChange={(e) => handleReportAcademicYearChange(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">Select academic year</option>
+                  {academicYearOptions.map((year) => (
+                    <option key={year.label} value={year.label}>
+                      {year.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <Calendar size={14} className="text-gray-400" />
+                  Batch
+                </label>
+                <select
+                  value={reportFilters.batch}
+                  onChange={(e) => handleReportFilterChange('batch', e.target.value)}
+                  disabled={!reportFilters.academicYear}
+                  className={selectClass}
+                >
+                  <option value="">All batches</option>
+                  {reportFilterOptions.batches.map((batch) => (
+                    <option key={batch} value={batch}>
+                      Batch {batch}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <Landmark size={14} className="text-gray-400" />
+                  College
+                </label>
+                <select
+                  value={reportFilters.collegeId}
+                  onChange={(e) => handleReportFilterChange('collegeId', e.target.value)}
+                  disabled={!reportFilters.academicYear}
+                  className={selectClass}
+                >
+                  <option value="">All colleges</option>
+                  {reportFilterOptions.colleges.map((college) => (
+                    <option key={college.id} value={college.id}>
+                      {college.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <GraduationCap size={14} className="text-gray-400" />
+                  Program / Course
+                </label>
+                <select
+                  value={reportFilters.courseId}
+                  onChange={(e) => handleReportFilterChange('courseId', e.target.value)}
+                  disabled={!reportFilters.academicYear}
+                  className={selectClass}
+                >
+                  <option value="">All programs</option>
+                  {reportFilterOptions.courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
-
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            {savedSemesterRows.length === 0 ? (
-              <div className="py-12 text-center">
-                <Archive size={40} className="mx-auto mb-3 text-gray-300" />
-                <p className="text-sm text-gray-500">No saved semester dates yet</p>
-                <button
-                  type="button"
-                  onClick={() => setActiveSubTab('configure')}
-                  className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700"
-                >
-                  Go to Configure →
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">
-                    {savedSemesterRows.length} saved semester{savedSemesterRows.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-sm">
-                    <thead className="border-b border-gray-200 bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Batch</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">College</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Program</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Year-Sem</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Session</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Start Date</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">End Date</th>
-                        <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase text-gray-600">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {savedSemesterRows.map((row) => (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-xs font-medium text-gray-900">{row.batch}</td>
-                          <td className="px-3 py-2 text-xs text-gray-700">{row.collegeName || '-'}</td>
-                          <td className="px-3 py-2 text-xs text-gray-700">{row.courseName}</td>
-                          <td className="px-3 py-2">
-                            <span className="inline-flex rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                              {row.yearSemLabel}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">
-                            {row.academicYearLabel}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                            {formatDate(row.startDate)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                            {formatDate(row.endDate)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                loadSavedIntoConfigure({
-                                  batch: row.batch,
-                                  collegeId: row.collegeId,
-                                  courseId: row.courseId
-                                })
-                              }
-                              className="mr-2 text-xs font-medium text-blue-600 hover:text-blue-800"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSemester(row)}
-                              className="text-xs font-medium text-red-500 hover:text-red-700"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
           </div>
+
+          {!reportFilters.academicYear ? (
+            <div className="rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
+              <FileSpreadsheet size={40} className="mx-auto mb-3 text-gray-300" />
+              <p className="text-sm text-gray-500">Select an academic year to view the report</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{reportSummary.total}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Configured</p>
+                  <p className="mt-1 text-2xl font-bold text-emerald-800">{reportSummary.configured}</p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Pending</p>
+                  <p className="mt-1 text-2xl font-bold text-amber-800">{reportSummary.pending}</p>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                {filteredReportRows.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <AlertCircle size={40} className="mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm text-gray-500">No records match the selected filters</p>
+                    <button
+                      type="button"
+                      onClick={() => setReportFilters((prev) => ({
+                        ...prev,
+                        batch: '',
+                        collegeId: '',
+                        courseId: ''
+                      }))}
+                      className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        {filteredReportRows.length} record{filteredReportRows.length !== 1 ? 's' : ''} for {reportFilters.academicYear}
+                        {filteredReportRows.length !== academicYearReportRows.length && (
+                          <span className="text-gray-500"> of {academicYearReportRows.length}</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[900px] text-sm">
+                        <thead className="border-b border-gray-200 bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Academic Year</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Batch</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">College</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Program</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Year-Sem</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Start Date</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">End Date</th>
+                            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Status</th>
+                            <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase text-gray-600">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredReportRows.map((row) => (
+                            <tr
+                              key={row.key}
+                              className={row.status === 'Pending' ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-gray-50'}
+                            >
+                              <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-gray-900">
+                                {row.academicYearLabel}
+                              </td>
+                              <td className="px-3 py-2 text-xs font-medium text-gray-900">{row.batch}</td>
+                              <td className="px-3 py-2 text-xs text-gray-700">{row.collegeName || '-'}</td>
+                              <td className="px-3 py-2 text-xs text-gray-700">{row.courseName}</td>
+                              <td className="px-3 py-2">
+                                <span className="inline-flex rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                                  {row.yearSemLabel}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
+                                {row.startDate ? formatDate(row.startDate) : '-'}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
+                                {row.endDate ? formatDate(row.endDate) : '-'}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.status === 'Configured' ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                    <Check size={12} />
+                                    Configured
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                    <AlertCircle size={12} />
+                                    Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    loadSavedIntoConfigure({
+                                      batch: row.batch,
+                                      collegeId: row.collegeId,
+                                      courseId: row.courseId
+                                    })
+                                  }
+                                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                >
+                                  {row.status === 'Configured' ? 'Edit' : 'Configure'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
