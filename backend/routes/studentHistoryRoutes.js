@@ -10,12 +10,17 @@ const protect = require('../middleware/auth');
 // I will check constants/rbac.js later if needed, but for now assuming standard roles.
 // Only "users" (staff) should access this, not students.
 
-const { verifyPermission } = require('../middleware/rbac');
+const { verifyPermission, allowStudentOwnProfileOrPermission } = require('../middleware/rbac');
 const { MODULES } = require('../constants/rbac');
 
 router.get('/', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'), studentHistoryController.getStudentsForHistory);
 router.post('/remarks', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'add_remarks'), studentHistoryController.addRemark);
-router.get('/remarks/:admission_number', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'), studentHistoryController.getRemarks);
+router.get(
+  '/remarks/:admission_number',
+  protect,
+  allowStudentOwnProfileOrPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  studentHistoryController.getRemarks
+);
 router.get('/audit/:admission_number', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'), studentHistoryController.getStudentAuditLogs);
 router.put('/remarks/:id', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'manage_remarks'), studentHistoryController.updateRemark);
 router.delete('/remarks/:id', protect, verifyPermission(MODULES.STUDENT_MANAGEMENT, 'manage_remarks'), studentHistoryController.deleteRemark);

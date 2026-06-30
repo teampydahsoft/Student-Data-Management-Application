@@ -15,7 +15,10 @@ const StudentScholarship = () => {
       </div>
 
       <StudentScholarshipHistoryTab
-        student={{ admission_number: user?.admission_number, student_name: user?.name }}
+        student={{
+          admission_number: user?.admission_number || user?.admissionNumber,
+          student_name: user?.name || user?.student_name
+        }}
         readOnly
       />
     </div>
