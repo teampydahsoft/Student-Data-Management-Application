@@ -9,7 +9,10 @@ import {
   BookOpen,
   GitBranch,
   Layers,
-  Lock
+  Lock,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -64,6 +67,34 @@ function ScholarshipReport() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // sort: { key: 'pin' | 'name', dir: 'asc' | 'desc' }
+  const [sort, setSort] = useState({ key: 'pin', dir: 'asc' });
+
+  const handleSortToggle = (key) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'asc' }
+    );
+  };
+
+  const sortedData = useMemo(() => {
+    if (!reportData.length) return reportData;
+    return [...reportData].sort((a, b) => {
+      let aVal = '';
+      let bVal = '';
+      if (sort.key === 'pin') {
+        aVal = (a.pin_no || a.admission_number || '').toLowerCase();
+        bVal = (b.pin_no || b.admission_number || '').toLowerCase();
+      } else {
+        aVal = (a.student_name || '').toLowerCase();
+        bVal = (b.student_name || '').toLowerCase();
+      }
+      if (aVal < bVal) return sort.dir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sort.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [reportData, sort]);
 
   const filtersReady = Boolean(filters.college && filters.batch && filters.course && filters.branch);
 
@@ -235,6 +266,13 @@ function ScholarshipReport() {
     [totalYears]
   );
 
+  const SortIcon = ({ colKey }) => {
+    if (sort.key !== colKey) return <ArrowUpDown size={13} className="text-gray-400 ml-1 inline-block" />;
+    return sort.dir === 'asc'
+      ? <ArrowUp size={13} className="text-amber-600 ml-1 inline-block" />
+      : <ArrowDown size={13} className="text-amber-600 ml-1 inline-block" />;
+  };
+
   const hasActiveFilters = filters.college || filters.batch || filters.course || filters.branch;
 
   return (
@@ -385,8 +423,28 @@ function ScholarshipReport() {
                   <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
                     S.No
                   </th>
-                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap min-w-[180px]">
-                    Student Name
+                  <th
+                    rowSpan={2}
+                    onClick={() => handleSortToggle('name')}
+                    className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap min-w-[180px] cursor-pointer select-none hover:bg-gray-100"
+                  >
+                    Student Name <SortIcon colKey="name" />
+                  </th>
+                  <th
+                    rowSpan={2}
+                    onClick={() => handleSortToggle('pin')}
+                    className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100"
+                  >
+                    PIN / Admission No <SortIcon colKey="pin" />
+                  </th>
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                    Branch
+                  </th>
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                    Quota
+                  </th>
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                    Caste
                   </th>
                   {yearColumns.map((year) => (
                     <th
@@ -428,11 +486,23 @@ function ScholarshipReport() {
                 </tr>
               </thead>
               <tbody>
-                {reportData.map((student, index) => (
+                {sortedData.map((student, index) => (
                   <tr key={student.student_id || student.admission_number} className="hover:bg-gray-50/80">
                     <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600">{index + 1}</td>
                     <td className="border-b border-r border-gray-100 px-3 py-2 font-medium text-gray-900">
                       {student.student_name || '—'}
+                    </td>
+                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-700 font-mono text-xs">
+                      {student.pin_no || student.admission_number || '—'}
+                    </td>
+                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                      {student.branch || '—'}
+                    </td>
+                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                      {student.stud_type || '—'}
+                    </td>
+                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                      {student.caste || '—'}
                     </td>
                     {yearColumns.map((year) => {
                       const yearData = student.years?.find((entry) => entry.student_year === year) || {

@@ -91,7 +91,7 @@ const buildScholarshipReportData = async (req) => {
 
   const { baseQuery, params } = await buildReportFilters(req);
   const studentQuery = `
-    SELECT id, admission_number, student_name, course, branch, batch, college, current_year, current_semester, stud_type
+    SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste
     ${baseQuery}
     ORDER BY student_name ASC, admission_number ASC
   `;
@@ -122,11 +122,14 @@ const buildScholarshipReportData = async (req) => {
     data.push({
       student_id: student.id,
       admission_number: student.admission_number,
+      pin_no: student.pin_no || '',
+      stud_type: student.stud_type || '',
       student_name: student.student_name,
       college: student.college,
       batch: student.batch,
       course: student.course,
-      branch: student.branch,
+      branch: student.branch || '',
+      caste: student.caste || '',
       years
     });
   }
@@ -135,13 +138,16 @@ const buildScholarshipReportData = async (req) => {
 };
 
 const buildExcelBuffer = (data, totalYears, filters) => {
-  const fixedCols = 3;
-  const row1 = ['S.No', 'Student Name', 'Admission No'];
-  const row2 = ['', '', ''];
+  const fixedCols = 6; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste
+  const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste'];
+  const row2 = ['', '', '', '', '', ''];
   const merges = [
     { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
     { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-    { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }
+    { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+    { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+    { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },
+    { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } }
   ];
 
   for (let year = 1; year <= totalYears; year += 1) {
@@ -173,7 +179,15 @@ const buildExcelBuffer = (data, totalYears, filters) => {
   }
 
   data.forEach((student, index) => {
-    const row = [index + 1, student.student_name || '', student.admission_number || ''];
+    const pinOrAdmission = student.pin_no || student.admission_number || '';
+    const row = [
+      index + 1,
+      student.student_name || '',
+      pinOrAdmission,
+      student.branch || '',
+      student.stud_type || '',
+      student.caste || ''
+    ];
     for (let year = 1; year <= totalYears; year += 1) {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
         sanctioned_amount: 0,

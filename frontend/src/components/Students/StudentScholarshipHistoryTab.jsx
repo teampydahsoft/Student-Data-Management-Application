@@ -577,15 +577,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     let nextValue = value;
     if (field === 'released_amount') {
       nextValue = normalizeScholarshipAmountInput(value);
-    } else if (field === 'rtf_released_date') {
-      if (!value) {
-        nextValue = '';
-      } else {
-        const normalized = normalizeRtfReleasedDateForInput(value);
-        if (!normalized) return;
-        nextValue = normalized;
-      }
     }
+    // For rtf_released_date: always store whatever the browser emits (YYYY-MM-DD or empty).
+    // Validation happens on blur — never block here or partial date input gets lost.
     setYears((prev) => prev.map((year, yIndex) => {
       if (yIndex !== yearIndex) return year;
       const releases = year.releases.map((release, rIndex) => (
@@ -1024,7 +1018,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               type="date"
                               min={RTF_RELEASED_DATE_MIN}
                               max={RTF_RELEASED_DATE_MAX}
-                              value={normalizeRtfReleasedDateForInput(release.rtf_released_date)}
+                              value={release.rtf_released_date || ''}
                               onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'rtf_released_date', e.target.value)}
                               onBlur={(e) => handleReleaseDateBlur(yearIndex, releaseIndex, e.target.value)}
                               className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
