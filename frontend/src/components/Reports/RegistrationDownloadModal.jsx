@@ -32,6 +32,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
             Object.entries(localFilters).forEach(([key, value]) => {
                 if (value) {
                     if (key === 'scholarshipStatus') params.append('filter_scholarship_status', value);
+                    else if (key === 'academicYear') params.append('filter_academic_year', value);
                     else params.append(`filter_${key}`, value);
                 }
             });
@@ -60,6 +61,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
             Object.entries(localFilters).forEach(([key, value]) => {
                 if (value) {
                     if (key === 'scholarshipStatus') params.append('filter_scholarship_status', value);
+                    else if (key === 'academicYear') params.append('filter_academic_year', value);
                     else params.append(`filter_${key}`, value);
                 }
             });

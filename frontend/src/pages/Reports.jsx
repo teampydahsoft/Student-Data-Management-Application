@@ -122,6 +122,7 @@ const Reports = () => {
     branch: '',
     year: '',
     semester: '',
+    academicYear: '',
     scholarshipStatus: '',
     search: ''
   });
@@ -133,6 +134,8 @@ const Reports = () => {
     years: [],
     semesters: []
   });
+  const [academicYearOptions, setAcademicYearOptions] = useState([]); // { label, fromYear, isCurrent }[]
+  const [academicYearLoading, setAcademicYearLoading] = useState(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
   // Abstract Data State
@@ -217,6 +220,7 @@ const Reports = () => {
           if (filters.branch) params.append('filter_branch', filters.branch);
           if (filters.year) params.append('filter_year', filters.year);
           if (filters.semester) params.append('filter_semester', filters.semester);
+          if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
           if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
           if (filters.search) params.append('search', filters.search);
 
@@ -259,6 +263,7 @@ const Reports = () => {
         if (activeFilters.branch) params.append('filter_branch', activeFilters.branch);
         if (activeFilters.year) params.append('filter_year', activeFilters.year);
         if (activeFilters.semester) params.append('filter_semester', activeFilters.semester);
+        if (activeFilters.academicYear) params.append('filter_academic_year', activeFilters.academicYear);
         if (activeFilters.scholarshipStatus) params.append('filter_scholarship_status', activeFilters.scholarshipStatus);
         if (activeFilters.search) params.append('search', activeFilters.search);
         if (activeFilters.page) params.append('page', activeFilters.page);
@@ -348,6 +353,30 @@ const Reports = () => {
     };
     fetchColleges();
   }, []);
+
+  // Fetch academic year options for the registration report filter dropdown
+  useEffect(() => {
+    if (reportType !== 'registration') return;
+    const fetchAcademicYears = async () => {
+      setAcademicYearLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters.college) params.append('filter_college', filters.college);
+        if (filters.course) params.append('filter_course', filters.course);
+        if (filters.branch) params.append('filter_branch', filters.branch);
+        if (filters.level) params.append('filter_level', filters.level);
+        const res = await api.get(`/students/reports/registration/academic-years?${params.toString()}`);
+        if (res.data?.success) {
+          setAcademicYearOptions(res.data.data || []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch academic year options:', err);
+      } finally {
+        setAcademicYearLoading(false);
+      }
+    };
+    fetchAcademicYears();
+  }, [reportType, filters.college, filters.course, filters.branch, filters.level]);
 
   // Update Dependents when College, Level, or Batch changes
   useEffect(() => {
@@ -1306,6 +1335,7 @@ const Reports = () => {
         delete newFilters.batch;
         delete newFilters.course;
         delete newFilters.branch;
+        delete newFilters.academicYear;
       } else if (field === 'level') {
         // If level changes, clear batch, course and branch
         delete newFilters.batch;
@@ -1313,19 +1343,30 @@ const Reports = () => {
         delete newFilters.branch;
         delete newFilters.year;
         delete newFilters.semester;
+        delete newFilters.academicYear;
       } else if (field === 'batch') {
         delete newFilters.course;
         delete newFilters.branch;
         delete newFilters.year;
         delete newFilters.semester;
+        delete newFilters.academicYear;
       } else if (field === 'course') {
         delete newFilters.branch;
         delete newFilters.year;
         delete newFilters.semester;
+        delete newFilters.academicYear;
       } else if (field === 'branch') {
         delete newFilters.year;
         delete newFilters.semester;
+        delete newFilters.academicYear;
       } else if (field === 'year') {
+        delete newFilters.semester;
+        // Selecting a specific year clears academic year since they're related
+        delete newFilters.academicYear;
+      } else if (field === 'academicYear') {
+        // Selecting academic year clears batch and year since they're derived
+        delete newFilters.batch;
+        delete newFilters.year;
         delete newFilters.semester;
       }
 
@@ -1341,6 +1382,7 @@ const Reports = () => {
       branch: '',
       year: '',
       semester: '',
+      academicYear: '',
       scholarshipStatus: '',
       search: ''
     });
@@ -1355,6 +1397,7 @@ const Reports = () => {
     if (filters.branch) entries.push({ key: 'branch', label: `Branch: ${filters.branch}` });
     if (filters.year) entries.push({ key: 'year', label: `Year: ${filters.year}` });
     if (filters.semester) entries.push({ key: 'semester', label: `Semester: ${filters.semester}` });
+    if (filters.academicYear) entries.push({ key: 'academicYear', label: `AY: ${filters.academicYear}` });
     if (filters.scholarshipStatus) entries.push({ key: 'scholarshipStatus', label: `Scholarship: ${filters.scholarshipStatus === 'pending' ? 'Not assigned' : filters.scholarshipStatus === 'eligible' ? 'Eligible' : 'Rejected'}` });
     return entries;
   }, [filters]);
@@ -1730,8 +1773,48 @@ const Reports = () => {
         <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 flex-shrink-0">
           {/* Filters and Actions Row */}
           <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 w-full">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9 gap-3 w-full">
 
+              {/* Academic Year — first filter, groups students by the calendar year they are currently in */}
+              <select
+                value={filters.academicYear || ''}
+                onChange={(e) => handleFilterChange('academicYear', e.target.value)}
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  filters.academicYear ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300'
+                }`}
+                title="Filter by academic year (derived from batch + current year)"
+                disabled={academicYearLoading}
+              >
+                <option value="">
+                  {academicYearLoading ? 'Loading…' : 'All Academic Years'}
+                </option>
+                {academicYearOptions.length > 0 && (() => {
+                  const currentOptions = academicYearOptions.filter(o => o.isCurrent);
+                  const previousOptions = academicYearOptions.filter(o => !o.isCurrent);
+                  return (
+                    <>
+                      {currentOptions.length > 0 && (
+                        <optgroup label="▸ Current Academic Year">
+                          {currentOptions.map(opt => (
+                            <option key={opt.label} value={opt.label}>
+                              {opt.label} (Current)
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {previousOptions.length > 0 && (
+                        <optgroup label="▸ Previous Academic Years">
+                          {previousOptions.map(opt => (
+                            <option key={opt.label} value={opt.label}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </>
+                  );
+                })()}
+              </select>
 
               {/* College */}
               <select
@@ -1893,6 +1976,7 @@ const Reports = () => {
                       <th className="px-4 py-3 bg-gray-50 max-w-[200px] whitespace-normal">Branch</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Year</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Sem</th>
+                      <th className="px-4 py-3 whitespace-nowrap text-center bg-indigo-50 text-indigo-700 text-xs font-semibold">Academic Year</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Total Students</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Overall Completed</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center">Temporary</th>
@@ -1912,6 +1996,18 @@ const Reports = () => {
                       const completed = parseInt(row.overall_completed || 0);
                       const pending = total - completed;
 
+                      // Compute academic year label from batch + current_year
+                      const batchStart = row.batch ? parseInt(String(row.batch).match(/\d{4}/)?.[0] || '0', 10) : 0;
+                      const studentYear = Math.max(1, parseInt(row.current_year || 1, 10));
+                      const ayFromYear = batchStart ? batchStart + studentYear - 1 : null;
+                      const academicYearLabel = ayFromYear ? `${ayFromYear}-${ayFromYear + 1}` : '—';
+
+                      // Determine if this is current academic year (June–May cycle)
+                      const now = new Date();
+                      const isCurrentAY = ayFromYear
+                        ? now >= new Date(ayFromYear, 5, 1) && now <= new Date(ayFromYear + 1, 4, 31)
+                        : false;
+
                       return (
                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-gray-700">{row.batch || '-'}</td>
@@ -1920,6 +2016,16 @@ const Reports = () => {
                           <td className="px-4 py-3 text-gray-700">{row.branch || '-'}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{row.current_year || '-'}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{row.current_semester || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                              isCurrentAY
+                                ? 'bg-indigo-100 text-indigo-700'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {academicYearLabel}
+                              {isCurrentAY && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block ml-0.5" />}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-center font-semibold">{total}</td>
                           <td className="px-4 py-3 text-center text-green-600 font-medium">{completed}</td>
                           <td className="px-4 py-3 text-center text-amber-600 font-medium">{parseInt(row.overall_temporary || 0)}</td>
@@ -1961,6 +2067,7 @@ const Reports = () => {
                     {abstractData.length > 0 && (
                       <tr>
                         <td className="px-4 py-3" colSpan={6}>Total</td>
+                        <td className="px-4 py-3 text-center bg-indigo-50/40"></td>
                         <td className="px-4 py-3 text-center">{abstractData.reduce((acc, r) => acc + parseInt(r.total || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-green-700">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_completed || 0), 0)}</td>
                         <td className="px-4 py-3 text-center text-amber-600">{abstractData.reduce((acc, r) => acc + parseInt(r.overall_temporary || 0), 0)}</td>
@@ -2087,6 +2194,7 @@ const Reports = () => {
                       <th className="px-4 py-3 whitespace-nowrap bg-gray-50">Branch</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Year</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Sem</th>
+                      <th className="px-4 py-3 whitespace-nowrap text-center bg-indigo-50 text-indigo-700 text-xs">Academic Year</th>
                       <th className="px-4 py-3 whitespace-nowrap bg-gray-50">Registration Status</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Information Verification</th>
                       <th className="px-4 py-3 whitespace-nowrap text-center bg-gray-50">Certificates</th>
@@ -2109,6 +2217,25 @@ const Reports = () => {
                         <td className="px-4 py-3 text-gray-600">{student.branch}</td>
                         <td className="px-4 py-3 text-center text-gray-600">{student.current_year}</td>
                         <td className="px-4 py-3 text-center text-gray-600">{student.current_semester}</td>
+                        <td className="px-4 py-3 text-center">
+                          {(() => {
+                            const bStart = student.batch ? parseInt(String(student.batch).match(/\d{4}/)?.[0] || '0', 10) : 0;
+                            const sYear = Math.max(1, parseInt(student.current_year || 1, 10));
+                            const ayFrom = bStart ? bStart + sYear - 1 : null;
+                            if (!ayFrom) return <span className="text-gray-400 text-xs">—</span>;
+                            const label = `${ayFrom}-${ayFrom + 1}`;
+                            const now = new Date();
+                            const isCurr = now >= new Date(ayFrom, 5, 1) && now <= new Date(ayFrom + 1, 4, 31);
+                            return (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                                isCurr ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {label}
+                                {isCurr && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={student.overall_status} />
                         </td>

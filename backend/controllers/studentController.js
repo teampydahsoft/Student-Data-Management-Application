@@ -43,7 +43,42 @@ const {
   REGISTRATION_EMPTY_DISPLAY
 } = require('../services/registrationCycle');
 const { buildRegistrationAbstractQuery } = require('../services/registrationReportSql');
+const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
+
+/**
+ * Parse an academic year label like "2023-2024" → fromYear=2023
+ * Returns null if the label is not in YYYY-YYYY format.
+ */
+const parseAcademicYearFromYear = (label) => {
+  if (!label) return null;
+  const match = String(label).trim().match(/^(\d{4})-(\d{4})$/);
+  if (!match) return null;
+  return parseInt(match[1], 10);
+};
+
+/**
+ * Given an academic year label like "2023-2024", build a SQL WHERE snippet that
+ * matches all students whose (batch + current_year - 1) equals the fromYear.
+ *
+ * Formula: batch_start_year + current_year - 1 = fromYear
+ *       => CAST(batch AS UNSIGNED) + current_year - 1 = fromYear
+ *
+ * We use a pure-SQL expression so it works across all batches without enumerating pairs.
+ * Supports batches stored as 4-digit years (e.g. "2022", "2023-2027", first 4 chars used).
+ */
+const buildAcademicYearFilterClause = (academicYearLabel, tableAlias = null) => {
+  const fromYear = parseAcademicYearFromYear(academicYearLabel);
+  if (!fromYear) return { clause: '', params: [] };
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  // Use REGEXP_SUBSTR to extract the first 4-digit year from the batch string,
+  // then compute batch_start + current_year - 1 = fromYear
+  const clause = ` AND (
+    CAST(REGEXP_SUBSTR(${prefix}batch, '[0-9]{4}') AS UNSIGNED)
+    + GREATEST(1, IFNULL(${prefix}current_year, 1)) - 1
+  ) = ?`;
+  return { clause, params: [fromYear] };
+};
 
 // Sections are assigned manually via Section Partition — no auto-assignment on student changes.
 const maybeSyncManualStudentSection = async ({
@@ -6897,6 +6932,16 @@ exports.getRegistrationReport = async (req, res) => {
     const scholarshipFilter = (filter_scholarship_status || '').trim().toLowerCase();
     baseQuery += getScholarshipFilterClause(scholarshipFilter);
 
+    // Academic year filter — derived from batch + current_year
+    const academicYearFilter = (req.query.filter_academic_year || '').trim();
+    if (academicYearFilter) {
+      const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(academicYearFilter);
+      if (ayClause) {
+        baseQuery += ayClause;
+        params.push(...ayParams);
+      }
+    }
+
     // Get Total Count
     const countQuery = `SELECT COUNT(id) as total ${baseQuery}`;
     const [countResult] = await masterPool.query(countQuery, params);
@@ -7110,6 +7155,91 @@ exports.getRegistrationReport = async (req, res) => {
   }
 };
 
+// Get Academic Years available in registration data (for filter dropdown)
+exports.getRegistrationAcademicYears = async (req, res) => {
+  try {
+    const { filter_college, filter_course, filter_branch, filter_level } = req.query;
+
+    let whereClause = "WHERE student_status = 'Regular'";
+    const params = [];
+
+    if (req.userScope) {
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
+      if (scopeCondition) {
+        whereClause += ` AND ${scopeCondition}`;
+        params.push(...scopeParams);
+      }
+    }
+
+    if (filter_college) {
+      whereClause += ' AND college = ?';
+      params.push(filter_college.trim());
+    }
+    if (filter_course) {
+      whereClause += ' AND course = ?';
+      params.push(filter_course.trim());
+    }
+    if (filter_branch) {
+      whereClause += ' AND branch = ?';
+      params.push(filter_branch.trim());
+    }
+    if (filter_level) {
+      try {
+        const [levelCourses] = await masterPool.query(
+          'SELECT name FROM courses WHERE level = ? AND is_active = 1',
+          [filter_level]
+        );
+        const validCourseNames = levelCourses.map((c) => c.name);
+        if (validCourseNames.length > 0) {
+          whereClause += ` AND course IN (${validCourseNames.map(() => '?').join(',')})`;
+          params.push(...validCourseNames);
+        } else {
+          return res.json({ success: true, data: [] });
+        }
+      } catch (err) {
+        console.warn('Failed to filter academic years by level:', err);
+      }
+    }
+
+    // Fetch distinct (batch, current_year) pairs — derive academic year labels from them
+    const [rows] = await masterPool.query(
+      `SELECT DISTINCT batch, current_year
+       FROM students
+       ${whereClause}
+         AND batch IS NOT NULL AND batch != ''
+         AND current_year IS NOT NULL AND current_year > 0
+       ORDER BY batch DESC, current_year ASC`,
+      params
+    );
+
+    const currentCalendarYear = new Date().getFullYear();
+    const labelsSet = new Map(); // label → { label, fromYear, isCurrent }
+
+    for (const row of rows) {
+      const startYear = extractBatchStartYear(row.batch);
+      if (!startYear) continue;
+      const fromYear = startYear + Math.max(1, Number(row.current_year) || 1) - 1;
+      const label = `${fromYear}-${fromYear + 1}`;
+      if (!labelsSet.has(label)) {
+        // "current" = the academic year that overlaps today (roughly June–May cycle)
+        const today = new Date();
+        const academicYearStart = new Date(fromYear, 5, 1); // June 1
+        const academicYearEnd = new Date(fromYear + 1, 4, 31); // May 31
+        const isCurrent = today >= academicYearStart && today <= academicYearEnd;
+        labelsSet.set(label, { label, fromYear, isCurrent });
+      }
+    }
+
+    // Sort: newest first
+    const data = [...labelsSet.values()].sort((a, b) => b.fromYear - a.fromYear);
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching registration academic years:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch academic years' });
+  }
+};
+
 // Get Registration Abstract (College/Course wise summary)
 exports.getRegistrationAbstract = async (req, res) => {
   try {
@@ -7122,10 +7252,12 @@ exports.getRegistrationAbstract = async (req, res) => {
       filter_college,
       filter_level,
       filter_scholarship_status,
+      filter_academic_year,
       search
     } = req.query;
 
     const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
+    const normalizedAcademicYear = (filter_academic_year || '').trim();
     const cacheKey = crypto.createHash('md5').update(JSON.stringify({
       scope: req.userScope || null,
       userId: req.user?.id || null,
@@ -7137,6 +7269,7 @@ exports.getRegistrationAbstract = async (req, res) => {
       filter_college,
       filter_level,
       filter_scholarship_status: scholarshipFilterAbstract,
+      filter_academic_year: normalizedAcademicYear,
       search
     })).digest('hex');
 
@@ -7216,6 +7349,15 @@ exports.getRegistrationAbstract = async (req, res) => {
       params.push(...searchParams);
     }
 
+    // Academic year filter — derived from batch + current_year
+    if (normalizedAcademicYear) {
+      const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(normalizedAcademicYear, 'base');
+      if (ayClause) {
+        whereParts.push(ayClause.replace(/^\s*AND\s+/i, ''));
+        params.push(...ayParams);
+      }
+    }
+
     const { query, params: queryParams } = buildRegistrationAbstractQuery({
       whereClause: whereParts.join(' AND '),
       params,
@@ -7258,6 +7400,7 @@ exports.exportRegistrationReport = async (req, res) => {
       filter_college,
       filter_level,
       filter_scholarship_status,
+      filter_academic_year,
       search,
       format = 'excel'
     } = req.query;
@@ -7350,6 +7493,16 @@ exports.exportRegistrationReport = async (req, res) => {
 
     const scholarshipFilterExport = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
     baseQuery += getScholarshipFilterClause(scholarshipFilterExport);
+
+    // Academic year filter — derived from batch + current_year
+    const normalizedAcademicYearExport = (filter_academic_year || '').trim();
+    if (normalizedAcademicYearExport) {
+      const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(normalizedAcademicYearExport);
+      if (ayClause) {
+        baseQuery += ayClause;
+        params.push(...ayParams);
+      }
+    }
 
     // --- Statistics Query (For Abstract) ---
     const statsQuery = `

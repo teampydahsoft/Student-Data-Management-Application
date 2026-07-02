@@ -20,7 +20,7 @@ const scholarshipLeftJoinSql = (studentAlias = 's') => `
       SELECT student_id, student_year, MAX(id) AS max_id
       FROM student_scholarship
       WHERE eligible IS NOT NULL AND TRIM(eligible) != ''
-        AND LOWER(TRIM(eligible)) IN ('eligible', 'pending', 'rejected')
+        AND LOWER(TRIM(eligible)) IN ('eligible', 'pending', 'rejected', 'not_eligible', 'not_applied')
       GROUP BY student_id, student_year
     ) ss_latest ON ss_latest.max_id = ss1.id
   ) ${SCHOLARSHIP_JOIN_ALIAS}
@@ -28,16 +28,57 @@ const scholarshipLeftJoinSql = (studentAlias = 's') => `
    AND ${SCHOLARSHIP_JOIN_ALIAS}.student_year = GREATEST(1, IFNULL(${studentAlias}.current_year, 1))
 `;
 
-const getScholarshipFilterClauseWithJoin = (filter, joinAlias = SCHOLARSHIP_JOIN_ALIAS) => {
+/**
+ * Returns 1 if the student has a scholarship status — from the year-wise
+ * student_scholarship row (current year preferred), any historical year,
+ * or from the denormalized scholar_status column on students.
+ */
+const hasScholarshipExpr = (studentAlias = 's') => `
+  CASE
+    WHEN ${SCHOLARSHIP_JOIN_ALIAS}.student_id IS NOT NULL THEN 1
+    WHEN EXISTS (
+      SELECT 1 FROM student_scholarship ss_any
+      WHERE ss_any.student_id = ${studentAlias}.id
+        AND ss_any.eligible IS NOT NULL AND TRIM(ss_any.eligible) != ''
+        AND LOWER(TRIM(ss_any.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+    ) THEN 1
+    WHEN (
+      ${studentAlias}.scholar_status IS NOT NULL
+      AND TRIM(${studentAlias}.scholar_status) != ''
+      AND LOWER(TRIM(${studentAlias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+    ) THEN 1
+    ELSE 0
+  END
+`;
+
+const getScholarshipFilterClauseWithJoin = (filter, joinAlias = SCHOLARSHIP_JOIN_ALIAS, studentAlias = 'base') => {
   const normalized = String(filter || '').trim().toLowerCase();
   if (normalized === 'pending') {
-    return ` AND ${joinAlias}.student_id IS NULL`;
+    // pending = no year-wise row AND no scholar_status fallback
+    return ` AND ${joinAlias}.student_id IS NULL
+      AND NOT (
+        ${studentAlias}.scholar_status IS NOT NULL
+        AND TRIM(${studentAlias}.scholar_status) != ''
+        AND LOWER(TRIM(${studentAlias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+      )`;
   }
   if (normalized === 'eligible') {
-    return ` AND ${joinAlias}.eligible_norm = 'eligible'`;
+    return ` AND (
+      ${joinAlias}.eligible_norm = 'eligible'
+      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) = 'eligible')
+    )`;
   }
   if (normalized === 'not_eligible') {
-    return ` AND ${joinAlias}.eligible_norm = 'rejected'`;
+    return ` AND (
+      ${joinAlias}.eligible_norm IN ('not_eligible', 'not eligible')
+      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) IN ('not_eligible', 'not eligible'))
+    )`;
+  }
+  if (normalized === 'rejected') {
+    return ` AND (
+      ${joinAlias}.eligible_norm = 'rejected'
+      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) = 'rejected')
+    )`;
   }
   return '';
 };
@@ -77,7 +118,7 @@ const buildFlaggedStudentSelect = ({
     CASE WHEN ${certificatesVerifiedSql(alias)} THEN 1 ELSE 0 END AS is_cert_verified,
     CASE WHEN ${certificatesTemporarySql(alias)} THEN 1 ELSE 0 END AS is_cert_temporary,
     CASE WHEN ${feeClearedSql(alias)} THEN 1 ELSE 0 END AS is_fee_cleared,
-    CASE WHEN ${SCHOLARSHIP_JOIN_ALIAS}.student_id IS NOT NULL THEN 1 ELSE 0 END AS has_scholarship
+    ${hasScholarshipExpr(alias)} AS has_scholarship
   FROM students ${alias}
   ${scholarshipLeftJoinSql(alias)}
 `;
@@ -91,7 +132,7 @@ const buildFlaggedStudentSelect = ({
 const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipFilter = '' }) => {
   const verificationJsonSql = qualifyRegistrationSql(verificationCompletedJsonSql, 'base');
   const verificationLikeSql = qualifyRegistrationSql(verificationCompletedLikeSql, 'base');
-  const scholarshipWhere = getScholarshipFilterClauseWithJoin(scholarshipFilter);
+  const scholarshipWhere = getScholarshipFilterClauseWithJoin(scholarshipFilter, SCHOLARSHIP_JOIN_ALIAS, 'base');
 
   const query = `
     SELECT
@@ -156,6 +197,7 @@ module.exports = {
   SCHOLARSHIP_JOIN_ALIAS,
   qualifyRegistrationSql,
   scholarshipLeftJoinSql,
+  hasScholarshipExpr,
   getScholarshipFilterClauseWithJoin,
   feeClearedSql,
   certificatesVerifiedSql,

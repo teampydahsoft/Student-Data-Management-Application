@@ -535,42 +535,107 @@ const SCHOLARSHIP_SEMESTER_MATCH_SQL = `(
   )
 )`;
 
-const scholarshipHasCurrentYearStatusSql = `EXISTS (
-  SELECT 1 FROM student_scholarship ss
-  WHERE ss.student_id = students.id
-    AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
-    AND ${SCHOLARSHIP_SEMESTER_MATCH_SQL}
-    AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-    AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+/**
+ * A student is considered to have a scholarship status if:
+ *   1. They have a matching row in student_scholarship for their current year + current semester, OR
+ *   2. They have any row in student_scholarship for their current year (any semester), OR
+ *   3. They have ANY row in student_scholarship for ANY year (history fallback — covers students
+ *      whose current year has no data yet, e.g. Year 4 but only Years 1-3 entered), OR
+ *   4. Their scholar_status column on students is a known non-empty value
+ */
+const scholarshipHasCurrentYearStatusSql = `(
+  EXISTS (
+    SELECT 1 FROM student_scholarship ss
+    WHERE ss.student_id = students.id
+      AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+      AND ${SCHOLARSHIP_SEMESTER_MATCH_SQL}
+      AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
+  OR EXISTS (
+    SELECT 1 FROM student_scholarship ss
+    WHERE ss.student_id = students.id
+      AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+      AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
+  OR EXISTS (
+    SELECT 1 FROM student_scholarship ss
+    WHERE ss.student_id = students.id
+      AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
+  OR (
+    students.scholar_status IS NOT NULL
+    AND TRIM(students.scholar_status) != ''
+    AND LOWER(TRIM(students.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
 )`;
 
 const getScholarshipFilterClause = (filter) => {
   const normalized = String(filter || '').trim().toLowerCase();
   if (normalized === 'pending') {
+    // pending = no year-wise row (any semester) AND no scholar_status fallback
     return ` AND NOT (${scholarshipHasCurrentYearStatusSql})`;
   }
   if (normalized === 'eligible') {
-    return ` AND EXISTS (
-      SELECT 1 FROM student_scholarship ss
-      WHERE ss.student_id = students.id
-        AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
-        AND LOWER(TRIM(ss.eligible)) = 'eligible'
+    return ` AND (
+      EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = students.id
+          AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+          AND LOWER(TRIM(ss.eligible)) = 'eligible'
+      )
+      OR (
+        NOT EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = students.id
+            AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+            AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+            AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+        )
+        AND LOWER(TRIM(IFNULL(students.scholar_status, ''))) = 'eligible'
+      )
     )`;
   }
   if (normalized === 'not_eligible') {
-    return ` AND EXISTS (
-      SELECT 1 FROM student_scholarship ss
-      WHERE ss.student_id = students.id
-        AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
-        AND LOWER(TRIM(ss.eligible)) IN ('not_eligible', 'not eligible')
+    return ` AND (
+      EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = students.id
+          AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+          AND LOWER(TRIM(ss.eligible)) IN ('not_eligible', 'not eligible')
+      )
+      OR (
+        NOT EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = students.id
+            AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+            AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+            AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+        )
+        AND LOWER(TRIM(IFNULL(students.scholar_status, ''))) IN ('not_eligible', 'not eligible')
+      )
     )`;
   }
   if (normalized === 'rejected') {
-    return ` AND EXISTS (
-      SELECT 1 FROM student_scholarship ss
-      WHERE ss.student_id = students.id
-        AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
-        AND LOWER(TRIM(ss.eligible)) = 'rejected'
+    return ` AND (
+      EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = students.id
+          AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+          AND LOWER(TRIM(ss.eligible)) = 'rejected'
+      )
+      OR (
+        NOT EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = students.id
+            AND ${SCHOLARSHIP_YEAR_MATCH_SQL}
+            AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+            AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+        )
+        AND LOWER(TRIM(IFNULL(students.scholar_status, ''))) = 'rejected'
+      )
     )`;
   }
   return '';
@@ -606,6 +671,8 @@ const buildCurrentYearScholarshipMap = async (pool, students) => {
   if (!students?.length) return map;
 
   const studentIds = students.map((student) => student.id);
+
+  // Step 1: Try exact match — current year AND current semester
   const [rows] = await pool.query(
     `SELECT ss.student_id, ss.eligible
      FROM student_scholarship ss
@@ -621,6 +688,7 @@ const buildCurrentYearScholarshipMap = async (pool, students) => {
          )
        )
        AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+       AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
      ORDER BY
        ss.student_id ASC,
        CASE
@@ -637,6 +705,76 @@ const buildCurrentYearScholarshipMap = async (pool, students) => {
       map.set(row.student_id, normalizeEligible(row.eligible));
     }
   }
+
+  // Step 2: For students still missing, try any semester of the current year
+  // (mirrors fetchScholarshipPayload's fallback: currentYearData?.eligible)
+  // This handles the case where the current semester row was never inserted
+  // (empty eligible = no DB row) but another semester in the same year has a value.
+  const afterStep1Missing = studentIds.filter((id) => !map.has(id));
+  if (afterStep1Missing.length > 0) {
+    const [yearRows] = await pool.query(
+      `SELECT ss.student_id, ss.eligible
+       FROM student_scholarship ss
+       INNER JOIN students s ON s.id = ss.student_id
+       WHERE ss.student_id IN (?)
+         AND ss.student_year = GREATEST(1, IFNULL(s.current_year, 1))
+         AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+         AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+       ORDER BY
+         ss.student_id ASC,
+         ss.student_semester ASC,
+         ss.updated_at DESC,
+         ss.id DESC`,
+      [afterStep1Missing]
+    );
+    for (const row of yearRows) {
+      if (!map.has(row.student_id)) {
+        map.set(row.student_id, normalizeEligible(row.eligible));
+      }
+    }
+  }
+
+  // Step 3: Final fallback — use the most recent year's scholarship data from student_scholarship,
+  // OR scholar_status from students table (whichever applies).
+  // Covers: students whose current_year has no data yet (Year 4 but only Years 1-3 entered),
+  // last-year students after course completion, batch rollover cases.
+  const afterStep2Missing = studentIds.filter((id) => !map.has(id));
+  if (afterStep2Missing.length > 0) {
+    // Try most recent year's data from student_scholarship (any year, highest first)
+    const [historyRows] = await pool.query(
+      `SELECT ss.student_id, ss.eligible
+       FROM student_scholarship ss
+       WHERE ss.student_id IN (?)
+         AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+         AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+       ORDER BY
+         ss.student_id ASC,
+         ss.student_year DESC,
+         ss.student_semester ASC,
+         ss.updated_at DESC,
+         ss.id DESC`,
+      [afterStep2Missing]
+    );
+    for (const row of historyRows) {
+      if (!map.has(row.student_id)) {
+        const normalized = normalizeEligible(row.eligible);
+        if (normalized) map.set(row.student_id, normalized);
+      }
+    }
+
+    // Final: scholar_status column for any still-missing students
+    const studentMap = new Map(students.map((s) => [s.id, s]));
+    for (const id of afterStep2Missing) {
+      if (!map.has(id)) {
+        const student = studentMap.get(id);
+        if (student) {
+          const fallback = normalizeEligible(student.scholar_status);
+          if (fallback) map.set(id, fallback);
+        }
+      }
+    }
+  }
+
   return map;
 };
 

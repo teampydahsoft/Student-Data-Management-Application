@@ -473,15 +473,14 @@ exports.saveScholarshipHistory = async (req, res) => {
 
     await connection.commit();
 
-    const currentYear = Math.max(1, toNumber(student.current_year) || 1);
-    const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
-    const currentYearEntry = years.find((entry) => toNumber(entry.student_year) === currentYear);
-    const currentSemesterEligible = currentYearEntry?.semesters?.find(
-      (semester) => toNumber(semester.student_semester) === currentSemester
-    )?.eligible || currentYearEntry?.eligible || '';
-    await syncScholarStatusColumn(masterPool, student.id, currentSemesterEligible);
-
+    // Re-fetch the full payload from DB so scholar_status reflects the actual saved
+    // semester-wise eligible value (same logic as the student view dialog uses).
+    // This is more reliable than computing from the incoming payload because some
+    // semester rows may not have been inserted (empty eligible = no row saved).
     const data = await fetchScholarshipPayload(student);
+    const savedCurrentYearEligible = data.currentYearEligible || '';
+    await syncScholarStatusColumn(masterPool, student.id, savedCurrentYearEligible);
+
     res.json({ success: true, message: 'Scholarship history saved successfully', data });
   } catch (error) {
     await connection.rollback();

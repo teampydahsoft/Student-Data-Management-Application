@@ -10,6 +10,13 @@ const { MODULES } = require('../../constants/rbac');
 
 // Registration reports (delegate to studentController)
 router.get(
+  '/registration/academic-years',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_registration'),
+  attachUserScope,
+  studentController.getRegistrationAcademicYears
+);
+router.get(
   '/registration/abstract',
   authMiddleware,
   verifyPermission(MODULES.REPORTS, 'view_registration'),

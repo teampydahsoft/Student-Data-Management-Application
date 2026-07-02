@@ -1085,6 +1085,91 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         meta={meta}
         onClose={() => setHistoryYear(null)}
       />
+
+      {/* Scholarship History — all archived records visible in the page */}
+      {archivedHistory.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 flex items-center gap-2">
+            <History size={14} className="text-amber-600" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Scholarship History</h4>
+            <span className="ml-auto text-[11px] text-gray-400">{archivedHistory.length} record{archivedHistory.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th className="px-3 py-2 font-bold whitespace-nowrap text-center">Year</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap text-center">Sem</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap">Status</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap">App ID</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">Sanctioned</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">Released</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap">Source</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap">Archived On</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {archivedHistory.map((entry) => {
+                  const snapshot = entry.snapshot || {};
+                  const status = entry.scholar_status || snapshot.eligible || '';
+                  const sourceLabel = entry.source === 'scholarship_overwrite'
+                    ? 'Overwritten'
+                    : entry.source === 'scholarship_status_sync'
+                      ? 'Initial sync'
+                      : entry.source || '—';
+                  const sourceColor = entry.source === 'scholarship_overwrite'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-blue-50 text-blue-700';
+
+                  // Status badge colour
+                  let statusColor = 'bg-gray-100 text-gray-600';
+                  const normalizedStatus = String(status).trim().toLowerCase();
+                  if (normalizedStatus === 'eligible') statusColor = 'bg-green-100 text-green-700';
+                  else if (normalizedStatus === 'not_eligible' || normalizedStatus === 'not eligible') statusColor = 'bg-red-100 text-red-700';
+                  else if (normalizedStatus === 'rejected') statusColor = 'bg-red-100 text-red-700';
+                  else if (normalizedStatus === 'pending') statusColor = 'bg-yellow-100 text-yellow-700';
+                  else if (normalizedStatus === 'not_applied') statusColor = 'bg-gray-100 text-gray-500';
+
+                  return (
+                    <tr key={entry.id} className="hover:bg-gray-50/60">
+                      <td className="px-3 py-2 text-center font-medium text-gray-800">
+                        {entry.academic_year ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center text-gray-600">
+                        {entry.academic_semester ?? '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        {status ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize ${statusColor}`}>
+                            {formatScholarshipStatusDisplay(status)}
+                          </span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 font-mono text-xs">
+                        {snapshot.application_id || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700 tabular-nums">
+                        {snapshot.sanctioned_amount ? formatCurrency(snapshot.sanctioned_amount) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-emerald-700 tabular-nums font-medium">
+                        {snapshot.released_amount ? formatCurrency(snapshot.released_amount) : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${sourceColor}`}>
+                          {sourceLabel}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+                        {formatArchivedAt(entry.archived_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
