@@ -75,7 +75,8 @@ function ScholarshipReport() {
     batch: '',
     course: '',
     branch: '',
-    academic_year: ''   // 'all' or '1','2','3','4'
+    academic_year: '',      // program year index: '' | '1' | '2' ...
+    scholarship_status: ''  // '' | 'eligible' | 'pending' | 'rejected' | 'not_eligible' | 'not_applied'
   });
   const [filterOptions, setFilterOptions] = useState({
     colleges: [],
@@ -127,7 +128,7 @@ function ScholarshipReport() {
   };
 
   const clearFilters = () => {
-    setFilters({ college: '', batch: '', course: '', branch: '', academic_year: '' });
+    setFilters({ college: '', batch: '', course: '', branch: '', academic_year: '', scholarship_status: '' });
   };
 
   useEffect(() => {
@@ -226,6 +227,9 @@ function ScholarshipReport() {
         if (filters.academic_year && filters.academic_year !== 'all') {
           params.append('filter_academic_year', filters.academic_year);
         }
+        if (filters.scholarship_status) {
+          params.append('filter_scholarship_status', filters.scholarship_status);
+        }
 
         const res = await api.get(`/students/reports/scholarship?${params.toString()}`);
         if (res.data?.success) {
@@ -255,6 +259,9 @@ function ScholarshipReport() {
     params.append('filter_branch', filters.branch);
     if (filters.academic_year && filters.academic_year !== 'all') {
       params.append('filter_academic_year', filters.academic_year);
+    }
+    if (filters.scholarship_status) {
+      params.append('filter_scholarship_status', filters.scholarship_status);
     }
     return params;
   };
@@ -326,7 +333,7 @@ function ScholarshipReport() {
       : <ArrowDown size={13} className="text-amber-600 ml-1 inline-block" />;
   };
 
-  const hasActiveFilters = filters.college || filters.batch || filters.course || filters.branch || filters.academic_year;
+  const hasActiveFilters = filters.college || filters.batch || filters.course || filters.branch || filters.academic_year || filters.scholarship_status;
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-4 p-4">
@@ -369,7 +376,7 @@ function ScholarshipReport() {
           <Layers size={16} />
           Filters
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">College</label>
             <select
@@ -436,6 +443,21 @@ function ScholarshipReport() {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Scholarship Status</label>
+            <select
+              value={filters.scholarship_status || ''}
+              onChange={(e) => handleFilterChange('scholarship_status', e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="eligible">✅ Eligible</option>
+              <option value="pending">⏳ Pending</option>
+              <option value="rejected">❌ Rejected</option>
+              <option value="not_eligible">🚫 Not Eligible</option>
+              <option value="not_applied">— Not Applied</option>
+            </select>
+          </div>
         </div>
         {hasActiveFilters && (
           <button
@@ -450,26 +472,44 @@ function ScholarshipReport() {
       </section>
 
       {filtersReady && (
-        <div className="flex-shrink-0 flex flex-wrap items-center gap-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-          <span className="font-medium text-gray-700">Showing:</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200">
-            <Building2 size={14} /> {filters.college}
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200">
-            <Calendar size={14} /> {filters.batch}
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200">
-            <BookOpen size={14} /> {filters.course}
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200">
-            <GitBranch size={14} /> {filters.branch}
-          </span>
-          {filters.academic_year && filters.academic_year !== 'all' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-medium">
-              <Layers size={14} /> {formatAcademicYearLabel(filters.batch, filters.academic_year)}
+        <div className="flex-shrink-0 flex flex-col gap-2">
+          {/* Active filter chips + student count */}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
+            <span className="font-medium text-gray-700">Showing:</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs">
+              <Building2 size={12} /> {filters.college}
             </span>
-          )}
-          <span className="ml-auto text-gray-500">{reportData.length} students</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs">
+              <Calendar size={12} /> {filters.batch}
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs">
+              <BookOpen size={12} /> {filters.course}
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs">
+              <GitBranch size={12} /> {filters.branch}
+            </span>
+            {filters.academic_year && filters.academic_year !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-medium text-xs">
+                <Layers size={12} /> {formatAcademicYearLabel(filters.batch, filters.academic_year)}
+              </span>
+            )}
+            {filters.scholarship_status && (() => {
+              const statusMeta = {
+                eligible:     { label: 'Eligible',     cls: 'bg-green-50 border-green-200 text-green-700' },
+                pending:      { label: 'Pending',      cls: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+                rejected:     { label: 'Rejected',     cls: 'bg-red-50 border-red-200 text-red-700' },
+                not_eligible: { label: 'Not Eligible', cls: 'bg-orange-50 border-orange-200 text-orange-700' },
+                not_applied:  { label: 'Not Applied',  cls: 'bg-gray-50 border-gray-300 text-gray-600' }
+              };
+              const meta = statusMeta[filters.scholarship_status] || { label: filters.scholarship_status, cls: 'bg-gray-50 border-gray-200 text-gray-600' };
+              return (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border font-medium text-xs ${meta.cls}`}>
+                  {meta.label}
+                </span>
+              );
+            })()}
+            <span className="ml-auto text-gray-500 text-xs font-medium">{reportData.length} students</span>
+          </div>
         </div>
       )}
 

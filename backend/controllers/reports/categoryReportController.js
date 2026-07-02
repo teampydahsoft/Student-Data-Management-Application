@@ -101,6 +101,10 @@ async function buildReportFilters(req) {
     baseQuery += " AND scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '' AND (LOWER(scholar_status) LIKE '%eligible%' OR LOWER(scholar_status) LIKE '%jvd%' OR LOWER(scholar_status) LIKE '%yes%')";
   } else if (scholarshipFilter === 'not_eligible') {
     baseQuery += " AND LOWER(IFNULL(scholar_status,'')) LIKE '%not%' AND LOWER(scholar_status) LIKE '%eligible%'";
+  } else if (scholarshipFilter === 'rejected') {
+    baseQuery += " AND LOWER(TRIM(IFNULL(scholar_status,''))) = 'rejected'";
+  } else if (scholarshipFilter === 'not_applied') {
+    baseQuery += " AND LOWER(TRIM(IFNULL(scholar_status,''))) IN ('not_applied', 'not applied')";
   }
 
   return { baseQuery, params };

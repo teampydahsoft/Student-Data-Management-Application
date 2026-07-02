@@ -110,7 +110,7 @@ const buildScholarshipReportData = async (req) => {
 
   const { baseQuery, params } = await buildReportFilters(req);
   const studentQuery = `
-    SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste
+    SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste, scholar_status
     ${baseQuery}
     ORDER BY student_name ASC, admission_number ASC
   `;
@@ -165,6 +165,7 @@ const buildScholarshipReportData = async (req) => {
       course: student.course,
       branch: student.branch || '',
       caste: student.caste || '',
+      scholar_status: student.scholar_status || '',
       years
     });
   }
