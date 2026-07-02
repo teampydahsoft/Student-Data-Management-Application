@@ -55,15 +55,24 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
     };
   });
 
-  return {
+  const academicYearLabel = year.academic_year_label || getAcademicYearLabel(payload, year.student_year, student);
+  const normalizedYear = {
     ...year,
     sanctioned_amount: formatScholarshipAmountForInput(year.sanctioned_amount),
     semesters: normalizedSemesters,
     releases: mapReleasesFromApi(
       year.releases,
-      year.academic_year_label || getAcademicYearLabel(payload, year.student_year, student)
+      academicYearLabel
     )
   };
+
+  // When no semester is eligible, financial fields must be empty (pending/rejected/etc.).
+  if (!isYearScholarshipEligible(normalizedYear)) {
+    normalizedYear.sanctioned_amount = '';
+    normalizedYear.releases = mapReleasesFromApi([], academicYearLabel);
+  }
+
+  return normalizedYear;
 };
 
 const emptyRelease = () => ({
@@ -150,6 +159,15 @@ const isYearScholarshipEligible = (year) => (
     (semester) => normalizeScholarshipStatusValue(semester.eligible) === 'eligible'
   )
 );
+
+const clearYearFinancialDataIfNotEligible = (year, academicYearLabel = '') => {
+  if (isYearScholarshipEligible(year)) return year;
+  return {
+    ...year,
+    sanctioned_amount: '',
+    releases: mapReleasesFromApi([], academicYearLabel || year.academic_year_label || '')
+  };
+};
 
 const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
   if (!year) return null;
@@ -270,6 +288,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const [scholarshipRemarks, setScholarshipRemarks] = useState([]);
   const [historyYear, setHistoryYear] = useState(null);
   const [remoteAppIdStatus, setRemoteAppIdStatus] = useState({});
+  const [casteAccountTypes, setCasteAccountTypes] = useState({}); // caste → 'mother' | 'college'
   const remoteAppIdTimersRef = useRef({});
 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
@@ -297,10 +316,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
     setLoading(true);
     try {
-      const [scholarshipResponse, remarkData] = await Promise.all([
+      const [scholarshipResponse, remarkData, rtfConfigRes] = await Promise.all([
         api.get(`/student-scholarship/${encodeURIComponent(admissionNumber)}`),
-        fetchScholarshipRemarks()
+        fetchScholarshipRemarks(),
+        api.get('/settings/rtf-amount').catch(() => null)
       ]);
+
+      if (rtfConfigRes?.data?.success) {
+        setCasteAccountTypes(rtfConfigRes.data.data?.casteAccountTypes || {});
+      }
 
       if (scholarshipResponse.data.success) {
         const payload = scholarshipResponse.data.data;
@@ -559,15 +583,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const semesters = (year.semesters || []).map((semester, sIndex) => (
         sIndex === semesterIndex ? { ...semester, eligible: value } : semester
       ));
-      const nextYear = {
+      const nextYear = clearYearFinancialDataIfNotEligible({
         ...year,
         semesters,
         eligible: semesters[0]?.eligible || ''
-      };
-      if (!isYearScholarshipEligible(nextYear)) {
-        nextYear.releases = [emptyRelease()];
-        nextYear.sanctioned_amount = '';
-      }
+      }, year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student));
       return nextYear;
     }));
   };
@@ -588,6 +608,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     }
   };
 
+  const isCollegeAccount = (caste) => {
+    const c = String(caste || student?.caste || '').trim();
+    return casteAccountTypes[c] === 'college';
+  };
+
   const updateReleaseField = (yearIndex, releaseIndex, field, value) => {
     let nextValue = value;
     if (field === 'released_amount' || field === 'paid_amount') {
@@ -597,9 +622,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     // Validation happens on blur — never block here or partial date input gets lost.
     setYears((prev) => prev.map((year, yIndex) => {
       if (yIndex !== yearIndex) return year;
-      const releases = year.releases.map((release, rIndex) => (
-        rIndex === releaseIndex ? { ...release, [field]: nextValue } : release
-      ));
+      const releases = year.releases.map((release, rIndex) => {
+        if (rIndex !== releaseIndex) return release;
+        const updated = { ...release, [field]: nextValue };
+        // College account: auto-copy released_amount → paid_amount
+        if (field === 'released_amount' && isCollegeAccount()) {
+          updated.paid_amount = nextValue;
+        }
+        return updated;
+      });
       return { ...year, releases };
     }));
   };
@@ -664,7 +695,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       for (let index = 0; index < year.releases.length; index += 1) {
         const release = year.releases[index];
         const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
-        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
+        // A row is meaningful if it has a released amount, a paid amount, or a date.
+        // RTF Remitted date and released amount are both optional for a paid-amount-only entry.
+        const hasReleaseValue = parseAmount(release.released_amount) > 0
+          || parseAmount(release.paid_amount) > 0
+          || releaseDate;
         if (!hasReleaseValue) continue;
         if (String(release.rtf_released_date || '').trim() && !releaseDate) {
           toast.error(`Year ${year.student_year}, release row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
@@ -720,13 +755,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             ? year.releases
               .filter((release) => (
                 parseAmount(release.released_amount) > 0
+                || parseAmount(release.paid_amount) > 0
                 || normalizeRtfReleasedDateForInput(release.rtf_released_date)
               ))
               .map((release) => ({
                 academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
                 rtf_released_date: normalizeRtfReleasedDateForInput(release.rtf_released_date) || null,
                 released_amount: parseAmount(release.released_amount),
-                paid_amount: parseAmount(release.paid_amount)
+                paid_amount: isCollegeAccount()
+                  ? parseAmount(release.released_amount)   // college account: paid = released
+                  : parseAmount(release.paid_amount)
               }))
             : []
         };
@@ -1043,6 +1081,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Release Transactions</h4>
           <p className="text-[11px] text-gray-400 mt-1">
             Shown only for years with at least one semester marked Eligible.
+            {isCollegeAccount() && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                College Account — Paid auto-set from Released
+              </span>
+            )}
+            {!isCollegeAccount() && student?.caste && casteAccountTypes[student.caste] !== undefined && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Mother Account — Enter Paid manually
+              </span>
+            )}
           </p>
         </div>
 
@@ -1156,8 +1204,13 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
                         {/* Paid Amount */}
                         <td className="px-2 py-2 text-right">
-                          {isEditingDisabled ? (
-                            <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
+                          {isEditingDisabled || isCollegeAccount() ? (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
+                              {isCollegeAccount() && !isEditingDisabled && (
+                                <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">auto</span>
+                              )}
+                            </div>
                           ) : (
                             <input
                               type="text"

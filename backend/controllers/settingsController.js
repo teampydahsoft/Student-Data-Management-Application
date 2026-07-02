@@ -703,11 +703,14 @@ exports.getRtfAmountConfig = async (req, res) => {
       'SELECT value FROM settings WHERE `key` = ?',
       ['rtf_amount_config']
     );
-    let config = { entries: [] };
+    let config = { entries: [], casteAccountTypes: {} };
     if (rows.length > 0) {
       try { config = JSON.parse(rows[0].value); } catch (e) { /* use default */ }
     }
     if (!Array.isArray(config.entries)) config.entries = [];
+    if (!config.casteAccountTypes || typeof config.casteAccountTypes !== 'object') {
+      config.casteAccountTypes = {};
+    }
     res.json({ success: true, data: config });
   } catch (error) {
     console.error('Get RTF amount config error:', error);
@@ -726,6 +729,9 @@ exports.updateRtfAmountConfig = async (req, res) => {
     }
     if (!Array.isArray(config.entries)) {
       return res.status(400).json({ success: false, message: 'config.entries must be an array' });
+    }
+    if (!config.casteAccountTypes || typeof config.casteAccountTypes !== 'object') {
+      config.casteAccountTypes = {};
     }
     const value = JSON.stringify(config);
     await masterPool.query(

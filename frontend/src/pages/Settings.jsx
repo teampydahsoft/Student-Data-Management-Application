@@ -840,16 +840,20 @@ const RtfAmountSection = ({
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {['configure', 'saved'].map((tab) => (
+        {[
+          { key: 'configure', label: 'Configure' },
+          { key: 'saved',     label: 'Saved' },
+          { key: 'caste-setup', label: 'Caste Setup' }
+        ].map(({ key, label }) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-1.5 rounded-md text-sm font-semibold capitalize transition-all ${
-              activeTab === tab ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              activeTab === key ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {tab}
-            {tab === 'saved' && entries.length > 0 && (
+            {label}
+            {key === 'saved' && entries.length > 0 && (
               <span className="ml-1.5 bg-pink-100 text-pink-700 text-xs px-1.5 py-0.5 rounded-full">{entries.length}</span>
             )}
           </button>
@@ -1033,6 +1037,73 @@ const RtfAmountSection = ({
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CASTE SETUP TAB ── */}
+      {activeTab === 'caste-setup' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-sm text-blue-800 font-medium mb-1">Account Type per Caste</p>
+            <p className="text-xs text-blue-600">
+              <strong>Mother Account</strong> — student receives the scholarship directly. Paid amount must be entered manually.<br />
+              <strong>College Account</strong> — college receives the scholarship on behalf of the student. Released amount is automatically treated as paid.
+            </p>
+          </div>
+
+          {(filterOptions.castes || []).length === 0 ? (
+            <div className="text-center py-12 text-gray-500 text-sm">
+              No castes found. Students must have caste data populated.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 border-b border-gray-200 w-48">Caste</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 border-b border-gray-200">Account Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 border-b border-gray-200">Behaviour</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(filterOptions.castes || []).map((caste) => {
+                    const current = (config?.casteAccountTypes || {})[caste] || 'mother';
+                    return (
+                      <tr key={caste} className="hover:bg-gray-50/60">
+                        <td className="px-4 py-3">
+                          <span className="inline-flex px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-semibold text-xs">{caste}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={current}
+                            onChange={(e) => {
+                              const updated = {
+                                ...config,
+                                casteAccountTypes: {
+                                  ...(config?.casteAccountTypes || {}),
+                                  [caste]: e.target.value
+                                }
+                              };
+                              onSave(updated);
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400"
+                          >
+                            <option value="mother">Mother Account</option>
+                            <option value="college">College Account</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500">
+                          {current === 'college'
+                            ? <span className="text-emerald-700 font-medium">Released amount auto-copied to Paid</span>
+                            : <span className="text-blue-700 font-medium">Paid amount entered manually</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1533,7 +1604,7 @@ const Settings = () => {
         api.get('/courses?includeInactive=false'),
         api.get('/students/quick-filters?applyExclusions=true').then((r) => r) // reuse below
       ]);
-      if (configRes.data?.success) setRtfConfig(configRes.data.data || { entries: [] });
+      if (configRes.data?.success) setRtfConfig(configRes.data.data || { entries: [], casteAccountTypes: {} });
       if (filtersRes.data?.success) {
         const d = filtersRes.data.data || {};
         setRtfFilterOptions((prev) => ({

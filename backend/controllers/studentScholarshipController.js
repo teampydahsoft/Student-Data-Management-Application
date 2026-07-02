@@ -117,13 +117,19 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
     eligible: semesterMap[semester.student_semester] || ''
   }));
 
+  const anyEligible = semesters.some(
+    (semester) => normalizeEligible(semester.eligible) === 'eligible'
+  );
+
   return {
     application_id: applicationId || '',
     eligible: semesters[0]?.eligible || legacyEligible || '',
-    sanctioned_amount: sanctionedAmount,
-    released_amount: releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0),
+    sanctioned_amount: anyEligible ? sanctionedAmount : 0,
+    released_amount: anyEligible
+      ? releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0)
+      : 0,
     semesters,
-    releases
+    releases: anyEligible ? releases : []
   };
 };
 
@@ -277,9 +283,12 @@ const fetchScholarshipPayload = async (student) => {
 
 const hasYearSummaryData = (yearEntry) => {
   const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
+  const anyEligible = semesters.some(
+    (semester) => normalizeEligible(semester.eligible) === 'eligible'
+  );
   return (
     (yearEntry.application_id && String(yearEntry.application_id).trim())
-    || toNumber(yearEntry.sanctioned_amount) > 0
+    || (anyEligible && toNumber(yearEntry.sanctioned_amount) > 0)
     || semesters.some((semester) => semester.eligible && String(semester.eligible).trim())
     || (yearEntry.eligible && String(yearEntry.eligible).trim())
   );
@@ -289,6 +298,7 @@ const hasReleaseData = (release) => {
   const normalized = normalizeReleaseForSave(release);
   return (
     normalized.released_amount > 0
+    || normalized.paid_amount > 0
     || normalized.rtf_released_date
   );
 };

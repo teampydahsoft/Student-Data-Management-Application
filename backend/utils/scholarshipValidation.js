@@ -191,6 +191,10 @@ const checkApplicationIdAvailability = async (pool, applicationId, studentId, st
   };
 };
 
+const isSemesterEligible = (value) => (
+  String(value || '').trim().toLowerCase() === 'eligible'
+);
+
 const validateScholarshipYearsPayload = async (connection, studentId, years = []) => {
   const duplicateIds = findDuplicateApplicationIdsInPayload(years);
   if (duplicateIds.length) {
@@ -217,26 +221,37 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       if (!uniqueCheck.valid) return uniqueCheck;
     }
 
-    const sanctionedValidation = validateScholarshipAmount(yearEntry.sanctioned_amount, {
-      fieldLabel: `Year ${studentYear} sanctioned amount`
-    });
+    const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
+    const anyEligible = semesters.some((semester) => isSemesterEligible(semester.eligible));
+
+    const sanctionedValidation = validateScholarshipAmount(
+      anyEligible ? yearEntry.sanctioned_amount : 0,
+      {
+        fieldLabel: `Year ${studentYear} sanctioned amount`
+      }
+    );
     if (!sanctionedValidation.valid) return sanctionedValidation;
 
-    const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+    const releases = anyEligible && Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
     let totalReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
       const release = releases[index];
       const releaseAmount = clampScholarshipAmount(release.released_amount);
+      const paidAmount = clampScholarshipAmount(release.paid_amount);
       const releaseDate = release.rtf_released_date && String(release.rtf_released_date).trim();
-      const hasReleaseValue = releaseAmount > 0 || releaseDate;
+      // A release row is meaningful if it has ANY of: released amount, paid amount, or a date.
+      // RTF Remitted date and released amount are both optional for a paid-amount-only entry.
+      const hasReleaseValue = releaseAmount > 0 || paidAmount > 0 || releaseDate;
       if (!hasReleaseValue) continue;
 
       const dateValidation = validateRtfReleasedDate(release.rtf_released_date, {
         fieldLabel: `Year ${studentYear} RTF Remitted date (row ${index + 1})`,
-        allowEmpty: releaseAmount <= 0
+        allowEmpty: true
       });
       if (!dateValidation.valid) return dateValidation;
 
+      // Released amount is optional (e.g. when only a paid amount is being recorded).
+      // Only require it when an RTF Remitted date is provided.
       const releaseValidation = validateScholarshipAmount(
         normalizeScholarshipAmountInput(release.released_amount),
         {
@@ -247,7 +262,6 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       if (!releaseValidation.valid) return releaseValidation;
 
       // Validate paid_amount: must be a valid amount (≤ sanctioned enforced at year level)
-      const paidAmount = clampScholarshipAmount(release.paid_amount);
       if (release.paid_amount !== undefined && release.paid_amount !== null && release.paid_amount !== '') {
         const paidValidation = validateScholarshipAmount(
           normalizeScholarshipAmountInput(release.paid_amount),

@@ -210,6 +210,7 @@ const buildDefaultSemesters = (semestersPerYear, eligible = '') => (
 
 const isReleaseRow = (row) => (
   Number(row.released_amount) > 0
+  || Number(row.paid_amount) > 0
   || row.from_date
   || row.rtf_released_date
   || row.rtf_date
@@ -470,13 +471,19 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
     eligible: semesterMap[semester.student_semester] || ''
   }));
 
+  const anyEligible = semesters.some(
+    (semester) => normalizeEligible(semester.eligible) === 'eligible'
+  );
+
   return {
     application_id: applicationId || null,
     eligible: semesters[0]?.eligible || legacyEligible || null,
-    sanctioned_amount: sanctionedAmount,
-    released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
+    sanctioned_amount: anyEligible ? sanctionedAmount : 0,
+    released_amount: anyEligible
+      ? releases.reduce((sum, row) => sum + row.released_amount, 0)
+      : 0,
     semesters,
-    releases
+    releases: anyEligible ? releases : []
   };
 };
 
