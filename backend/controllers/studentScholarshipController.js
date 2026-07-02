@@ -286,27 +286,31 @@ const hasReleaseData = (release) => {
 };
 
 const buildIncomingYearSnapshot = (yearEntry) => {
-  const releases = (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
-    .filter(hasReleaseData)
-    .map((release) => {
-      const normalized = normalizeReleaseForSave(release);
-      return {
-        from_date: normalized.rtf_released_date || null,
-        rtf_released_date: normalized.rtf_released_date || null,
-        released_amount: normalized.released_amount,
-        paid_amount: normalized.paid_amount
-      };
-    });
-
   const semesters = (Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [])
     .map((semester) => ({
       student_semester: Math.max(1, toNumber(semester.student_semester) || 1),
       eligible: semester.eligible || null
     }));
 
+  const anyEligible = semesters.some((sem) => normalizeEligible(sem.eligible) === 'eligible');
+
+  const releases = anyEligible
+    ? (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
+        .filter(hasReleaseData)
+        .map((release) => {
+          const normalized = normalizeReleaseForSave(release);
+          return {
+            from_date: normalized.rtf_released_date || null,
+            rtf_released_date: normalized.rtf_released_date || null,
+            released_amount: normalized.released_amount,
+            paid_amount: normalized.paid_amount
+          };
+        })
+    : [];
+
   return {
     application_id: yearEntry.application_id || null,
-    sanctioned_amount: toNumber(yearEntry.sanctioned_amount),
+    sanctioned_amount: anyEligible ? toNumber(yearEntry.sanctioned_amount) : 0,
     released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
     semesters,
     releases
@@ -402,21 +406,32 @@ exports.saveScholarshipHistory = async (req, res) => {
       if (!studentYear || studentYear < 1) continue;
 
       const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
-      const validReleases = releases.filter(hasReleaseData);
       const semesters = Array.isArray(yearEntry.semesters) && yearEntry.semesters.length
         ? yearEntry.semesters
         : buildDefaultSemesters(semestersPerYear);
+
+      // Determine if any semester is eligible — if not, force amounts to zero
+      const anyEligible = semesters.some(
+        (sem) => normalizeEligible(sem.eligible) === 'eligible'
+      );
+
+      const validReleases = anyEligible ? releases.filter(hasReleaseData) : [];
       const summaryData = {
         application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
-        sanctioned_amount: clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
+        sanctioned_amount: anyEligible
+          ? clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
+          : 0
       };
 
       // If RTF amount is locked for this college/batch/course/branch/caste, use the locked amount
-      const lockedAmount = await getRtfLockedAmount(
-        student.college, student.batch, student.course, student.branch, studentYear, student.caste
-      );
-      if (lockedAmount !== null) {
-        summaryData.sanctioned_amount = lockedAmount;
+      // — only applies when at least one semester is eligible
+      if (anyEligible) {
+        const lockedAmount = await getRtfLockedAmount(
+          student.college, student.batch, student.course, student.branch, studentYear, student.caste
+        );
+        if (lockedAmount !== null) {
+          summaryData.sanctioned_amount = lockedAmount;
+        }
       }
 
       const [existingRows] = await connection.query(
