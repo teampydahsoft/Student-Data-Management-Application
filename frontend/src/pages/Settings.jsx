@@ -719,6 +719,346 @@ const BranchSectionsEditor = ({ value, onChange }) => {
   );
 };
 
+const RtfAmountSection = ({
+  config, loading, saving, applying, filterOptions, coursesWithLevels,
+  newEntry, setNewEntry, onSave, onApply, onRefresh, onCascadeChange
+}) => {
+  const [activeTab, setActiveTab] = React.useState('configure');
+  const entries = config?.entries || [];
+
+  const resolveCourseTotalYears = (course) => {
+    const matched = (coursesWithLevels || []).find((c) => c.name === course);
+    return Number(matched?.total_years || matched?.totalYears || 4);
+  };
+
+  const extractBatchStart = (batch) => {
+    const m = String(batch || '').match(/^(\d{4})/);
+    return m ? Number(m[1]) : null;
+  };
+  const yearLabel = (batch, yr) => {
+    const start = extractBatchStart(batch);
+    if (!start) return `Year ${yr}`;
+    return `${start + yr - 1}-${start + yr}`;
+  };
+
+  const totalYears = newEntry.course ? resolveCourseTotalYears(newEntry.course) : 0;
+  const yearCols = Array.from({ length: totalYears }, (_, i) => i + 1);
+  const casteRows = ['', ...(filterOptions.castes || [])];
+  const configReady = !!(newEntry.college && newEntry.batch && newEntry.course && newEntry.branch);
+
+  const [draftAmounts, setDraftAmounts] = React.useState({});
+  const getDraftKey = (caste, yr) => `${caste || ''}||${yr}`;
+
+  const getDraftAmount = (caste, yr) => {
+    const key = getDraftKey(caste, yr);
+    if (key in draftAmounts) return draftAmounts[key];
+    const existing = entries.find(
+      (e) => e.college === newEntry.college && e.batch === newEntry.batch &&
+             e.course === newEntry.course && e.branch === newEntry.branch &&
+             (e.caste || '') === (caste || '')
+    );
+    if (existing) {
+      const yearEntry = (existing.years || []).find((y) => Number(y.year) === yr);
+      return yearEntry ? String(yearEntry.amount ?? '') : '';
+    }
+    return '';
+  };
+
+  const setDraftAmount = (caste, yr, value) => {
+    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 6);
+    setDraftAmounts((prev) => ({ ...prev, [getDraftKey(caste, yr)]: digits }));
+  };
+
+  React.useEffect(() => {
+    setDraftAmounts({});
+  }, [newEntry.college, newEntry.batch, newEntry.course, newEntry.branch]);
+
+  const saveDraftForCaste = (caste) => {
+    if (!configReady) return;
+    const years = yearCols.map((yr) => ({ year: yr, amount: getDraftAmount(caste, yr) || '' }));
+    const existingIdx = entries.findIndex(
+      (e) => e.college === newEntry.college && e.batch === newEntry.batch &&
+             e.course === newEntry.course && e.branch === newEntry.branch &&
+             (e.caste || '') === (caste || '')
+    );
+    if (existingIdx >= 0) {
+      onSave({ entries: entries.map((e, i) => i === existingIdx ? { ...e, years } : e) });
+    } else {
+      const newEntryFull = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        college: newEntry.college, batch: newEntry.batch,
+        course: newEntry.course, branch: newEntry.branch,
+        caste: caste || '', locked: false, years
+      };
+      onSave({ entries: [...entries, newEntryFull] });
+    }
+    setDraftAmounts((prev) => {
+      const next = { ...prev };
+      yearCols.forEach((yr) => { delete next[getDraftKey(caste, yr)]; });
+      return next;
+    });
+  };
+
+  const updateAmount = (entryId, year, amount) => {
+    const digits = String(amount ?? '').replace(/\D/g, '').slice(0, 6);
+    onSave({ entries: entries.map((e) => e.id !== entryId ? e : { ...e, years: e.years.map((y) => y.year === year ? { ...y, amount: digits } : y) }) });
+  };
+
+  const toggleLock = (entryId) => {
+    onSave({ entries: entries.map((e) => e.id !== entryId ? e : { ...e, locked: !e.locked }) });
+  };
+
+  const removeEntry = (entryId) => {
+    onSave({ entries: entries.filter((e) => e.id !== entryId) });
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <RefreshCcw size={20} className="animate-spin text-pink-500 mr-2" />
+      <span className="text-sm text-gray-500">Loading RTF config...</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <GraduationCap size={20} className="text-pink-600" />
+            RTF Amount Setup
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Define sanctioned scholarship amounts per college, batch, program, branch and caste. Lock to prevent editing.
+          </p>
+        </div>
+        <button onClick={onRefresh} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-100">
+          <RefreshCcw size={14} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        {['configure', 'saved'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold capitalize transition-all ${
+              activeTab === tab ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab}
+            {tab === 'saved' && entries.length > 0 && (
+              <span className="ml-1.5 bg-pink-100 text-pink-700 text-xs px-1.5 py-0.5 rounded-full">{entries.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── CONFIGURE TAB ── */}
+      {activeTab === 'configure' && (
+        <div className="space-y-4">
+          {/* Row 1: College, Batch, Program, Branch */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { key: 'college', label: 'College', opts: filterOptions.colleges || [], disabled: false, cascade: true },
+              { key: 'batch', label: 'Batch', opts: filterOptions.batches || [], disabled: !newEntry.college, cascade: true },
+              { key: 'course', label: 'Program', opts: filterOptions.courses || [], disabled: !newEntry.college, cascade: true },
+              { key: 'branch', label: 'Branch', opts: filterOptions.branches || [], disabled: !newEntry.course, cascade: false }
+            ].map(({ key, label, opts, disabled, cascade }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                <select
+                  value={newEntry[key] || ''}
+                  onChange={(e) => cascade
+                    ? onCascadeChange(key, e.target.value, newEntry)
+                    : setNewEntry((prev) => ({ ...prev, [key]: e.target.value }))}
+                  disabled={disabled}
+                  className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-pink-400 disabled:opacity-50 disabled:bg-gray-50"
+                >
+                  <option value="">Select {label}</option>
+                  {opts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          {/* Row 2: Caste optional */}
+          <div className="flex items-center gap-4">
+            <div className="w-56">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Caste <span className="text-gray-400">(optional filter)</span>
+              </label>
+              <select
+                value={newEntry.caste || ''}
+                onChange={(e) => setNewEntry((prev) => ({ ...prev, caste: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-pink-400"
+              >
+                <option value="">All Castes</option>
+                {(filterOptions.castes || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+            {!configReady && (
+              <p className="text-xs text-gray-400 mt-4">Select college, batch, program and branch to configure amounts.</p>
+            )}
+          </div>
+
+          {/* Amount table */}
+          {configReady && yearCols.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-pink-50">
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 border-b border-gray-200 w-36">Caste</th>
+                    {yearCols.map((yr) => (
+                      <th key={yr} className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 border-b border-l border-gray-200 whitespace-nowrap">
+                        {yearLabel(newEntry.batch, yr)}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 border-b border-l border-gray-200 w-24">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {casteRows.map((caste) => {
+                    const existingEntry = entries.find(
+                      (e) => e.college === newEntry.college && e.batch === newEntry.batch &&
+                             e.course === newEntry.course && e.branch === newEntry.branch &&
+                             (e.caste || '') === (caste || '')
+                    );
+                    const isLocked = existingEntry?.locked || false;
+                    return (
+                      <tr key={caste || '__all__'} className={`hover:bg-gray-50/60 ${isLocked ? 'bg-amber-50/30' : ''}`}>
+                        <td className="px-3 py-2 text-xs font-medium whitespace-nowrap">
+                          {caste
+                            ? <span className="inline-flex px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-semibold text-[11px]">{caste}</span>
+                            : <span className="text-gray-400 italic text-[11px]">All Castes</span>}
+                        </td>
+                        {yearCols.map((yr) => (
+                          <td key={yr} className="px-2 py-1.5 border-l border-gray-100">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              disabled={isLocked}
+                              value={getDraftAmount(caste, yr)}
+                              onChange={(e) => existingEntry
+                                ? updateAmount(existingEntry.id, yr, e.target.value)
+                                : setDraftAmount(caste, yr, e.target.value)}
+                              placeholder="₹ Amount"
+                              className={`w-full min-w-[90px] px-2 py-1.5 border rounded-lg text-xs text-right tabular-nums ${
+                                isLocked ? 'bg-amber-50 border-amber-200 text-amber-800 cursor-not-allowed' : 'border-gray-200 focus:ring-2 focus:ring-pink-300'
+                              }`}
+                            />
+                          </td>
+                        ))}
+                        <td className="px-2 py-1.5 border-l border-gray-100">
+                          <div className="flex items-center justify-center gap-1">
+                            {existingEntry ? (
+                              <>
+                                <button onClick={() => toggleLock(existingEntry.id)} disabled={saving}
+                                  className={`p-1.5 rounded border text-xs ${isLocked ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+                                  {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                                </button>
+                                <button onClick={() => onApply(existingEntry)} disabled={applying === existingEntry.id || saving}
+                                  className="p-1.5 rounded border text-xs bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 disabled:opacity-50">
+                                  {applying === existingEntry.id ? <RefreshCcw size={11} className="animate-spin" /> : <Save size={11} />}
+                                </button>
+                                <button onClick={() => removeEntry(existingEntry.id)} disabled={saving}
+                                  className="p-1.5 rounded border text-xs bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
+                                  <Trash2 size={11} />
+                                </button>
+                              </>
+                            ) : (
+                              <button onClick={() => saveDraftForCaste(caste)}
+                                disabled={saving || yearCols.every((yr) => !getDraftAmount(caste, yr))}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-40">
+                                <Plus size={11} /> Save
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── SAVED TAB ── */}
+      {activeTab === 'saved' && (
+        <div>
+          {entries.length === 0 ? (
+            <div className="text-center py-16 text-gray-500 text-sm">
+              No configurations saved yet. Use the Configure tab to add amounts.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    {['College', 'Batch', 'Program', 'Branch', 'Caste', 'Year Amounts', 'Status', 'Actions'].map((h) => (
+                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {entries.map((entry) => (
+                    <tr key={entry.id} className={`hover:bg-gray-50/60 ${entry.locked ? 'bg-amber-50/30' : ''}`}>
+                      <td className="px-3 py-2 text-xs text-gray-700 whitespace-nowrap">{entry.college}</td>
+                      <td className="px-3 py-2 text-xs font-semibold text-blue-700 whitespace-nowrap">{entry.batch}</td>
+                      <td className="px-3 py-2 text-xs text-purple-700 whitespace-nowrap">{entry.course}</td>
+                      <td className="px-3 py-2 text-xs text-emerald-700 whitespace-nowrap">{entry.branch}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        {entry.caste ? <span className="text-rose-700 font-semibold">{entry.caste}</span> : <span className="text-gray-400 italic">All Castes</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {(entry.years || []).map(({ year, amount }) => (
+                            <span key={year} className="inline-flex items-center gap-1 text-[11px] bg-gray-100 px-1.5 py-0.5 rounded">
+                              <span className="text-gray-500">{yearLabel(entry.batch, year)}:</span>
+                              <span className="font-semibold text-gray-800">{amount ? `₹${Number(amount).toLocaleString('en-IN')}` : '—'}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        {entry.locked
+                          ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full"><Lock size={9} /> Locked</span>
+                          : <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full"><Unlock size={9} /> Unlocked</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => toggleLock(entry.id)} disabled={saving}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border font-medium ${entry.locked ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-300 hover:bg-gray-100'}`}>
+                            {entry.locked ? <Unlock size={10} /> : <Lock size={10} />}
+                            {entry.locked ? 'Unlock' : 'Lock'}
+                          </button>
+                          <button onClick={() => onApply(entry)} disabled={applying === entry.id || saving}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                            {applying === entry.id ? <RefreshCcw size={10} className="animate-spin" /> : <Save size={10} />}
+                            Apply
+                          </button>
+                          <button onClick={() => removeEntry(entry.id)} disabled={saving}
+                            className="p-1 rounded text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Settings = () => {
   const [colleges, setColleges] = useState([]);
   const [selectedCollegeId, setSelectedCollegeId] = useState(null);
@@ -805,6 +1145,15 @@ const Settings = () => {
     isLoadingStudents: false
   });
   const [activeSection, setActiveSection] = useState('courses'); // 'courses', 'calendar', 'academic-calendar', 'forms', 'notifications', 'qr-config'
+
+  // RTF Amount Setup state
+  const [rtfConfig, setRtfConfig] = useState({ entries: [] });
+  const [rtfLoading, setRtfLoading] = useState(false);
+  const [rtfSaving, setRtfSaving] = useState(false);
+  const [rtfApplying, setRtfApplying] = useState(null); // entryId being applied
+  const [rtfFilterOptions, setRtfFilterOptions] = useState({ colleges: [], batches: [], courses: [], branches: [], castes: [] });
+  const [rtfNewEntry, setRtfNewEntry] = useState({ college: '', batch: '', course: '', branch: '', caste: '' });
+  const [rtfCoursesWithLevels, setRtfCoursesWithLevels]= useState([]);
 
   // QR Config state
   const [qrRoleConfigs, setQrRoleConfigs] = useState({}); // { roleKey: ['field1', 'field2'] }
@@ -1187,6 +1536,108 @@ const Settings = () => {
       console.error('Failed to load batch students', error);
       toast.error('Failed to load students for batch');
       setViewBatchStudentsModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // RTF Amount Setup functions
+  const fetchRtfConfig = async () => {
+    setRtfLoading(true);
+    try {
+      const [configRes, filtersRes, coursesRes, casteRes] = await Promise.all([
+        api.get('/settings/rtf-amount'),
+        api.get('/students/quick-filters?applyExclusions=true'),
+        api.get('/courses?includeInactive=false'),
+        api.get('/students/quick-filters?applyExclusions=true').then((r) => r) // reuse below
+      ]);
+      if (configRes.data?.success) setRtfConfig(configRes.data.data || { entries: [] });
+      if (filtersRes.data?.success) {
+        const d = filtersRes.data.data || {};
+        setRtfFilterOptions((prev) => ({
+          ...prev,
+          colleges: d.colleges || [],
+          batches: d.batches || [],
+          courses: d.courses || [],
+          branches: d.branches || []
+        }));
+      }
+      if (coursesRes.data?.success) setRtfCoursesWithLevels(coursesRes.data.data || []);
+      // Fetch distinct castes from students
+      try {
+        const casteListRes = await api.get('/students/distinct-castes');
+        if (casteListRes.data?.success) {
+          setRtfFilterOptions((prev) => ({ ...prev, castes: casteListRes.data.data || [] }));
+        }
+      } catch { /* castes optional */ }
+    } catch (err) {
+      toast.error('Failed to load RTF config');
+    } finally {
+      setRtfLoading(false);
+    }
+  };
+
+  // Update cascading filter options when college/batch/course changes
+  const updateRtfCascadeFilters = async (field, value, currentEntry) => {
+    const updated = { ...currentEntry, [field]: value };
+    // Reset downstream selections
+    if (field === 'college') { updated.batch = ''; updated.course = ''; updated.branch = ''; }
+    if (field === 'batch') { updated.branch = ''; }
+    if (field === 'course') { updated.branch = ''; }
+    setRtfNewEntry(updated);
+    // Fetch updated filter options based on new selection
+    try {
+      const params = new URLSearchParams({ applyExclusions: 'true' });
+      if (updated.college) params.append('college', updated.college);
+      if (updated.batch) params.append('batch', updated.batch);
+      if (updated.course) params.append('course', updated.course);
+      const res = await api.get(`/students/quick-filters?${params.toString()}`);
+      if (res.data?.success) {
+        const d = res.data.data || {};
+        setRtfFilterOptions((prev) => ({
+          ...prev,
+          batches: d.batches?.length ? d.batches : prev.batches,
+          courses: d.courses?.length ? d.courses : prev.courses,
+          branches: d.branches || []
+        }));
+      }
+    } catch { /* ignore cascade errors */ }
+  };
+
+  const saveRtfConfig = async (config) => {
+    setRtfSaving(true);
+    try {
+      const res = await api.put('/settings/rtf-amount', { config });
+      if (res.data?.success) {
+        setRtfConfig(res.data.data);
+        toast.success('RTF amount config saved');
+      }
+    } catch (err) {
+      toast.error('Failed to save RTF config');
+    } finally {
+      setRtfSaving(false);
+    }
+  };
+
+  const applyRtfEntry = async (entry) => {
+    setRtfApplying(entry.id);
+    try {
+      const res = await api.post('/settings/rtf-amount/apply', {
+        entryId: entry.id,
+        college: entry.college,
+        batch: entry.batch,
+        course: entry.course,
+        branch: entry.branch,
+        caste: entry.caste || '',
+        years: entry.years
+      });
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Applied successfully');
+      } else {
+        toast.error(res.data?.message || 'Apply failed');
+      }
+    } catch (err) {
+      toast.error('Failed to apply RTF amounts');
+    } finally {
+      setRtfApplying(null);
     }
   };
 
@@ -2199,6 +2650,10 @@ const Settings = () => {
     });
   }, [activeSection, calendarViewMonthKey]);
 
+  useEffect(() => {
+    if (activeSection === 'rtf-amount') fetchRtfConfig();
+  }, [activeSection]);
+
   // Handle body scroll when modal is open/closed
   useEffect(() => {
     if (isAddCourseModalOpen) {
@@ -3030,6 +3485,26 @@ const Settings = () => {
               </div>
             </div>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => setActiveSection('rtf-amount')}
+              className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'rtf-amount'
+                ? 'border-pink-500 bg-pink-50 shadow-md'
+                : 'border-gray-200 bg-white hover:border-pink-300 hover:shadow-sm'
+                }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className={`rounded-full p-2 ${activeSection === 'rtf-amount' ? 'bg-pink-100 text-pink-600' : 'bg-gray-100 text-gray-600'}`}>
+                  <GraduationCap size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">RTF Amount Setup</h2>
+                  <p className="text-xs text-gray-500">Scholarship sanctioned amounts per batch</p>
+                </div>
+              </div>
+            </button>
+          )}
 
           {isAdmin && (
             <button
@@ -4940,6 +5415,26 @@ const Settings = () => {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* RTF Amount Setup Section */}
+        {activeSection === 'rtf-amount' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
+            <RtfAmountSection
+              config={rtfConfig}
+              loading={rtfLoading}
+              saving={rtfSaving}
+              applying={rtfApplying}
+              filterOptions={rtfFilterOptions}
+              coursesWithLevels={rtfCoursesWithLevels}
+              newEntry={rtfNewEntry}
+              setNewEntry={setRtfNewEntry}
+              onSave={saveRtfConfig}
+              onApply={applyRtfEntry}
+              onRefresh={fetchRtfConfig}
+              onCascadeChange={updateRtfCascadeFilters}
+            />
           </div>
         )}
 

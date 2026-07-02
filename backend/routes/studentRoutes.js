@@ -84,6 +84,14 @@ router.get(
 );
 
 router.get(
+  '/distinct-castes',
+  authMiddleware,
+  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),
+  attachUserScope,
+  studentController.getDistinctCastes
+);
+
+router.get(
   '/batch-status',
   authMiddleware,
   verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view'),

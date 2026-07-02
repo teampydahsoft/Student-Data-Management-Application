@@ -694,3 +694,133 @@ exports.updateProfileUpdateFields = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/settings/rtf-amount
+ */
+exports.getRtfAmountConfig = async (req, res) => {
+  try {
+    const [rows] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['rtf_amount_config']
+    );
+    let config = { entries: [] };
+    if (rows.length > 0) {
+      try { config = JSON.parse(rows[0].value); } catch (e) { /* use default */ }
+    }
+    if (!Array.isArray(config.entries)) config.entries = [];
+    res.json({ success: true, data: config });
+  } catch (error) {
+    console.error('Get RTF amount config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch RTF amount config' });
+  }
+};
+
+/**
+ * PUT /api/settings/rtf-amount
+ */
+exports.updateRtfAmountConfig = async (req, res) => {
+  try {
+    const { config } = req.body;
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'config object is required' });
+    }
+    if (!Array.isArray(config.entries)) {
+      return res.status(400).json({ success: false, message: 'config.entries must be an array' });
+    }
+    const value = JSON.stringify(config);
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['rtf_amount_config', value, new Date(), value, new Date()]
+    );
+    auditSettingChange(req, 'rtf_amount_config', { entryCount: config.entries.length });
+    res.json({ success: true, message: 'RTF amount config saved', data: config });
+  } catch (error) {
+    console.error('Update RTF amount config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save RTF amount config' });
+  }
+};
+
+/**
+ * POST /api/settings/rtf-amount/apply
+ * Bulk-apply RTF amounts to student_scholarship rows.
+ * - For eligible students: set sanctioned_amount on their existing rows, or create semester rows if missing
+ * - For all students: set sanctioned_amount so pending = sanctioned - paid shows correctly
+ */
+exports.applyRtfAmountToStudents = async (req, res) => {
+  try {
+    const { entryId, college, batch, course, branch, caste, years } = req.body;
+    if (!college || !batch || !course || !branch || !Array.isArray(years) || !years.length) {
+      return res.status(400).json({ success: false, message: 'college, batch, course, branch and years are required' });
+    }
+
+    // Fetch all matching regular students, optionally filtered by caste
+    let studentQuery = `SELECT id, admission_number, scholar_status FROM students
+       WHERE college = ? AND batch = ? AND course = ? AND branch = ? AND student_status = 'Regular'`;
+    const studentParams = [college, batch, course, branch];
+    if (caste && String(caste).trim()) {
+      studentQuery += ' AND caste = ?';
+      studentParams.push(String(caste).trim());
+    }
+
+    const [students] = await masterPool.query(studentQuery, studentParams);
+
+    if (!students.length) {
+      return res.json({ success: true, message: 'No matching students found', updated: 0 });
+    }
+
+    let updatedCount = 0;
+    const connection = await masterPool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      for (const student of students) {
+        const isEligible = String(student.scholar_status || '').trim().toLowerCase() === 'eligible';
+
+        for (const { year, amount } of years) {
+          const studentYear = Number(year);
+          const sanctionedAmount = Number(amount) || 0;
+          if (!studentYear || sanctionedAmount <= 0) continue;
+
+          // Check if any row exists for this student+year
+          const [existingRows] = await connection.query(
+            `SELECT id, student_semester, eligible FROM student_scholarship
+             WHERE student_id = ? AND student_year = ?`,
+            [student.id, studentYear]
+          );
+
+          if (existingRows.length > 0) {
+            // Update sanctioned_amount on semester-1 summary row (or first row)
+            const summaryRow = existingRows.find(r => r.student_semester === 1) || existingRows[0];
+            await connection.query(
+              `UPDATE student_scholarship SET sanctioned_amount = ? WHERE id = ?`,
+              [sanctionedAmount, summaryRow.id]
+            );
+          } else if (isEligible) {
+            // Only create a new row for eligible students who have no scholarship entry yet
+            await connection.query(
+              `INSERT INTO student_scholarship
+               (student_id, student_year, student_semester, eligible, sanctioned_amount, released_amount, paid_amount)
+               VALUES (?, ?, 1, 'eligible', ?, 0, 0)`,
+              [student.id, studentYear, sanctionedAmount]
+            );
+          }
+          // Non-eligible students with no rows: don't create — pending will show from config
+          updatedCount++;
+        }
+      }
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+
+    res.json({ success: true, message: `RTF amounts applied to ${students.length} students`, updated: updatedCount });
+  } catch (error) {
+    console.error('Apply RTF amount error:', error);
+    res.status(500).json({ success: false, message: 'Failed to apply RTF amounts' });
+  }
+};
+

@@ -108,24 +108,90 @@ const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear =
 const buildScholarshipReportData = async (req) => {
   courseYearsCache.clear();
 
-  const { baseQuery, params } = await buildReportFilters(req);
+  // Optional filter: only include data for a specific student_year (within the program)
+  const filterAcademicYear = req.query.filter_academic_year
+    ? parseInt(req.query.filter_academic_year, 10)
+    : null;
+  const filterScholarshipStatus = (req.query.filter_scholarship_status || '').trim().toLowerCase();
+
+  // When an academic year is selected, the scholarship status must be checked against
+  // student_scholarship.eligible for that year — NOT students.scholar_status (which reflects
+  // the current/overall status). Strip filter_scholarship_status from the query before
+  // buildReportFilters so it doesn't pre-filter by the wrong column.
+  let reqForFilters = req;
+  if (filterAcademicYear && filterAcademicYear > 0 && filterScholarshipStatus) {
+    reqForFilters = {
+      ...req,
+      query: { ...req.query, filter_scholarship_status: '' }
+    };
+  }
+
+  const { baseQuery, params } = await buildReportFilters(reqForFilters);
+
   const studentQuery = `
     SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste, scholar_status
     ${baseQuery}
     ORDER BY student_name ASC, admission_number ASC
   `;
-  const [students] = await masterPool.query(studentQuery, params);
+  let [students] = await masterPool.query(studentQuery, params);
 
   if (!students.length) {
     return { students: [], totalYears: 0, data: [] };
   }
 
-  const studentIds = students.map((student) => student.id);
+  // When academic year + scholarship status are BOTH set, filter students by their
+  // eligible status in student_scholarship for that specific year — not scholar_status column.
+  if (filterAcademicYear && filterAcademicYear > 0 && filterScholarshipStatus) {
+    const studentIds = students.map((s) => s.id);
 
-  // Optional filter: only include data for a specific student_year (within the program)
-  const filterAcademicYear = req.query.filter_academic_year
-    ? parseInt(req.query.filter_academic_year, 10)
-    : null;
+    // Fetch eligible values for all these students in the selected year
+    const [yearEligibleRows] = await masterPool.query(
+      `SELECT student_id, eligible
+       FROM student_scholarship
+       WHERE student_id IN (?)
+         AND student_year = ?
+         AND eligible IS NOT NULL AND TRIM(eligible) != ''
+       ORDER BY student_id ASC, id ASC`,
+      [studentIds, filterAcademicYear]
+    );
+
+    // Build a map: student_id → normalized eligible status for that year
+    const yearStatusMap = new Map();
+    for (const row of yearEligibleRows) {
+      // Only set the first (primary) status per student for that year
+      if (!yearStatusMap.has(row.student_id)) {
+        yearStatusMap.set(row.student_id, String(row.eligible || '').trim().toLowerCase());
+      }
+    }
+
+    // Filter students based on the year-specific status
+    students = students.filter((student) => {
+      const yearStatus = yearStatusMap.get(student.id) || '';
+      if (filterScholarshipStatus === 'eligible') {
+        return yearStatus.includes('eligible') && !yearStatus.includes('not');
+      }
+      if (filterScholarshipStatus === 'not_eligible') {
+        return yearStatus.includes('not') && yearStatus.includes('eligible');
+      }
+      if (filterScholarshipStatus === 'rejected') {
+        return yearStatus === 'rejected';
+      }
+      if (filterScholarshipStatus === 'not_applied') {
+        return yearStatus === 'not_applied' || yearStatus === 'not applied';
+      }
+      if (filterScholarshipStatus === 'pending') {
+        // Pending = no row for this year at all, or status is pending
+        return !yearStatus || yearStatus === 'pending';
+      }
+      return true;
+    });
+
+    if (!students.length) {
+      return { students: [], totalYears: 0, data: [] };
+    }
+  }
+
+  const studentIds = students.map((student) => student.id);
 
   let scholarshipQuery = `SELECT student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
           from_date, released_amount, paid_amount

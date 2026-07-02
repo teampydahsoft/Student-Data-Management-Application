@@ -8593,3 +8593,17 @@ exports.getBatches = async (req, res) => {
     res.status(500).json({ success: false, data: [] });
   }
 };
+
+exports.getDistinctCastes = async (req, res) => {
+  try {
+    const [rows] = await masterPool.query(
+      `SELECT DISTINCT caste FROM students
+       WHERE caste IS NOT NULL AND TRIM(caste) <> ''
+       ORDER BY caste ASC`
+    );
+    res.json({ success: true, data: rows.map((r) => r.caste) });
+  } catch (error) {
+    console.error('Get distinct castes error:', error);
+    res.status(500).json({ success: false, data: [] });
+  }
+};

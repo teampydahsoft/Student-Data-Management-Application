@@ -26,6 +26,32 @@ const {
   checkApplicationIdAvailability
 } = require('../utils/scholarshipValidation');
 
+const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
+  try {
+    const [rows] = await masterPool.query(
+      "SELECT value FROM settings WHERE `key` = 'rtf_amount_config' LIMIT 1"
+    );
+    if (!rows.length) return null;
+    const config = JSON.parse(rows[0].value || '{}');
+    const entries = Array.isArray(config.entries) ? config.entries : [];
+    // Match: must match college/batch/course/branch AND be locked
+    // Caste match: if entry has a caste, it must match the student's caste;
+    // if entry has no caste (All Castes), it applies to everyone.
+    const normalizedCaste = String(caste || '').trim().toLowerCase();
+    const entry = entries.find((e) => {
+      if (e.college !== college || e.batch !== batch || e.course !== course || e.branch !== branch) return false;
+      if (!e.locked) return false;
+      const entryCaste = String(e.caste || '').trim().toLowerCase();
+      return !entryCaste || entryCaste === normalizedCaste;
+    });
+    if (!entry) return null;
+    const yearEntry = (entry.years || []).find((y) => Number(y.year) === Number(studentYear));
+    return yearEntry ? Number(yearEntry.amount) || null : null;
+  } catch {
+    return null;
+  }
+};
+
 const DEFAULT_TOTAL_YEARS = 4;
 
 const toNumber = (value) => {
@@ -95,7 +121,7 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
 
 const getStudentByAdmissionNumber = async (admissionNumber) => {
   const [rows] = await masterPool.query(
-    `SELECT id, admission_number, student_name, course, branch, batch, current_year, current_semester, stud_type
+    `SELECT id, admission_number, student_name, course, branch, batch, current_year, current_semester, stud_type, college, caste
      FROM students
      WHERE admission_number = ?
      LIMIT 1`,
@@ -179,7 +205,7 @@ const fetchScholarshipPayload = async (student) => {
       buildIneligibleQuotaYears(totalYears, semestersPerYear),
       archivedHistory,
       {
-        currentYearEligible: 'rejected',
+        currentYearEligible: 'not_eligible',
         scholarshipQuotaLocked: true,
         semestersPerYear
       }
@@ -384,6 +410,14 @@ exports.saveScholarshipHistory = async (req, res) => {
         application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
         sanctioned_amount: clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
       };
+
+      // If RTF amount is locked for this college/batch/course/branch/caste, use the locked amount
+      const lockedAmount = await getRtfLockedAmount(
+        student.college, student.batch, student.course, student.branch, studentYear, student.caste
+      );
+      if (lockedAmount !== null) {
+        summaryData.sanctioned_amount = lockedAmount;
+      }
 
       const [existingRows] = await connection.query(
         `SELECT application_id, eligible, sanctioned_amount, released_amount, paid_amount, student_semester,

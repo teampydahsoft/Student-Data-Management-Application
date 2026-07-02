@@ -223,16 +223,16 @@ const isSemesterSummaryRow = (row) => (
 const buildIneligibleQuotaYearEntry = (studentYear, semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR) => ({
   student_year: studentYear,
   application_id: '',
-  eligible: 'rejected',
+  eligible: 'not_eligible',
   sanctioned_amount: 0,
   released_amount: 0,
-  semesters: buildDefaultSemesters(semestersPerYear, 'rejected'),
+  semesters: buildDefaultSemesters(semestersPerYear, 'not_eligible'),
   releases: []
 });
 
 const scholarshipRowHasExtraData = (row) => (
   (row.application_id && String(row.application_id).trim())
-  || normalizeEligible(row.eligible) !== 'rejected'
+  || (normalizeEligible(row.eligible) !== 'rejected' && normalizeEligible(row.eligible) !== 'not_eligible')
   || toNumber(row.sanctioned_amount) > 0
   || toNumber(row.released_amount) > 0
   || row.from_date
@@ -312,13 +312,13 @@ const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
       await pool.query(
         `INSERT INTO student_scholarship
          (student_id, student_year, student_semester, eligible, sanctioned_amount, released_amount)
-         VALUES (?, ?, ?, 'rejected', 0, 0)`,
+         VALUES (?, ?, ?, 'not_eligible', 0, 0)`,
         [student.id, year, semester]
       );
     }
   }
 
-  await syncScholarStatusColumn(pool, student.id, 'rejected');
+  await syncScholarStatusColumn(pool, student.id, 'not_eligible');
   return true;
 };
 
@@ -367,7 +367,7 @@ const syncAllIneligibleQuotaScholarships = async (pool, options = {}) => {
 
 const resolveScholarStatusForStudent = (student, parsedData = null) => {
   if (isScholarshipIneligibleQuota(student?.stud_type)) {
-    return 'rejected';
+    return 'not_eligible';
   }
   const data = parsedData || {};
   const rawScholarStatus = student?.scholar_status
@@ -398,7 +398,7 @@ const getScholarshipEligibleForYear = async (
   }
 
   if (isScholarshipIneligibleQuota(quotaCode)) {
-    return 'rejected';
+    return 'not_eligible';
   }
 
   const [rows] = await pool.query(

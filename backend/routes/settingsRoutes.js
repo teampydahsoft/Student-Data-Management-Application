@@ -47,6 +47,11 @@ router.put('/frozen-batches', settingsController.updateFrozenBatches);
 router.get('/profile-update-fields', settingsController.getProfileUpdateFields);
 router.put('/profile-update-fields', settingsController.updateProfileUpdateFields);
 
+// RTF Amount Setup routes
+router.get('/rtf-amount', settingsController.getRtfAmountConfig);
+router.put('/rtf-amount', settingsController.updateRtfAmountConfig);
+router.post('/rtf-amount/apply', settingsController.applyRtfAmountToStudents);
+
 module.exports = router;
 
 
