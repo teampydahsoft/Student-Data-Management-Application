@@ -25,6 +25,28 @@ const formatAmount = (value) => {
   return num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
+// Mirror of backend formatAcademicYearLabel — batch like "2023" or "2023-24"
+const extractBatchStartYear = (batch) => {
+  if (!batch) return null;
+  const text = String(batch).trim();
+  const full = text.match(/^(\d{4})/);
+  if (full) return Number(full[1]);
+  const short = text.match(/^(\d{2})/);
+  if (short) {
+    const y = Number(short[1]);
+    return y <= 50 ? 2000 + y : 1900 + y;
+  }
+  return null;
+};
+
+const formatAcademicYearLabel = (batch, studentYear) => {
+  const start = extractBatchStartYear(batch);
+  const idx = Math.max(1, Number(studentYear) || 1);
+  if (!start) return `Year ${idx}`;
+  const from = start + idx - 1;
+  return `${from}-${from + 1}`;
+};
+
 function ScholarshipReport() {
   const { user } = useAuthStore();
 
@@ -52,7 +74,8 @@ function ScholarshipReport() {
     college: '',
     batch: '',
     course: '',
-    branch: ''
+    branch: '',
+    academic_year: ''   // 'all' or '1','2','3','4'
   });
   const [filterOptions, setFilterOptions] = useState({
     colleges: [],
@@ -62,6 +85,7 @@ function ScholarshipReport() {
   });
   const [coursesWithLevels, setCoursesWithLevels] = useState([]);
   const [collegesList, setCollegesList] = useState([]);
+  const [batchTotalYears, setBatchTotalYears] = useState(0); // total years for selected batch/course
   const [reportData, setReportData] = useState([]);
   const [totalYears, setTotalYears] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -103,7 +127,7 @@ function ScholarshipReport() {
   };
 
   const clearFilters = () => {
-    setFilters({ college: '', batch: '', course: '', branch: '' });
+    setFilters({ college: '', batch: '', course: '', branch: '', academic_year: '' });
   };
 
   useEffect(() => {
@@ -170,6 +194,20 @@ function ScholarshipReport() {
     return [...new Set(list.map((c) => c.name).filter(Boolean))].sort();
   }, [coursesWithLevels, collegesList, filters.college, filterOptions.courses]);
 
+  // Resolve total years for the selected course so we can build academic year options
+  useEffect(() => {
+    if (!filters.course) {
+      setBatchTotalYears(0);
+      setFilters((prev) => ({ ...prev, academic_year: '' }));
+      return;
+    }
+    const matched = coursesWithLevels.find((c) => c.name === filters.course);
+    const years = matched?.total_years || matched?.totalYears || 4;
+    setBatchTotalYears(Number(years) || 4);
+    // Reset academic_year when course changes
+    setFilters((prev) => ({ ...prev, academic_year: '' }));
+  }, [filters.course, coursesWithLevels]);
+
   useEffect(() => {
     if (!filtersReady) {
       setReportData([]);
@@ -185,6 +223,9 @@ function ScholarshipReport() {
         params.append('filter_batch', filters.batch);
         params.append('filter_course', filters.course);
         params.append('filter_branch', filters.branch);
+        if (filters.academic_year && filters.academic_year !== 'all') {
+          params.append('filter_academic_year', filters.academic_year);
+        }
 
         const res = await api.get(`/students/reports/scholarship?${params.toString()}`);
         if (res.data?.success) {
@@ -212,6 +253,9 @@ function ScholarshipReport() {
     params.append('filter_batch', filters.batch);
     params.append('filter_course', filters.course);
     params.append('filter_branch', filters.branch);
+    if (filters.academic_year && filters.academic_year !== 'all') {
+      params.append('filter_academic_year', filters.academic_year);
+    }
     return params;
   };
 
@@ -266,6 +310,15 @@ function ScholarshipReport() {
     [totalYears]
   );
 
+  // Build academic year options: [{ value: '1', label: '2023-2024' }, ...]
+  const academicYearOptions = useMemo(() => {
+    if (!batchTotalYears || !filters.batch) return [];
+    return Array.from({ length: batchTotalYears }, (_, i) => ({
+      value: String(i + 1),
+      label: formatAcademicYearLabel(filters.batch, i + 1)
+    }));
+  }, [batchTotalYears, filters.batch]);
+
   const SortIcon = ({ colKey }) => {
     if (sort.key !== colKey) return <ArrowUpDown size={13} className="text-gray-400 ml-1 inline-block" />;
     return sort.dir === 'asc'
@@ -273,7 +326,7 @@ function ScholarshipReport() {
       : <ArrowDown size={13} className="text-amber-600 ml-1 inline-block" />;
   };
 
-  const hasActiveFilters = filters.college || filters.batch || filters.course || filters.branch;
+  const hasActiveFilters = filters.college || filters.batch || filters.course || filters.branch || filters.academic_year;
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-4 p-4">
@@ -285,7 +338,7 @@ function ScholarshipReport() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Scholarship Report</h1>
             <p className="text-sm text-gray-500">
-              Year-wise sanctioned, released and due amounts by batch, college, program and branch
+              Year-wise sanctioned, released, paid and pending amounts by batch, college, program and branch
             </p>
           </div>
         </div>
@@ -316,7 +369,7 @@ function ScholarshipReport() {
           <Layers size={16} />
           Filters
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">College</label>
             <select
@@ -369,6 +422,20 @@ function ScholarshipReport() {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Academic Year</label>
+            <select
+              value={filters.academic_year || ''}
+              onChange={(e) => handleFilterChange('academic_year', e.target.value)}
+              disabled={!filters.batch || !filters.course}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 disabled:opacity-50 disabled:bg-gray-50"
+            >
+              <option value="">All Years</option>
+              {academicYearOptions.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         {hasActiveFilters && (
           <button
@@ -397,6 +464,11 @@ function ScholarshipReport() {
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200">
             <GitBranch size={14} /> {filters.branch}
           </span>
+          {filters.academic_year && filters.academic_year !== 'all' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-medium">
+              <Layers size={14} /> {formatAcademicYearLabel(filters.batch, filters.academic_year)}
+            </span>
+          )}
           <span className="ml-auto text-gray-500">{reportData.length} students</span>
         </div>
       )}
@@ -417,121 +489,114 @@ function ScholarshipReport() {
               No students found for the selected filters.
             </div>
           ) : (
-            <table className="min-w-full text-sm border-collapse">
+            <table className="min-w-full text-xs border-collapse">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
-                    S.No
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
+                    #
                   </th>
                   <th
                     rowSpan={2}
                     onClick={() => handleSortToggle('name')}
-                    className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap min-w-[180px] cursor-pointer select-none hover:bg-gray-100"
+                    className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap min-w-[140px] cursor-pointer select-none hover:bg-gray-100 text-[11px]"
                   >
                     Student Name <SortIcon colKey="name" />
                   </th>
                   <th
                     rowSpan={2}
                     onClick={() => handleSortToggle('pin')}
-                    className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100"
+                    className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 text-[11px]"
                   >
-                    PIN / Admission No <SortIcon colKey="pin" />
+                    PIN / Adm No <SortIcon colKey="pin" />
                   </th>
-                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                     Branch
                   </th>
-                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                     Quota
                   </th>
-                  <th rowSpan={2} className="border-b border-r border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                     Caste
                   </th>
                   {yearColumns.map((year) => (
                     <th
                       key={`year-${year}`}
-                      colSpan={2}
-                      className="border-b border-r border-gray-200 px-3 py-2 text-center font-semibold text-gray-700 bg-amber-50/60"
+                      colSpan={5}
+                      className="border-b border-r border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-700 bg-amber-50/60 text-[11px]"
                     >
-                      Year {year}
+                      {formatAcademicYearLabel(filters.batch, year)}
                     </th>
                   ))}
-                  {yearColumns.length > 0 && (
-                    <th
-                      colSpan={yearColumns.length}
-                      className="border-b border-r border-gray-200 px-3 py-2 text-center font-semibold text-gray-700 bg-sky-50/70"
-                    >
-                      Due
-                    </th>
-                  )}
                 </tr>
                 <tr>
                   {yearColumns.map((year) => (
                     <React.Fragment key={`sub-${year}`}>
-                      <th className="border-b border-r border-gray-200 px-2 py-1.5 text-center text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Sanctioned
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-gray-500 whitespace-nowrap">
+                        Sanc.
                       </th>
-                      <th className="border-b border-r border-gray-200 px-2 py-1.5 text-center text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Released
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-emerald-600 whitespace-nowrap">
+                        Rel.
+                      </th>
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-blue-600 whitespace-nowrap">
+                        Paid
+                      </th>
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-amber-600 whitespace-nowrap">
+                        Pend.
+                      </th>
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
+                        Due
                       </th>
                     </React.Fragment>
-                  ))}
-                  {yearColumns.map((year) => (
-                    <th
-                      key={`due-${year}`}
-                      className="border-b border-r border-gray-200 px-2 py-1.5 text-center text-xs font-medium text-gray-600 whitespace-nowrap bg-sky-50/40"
-                    >
-                      Year {year}
-                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {sortedData.map((student, index) => (
                   <tr key={student.student_id || student.admission_number} className="hover:bg-gray-50/80">
-                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600">{index + 1}</td>
-                    <td className="border-b border-r border-gray-100 px-3 py-2 font-medium text-gray-900">
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-500 text-[11px]">{index + 1}</td>
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 font-medium text-gray-900 text-[11px]">
                       {student.student_name || '—'}
                     </td>
-                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-700 font-mono text-xs">
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-700 font-mono text-[10px]">
                       {student.pin_no || student.admission_number || '—'}
                     </td>
-                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-600 text-[11px]">
                       {student.branch || '—'}
                     </td>
-                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-600 text-[11px]">
                       {student.stud_type || '—'}
                     </td>
-                    <td className="border-b border-r border-gray-100 px-3 py-2 text-gray-600 text-xs">
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-600 text-[11px]">
                       {student.caste || '—'}
                     </td>
                     {yearColumns.map((year) => {
                       const yearData = student.years?.find((entry) => entry.student_year === year) || {
                         sanctioned_amount: 0,
                         released_amount: 0,
+                        paid_amount: 0,
+                        pending_amount: 0,
                         due_amount: 0
                       };
                       return (
                         <React.Fragment key={`${student.student_id}-${year}`}>
-                          <td className="border-b border-r border-gray-100 px-2 py-2 text-right text-gray-700 tabular-nums">
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-gray-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.sanctioned_amount)}
                           </td>
-                          <td className="border-b border-r border-gray-100 px-2 py-2 text-right text-gray-700 tabular-nums">
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-emerald-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.released_amount)}
                           </td>
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-blue-700 tabular-nums text-[11px]">
+                            {formatAmount(yearData.paid_amount)}
+                          </td>
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right tabular-nums text-[11px]">
+                            <span className={yearData.pending_amount > 0 ? 'text-amber-600 font-medium' : 'text-gray-400'}>
+                              {formatAmount(yearData.pending_amount)}
+                            </span>
+                          </td>
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
+                            {formatAmount(yearData.due_amount)}
+                          </td>
                         </React.Fragment>
-                      );
-                    })}
-                    {yearColumns.map((year) => {
-                      const yearData = student.years?.find((entry) => entry.student_year === year) || {
-                        due_amount: 0
-                      };
-                      return (
-                        <td
-                          key={`${student.student_id}-due-${year}`}
-                          className="border-b border-r border-gray-100 px-2 py-2 text-right font-medium text-gray-900 tabular-nums bg-sky-50/20"
-                        >
-                          {formatAmount(yearData.due_amount)}
-                        </td>
                       );
                     })}
                   </tr>

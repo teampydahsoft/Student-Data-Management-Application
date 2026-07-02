@@ -42,9 +42,16 @@ const buildYearAmountsFromRows = (yearRows, semestersPerYear) => {
   const snapshot = buildYearSnapshotFromRows(yearRows, semestersPerYear);
   const sanctioned = formatAmount(snapshot.sanctioned_amount);
   const released = formatAmount(snapshot.released_amount);
+  // Sum paid_amount across release rows in the snapshot
+  const paid = formatAmount(
+    (snapshot.releases || []).reduce((sum, r) => sum + (Number(r.paid_amount) || 0), 0)
+  );
+  const pending = formatAmount(Math.max(0, sanctioned - paid));
   return {
     sanctioned_amount: sanctioned,
     released_amount: released,
+    paid_amount: paid,
+    pending_amount: pending,
     due_amount: formatAmount(sanctioned - released)
   };
 };
@@ -61,12 +68,16 @@ const groupScholarshipRows = (rows) => {
   return byStudent;
 };
 
-const buildStudentYearEntries = async (student, yearRowMap) => {
+const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear = null) => {
   const totalYears = await getTotalYearsForStudent(student);
   const semestersPerYear = await resolveSemestersPerYear(masterPool, student);
   const years = [];
 
-  for (let studentYear = 1; studentYear <= totalYears; studentYear += 1) {
+  const yearsToProcess = filterAcademicYear && filterAcademicYear > 0
+    ? [filterAcademicYear]
+    : Array.from({ length: totalYears }, (_, i) => i + 1);
+
+  for (const studentYear of yearsToProcess) {
     const yearRows = yearRowMap?.get(studentYear) || [];
     if (yearRows.length) {
       years.push({
@@ -78,12 +89,20 @@ const buildStudentYearEntries = async (student, yearRowMap) => {
         student_year: studentYear,
         sanctioned_amount: 0,
         released_amount: 0,
+        paid_amount: 0,
+        pending_amount: 0,
         due_amount: 0
       });
     }
   }
 
-  return { totalYears, years };
+  // When filtering to a single year, report totalYears as that year number
+  // so the table renders only the relevant column
+  const effectiveTotalYears = filterAcademicYear && filterAcademicYear > 0
+    ? filterAcademicYear
+    : totalYears;
+
+  return { totalYears: effectiveTotalYears, years };
 };
 
 const buildScholarshipReportData = async (req) => {
@@ -102,14 +121,26 @@ const buildScholarshipReportData = async (req) => {
   }
 
   const studentIds = students.map((student) => student.id);
-  const [scholarshipRows] = await masterPool.query(
-    `SELECT student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
-            from_date, released_amount
-     FROM student_scholarship
-     WHERE student_id IN (?)
-     ORDER BY student_id ASC, student_year ASC, student_semester ASC, id ASC`,
-    [studentIds]
-  );
+
+  // Optional filter: only include data for a specific student_year (within the program)
+  const filterAcademicYear = req.query.filter_academic_year
+    ? parseInt(req.query.filter_academic_year, 10)
+    : null;
+
+  let scholarshipQuery = `SELECT student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
+          from_date, released_amount, paid_amount
+   FROM student_scholarship
+   WHERE student_id IN (?)`;
+  const scholarshipParams = [studentIds];
+
+  if (filterAcademicYear && filterAcademicYear > 0) {
+    scholarshipQuery += ' AND student_year = ?';
+    scholarshipParams.push(filterAcademicYear);
+  }
+
+  scholarshipQuery += ' ORDER BY student_id ASC, student_year ASC, student_semester ASC, id ASC';
+
+  const [scholarshipRows] = await masterPool.query(scholarshipQuery, scholarshipParams);
 
   const scholarshipByStudent = groupScholarshipRows(scholarshipRows);
   let maxTotalYears = 0;
@@ -117,7 +148,11 @@ const buildScholarshipReportData = async (req) => {
 
   for (const student of students) {
     const yearRowMap = scholarshipByStudent.get(student.id) || new Map();
-    const { totalYears, years } = await buildStudentYearEntries(student, yearRowMap);
+    const { totalYears, years } = await buildStudentYearEntries(
+      student,
+      yearRowMap,
+      filterAcademicYear
+    );
     maxTotalYears = Math.max(maxTotalYears, totalYears);
     data.push({
       student_id: student.id,
@@ -151,19 +186,19 @@ const buildExcelBuffer = (data, totalYears, filters) => {
   ];
 
   for (let year = 1; year <= totalYears; year += 1) {
-    row1.push(`Year ${year}`, '');
-    row2.push('Sanctioned', 'Released');
-    const startCol = fixedCols + (year - 1) * 2;
-    merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + 1 } });
+    row1.push(`Year ${year}`, '', '', '');
+    row2.push('Sanctioned', 'Released', 'Paid', 'Pending');
+    const startCol = fixedCols + (year - 1) * 4;
+    merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + 3 } });
   }
 
   if (totalYears > 0) {
     row1.push(...Array(totalYears).fill(''));
-    row1[fixedCols + totalYears * 2] = 'Due';
+    row1[fixedCols + totalYears * 4] = 'Due';
     for (let year = 1; year <= totalYears; year += 1) {
       row2.push(`Year ${year}`);
     }
-    const dueStartCol = fixedCols + totalYears * 2;
+    const dueStartCol = fixedCols + totalYears * 4;
     merges.push({ s: { r: 0, c: dueStartCol }, e: { r: 0, c: dueStartCol + totalYears - 1 } });
   }
 
@@ -192,9 +227,11 @@ const buildExcelBuffer = (data, totalYears, filters) => {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
         sanctioned_amount: 0,
         released_amount: 0,
+        paid_amount: 0,
+        pending_amount: 0,
         due_amount: 0
       };
-      row.push(yearData.sanctioned_amount, yearData.released_amount);
+      row.push(yearData.sanctioned_amount, yearData.released_amount, yearData.paid_amount, yearData.pending_amount);
     }
     for (let year = 1; year <= totalYears; year += 1) {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
@@ -238,7 +275,8 @@ exports.exportScholarshipReport = async (req, res) => {
       college: req.query.filter_college || '',
       batch: req.query.filter_batch || '',
       course: req.query.filter_course || '',
-      branch: req.query.filter_branch || ''
+      branch: req.query.filter_branch || '',
+      academic_year: req.query.filter_academic_year || ''
     };
     const buffer = buildExcelBuffer(data, totalYears, filters);
     const dateStr = new Date().toISOString().split('T')[0];

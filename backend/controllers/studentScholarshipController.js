@@ -190,7 +190,7 @@ const fetchScholarshipPayload = async (student) => {
     `SELECT id, student_year, student_semester, application_id, eligible, sanctioned_amount,
             DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
             DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
-            proceeding, released_amount
+            proceeding, released_amount, paid_amount
      FROM student_scholarship
      WHERE student_id = ?
      ORDER BY student_year ASC, student_semester ASC, id ASC`,
@@ -267,7 +267,8 @@ const buildIncomingYearSnapshot = (yearEntry) => {
       return {
         from_date: normalized.rtf_released_date || null,
         rtf_released_date: normalized.rtf_released_date || null,
-        released_amount: normalized.released_amount
+        released_amount: normalized.released_amount,
+        paid_amount: normalized.paid_amount
       };
     });
 
@@ -385,7 +386,7 @@ exports.saveScholarshipHistory = async (req, res) => {
       };
 
       const [existingRows] = await connection.query(
-        `SELECT application_id, eligible, sanctioned_amount, released_amount, student_semester,
+        `SELECT application_id, eligible, sanctioned_amount, released_amount, paid_amount, student_semester,
                 DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
                 DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
                 proceeding
@@ -453,8 +454,8 @@ exports.saveScholarshipHistory = async (req, res) => {
           await connection.query(
             `INSERT INTO student_scholarship
              (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
-              from_date, to_date, proceeding, released_amount)
-             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+              from_date, to_date, proceeding, released_amount, paid_amount)
+             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               student.id,
               studentYear,
@@ -464,7 +465,8 @@ exports.saveScholarshipHistory = async (req, res) => {
               normalizedRelease.rtf_released_date || null,
               null,
               null,
-              normalizedRelease.released_amount
+              normalizedRelease.released_amount,
+              normalizedRelease.paid_amount
             ]
           );
         }

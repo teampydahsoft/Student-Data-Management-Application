@@ -223,6 +223,7 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
     if (!sanctionedValidation.valid) return sanctionedValidation;
 
     const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+    let totalReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
       const release = releases[index];
       const releaseAmount = clampScholarshipAmount(release.released_amount);
@@ -244,6 +245,39 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
         }
       );
       if (!releaseValidation.valid) return releaseValidation;
+
+      // Validate paid_amount: must be a valid amount (≤ sanctioned enforced at year level)
+      const paidAmount = clampScholarshipAmount(release.paid_amount);
+      if (release.paid_amount !== undefined && release.paid_amount !== null && release.paid_amount !== '') {
+        const paidValidation = validateScholarshipAmount(
+          normalizeScholarshipAmountInput(release.paid_amount),
+          {
+            fieldLabel: `Year ${studentYear} paid amount (row ${index + 1})`,
+            allowEmpty: true
+          }
+        );
+        if (!paidValidation.valid) return paidValidation;
+      }
+
+      totalReleasedAmount += releaseAmount;
+    }
+
+    // Total released must not exceed sanctioned amount
+    const sanctionedValue = sanctionedValidation.value ?? 0;
+    if (sanctionedValue > 0 && totalReleasedAmount > sanctionedValue) {
+      return {
+        valid: false,
+        message: `Year ${studentYear}: Total released amount (${totalReleasedAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
+      };
+    }
+
+    // Total paid must not exceed sanctioned amount
+    const totalPaidAmount = releases.reduce((sum, r) => sum + clampScholarshipAmount(r.paid_amount), 0);
+    if (sanctionedValue > 0 && totalPaidAmount > sanctionedValue) {
+      return {
+        valid: false,
+        message: `Year ${studentYear}: Total paid amount (${totalPaidAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
+      };
     }
   }
 

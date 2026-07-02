@@ -70,7 +70,8 @@ const emptyRelease = () => ({
   id: null,
   academic_year: '',
   rtf_released_date: '',
-  released_amount: ''
+  released_amount: '',
+  paid_amount: ''
 });
 
 const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', {
@@ -83,6 +84,7 @@ const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', {
 const parseAmount = (value) => parseScholarshipAmount(value);
 
 const sumReleased = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.released_amount), 0);
+const sumPaid = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.paid_amount), 0);
 
 const normalizeDateForInput = (value) => normalizeRtfReleasedDateForInput(value);
 
@@ -104,6 +106,10 @@ const mapReleasesFromApi = (releases = [], academicYearLabel = '') => (
     ),
     released_amount: (() => {
       const normalized = formatScholarshipAmountForInput(release.released_amount);
+      return normalized === '' || normalized === '0' ? '' : normalized;
+    })(),
+    paid_amount: (() => {
+      const normalized = formatScholarshipAmountForInput(release.paid_amount);
       return normalized === '' || normalized === '0' ? '' : normalized;
     })()
   }))
@@ -319,11 +325,20 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   }, [fetchScholarship]);
 
   const summaryYears = useMemo(
-    () => years.map((year) => ({
-      ...year,
-      released_amount: isYearScholarshipEligible(year) ? sumReleased(year.releases) : 0,
-      releasesEligible: isYearScholarshipEligible(year)
-    })),
+    () => years.map((year) => {
+      const eligible = isYearScholarshipEligible(year);
+      const sanctioned = eligible ? parseAmount(year.sanctioned_amount) : 0;
+      const released = eligible ? sumReleased(year.releases) : 0;
+      const paid = eligible ? sumPaid(year.releases) : 0;
+      const pending = sanctioned > 0 ? Math.max(0, sanctioned - paid) : 0;
+      return {
+        ...year,
+        released_amount: released,
+        paid_amount: paid,
+        pending_amount: pending,
+        releasesEligible: eligible
+      };
+    }),
     [years]
   );
 
@@ -575,7 +590,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
   const updateReleaseField = (yearIndex, releaseIndex, field, value) => {
     let nextValue = value;
-    if (field === 'released_amount') {
+    if (field === 'released_amount' || field === 'paid_amount') {
       nextValue = normalizeScholarshipAmountInput(value);
     }
     // For rtf_released_date: always store whatever the browser emits (YYYY-MM-DD or empty).
@@ -659,6 +674,33 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           toast.error(`Year ${year.student_year}, release row ${index + 1}: Amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
           return;
         }
+
+        // paid_amount: just validate it's a valid amount (≤ sanctioned enforced at year level)
+        if (release.paid_amount !== '' && release.paid_amount !== undefined) {
+          if (!isValidScholarshipAmount(release.paid_amount)) {
+            toast.error(`Year ${year.student_year}, release row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+            return;
+          }
+        }
+      }
+
+      // Total released must not exceed sanctioned amount
+      const sanctioned = parseAmount(year.sanctioned_amount);
+      const totalReleased = sumReleased(year.releases);
+      if (sanctioned > 0 && totalReleased > sanctioned) {
+        toast.error(
+          `Year ${year.student_year}: Total released amount (${totalReleased}) cannot exceed sanctioned amount (${sanctioned})`
+        );
+        return;
+      }
+
+      // Total paid must not exceed sanctioned amount
+      const totalPaid = sumPaid(year.releases);
+      if (sanctioned > 0 && totalPaid > sanctioned) {
+        toast.error(
+          `Year ${year.student_year}: Total paid amount (${totalPaid}) cannot exceed sanctioned amount (${sanctioned})`
+        );
+        return;
       }
     }
 
@@ -683,7 +725,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
               .map((release) => ({
                 academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
                 rtf_released_date: normalizeRtfReleasedDateForInput(release.rtf_released_date) || null,
-                released_amount: parseAmount(release.released_amount)
+                released_amount: parseAmount(release.released_amount),
+                paid_amount: parseAmount(release.paid_amount)
               }))
             : []
         };
@@ -791,14 +834,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                <th className="px-3 py-3 font-bold whitespace-nowrap text-center">Year</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap text-center">Application ID</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap">Sem</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap">Eligible</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap text-center">Sanctioned Amount</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap text-center">Released Amount</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap">Remarks</th>
-                <th className="px-3 py-3 font-bold whitespace-nowrap text-center">History</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Year</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Application ID</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap">Sem</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Sanctioned</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Released</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Pending</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap">Remarks</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">History</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -813,9 +858,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
-                        className="px-3 py-3 align-middle text-center border-r border-gray-50"
+                        className="px-2 py-2 align-middle text-center border-r border-gray-50"
                       >
-                        <span className="font-semibold text-gray-900 whitespace-nowrap">
+                        <span className="font-semibold text-gray-900 whitespace-nowrap text-xs">
                           Year {year.student_year}
                         </span>
                       </td>
@@ -823,12 +868,12 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
-                        className="px-3 py-3 align-middle text-center border-r border-gray-50"
+                        className="px-2 py-2 align-middle text-center border-r border-gray-50"
                       >
                         {isEditingDisabled ? (
-                          <span className="text-gray-700">{year.application_id || '—'}</span>
+                          <span className="text-gray-700 text-xs">{year.application_id || '—'}</span>
                         ) : (
-                          <div className="flex flex-col items-center gap-1 min-w-[140px]">
+                          <div className="flex flex-col items-center gap-1 min-w-[120px]">
                             <input
                               type="text"
                               inputMode="numeric"
@@ -836,18 +881,18 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               maxLength={SCHOLARSHIP_APPLICATION_ID_LENGTH}
                               value={year.application_id || ''}
                               onChange={(e) => updateYearField(yearIndex, 'application_id', e.target.value)}
-                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center tracking-wider ${
+                              className={`w-full px-1.5 py-1 border rounded-lg text-xs text-center tracking-wider ${
                                 applicationIdFeedbackByYear[year.student_year]?.type === 'error'
                                   ? 'border-red-300 bg-red-50/40'
                                   : applicationIdFeedbackByYear[year.student_year]?.type === 'success'
                                     ? 'border-green-300 bg-green-50/40'
                                     : 'border-gray-200'
                               }`}
-                              placeholder={`${SCHOLARSHIP_APPLICATION_ID_LENGTH}-digit number`}
+                              placeholder={`${SCHOLARSHIP_APPLICATION_ID_LENGTH}-digit`}
                             />
                             {applicationIdFeedbackByYear[year.student_year]?.message && (
                               <p
-                                className={`text-[10px] leading-tight text-center max-w-[140px] ${
+                                className={`text-[10px] leading-tight text-center max-w-[120px] ${
                                   applicationIdFeedbackByYear[year.student_year]?.type === 'error'
                                     ? 'text-red-600'
                                     : applicationIdFeedbackByYear[year.student_year]?.type === 'success'
@@ -864,19 +909,19 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         )}
                       </td>
                     )}
-                    <td className="px-3 py-3 whitespace-nowrap text-gray-700">
+                    <td className="px-2 py-2 whitespace-nowrap text-gray-700 text-xs">
                       Sem {semester.student_semester}
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-2 py-2">
                       {isEditingDisabled ? (
-                        <span className="text-gray-700">
+                        <span className="text-gray-700 text-xs">
                           {getScholarshipStatusDropdownLabel(semester.eligible)}
                         </span>
                       ) : (
                         <select
                           value={normalizeScholarshipStatusValue(semester.eligible) || ''}
                           onChange={(e) => updateSemesterField(yearIndex, semesterIndex, e.target.value)}
-                          className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                          className="w-full min-w-[110px] px-1.5 py-1 border border-gray-200 rounded-lg text-xs"
                         >
                           {ELIGIBLE_OPTIONS.map((option) => (
                             <option key={option.value || 'blank'} value={option.value}>
@@ -889,11 +934,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
-                        className="px-3 py-3 align-middle text-center border-l border-gray-50"
+                        className="px-2 py-2 align-middle text-center border-l border-gray-50"
                       >
                         {year.releasesEligible ? (
                           isEditingDisabled ? (
-                            <span className="font-medium text-gray-800">
+                            <span className="font-medium text-gray-800 text-xs">
                               {formatCurrency(year.sanctioned_amount)}
                             </span>
                           ) : (
@@ -904,7 +949,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               maxLength={5}
                               value={year.sanctioned_amount ?? ''}
                               onChange={(e) => updateYearField(yearIndex, 'sanctioned_amount', e.target.value)}
-                              className="w-full min-w-[100px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center"
+                              className="w-full min-w-[80px] px-1.5 py-1 border border-gray-200 rounded-lg text-xs text-center"
                               placeholder={`Max ${SCHOLARSHIP_MAX_AMOUNT}`}
                             />
                           )
@@ -916,10 +961,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
-                        className="px-3 py-3 align-middle text-center whitespace-nowrap border-l border-gray-50"
+                        className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
                         {year.releasesEligible ? (
-                          <span className="font-semibold text-emerald-700">
+                          <span className="font-semibold text-emerald-700 text-xs">
                             {formatCurrency(year.released_amount)}
                           </span>
                         ) : (
@@ -927,7 +972,35 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         )}
                       </td>
                     )}
-                    <td className="px-3 py-3 min-w-[160px]">
+                    {semesterIndex === 0 && (
+                      <td
+                        rowSpan={rowSpan}
+                        className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
+                      >
+                        {year.releasesEligible ? (
+                          <span className="font-semibold text-blue-700 text-xs">
+                            {formatCurrency(year.paid_amount)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
+                    {semesterIndex === 0 && (
+                      <td
+                        rowSpan={rowSpan}
+                        className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
+                      >
+                        {year.releasesEligible ? (
+                          <span className={`font-semibold text-xs ${year.pending_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                            {formatCurrency(year.pending_amount)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="px-2 py-2 min-w-[120px]">
                       {isEditingDisabled ? (
                         <span className="text-gray-700 text-xs">{semester.remark || '—'}</span>
                       ) : (
@@ -935,7 +1008,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           type="text"
                           value={semester.remark || ''}
                           onChange={(e) => updateSemesterRemark(yearIndex, semesterIndex, e.target.value)}
-                          className="w-full min-w-[110px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                          className="w-full min-w-[90px] px-1.5 py-1 border border-gray-200 rounded-lg text-xs"
                           placeholder={`Sem ${semester.student_semester} remark`}
                         />
                       )}
@@ -943,15 +1016,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
-                        className="px-3 py-3 align-middle text-center border-l border-gray-50"
+                        className="px-2 py-2 align-middle text-center border-l border-gray-50"
                       >
                         <button
                           type="button"
                           onClick={() => setHistoryYear(year.student_year)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[10px] font-bold hover:bg-amber-100 border border-amber-100"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-800 text-[10px] font-bold hover:bg-amber-100 border border-amber-100"
                           title={`View archived scholarship history for Year ${year.student_year}`}
                         >
-                          <History size={12} />
+                          <History size={11} />
                           History
                         </button>
                       </td>
@@ -982,14 +1055,40 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           {releaseTransactionYears.map((year) => {
             const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
+            const sanctionedAmt = parseAmount(year.sanctioned_amount);
+            const totalReleasedAmt = sumReleased(year.releases);
+            const totalPaidAmt = sumPaid(year.releases);
+            // Pending = sanctioned - totalPaid (how much of sanctioned is still unpaid)
+            const totalPendingAmt = sanctionedAmt > 0 ? Math.max(0, sanctionedAmt - totalPaidAmt) : 0;
+            const isReleasedOver = sanctionedAmt > 0 && totalReleasedAmt > sanctionedAmt;
+            const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
 
             return (
             <div key={`releases-${year.student_year}`} className="p-4">
-              <div className="flex items-center justify-between mb-3">
+              {/* Year header: summary chips */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h5 className="text-sm font-bold text-gray-800">Year {year.student_year}</h5>
-                <span className="text-xs font-semibold text-emerald-700">
-                  Total Released: {formatCurrency(sumReleased(year.releases))}
-                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`text-xs font-semibold ${isReleasedOver ? 'text-red-600' : 'text-emerald-700'}`}>
+                    Released: {formatCurrency(totalReleasedAmt)}
+                    {isReleasedOver && (
+                      <span className="ml-1 text-red-500">
+                        (exceeds sanctioned {formatCurrency(sanctionedAmt)})
+                      </span>
+                    )}
+                  </span>
+                  <span className={`text-xs font-semibold ${isPaidOver ? 'text-red-600' : 'text-blue-700'}`}>
+                    Paid: {formatCurrency(totalPaidAmt)}
+                    {isPaidOver && (
+                      <span className="ml-1">(exceeds sanctioned)</span>
+                    )}
+                  </span>
+                  {sanctionedAmt > 0 && (
+                    <span className={`text-xs font-semibold ${totalPendingAmt > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                      Pending: {formatCurrency(totalPendingAmt)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -999,17 +1098,28 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Emitted Date</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Released Amount</th>
-                      {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Add</th>}
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Pending</th>
+                      {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {year.releases.map((release, releaseIndex) => (
+                    {year.releases.map((release, releaseIndex) => {
+                      const rowReleased = parseAmount(release.released_amount);
+                      const rowPaid = parseAmount(release.paid_amount);
+                      // Flag paid over sanctioned (year-level cap)
+                      const isRowPaidOver = sanctionedAmt > 0 && rowPaid > sanctionedAmt;
+
+                      return (
                       <tr key={`${year.student_year}-${releaseIndex}`}>
+                        {/* Academic Year */}
                         <td className="px-2 py-2">
                           <span className="text-gray-700 whitespace-nowrap">
                             {release.academic_year || academicYearLabel}
                           </span>
                         </td>
+
+                        {/* RTF Emitted Date */}
                         <td className="px-2 py-2">
                           {isEditingDisabled ? (
                             <span className="text-gray-700">{formatCalendarDate(release.rtf_released_date) || '—'}</span>
@@ -1025,6 +1135,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             />
                           )}
                         </td>
+
+                        {/* Released Amount */}
                         <td className="px-2 py-2 text-right">
                           {isEditingDisabled ? (
                             <span className="font-medium text-gray-800">{formatCurrency(release.released_amount)}</span>
@@ -1036,11 +1148,45 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               maxLength={5}
                               value={release.released_amount}
                               onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'released_amount', e.target.value)}
-                              className="w-full min-w-[110px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-right"
-                              placeholder={`Max ${SCHOLARSHIP_MAX_AMOUNT}`}
+                              className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isReleasedOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
+                              placeholder={sanctionedAmt > 0 ? `Max ${sanctionedAmt}` : `Max ${SCHOLARSHIP_MAX_AMOUNT}`}
                             />
                           )}
                         </td>
+
+                        {/* Paid Amount */}
+                        <td className="px-2 py-2 text-right">
+                          {isEditingDisabled ? (
+                            <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
+                          ) : (
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={5}
+                              value={release.paid_amount}
+                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'paid_amount', e.target.value)}
+                              className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isRowPaidOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
+                              placeholder={sanctionedAmt > 0 ? `Max ${sanctionedAmt}` : 'Amount paid'}
+                            />
+                          )}
+                          {isRowPaidOver && (
+                            <p className="text-[10px] text-red-500 mt-0.5 text-right">Exceeds sanctioned</p>
+                          )}
+                        </td>
+
+                        {/* Pending Amount — year-level (sanctioned − totalPaid), shown on first row only */}
+                        <td className="px-2 py-2 text-right">
+                          {releaseIndex === 0 && sanctionedAmt > 0 ? (
+                            <span className={`text-xs font-semibold tabular-nums ${totalPendingAmt > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                              {formatCurrency(totalPendingAmt)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+
+                        {/* Add / Remove actions */}
                         {!isEditingDisabled && (
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-center gap-1">
@@ -1066,7 +1212,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           </td>
                         )}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

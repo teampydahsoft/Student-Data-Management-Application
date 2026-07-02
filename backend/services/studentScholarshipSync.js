@@ -118,14 +118,16 @@ const mapReleaseRowForApi = (row) => ({
   rtf_released_date: formatDbDate(row.from_date),
   rtf_date: formatDbDate(row.from_date),
   from_date: formatDbDate(row.from_date),
-  released_amount: toNumber(row.released_amount)
+  released_amount: toNumber(row.released_amount),
+  paid_amount: toNumber(row.paid_amount)
 });
 
 const normalizeReleaseForSave = (release = {}) => ({
   rtf_released_date: normalizeRtfReleasedDate(
     release.rtf_released_date ?? release.rtf_date ?? release.from_date
   ),
-  released_amount: clampScholarshipAmount(release.released_amount)
+  released_amount: clampScholarshipAmount(release.released_amount),
+  paid_amount: clampScholarshipAmount(release.paid_amount)
 });
 
 const enrichScholarshipYears = (student, years, totalYears) => {
@@ -449,7 +451,8 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
         academic_year: row.academic_year || null,
         rtf_released_date: formatDbDate(row.from_date) || null,
         from_date: row.from_date || null,
-        released_amount: Number(row.released_amount) || 0
+        released_amount: Number(row.released_amount) || 0,
+        paid_amount: Number(row.paid_amount) || 0
       });
     } else if (isSemesterSummaryRow(row)) {
       semesterMap[row.student_semester] = row.eligible || '';
@@ -479,7 +482,7 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
 
 const archiveScholarshipYear = async (connection, student, studentYear, actor = null) => {
   const [rows] = await connection.query(
-    `SELECT application_id, eligible, sanctioned_amount, released_amount, student_semester,
+    `SELECT application_id, eligible, sanctioned_amount, released_amount, paid_amount, student_semester,
             DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
             DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
             proceeding
