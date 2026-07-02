@@ -607,7 +607,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const handleReleaseDateBlur = (yearIndex, releaseIndex, value) => {
     if (!value) return;
     if (isValidRtfReleasedDate(value, { allowEmpty: false })) return;
-    toast.error(`RTF emitted date must use a valid 4-digit year (${RTF_RELEASED_DATE_MIN} to ${RTF_RELEASED_DATE_MAX})`);
+    toast.error(`RTF Remitted date must use a valid 4-digit year (${RTF_RELEASED_DATE_MIN} to ${RTF_RELEASED_DATE_MAX})`);
     updateReleaseField(yearIndex, releaseIndex, 'rtf_released_date', '');
   };
 
@@ -667,7 +667,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
         if (!hasReleaseValue) continue;
         if (String(release.rtf_released_date || '').trim() && !releaseDate) {
-          toast.error(`Year ${year.student_year}, release row ${index + 1}: RTF emitted date must use a valid 4-digit year`);
+          toast.error(`Year ${year.student_year}, release row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
           return;
         }
         if (!isValidScholarshipAmount(release.released_amount)) {
@@ -1096,7 +1096,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Emitted Date</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Remitted Date</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Released Amount</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Pending</th>
@@ -1119,7 +1119,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           </span>
                         </td>
 
-                        {/* RTF Emitted Date */}
+                        {/* RTF Remitted Date */}
                         <td className="px-2 py-2">
                           {isEditingDisabled ? (
                             <span className="text-gray-700">{formatCalendarDate(release.rtf_released_date) || '—'}</span>

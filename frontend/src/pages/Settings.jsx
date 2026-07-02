@@ -884,25 +884,9 @@ const RtfAmountSection = ({
             ))}
           </div>
 
-          {/* Row 2: Caste optional */}
-          <div className="flex items-center gap-4">
-            <div className="w-56">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Caste <span className="text-gray-400">(optional filter)</span>
-              </label>
-              <select
-                value={newEntry.caste || ''}
-                onChange={(e) => setNewEntry((prev) => ({ ...prev, caste: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-pink-400"
-              >
-                <option value="">All Castes</option>
-                {(filterOptions.castes || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
-            </div>
-            {!configReady && (
-              <p className="text-xs text-gray-400 mt-4">Select college, batch, program and branch to configure amounts.</p>
-            )}
-          </div>
+          {!configReady && (
+            <p className="text-xs text-gray-400">Select college, batch, program and branch to configure amounts.</p>
+          )}
 
           {/* Amount table */}
           {configReady && yearCols.length > 0 && (

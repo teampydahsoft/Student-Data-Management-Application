@@ -91,7 +91,7 @@ const normalizeRtfReleasedDate = (value) => {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const validateRtfReleasedDate = (value, { fieldLabel = 'RTF emitted date', allowEmpty = true } = {}) => {
+const validateRtfReleasedDate = (value, { fieldLabel = 'RTF Remitted date', allowEmpty = true } = {}) => {
   const raw = String(value ?? '').trim();
   if (!raw) {
     if (allowEmpty) return { valid: true, value: null };
@@ -232,7 +232,7 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       if (!hasReleaseValue) continue;
 
       const dateValidation = validateRtfReleasedDate(release.rtf_released_date, {
-        fieldLabel: `Year ${studentYear} RTF emitted date (row ${index + 1})`,
+        fieldLabel: `Year ${studentYear} RTF Remitted date (row ${index + 1})`,
         allowEmpty: releaseAmount <= 0
       });
       if (!dateValidation.valid) return dateValidation;

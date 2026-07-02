@@ -26,6 +26,14 @@ const {
   checkApplicationIdAvailability
 } = require('../utils/scholarshipValidation');
 
+const VALID_ELIGIBLE = ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'];
+const normalizeEligible = (value) => {
+  let v = String(value || '').trim().toLowerCase();
+  if (v === 'not eligible' || v === 'not-eligible') v = 'not_eligible';
+  if (v === 'not applied' || v === 'not-applied') v = 'not_applied';
+  return VALID_ELIGIBLE.includes(v) ? v : null;
+};
+
 const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
   try {
     const [rows] = await masterPool.query(
