@@ -471,19 +471,20 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
     eligible: semesterMap[semester.student_semester] || ''
   }));
 
-  const anyEligible = semesters.some(
+  // Financial data counts only when EVERY semester in the year is eligible.
+  const allEligible = semesters.length > 0 && semesters.every(
     (semester) => normalizeEligible(semester.eligible) === 'eligible'
   );
 
   return {
     application_id: applicationId || null,
     eligible: semesters[0]?.eligible || legacyEligible || null,
-    sanctioned_amount: anyEligible ? sanctionedAmount : 0,
-    released_amount: anyEligible
+    sanctioned_amount: allEligible ? sanctionedAmount : 0,
+    released_amount: allEligible
       ? releases.reduce((sum, row) => sum + row.released_amount, 0)
       : 0,
     semesters,
-    releases: anyEligible ? releases : []
+    releases: allEligible ? releases : []
   };
 };
 

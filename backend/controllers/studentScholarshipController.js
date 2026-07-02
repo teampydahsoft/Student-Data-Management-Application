@@ -34,6 +34,14 @@ const normalizeEligible = (value) => {
   return VALID_ELIGIBLE.includes(v) ? v : null;
 };
 
+// Financial data (sanctioned amount / releases) is allowed ONLY when every
+// semester in the year is Eligible. A single non-eligible semester forces null.
+const allSemestersEligible = (semesters = []) => (
+  Array.isArray(semesters)
+  && semesters.length > 0
+  && semesters.every((sem) => normalizeEligible(sem.eligible) === 'eligible')
+);
+
 const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
   try {
     const [rows] = await masterPool.query(
@@ -117,19 +125,17 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
     eligible: semesterMap[semester.student_semester] || ''
   }));
 
-  const anyEligible = semesters.some(
-    (semester) => normalizeEligible(semester.eligible) === 'eligible'
-  );
+  const allEligible = allSemestersEligible(semesters);
 
   return {
     application_id: applicationId || '',
     eligible: semesters[0]?.eligible || legacyEligible || '',
-    sanctioned_amount: anyEligible ? sanctionedAmount : 0,
-    released_amount: anyEligible
+    sanctioned_amount: allEligible ? sanctionedAmount : 0,
+    released_amount: allEligible
       ? releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0)
       : 0,
     semesters,
-    releases: anyEligible ? releases : []
+    releases: allEligible ? releases : []
   };
 };
 
@@ -283,12 +289,10 @@ const fetchScholarshipPayload = async (student) => {
 
 const hasYearSummaryData = (yearEntry) => {
   const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
-  const anyEligible = semesters.some(
-    (semester) => normalizeEligible(semester.eligible) === 'eligible'
-  );
+  const allEligible = allSemestersEligible(semesters);
   return (
     (yearEntry.application_id && String(yearEntry.application_id).trim())
-    || (anyEligible && toNumber(yearEntry.sanctioned_amount) > 0)
+    || (allEligible && toNumber(yearEntry.sanctioned_amount) > 0)
     || semesters.some((semester) => semester.eligible && String(semester.eligible).trim())
     || (yearEntry.eligible && String(yearEntry.eligible).trim())
   );
@@ -310,9 +314,9 @@ const buildIncomingYearSnapshot = (yearEntry) => {
       eligible: semester.eligible || null
     }));
 
-  const anyEligible = semesters.some((sem) => normalizeEligible(sem.eligible) === 'eligible');
+  const allEligible = allSemestersEligible(semesters);
 
-  const releases = anyEligible
+  const releases = allEligible
     ? (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
         .filter(hasReleaseData)
         .map((release) => {
@@ -328,7 +332,7 @@ const buildIncomingYearSnapshot = (yearEntry) => {
 
   return {
     application_id: yearEntry.application_id || null,
-    sanctioned_amount: anyEligible ? toNumber(yearEntry.sanctioned_amount) : 0,
+    sanctioned_amount: allEligible ? toNumber(yearEntry.sanctioned_amount) : 0,
     released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
     semesters,
     releases
@@ -428,22 +432,21 @@ exports.saveScholarshipHistory = async (req, res) => {
         ? yearEntry.semesters
         : buildDefaultSemesters(semestersPerYear);
 
-      // Determine if any semester is eligible — if not, force amounts to zero
-      const anyEligible = semesters.some(
-        (sem) => normalizeEligible(sem.eligible) === 'eligible'
-      );
+      // Financial data is allowed only when EVERY semester is eligible — otherwise
+      // force sanctioned amount to zero and drop releases.
+      const allEligible = allSemestersEligible(semesters);
 
-      const validReleases = anyEligible ? releases.filter(hasReleaseData) : [];
+      const validReleases = allEligible ? releases.filter(hasReleaseData) : [];
       const summaryData = {
         application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
-        sanctioned_amount: anyEligible
+        sanctioned_amount: allEligible
           ? clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
           : 0
       };
 
       // If RTF amount is locked for this college/batch/course/branch/caste, use the locked amount
-      // — only applies when at least one semester is eligible
-      if (anyEligible) {
+      // — only applies when all semesters are eligible
+      if (allEligible) {
         const lockedAmount = await getRtfLockedAmount(
           student.college, student.batch, student.course, student.branch, studentYear, student.caste
         );

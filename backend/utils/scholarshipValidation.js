@@ -195,6 +195,13 @@ const isSemesterEligible = (value) => (
   String(value || '').trim().toLowerCase() === 'eligible'
 );
 
+// Sanctioned amount / releases are permitted only when EVERY semester is eligible.
+const allSemestersEligible = (semesters = []) => (
+  Array.isArray(semesters)
+  && semesters.length > 0
+  && semesters.every((sem) => isSemesterEligible(sem.eligible))
+);
+
 const validateScholarshipYearsPayload = async (connection, studentId, years = []) => {
   const duplicateIds = findDuplicateApplicationIdsInPayload(years);
   if (duplicateIds.length) {
@@ -222,17 +229,17 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
     }
 
     const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
-    const anyEligible = semesters.some((semester) => isSemesterEligible(semester.eligible));
+    const allEligible = allSemestersEligible(semesters);
 
     const sanctionedValidation = validateScholarshipAmount(
-      anyEligible ? yearEntry.sanctioned_amount : 0,
+      allEligible ? yearEntry.sanctioned_amount : 0,
       {
         fieldLabel: `Year ${studentYear} sanctioned amount`
       }
     );
     if (!sanctionedValidation.valid) return sanctionedValidation;
 
-    const releases = anyEligible && Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+    const releases = allEligible && Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
     let totalReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
       const release = releases[index];

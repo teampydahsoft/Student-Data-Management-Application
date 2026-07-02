@@ -154,11 +154,15 @@ const buildScholarshipRemarkMap = (remarks = []) => {
   return map;
 };
 
-const isYearScholarshipEligible = (year) => (
-  (year?.semesters || []).some(
+// A year qualifies for financial entry (sanctioned amount / releases) ONLY when
+// EVERY semester in that year is marked Eligible. If any semester is not eligible
+// (or blank / pending / rejected / etc.), the sanctioned amount must stay null.
+const isYearScholarshipEligible = (year) => {
+  const semesters = year?.semesters || [];
+  return semesters.length > 0 && semesters.every(
     (semester) => normalizeScholarshipStatusValue(semester.eligible) === 'eligible'
-  )
-);
+  );
+};
 
 const clearYearFinancialDataIfNotEligible = (year, academicYearLabel = '') => {
   if (isYearScholarshipEligible(year)) return year;
