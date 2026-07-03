@@ -29,6 +29,8 @@ import {
   SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE,
   SCHOLARSHIP_PAID_TRANSACTIONS_TITLE,
   SCHOLARSHIP_PAID_DATE_LABEL,
+  SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS,
+  SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION,
   calculateScholarshipRtfDue,
   calculateScholarshipFeeDue,
   calculateScholarshipAdvanceAmount,
@@ -1211,8 +1213,12 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                   <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
                 )}
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_DUE_LABEL}</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
+                {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && (
+                  <>
+                    <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
+                    <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
+                  </>
+                )}
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Remarks</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">History</th>
               </tr>
@@ -1371,7 +1377,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         )}
                       </td>
                     )}
-                    {semesterIndex === 0 && (
+                    {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
@@ -1385,7 +1391,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         )}
                       </td>
                     )}
-                    {semesterIndex === 0 && (
+                    {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
@@ -1632,6 +1638,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         )}
       </div>
 
+      {!SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION && (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_PAID_TRANSACTIONS_TITLE}</h4>
@@ -1818,6 +1825,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         </div>
         )}
       </div>
+      )}
       </>
       )}
 

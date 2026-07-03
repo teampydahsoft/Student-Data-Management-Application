@@ -240,6 +240,12 @@ export const SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE = 'RTF Released Transac
 export const SCHOLARSHIP_PAID_TRANSACTIONS_TITLE = 'Paid Transactions (Fee paid to college)';
 export const SCHOLARSHIP_PAID_DATE_LABEL = 'Fee Paid Date';
 
+/** Hide Paid and Fee Due columns in the year-wise scholarship summary table. */
+export const SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS = true;
+
+/** Hide the Paid Transactions (Fee paid to college) section on the scholarship tab. */
+export const SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION = true;
+
 /**
  * Advance applies to College Account students only: fee money paid to college before RTF
  * release that the released RTF now reimburses. Mother Account students never have advance.
