@@ -279,7 +279,7 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
     const allEligible = allSemestersEligible(semesters);
     const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
     const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
-    const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
+    const savePaidTransactions = allEligible || feeOnlyMode;
 
     const sanctionedValidation = validateScholarshipAmount(
       hasFinancialTracking ? yearEntry.sanctioned_amount : 0,
@@ -301,20 +301,6 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
           valid: false,
           message: `Year ${studentYear}: RTF released amounts are not allowed when semesters are not all Eligible`
         };
-      }
-      if (!isCollege) {
-        const incomingPaid = Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [];
-        const hasPaidPayload = incomingPaid.some((transaction) => {
-          const paidAmount = clampScholarshipAmount(transaction.paid_amount);
-          const paidDate = transaction.paid_date && String(transaction.paid_date).trim();
-          return paidAmount > 0 || paidDate;
-        });
-        if (hasPaidPayload) {
-          return {
-            valid: false,
-            message: `Year ${studentYear}: Paid transactions are only allowed for College Account students when semesters are not all Eligible`
-          };
-        }
       }
     }
 

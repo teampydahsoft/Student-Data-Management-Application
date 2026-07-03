@@ -76,7 +76,15 @@ export const getCurrentScholarshipStatus = (scholarshipData, student) => {
     || scholarshipData?.currentSemester
     || scholarshipData?.student?.current_semester
   ) || 1;
-  return getScholarshipStatusForSemester(scholarshipData, currentYear, currentSemester);
+
+  const fromTable = getScholarshipStatusForSemester(scholarshipData, currentYear, currentSemester)
+    || getScholarshipStatusForYear(scholarshipData, currentYear);
+  if (fromTable) return fromTable;
+
+  return normalizeScholarshipStatusValue(
+    student?.scholar_status
+    || scholarshipData?.student?.scholar_status
+  );
 };
 
 export const isScholarshipStatusAssigned = (status) => (
@@ -149,6 +157,20 @@ export const extractBatchStartYear = (batch) => {
   }
 
   return null;
+};
+
+export const SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR = 2026;
+
+export const getAcademicYearStartYear = (batch, studentYear) => {
+  const batchStart = extractBatchStartYear(batch);
+  const yearIndex = Math.max(1, Number(studentYear) || 1);
+  if (!batchStart) return null;
+  return batchStart + yearIndex - 1;
+};
+
+export const usesSemesterWiseScholarshipStatus = (batch, studentYear) => {
+  const startYear = getAcademicYearStartYear(batch, studentYear);
+  return startYear != null && startYear >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR;
 };
 
 export const formatAcademicYearLabel = (batchStartYear, studentYear) => {

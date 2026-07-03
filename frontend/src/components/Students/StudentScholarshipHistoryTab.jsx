@@ -487,7 +487,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         releasesEligible: rtfEligible,
         feeOnlyMode: feeOnly,
         financialTracking: financial,
-        showPaidAmount: rtfEligible || (feeOnly && isCollege)
+        showPaidAmount: rtfEligible || feeOnly || sumPaid(year.paid_transactions || []) > 0
       };
     }),
     [years, selectedCaste, casteAccountTypes, student?.caste]
@@ -506,10 +506,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const paidTransactionYears = useMemo(
     () => years.filter((year) => {
       if (isYearScholarshipEligible(year)) return true;
-      if (!isYearFeeOnlyScholarshipMode(year)) return false;
-      return casteAccountTypes[selectedCaste || student?.caste] === 'college';
+      if (isYearFeeOnlyScholarshipMode(year)) return true;
+      return sumPaid(year.paid_transactions || []) > 0;
     }),
-    [years, selectedCaste, casteAccountTypes, student?.caste]
+    [years]
   );
 
   const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
@@ -1005,7 +1005,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           );
           return;
         }
-      } else if (feeOnly && isCollegeAccount()) {
+      } else if (feeOnly) {
         const paidRows = year.paid_transactions || [];
         if (!validatePaidRows(year, paidRows, sanctioned)) return;
       }
@@ -1017,7 +1017,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         const rtfEligible = isYearScholarshipEligible(year);
         const feeOnly = isYearFeeOnlyScholarshipMode(year);
         const financial = hasYearScholarshipFinancialTracking(year);
-        const savePaid = rtfEligible || (feeOnly && isCollegeAccount());
+        const savePaid = rtfEligible || feeOnly;
         const paidSource = rtfEligible
           ? (applyCollegePaidSync(year).paid_transactions || [])
           : (year.paid_transactions || []);
@@ -1639,7 +1639,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             Fee paid to college — add a row for each payment.
             {isCollegeAccount() && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                College Account — auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL} when Eligible; manual entry for Pending / Not eligible / other statuses
+                College Account — auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL} when Eligible; manual entry for other statuses
               </span>
             )}
             {!isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
@@ -1652,7 +1652,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
         {paidTransactionYears.length === 0 ? (
           <div className="p-6 text-sm text-gray-500 text-center">
-            No paid transactions — mark all semesters as Eligible, or assign a status (Pending, Not eligible, etc.) for College Account fee tracking.
+            No paid transactions — mark all semesters as Eligible, or assign a status (Pending, Not eligible, etc.) to track fee paid to college.
           </div>
         ) : (
         <div className="divide-y divide-gray-100">
@@ -1668,6 +1668,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             const totalPaidAmt = sumPaid(paidTransactions);
             const totalFeeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
             const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
+            const yearPaidEditingDisabled = isEditingDisabled;
 
             return (
             <div key={`paid-transactions-${year.student_year}`} className="p-4">
@@ -1696,7 +1697,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       <th className="px-2 py-2 font-bold whitespace-nowrap">{SCHOLARSHIP_PAID_DATE_LABEL}</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
-                      {!isEditingDisabled && (
+                      {!yearPaidEditingDisabled && (
                         <th className="px-2 py-2 font-bold whitespace-nowrap text-center">Actions</th>
                       )}
                     </tr>
@@ -1725,10 +1726,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           </span>
                         </td>
                         <td className="px-2 py-2">
-                          {isEditingDisabled || isAutoRow ? (
+                          {yearPaidEditingDisabled || isAutoRow ? (
                             <div className="flex flex-col gap-0.5">
                               <span className="text-gray-700">{formatCalendarDate(transaction.paid_date) || '—'}</span>
-                              {isAutoRow && !isEditingDisabled && transaction.paid_date && (
+                              {isAutoRow && !yearPaidEditingDisabled && transaction.paid_date && (
                                 <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded w-fit">auto</span>
                               )}
                             </div>
@@ -1745,10 +1746,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                           )}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          {isEditingDisabled || isAutoRow ? (
+                          {yearPaidEditingDisabled || isAutoRow ? (
                             <div className="flex flex-col items-end gap-0.5">
                               <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
-                              {isAutoRow && !isEditingDisabled && (
+                              {isAutoRow && !yearPaidEditingDisabled && (
                                 <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">auto</span>
                               )}
                             </div>
@@ -1781,7 +1782,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             <span className="text-gray-300">—</span>
                           )}
                         </td>
-                        {!isEditingDisabled && (
+                        {!yearPaidEditingDisabled && (
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-center gap-1">
                               <button

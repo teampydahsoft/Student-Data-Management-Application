@@ -2,6 +2,10 @@ const {
   verificationCompletedJsonSql,
   verificationCompletedLikeSql
 } = require('./registrationCycle');
+const {
+  buildRegistrationScholarshipHasStatusSql,
+  getRegistrationScholarshipFilterClause
+} = require('./studentScholarshipSync');
 
 const SCHOLARSHIP_JOIN_ALIAS = 'ss_reg';
 
@@ -29,59 +33,19 @@ const scholarshipLeftJoinSql = (studentAlias = 's') => `
 `;
 
 /**
- * Returns 1 if the student has a scholarship status — from the year-wise
- * student_scholarship row (current year preferred), any historical year,
- * or from the denormalized scholar_status column on students.
+ * Returns 1 if the student has a scholarship status for registration reporting.
+ * From 2026-2027 onwards uses year-wise student_scholarship; earlier years use scholar_status.
  */
-const hasScholarshipExpr = (studentAlias = 's') => `
-  CASE
-    WHEN ${SCHOLARSHIP_JOIN_ALIAS}.student_id IS NOT NULL THEN 1
-    WHEN EXISTS (
-      SELECT 1 FROM student_scholarship ss_any
-      WHERE ss_any.student_id = ${studentAlias}.id
-        AND ss_any.eligible IS NOT NULL AND TRIM(ss_any.eligible) != ''
-        AND LOWER(TRIM(ss_any.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
-    ) THEN 1
-    WHEN (
-      ${studentAlias}.scholar_status IS NOT NULL
-      AND TRIM(${studentAlias}.scholar_status) != ''
-      AND LOWER(TRIM(${studentAlias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
-    ) THEN 1
-    ELSE 0
-  END
+const hasScholarshipExpr = (studentAlias = 's', academicYearFromYear = null) => `
+  CASE WHEN ${buildRegistrationScholarshipHasStatusSql(academicYearFromYear, studentAlias)} THEN 1 ELSE 0 END
 `;
 
-const getScholarshipFilterClauseWithJoin = (filter, joinAlias = SCHOLARSHIP_JOIN_ALIAS, studentAlias = 'base') => {
-  const normalized = String(filter || '').trim().toLowerCase();
-  if (normalized === 'pending') {
-    // pending = no year-wise row AND no scholar_status fallback
-    return ` AND ${joinAlias}.student_id IS NULL
-      AND NOT (
-        ${studentAlias}.scholar_status IS NOT NULL
-        AND TRIM(${studentAlias}.scholar_status) != ''
-        AND LOWER(TRIM(${studentAlias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
-      )`;
-  }
-  if (normalized === 'eligible') {
-    return ` AND (
-      ${joinAlias}.eligible_norm = 'eligible'
-      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) = 'eligible')
-    )`;
-  }
-  if (normalized === 'not_eligible') {
-    return ` AND (
-      ${joinAlias}.eligible_norm IN ('not_eligible', 'not eligible')
-      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) IN ('not_eligible', 'not eligible'))
-    )`;
-  }
-  if (normalized === 'rejected') {
-    return ` AND (
-      ${joinAlias}.eligible_norm = 'rejected'
-      OR (${joinAlias}.student_id IS NULL AND LOWER(TRIM(IFNULL(${studentAlias}.scholar_status, ''))) = 'rejected')
-    )`;
-  }
-  return '';
-};
+const getScholarshipFilterClauseWithJoin = (
+  filter,
+  joinAlias = SCHOLARSHIP_JOIN_ALIAS,
+  studentAlias = 'base',
+  academicYearFromYear = null
+) => getRegistrationScholarshipFilterClause(filter, academicYearFromYear, studentAlias);
 
 const feeClearedSql = (alias = 's') => `(
   ${alias}.fee_status LIKE '%no_due%'
@@ -103,7 +67,8 @@ const certificatesTemporarySql = (alias = 's') => `(
 
 const buildFlaggedStudentSelect = ({
   alias,
-  verificationSql
+  verificationSql,
+  academicYearFromYear = null
 }) => `
   SELECT
     ${alias}.batch,
@@ -118,7 +83,7 @@ const buildFlaggedStudentSelect = ({
     CASE WHEN ${certificatesVerifiedSql(alias)} THEN 1 ELSE 0 END AS is_cert_verified,
     CASE WHEN ${certificatesTemporarySql(alias)} THEN 1 ELSE 0 END AS is_cert_temporary,
     CASE WHEN ${feeClearedSql(alias)} THEN 1 ELSE 0 END AS is_fee_cleared,
-    ${hasScholarshipExpr(alias)} AS has_scholarship
+    ${hasScholarshipExpr(alias, academicYearFromYear)} AS has_scholarship
   FROM students ${alias}
   ${scholarshipLeftJoinSql(alias)}
 `;
@@ -129,10 +94,15 @@ const buildFlaggedStudentSelect = ({
  * - split valid/invalid JSON paths (avoids JSON_EXTRACT errors + redundant LIKE scans)
  * - LEFT JOIN scholarship once instead of correlated EXISTS per aggregate
  */
-const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipFilter = '' }) => {
+const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipFilter = '', academicYearFromYear = null }) => {
   const verificationJsonSql = qualifyRegistrationSql(verificationCompletedJsonSql, 'base');
   const verificationLikeSql = qualifyRegistrationSql(verificationCompletedLikeSql, 'base');
-  const scholarshipWhere = getScholarshipFilterClauseWithJoin(scholarshipFilter, SCHOLARSHIP_JOIN_ALIAS, 'base');
+  const scholarshipWhere = getScholarshipFilterClauseWithJoin(
+    scholarshipFilter,
+    SCHOLARSHIP_JOIN_ALIAS,
+    'base',
+    academicYearFromYear
+  );
 
   const query = `
     SELECT
@@ -172,7 +142,8 @@ const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipF
       FROM (
         ${buildFlaggedStudentSelect({
           alias: 'base',
-          verificationSql: verificationJsonSql
+          verificationSql: verificationJsonSql,
+          academicYearFromYear
         })}
         WHERE ${whereClause} AND JSON_VALID(base.student_data)${scholarshipWhere}
 
@@ -180,7 +151,8 @@ const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipF
 
         ${buildFlaggedStudentSelect({
           alias: 'base',
-          verificationSql: verificationLikeSql
+          verificationSql: verificationLikeSql,
+          academicYearFromYear
         })}
         WHERE ${whereClause} AND NOT JSON_VALID(base.student_data)${scholarshipWhere}
       ) flagged

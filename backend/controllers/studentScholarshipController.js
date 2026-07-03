@@ -165,7 +165,7 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
 
 const getStudentByAdmissionNumber = async (admissionNumber) => {
   const [rows] = await masterPool.query(
-    `SELECT id, admission_number, student_name, course, branch, batch, current_year, current_semester, stud_type, college, caste
+    `SELECT id, admission_number, student_name, course, branch, batch, current_year, current_semester, stud_type, college, caste, scholar_status
      FROM students
      WHERE admission_number = ?
      LIMIT 1`,
@@ -219,7 +219,8 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
       branch: student.branch,
       batch: student.batch,
       stud_type: student.stud_type,
-      caste: student.caste || ''
+      caste: student.caste || '',
+      scholar_status: student.scholar_status || ''
     },
     totalYears,
     semestersPerYear: extra.semestersPerYear ?? 2,
@@ -278,20 +279,20 @@ const fetchScholarshipPayload = async (student) => {
     yearMap[year].push(row);
   }
 
+  const archivedHistory = await fetchArchivedHistory(student.id);
+
   const years = Array.from({ length: totalYears }, (_, index) => {
     const studentYear = index + 1;
     const yearRows = yearMap[studentYear] || [];
     if (!yearRows.length) {
       return buildEmptyYear(studentYear, semestersPerYear);
     }
-
     return {
       student_year: studentYear,
       ...buildYearEntryFromRows(yearRows, semestersPerYear)
     };
   });
 
-  const archivedHistory = await fetchArchivedHistory(student.id);
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
   const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
   const currentYearData = years.find((entry) => entry.student_year === currentYear);
@@ -374,7 +375,7 @@ const buildIncomingYearSnapshot = (yearEntry, options = {}) => {
   const allEligible = allSemestersEligible(semesters);
   const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
   const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
-  const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
+  const savePaidTransactions = allEligible || feeOnlyMode;
 
   const rtfReleases = allEligible
     ? (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
@@ -531,7 +532,7 @@ exports.saveScholarshipHistory = async (req, res) => {
       const allEligible = allSemestersEligible(semesters);
       const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
       const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
-      const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
+      const savePaidTransactions = allEligible || feeOnlyMode;
 
       const validRtfReleases = allEligible ? releases.filter(hasRtfReleaseData) : [];
       const validPaidTransactions = savePaidTransactions

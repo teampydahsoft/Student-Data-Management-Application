@@ -93,6 +93,75 @@ const extractBatchStartYear = (batch) => {
   return null;
 };
 
+const SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR = 2026;
+
+const getAcademicYearStartYear = (batch, studentYear) => {
+  const batchStart = extractBatchStartYear(batch);
+  const yearIndex = Math.max(1, Number(studentYear) || 1);
+  if (!batchStart) return null;
+  return batchStart + yearIndex - 1;
+};
+
+const usesSemesterWiseScholarshipStatus = (batch, studentYear) => {
+  const startYear = getAcademicYearStartYear(batch, studentYear);
+  return startYear != null && startYear >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR;
+};
+
+const yearHasAssignedScholarshipStatus = (yearEntry = {}) => {
+  if (normalizeEligible(yearEntry.eligible)) return true;
+  return (yearEntry.semesters || []).some((semester) => normalizeEligible(semester.eligible));
+};
+
+const resolveLegacyYearEligible = (student, studentYear, archivedHistory = []) => {
+  const historyForYear = (archivedHistory || []).filter(
+    (entry) => Number(entry.academic_year) === Number(studentYear)
+  );
+  if (historyForYear.length > 0) {
+    const latest = historyForYear[0];
+    const snapshot = typeof latest.snapshot === 'object' && latest.snapshot
+      ? latest.snapshot
+      : {};
+    const fromHistory = normalizeEligible(latest.scholar_status || snapshot.eligible);
+    if (fromHistory) return fromHistory;
+  }
+  return normalizeEligible(student?.scholar_status) || null;
+};
+
+const applyLegacyYearDisplay = (yearEntry, legacyEligible, semestersPerYear) => ({
+  ...yearEntry,
+  eligible: legacyEligible || yearEntry.eligible || '',
+  semesters: buildDefaultSemesters(semestersPerYear, legacyEligible || ''),
+  semesterWiseStatus: false,
+  legacyScholarshipYear: true
+});
+
+const enrichYearWithScholarshipMode = (
+  yearEntry,
+  student,
+  archivedHistory,
+  semestersPerYear
+) => {
+  const studentYear = Math.max(1, Number(yearEntry.student_year) || 1);
+  if (usesSemesterWiseScholarshipStatus(student?.batch, studentYear)) {
+    return {
+      ...yearEntry,
+      semesterWiseStatus: true,
+      legacyScholarshipYear: false
+    };
+  }
+
+  if (yearHasAssignedScholarshipStatus(yearEntry)) {
+    return {
+      ...yearEntry,
+      semesterWiseStatus: false,
+      legacyScholarshipYear: true
+    };
+  }
+
+  const legacyEligible = resolveLegacyYearEligible(student, studentYear, archivedHistory);
+  return applyLegacyYearDisplay(yearEntry, legacyEligible, semestersPerYear);
+};
+
 const formatAcademicYearLabel = (batchStartYear, studentYear) => {
   const yearIndex = Math.max(1, Number(studentYear) || 1);
   if (!batchStartYear) return `Year ${yearIndex}`;
@@ -633,6 +702,175 @@ const scholarshipHasCurrentYearStatusSql = `(
   )
 )`;
 
+const studentAcademicYearFromYearSql = (alias = 'students') => `(
+  CAST(REGEXP_SUBSTR(${alias}.batch, '[0-9]{4}') AS UNSIGNED)
+  + GREATEST(1, IFNULL(${alias}.current_year, 1)) - 1
+)`;
+
+const semesterWiseRegistrationStatusSql = (alias = 'students') => `(
+  EXISTS (
+    SELECT 1 FROM student_scholarship ss
+    WHERE ss.student_id = ${alias}.id
+      AND ss.student_year = GREATEST(1, IFNULL(${alias}.current_year, 1))
+      AND (
+        ss.student_semester = GREATEST(1, IFNULL(${alias}.current_semester, 1))
+        OR (
+          ss.student_semester IS NULL
+          AND IFNULL(ss.released_amount, 0) = 0
+          AND ss.from_date IS NULL
+        )
+      )
+      AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
+  OR EXISTS (
+    SELECT 1 FROM student_scholarship ss
+    WHERE ss.student_id = ${alias}.id
+      AND ss.student_year = GREATEST(1, IFNULL(${alias}.current_year, 1))
+      AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  )
+)`;
+
+const legacyRegistrationStatusSql = (alias = 'students') => `(
+  ${alias}.scholar_status IS NOT NULL
+  AND TRIM(${alias}.scholar_status) != ''
+  AND LOWER(TRIM(${alias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+)`;
+
+const buildRegistrationScholarshipHasStatusSql = (academicYearFromYear = null, alias = 'students') => {
+  if (academicYearFromYear != null && Number(academicYearFromYear) < SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR) {
+    return legacyRegistrationStatusSql(alias);
+  }
+  if (academicYearFromYear != null && Number(academicYearFromYear) >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR) {
+    return semesterWiseRegistrationStatusSql(alias);
+  }
+  return `CASE
+    WHEN ${studentAcademicYearFromYearSql(alias)} >= ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+      THEN ${semesterWiseRegistrationStatusSql(alias)}
+    ELSE ${legacyRegistrationStatusSql(alias)}
+  END`;
+};
+
+const getRegistrationScholarshipFilterClause = (filter, academicYearFromYear = null, alias = 'students') => {
+  const normalized = String(filter || '').trim().toLowerCase();
+  const hasStatusSql = buildRegistrationScholarshipHasStatusSql(academicYearFromYear, alias);
+  const semesterWiseOnly = academicYearFromYear != null
+    && Number(academicYearFromYear) >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR;
+  const legacyOnly = academicYearFromYear != null
+    && Number(academicYearFromYear) < SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR;
+  const yearMatchSql = `ss.student_year = GREATEST(1, IFNULL(${alias}.current_year, 1))`;
+
+  if (normalized === 'pending') {
+    return ` AND NOT (${hasStatusSql})`;
+  }
+
+  if (normalized === 'eligible') {
+    if (legacyOnly) {
+      return ` AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) = 'eligible'`;
+    }
+    if (semesterWiseOnly) {
+      return ` AND EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = ${alias}.id
+          AND ${yearMatchSql}
+          AND LOWER(TRIM(ss.eligible)) = 'eligible'
+      )`;
+    }
+    return ` AND (
+      (
+        ${studentAcademicYearFromYearSql(alias)} >= ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = ${alias}.id
+            AND ${yearMatchSql}
+            AND LOWER(TRIM(ss.eligible)) = 'eligible'
+        )
+      )
+      OR (
+        ${studentAcademicYearFromYearSql(alias)} < ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) = 'eligible'
+      )
+    )`;
+  }
+
+  if (normalized === 'not_eligible') {
+    if (legacyOnly) {
+      return ` AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) IN ('not_eligible', 'not eligible')`;
+    }
+    if (semesterWiseOnly) {
+      return ` AND EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = ${alias}.id
+          AND ${yearMatchSql}
+          AND LOWER(TRIM(ss.eligible)) IN ('not_eligible', 'not eligible')
+      )`;
+    }
+    return ` AND (
+      (
+        ${studentAcademicYearFromYearSql(alias)} >= ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = ${alias}.id
+            AND ${yearMatchSql}
+            AND LOWER(TRIM(ss.eligible)) IN ('not_eligible', 'not eligible')
+        )
+      )
+      OR (
+        ${studentAcademicYearFromYearSql(alias)} < ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) IN ('not_eligible', 'not eligible')
+      )
+    )`;
+  }
+
+  if (normalized === 'rejected') {
+    if (legacyOnly) {
+      return ` AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) = 'rejected'`;
+    }
+    if (semesterWiseOnly) {
+      return ` AND EXISTS (
+        SELECT 1 FROM student_scholarship ss
+        WHERE ss.student_id = ${alias}.id
+          AND ${yearMatchSql}
+          AND LOWER(TRIM(ss.eligible)) = 'rejected'
+      )`;
+    }
+    return ` AND (
+      (
+        ${studentAcademicYearFromYearSql(alias)} >= ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND EXISTS (
+          SELECT 1 FROM student_scholarship ss
+          WHERE ss.student_id = ${alias}.id
+            AND ${yearMatchSql}
+            AND LOWER(TRIM(ss.eligible)) = 'rejected'
+        )
+      )
+      OR (
+        ${studentAcademicYearFromYearSql(alias)} < ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}
+        AND LOWER(TRIM(IFNULL(${alias}.scholar_status, ''))) = 'rejected'
+      )
+    )`;
+  }
+
+  return '';
+};
+
+const buildRegistrationScholarshipAssignedSumSql = (academicYearFromYear = null, alias = 'students') => (
+  `SUM(CASE WHEN ${buildRegistrationScholarshipHasStatusSql(academicYearFromYear, alias)} THEN 1 ELSE 0 END)`
+);
+
+const buildRegistrationScholarshipPendingSumSql = (academicYearFromYear = null, alias = 'students') => (
+  `SUM(CASE WHEN NOT (${buildRegistrationScholarshipHasStatusSql(academicYearFromYear, alias)}) THEN 1 ELSE 0 END)`
+);
+
+const shouldUseRegistrationSemesterWise = (student, academicYearFromYear = null) => {
+  if (academicYearFromYear != null) {
+    return Number(academicYearFromYear) >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR;
+  }
+  const currentYear = Math.max(1, Number(student.current_year) || 1);
+  return usesSemesterWiseScholarshipStatus(student.batch, currentYear);
+};
+
 const getScholarshipFilterClause = (filter) => {
   const normalized = String(filter || '').trim().toLowerCase();
   if (normalized === 'pending') {
@@ -727,11 +965,29 @@ const isScholarshipDisplayUnassigned = (display) => (
   || String(display).trim().toLowerCase() === 'pending'
 );
 
-const buildCurrentYearScholarshipMap = async (pool, students) => {
+const buildRegistrationScholarshipMap = async (pool, students, { academicYearFromYear = null } = {}) => {
   const map = new Map();
   if (!students?.length) return map;
 
-  const studentIds = students.map((student) => student.id);
+  const semesterWiseStudents = [];
+  const legacyStudents = [];
+
+  for (const student of students) {
+    if (shouldUseRegistrationSemesterWise(student, academicYearFromYear)) {
+      semesterWiseStudents.push(student);
+    } else {
+      legacyStudents.push(student);
+    }
+  }
+
+  for (const student of legacyStudents) {
+    const fallback = normalizeEligible(student.scholar_status);
+    if (fallback) map.set(student.id, fallback);
+  }
+
+  if (!semesterWiseStudents.length) return map;
+
+  const studentIds = semesterWiseStudents.map((student) => student.id);
 
   // Step 1: Try exact match — current year AND current semester
   const [rows] = await pool.query(
@@ -795,49 +1051,10 @@ const buildCurrentYearScholarshipMap = async (pool, students) => {
     }
   }
 
-  // Step 3: Final fallback — use the most recent year's scholarship data from student_scholarship,
-  // OR scholar_status from students table (whichever applies).
-  // Covers: students whose current_year has no data yet (Year 4 but only Years 1-3 entered),
-  // last-year students after course completion, batch rollover cases.
-  const afterStep2Missing = studentIds.filter((id) => !map.has(id));
-  if (afterStep2Missing.length > 0) {
-    // Try most recent year's data from student_scholarship (any year, highest first)
-    const [historyRows] = await pool.query(
-      `SELECT ss.student_id, ss.eligible
-       FROM student_scholarship ss
-       WHERE ss.student_id IN (?)
-         AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-         AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
-       ORDER BY
-         ss.student_id ASC,
-         ss.student_year DESC,
-         ss.student_semester ASC,
-         ss.updated_at DESC,
-         ss.id DESC`,
-      [afterStep2Missing]
-    );
-    for (const row of historyRows) {
-      if (!map.has(row.student_id)) {
-        const normalized = normalizeEligible(row.eligible);
-        if (normalized) map.set(row.student_id, normalized);
-      }
-    }
-
-    // Final: scholar_status column for any still-missing students
-    const studentMap = new Map(students.map((s) => [s.id, s]));
-    for (const id of afterStep2Missing) {
-      if (!map.has(id)) {
-        const student = studentMap.get(id);
-        if (student) {
-          const fallback = normalizeEligible(student.scholar_status);
-          if (fallback) map.set(id, fallback);
-        }
-      }
-    }
-  }
-
   return map;
 };
+
+const buildCurrentYearScholarshipMap = buildRegistrationScholarshipMap;
 
 module.exports = {
   VALID_ELIGIBLE,
@@ -878,7 +1095,17 @@ module.exports = {
   resolveRegistrationScholarshipStage,
   isScholarshipDisplayUnassigned,
   buildCurrentYearScholarshipMap,
+  buildRegistrationScholarshipMap,
+  buildRegistrationScholarshipHasStatusSql,
+  getRegistrationScholarshipFilterClause,
+  buildRegistrationScholarshipAssignedSumSql,
+  buildRegistrationScholarshipPendingSumSql,
   extractBatchStartYear,
+  getAcademicYearStartYear,
+  usesSemesterWiseScholarshipStatus,
+  enrichYearWithScholarshipMode,
+  resolveLegacyYearEligible,
+  SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR,
   formatAcademicYearLabel,
   buildAcademicYearContext,
   enrichScholarshipYears,

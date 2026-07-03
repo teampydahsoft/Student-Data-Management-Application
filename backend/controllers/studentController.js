@@ -16,11 +16,11 @@ const {
 const sectionAssignmentService = require('../services/sectionAssignmentService');
 const { writeAuditLog, logAudit } = require('../services/auditLogService');
 const {
-  scholarshipHasCurrentYearStatusSql,
-  getScholarshipFilterClause,
-  scholarshipAssignedSumSql,
-  scholarshipPendingSumSql,
-  buildCurrentYearScholarshipMap,
+  getRegistrationScholarshipFilterClause,
+  buildRegistrationScholarshipHasStatusSql,
+  buildRegistrationScholarshipAssignedSumSql,
+  buildRegistrationScholarshipPendingSumSql,
+  buildRegistrationScholarshipMap,
   resolveRegistrationScholarshipStage,
   isScholarshipDisplayUnassigned,
   normalizeScholarStatusForResponse,
@@ -6928,12 +6928,13 @@ exports.getRegistrationReport = async (req, res) => {
       params.push(...searchParams);
     }
 
-    // Scholarship status filter — current academic year from student_scholarship only
+    // Scholarship status filter — academic-year aware (2026+ uses year-wise student_scholarship)
     const scholarshipFilter = (filter_scholarship_status || '').trim().toLowerCase();
-    baseQuery += getScholarshipFilterClause(scholarshipFilter);
+    const academicYearFilter = (req.query.filter_academic_year || '').trim();
+    const academicYearFromYear = parseAcademicYearFromYear(academicYearFilter);
+    baseQuery += getRegistrationScholarshipFilterClause(scholarshipFilter, academicYearFromYear);
 
     // Academic year filter — derived from batch + current_year
-    const academicYearFilter = (req.query.filter_academic_year || '').trim();
     if (academicYearFilter) {
       const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(academicYearFilter);
       if (ayClause) {
@@ -6948,6 +6949,10 @@ exports.getRegistrationReport = async (req, res) => {
     const totalRecords = countResult[0].total;
     const totalPages = Math.ceil(totalRecords / limitNum);
 
+    const registrationScholarshipHasStatusSql = buildRegistrationScholarshipHasStatusSql(academicYearFromYear);
+    const registrationScholarshipAssignedSumSql = buildRegistrationScholarshipAssignedSumSql(academicYearFromYear);
+    const registrationScholarshipPendingSumSql = buildRegistrationScholarshipPendingSumSql(academicYearFromYear);
+
     // Statistics Query - Efficient single-pass aggregation
     const statsQuery = `
       SELECT 
@@ -6957,21 +6962,21 @@ exports.getRegistrationReport = async (req, res) => {
         SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
         ${promotionCompletedSumSql} as promotion_completed,
-        ${scholarshipAssignedSumSql} as scholarship_assigned,
-        ${scholarshipPendingSumSql} as scholarship_pending,
+        ${registrationScholarshipAssignedSumSql} as scholarship_assigned,
+        ${registrationScholarshipPendingSumSql} as scholarship_pending,
         SUM(CASE WHEN 
              ((${verificationCompletedSql}) AND
               (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (${promotionCompletedSql}) AND
-              (${scholarshipHasCurrentYearStatusSql}))
+              (${registrationScholarshipHasStatusSql}))
              THEN 1 ELSE 0 END) as overall_completed,
         SUM(CASE WHEN 
              ((${verificationCompletedSql}) AND
               (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (${promotionCompletedSql}) AND
-              (${scholarshipHasCurrentYearStatusSql}))
+              (${registrationScholarshipHasStatusSql}))
              THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
@@ -7028,7 +7033,7 @@ exports.getRegistrationReport = async (req, res) => {
     const dataParams = [...params, limitNum, offset];
 
     const [students] = await masterPool.query(dataQuery, dataParams);
-    const scholarshipMap = await buildCurrentYearScholarshipMap(masterPool, students);
+    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear });
 
     // Process students to calculate 5 stages status
     const reportData = students.map(student => {
@@ -7361,7 +7366,8 @@ exports.getRegistrationAbstract = async (req, res) => {
     const { query, params: queryParams } = buildRegistrationAbstractQuery({
       whereClause: whereParts.join(' AND '),
       params,
-      scholarshipFilter: scholarshipFilterAbstract
+      scholarshipFilter: scholarshipFilterAbstract,
+      academicYearFromYear: parseAcademicYearFromYear(normalizedAcademicYear)
     });
 
     const [rows] = await masterPool.query(query, queryParams);
@@ -7492,10 +7498,11 @@ exports.exportRegistrationReport = async (req, res) => {
     }
 
     const scholarshipFilterExport = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
-    baseQuery += getScholarshipFilterClause(scholarshipFilterExport);
+    const normalizedAcademicYearExport = (filter_academic_year || '').trim();
+    const academicYearFromYearExport = parseAcademicYearFromYear(normalizedAcademicYearExport);
+    baseQuery += getRegistrationScholarshipFilterClause(scholarshipFilterExport, academicYearFromYearExport);
 
     // Academic year filter — derived from batch + current_year
-    const normalizedAcademicYearExport = (filter_academic_year || '').trim();
     if (normalizedAcademicYearExport) {
       const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(normalizedAcademicYearExport);
       if (ayClause) {
@@ -7503,6 +7510,8 @@ exports.exportRegistrationReport = async (req, res) => {
         params.push(...ayParams);
       }
     }
+
+    const exportScholarshipHasStatusSql = buildRegistrationScholarshipHasStatusSql(academicYearFromYearExport);
 
     // --- Statistics Query (For Abstract) ---
     const statsQuery = `
@@ -7516,14 +7525,14 @@ exports.exportRegistrationReport = async (req, res) => {
               (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (${promotionCompletedSql}) AND
-              (${scholarshipHasCurrentYearStatusSql}))
+              (${exportScholarshipHasStatusSql}))
              THEN 1 ELSE 0 END) as overall_completed,
         SUM(CASE WHEN 
              ((${verificationCompletedSql}) AND
               (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
               (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
               (${promotionCompletedSql}) AND
-              (${scholarshipHasCurrentYearStatusSql}))
+              (${exportScholarshipHasStatusSql}))
              THEN 1 ELSE 0 END) as overall_temporary
       ${baseQuery}
     `;
@@ -7554,7 +7563,9 @@ exports.exportRegistrationReport = async (req, res) => {
     `;
 
     const [students] = await masterPool.query(dataQuery, params);
-    const scholarshipMap = await buildCurrentYearScholarshipMap(masterPool, students);
+    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, {
+      academicYearFromYear: academicYearFromYearExport
+    });
 
     // Process Data
     const processedData = students.map(student => {
