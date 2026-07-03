@@ -116,17 +116,24 @@ const buildAcademicYearContext = (batch, totalYears) => {
   };
 };
 
-const mapReleaseRowForApi = (row) => ({
-  id: row.id,
-  academic_year: row.academic_year || null,
-  rtf_released_date: formatDbDate(row.from_date),
-  rtf_date: formatDbDate(row.from_date),
-  from_date: formatDbDate(row.from_date),
-  paid_date: formatDbDate(row.to_date),
-  to_date: formatDbDate(row.to_date),
-  released_amount: toNumber(row.released_amount),
-  paid_amount: toNumber(row.paid_amount)
-});
+const mapReleaseRowForApi = (row) => {
+  const rtfDate = formatDbDate(row.from_date)
+    || formatDbDate(row.rtf_released_date)
+    || formatDbDate(row.rtf_date);
+  const paidDate = formatDbDate(row.to_date)
+    || formatDbDate(row.paid_date);
+  return {
+    id: row.id,
+    academic_year: row.academic_year || null,
+    rtf_released_date: rtfDate,
+    rtf_date: rtfDate,
+    from_date: rtfDate,
+    paid_date: paidDate,
+    to_date: paidDate,
+    released_amount: toNumber(row.released_amount),
+    paid_amount: toNumber(row.paid_amount)
+  };
+};
 
 const normalizeReleaseForSave = (release = {}) => ({
   rtf_released_date: normalizeRtfReleasedDate(

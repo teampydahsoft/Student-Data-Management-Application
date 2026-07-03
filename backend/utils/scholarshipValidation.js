@@ -130,11 +130,9 @@ const calculateRtfDue = (sanctioned, released) => {
   return Math.max(0, s - r);
 };
 
-// Advance = fee money the student paid out of pocket that the released RTF now reimburses. It
-// only exists once RTF is released (released > 0) and never exceeds what the student paid
-// manually or the released amount. `paid` must be the manually-paid amount (auto-credited RTF
-// already excluded by the caller for a College Account).
-const calculateAdvanceAmount = (sanctioned, released, paid) => {
+// Advance applies to College Account students only (see calculateScholarshipAdvanceAmount).
+const calculateAdvanceAmount = (sanctioned, released, paid, isCollege = false) => {
+  if (!isCollege) return 0;
   const s = clampScholarshipAmount(sanctioned);
   const r = clampScholarshipAmount(released);
   const p = clampScholarshipAmount(paid);

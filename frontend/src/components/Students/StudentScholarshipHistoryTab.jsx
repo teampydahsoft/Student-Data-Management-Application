@@ -475,7 +475,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const rtfDue = rtfEligible ? calculateScholarshipRtfDue(sanctioned, released) : 0;
       const feeDue = financial ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
       const advance = rtfEligible
-        ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid)
+        ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid, isCollege)
         : 0;
       return {
         ...year,
@@ -973,7 +973,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           { releases: year.releases, paid_transactions: paidRows },
           isCollege
         );
-        const advanceMode = sanctioned > 0
+        const advanceMode = isCollege && sanctioned > 0
           && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0;
 
         for (let index = 0; index < year.releases.length; index += 1) {
@@ -1443,7 +1443,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE}</h4>
           <p className="text-[11px] text-gray-400 mt-1">
             Shown only for years with every semester marked Eligible.
-            {hasAnyAdvance && (
+            {hasAnyAdvance && isCollegeAccount() && (
               <span className="ml-1">
                 When college fee is fully paid manually, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
               </span>
@@ -1471,7 +1471,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             const manualPaidAmt = sumManualPaid(stateYear, isCollegeAccount());
             const totalReleasedAmt = sumReleased(stateYear.releases);
             const totalRtfDueAmt = calculateScholarshipRtfDue(sanctionedAmt, totalReleasedAmt);
-            const totalAdvanceAmt = calculateScholarshipAdvanceAmount(sanctionedAmt, totalReleasedAmt, manualPaidAmt);
+            const totalAdvanceAmt = isCollegeAccount()
+              ? calculateScholarshipAdvanceAmount(sanctionedAmt, totalReleasedAmt, manualPaidAmt, true)
+              : 0;
             const showAdvanceForYear = totalAdvanceAmt > 0;
             const isReleasedOver = sanctionedAmt > 0 && totalReleasedAmt > sanctionedAmt;
 

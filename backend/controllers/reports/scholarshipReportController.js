@@ -70,8 +70,8 @@ const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false)
   const manualPaid = rtfEligible && isCollege ? Math.max(0, paid - released) : paid;
   const feeDue = formatAmount(calculateFeeDue(sanctioned, paid));
   const rtfDue = rtfEligible ? formatAmount(calculateRtfDue(sanctioned, released)) : 0;
-  const advance = rtfEligible
-    ? formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid))
+  const advance = rtfEligible && isCollege
+    ? formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid, true))
     : 0;
   return {
     sanctioned_amount: sanctioned,

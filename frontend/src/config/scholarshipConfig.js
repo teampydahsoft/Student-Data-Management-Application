@@ -219,13 +219,11 @@ export const SCHOLARSHIP_PAID_TRANSACTIONS_TITLE = 'Paid Transactions (Fee paid 
 export const SCHOLARSHIP_PAID_DATE_LABEL = 'Fee Paid Date';
 
 /**
- * Advance = the fee money the student paid out of pocket (before/independently of the RTF) that
- * the released RTF now reimburses. It only exists once RTF is actually released (released > 0),
- * and can never exceed either what the student paid manually or the amount released.
- * `paid` here must be the manually-paid amount (for a College Account the auto-credited RTF is
- * already excluded by the caller).
+ * Advance applies to College Account students only: fee money paid to college before RTF
+ * release that the released RTF now reimburses. Mother Account students never have advance.
  */
-export const calculateScholarshipAdvanceAmount = (sanctioned, released, paid) => {
+export const calculateScholarshipAdvanceAmount = (sanctioned, released, paid, isCollege = false) => {
+  if (!isCollege) return 0;
   const s = parseScholarshipAmount(sanctioned);
   const r = typeof released === 'number' ? released : parseScholarshipAmount(released);
   const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
