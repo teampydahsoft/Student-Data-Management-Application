@@ -3960,7 +3960,11 @@ const Students = () => {
               </div>
 
               {/* Right Side - All Student Data */}
-              <div className={`flex-1 min-w-0 flex flex-col relative ${activeStudentTab === 'history' ? 'lg:overflow-hidden' : 'lg:overflow-y-auto'}`}>
+              <div className={`flex-1 min-w-0 flex flex-col relative ${
+                activeStudentTab === 'history'
+                  ? 'lg:overflow-hidden'
+                  : 'overflow-y-auto min-h-0'
+              }`}>
                 {/* Sticky Tabs Container */}
                 <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 py-3 sm:px-4 lg:px-6 lg:py-4 shrink-0 shadow-sm">
                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mb-1">
@@ -4021,7 +4025,13 @@ const Students = () => {
                   </div>
                 </div>
 
-                <div className={`p-3 sm:p-4 lg:p-6 ${activeStudentTab === 'history' ? 'flex-1 overflow-hidden flex flex-col' : ''}`}>
+                <div className={`p-3 sm:p-4 lg:p-6 ${
+                  activeStudentTab === 'history'
+                    ? 'flex-1 overflow-hidden flex flex-col'
+                    : activeStudentTab === 'scholarship'
+                      ? 'flex-1 min-h-0 overflow-y-auto'
+                      : ''
+                }`}>
 
                   {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
                     const studentData = selectedStudent.student_data || {};

@@ -107,7 +107,8 @@ const buildEmptyYear = (studentYear, semestersPerYear = 2) => ({
   sanctioned_amount: 0,
   released_amount: 0,
   semesters: buildDefaultSemesters(semestersPerYear),
-  releases: []
+  releases: [],
+  paid_transactions: []
 });
 
 const buildYearEntryFromRows = (rows, semestersPerYear) => {
