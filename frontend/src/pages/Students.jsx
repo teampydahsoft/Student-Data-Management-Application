@@ -4232,8 +4232,12 @@ const Students = () => {
                       onUpdated={(data) => {
                         setScholarshipData(data);
                         const status = data?.currentYearEligible || getCurrentScholarshipStatus(data, selectedStudent);
-                        if (status) {
-                          setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
+                        if (status || data?.student?.caste) {
+                          setSelectedStudent((prev) => (prev ? {
+                            ...prev,
+                            ...(status ? { scholar_status: status } : {}),
+                            ...(data?.student?.caste ? { caste: data.student.caste } : {})
+                          } : prev));
                         }
                       }}
                     />

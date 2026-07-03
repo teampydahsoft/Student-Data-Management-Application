@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History, X } from 'lucide-react';
-import api from '../../config/api';
-import LoadingAnimation from '../LoadingAnimation';
-import toast from 'react-hot-toast';
-
 import {
   SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS,
   isScholarshipQuotaLocked,
@@ -36,9 +32,9 @@ import {
   calculateRemainingFeeDueBeforeRow,
   calculateFeeDueAfterRow,
   calculateRemainingRtfDueBeforeRow,
-  calculateRtfDueAfterRow,
-  isRtfRowAdvance
+  calculateRtfDueAfterRow
 } from '../../config/scholarshipConfig';
+import { CASTE_OPTIONS } from '../../config/casteConfig';
 
 const ELIGIBLE_OPTIONS = SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS;
 
@@ -118,16 +114,16 @@ const parseAmount = (value) => parseScholarshipAmount(value);
 const sumReleased = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.released_amount), 0);
 const sumPaid = (paidTransactions = []) => paidTransactions.reduce((sum, row) => sum + parseAmount(row.paid_amount), 0);
 
-// Advance must only consider manually entered fee payments. For a College Account the
-// RTF-linked rows are auto-credited from the portal, so they are ignored here — only the
-// extra manually entered paid rows (after the auto rows) count toward advance.
+// Advance must only consider manually entered fee payments. For a College Account the RTF
+// released amount is auto-credited into the paid transactions, so it is subtracted here —
+// only the real fee money paid to college (beyond the auto-credit) counts toward advance.
 const sumManualPaid = (year, isCollege) => {
-  const paidRows = year.paid_transactions || [];
+  const totalPaid = sumPaid(year.paid_transactions || []);
   if (isCollege) {
-    const releaseCount = (year.releases || []).length;
-    return sumPaid(paidRows.slice(releaseCount));
+    const totalReleased = sumReleased(year.releases || []);
+    return Math.max(0, totalPaid - totalReleased);
   }
-  return sumPaid(paidRows);
+  return totalPaid;
 };
 
 const normalizeDateForInput = (value) => normalizeRtfReleasedDateForInput(value);
@@ -363,11 +359,27 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const [historyYear, setHistoryYear] = useState(null);
   const [remoteAppIdStatus, setRemoteAppIdStatus] = useState({});
   const [casteAccountTypes, setCasteAccountTypes] = useState({}); // caste → 'mother' | 'college'
+  const [selectedCaste, setSelectedCaste] = useState('');
   const remoteAppIdTimersRef = useRef({});
 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
   const isEditingDisabled = readOnly || quotaLocked;
+
+  const casteOptions = useMemo(() => {
+    const current = String(selectedCaste || student?.caste || meta?.student?.caste || '').trim();
+    if (current && !CASTE_OPTIONS.includes(current)) {
+      return [current, ...CASTE_OPTIONS];
+    }
+    return CASTE_OPTIONS;
+  }, [selectedCaste, student?.caste, meta?.student?.caste]);
+
+  useEffect(() => {
+    const fromStudent = String(student?.caste || meta?.student?.caste || '').trim();
+    if (fromStudent) {
+      setSelectedCaste(fromStudent);
+    }
+  }, [student?.caste, meta?.student?.caste]);
 
   const fetchScholarshipRemarks = useCallback(async () => {
     if (!admissionNumber) return { map: {}, list: [] };
@@ -403,9 +415,14 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       if (scholarshipResponse.data.success) {
         const payload = scholarshipResponse.data.data;
         const accountTypes = rtfConfigRes?.data?.data?.casteAccountTypes || {};
-        const isCollege = accountTypes[student?.caste] === 'college';
+        const isCollege = accountTypes[payload.student?.caste || student?.caste] === 'college';
         setMeta(payload);
         setScholarshipRemarks(remarkData.list);
+        if (payload.student?.caste) {
+          setSelectedCaste(payload.student.caste);
+        } else if (student?.caste) {
+          setSelectedCaste(student.caste);
+        }
         setYears(
           (payload.years || []).map((year) => syncCollegePaidTransactionsFromRtf(
             normalizeYearFromApi(year, payload, student, remarkData.map),
@@ -430,7 +447,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const summaryYears = useMemo(
     () => years.map((year) => {
       const eligible = isYearScholarshipEligible(year);
-      const isCollege = casteAccountTypes[student?.caste] === 'college';
+      const isCollege = casteAccountTypes[selectedCaste || student?.caste] === 'college';
       const sanctioned = eligible ? parseAmount(year.sanctioned_amount) : 0;
       const released = eligible ? sumReleased(year.releases) : 0;
       const paid = eligible ? sumPaid(year.paid_transactions || []) : 0;
@@ -439,7 +456,6 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const rtfDue = eligible ? calculateScholarshipRtfDue(sanctioned, released, manualPaid) : 0;
       const feeDue = eligible ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
       const advance = eligible ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid) : 0;
-      const advanceMode = eligible && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0 && released > 0;
       return {
         ...year,
         released_amount: released,
@@ -447,11 +463,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         rtf_due_amount: rtfDue,
         fee_due_amount: feeDue,
         advance_amount: advance,
-        advance_mode: advanceMode,
         releasesEligible: eligible
       };
     }),
-    [years]
+    [years, selectedCaste, casteAccountTypes, student?.caste]
+  );
+
+  const hasAnyAdvance = useMemo(
+    () => summaryYears.some((year) => year.advance_amount > 0),
+    [summaryYears]
   );
 
   const releaseTransactionYears = useMemo(
@@ -697,8 +717,14 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   };
 
   const isCollegeAccount = () => {
-    const c = String(student?.caste || '').trim();
+    const c = String(selectedCaste || student?.caste || '').trim();
     return c && casteAccountTypes[c] === 'college';
+  };
+
+  const handleCasteChange = (value) => {
+    setSelectedCaste(value);
+    const isCollege = value && casteAccountTypes[value] === 'college';
+    setYears((prev) => prev.map((year) => syncCollegePaidTransactionsFromRtf(year, isCollege)));
   };
 
   const applyCollegePaidSync = (year) => syncCollegePaidTransactionsFromRtf(year, isCollegeAccount());
@@ -853,6 +879,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
       const paidRows = applyCollegePaidSync(year).paid_transactions || [];
       const sanctioned = parseAmount(year.sanctioned_amount);
+      const isCollege = isCollegeAccount();
 
       for (let index = 0; index < paidRows.length; index += 1) {
         const transaction = paidRows[index];
@@ -867,13 +894,18 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           toast.error(`Year ${year.student_year}, paid row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
           return;
         }
-        const rowPaid = parseAmount(transaction.paid_amount);
-        const remainingFeeDue = calculateRemainingFeeDueBeforeRow(sanctioned, paidRows, index);
-        if (sanctioned > 0 && rowPaid > remainingFeeDue) {
-          toast.error(
-            `Year ${year.student_year}, paid row ${index + 1}: Paid amount (${rowPaid}) exceeds remaining ${SCHOLARSHIP_FEE_DUE_LABEL} (${remainingFeeDue})`
-          );
-          return;
+        // For a College Account the RTF auto-credit is added on top of manual payments and can
+        // legitimately push the total beyond the fee (that surplus is the advance). Skip the
+        // per-row Fee Due cap there; the manual-paid total is validated below instead.
+        if (!isCollege) {
+          const rowPaid = parseAmount(transaction.paid_amount);
+          const remainingFeeDue = calculateRemainingFeeDueBeforeRow(sanctioned, paidRows, index);
+          if (sanctioned > 0 && rowPaid > remainingFeeDue) {
+            toast.error(
+              `Year ${year.student_year}, paid row ${index + 1}: Paid amount (${rowPaid}) exceeds remaining ${SCHOLARSHIP_FEE_DUE_LABEL} (${remainingFeeDue})`
+            );
+            return;
+          }
         }
       }
 
@@ -881,7 +913,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       // Advance mode considers manually entered payments only (college auto-credit excluded).
       const manualPaid = sumManualPaid(
         { releases: year.releases, paid_transactions: paidRows },
-        isCollegeAccount()
+        isCollege
       );
       const advanceMode = sanctioned > 0
         && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0;
@@ -918,10 +950,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         return;
       }
 
-      // Total paid must not exceed sanctioned amount
-      if (sanctioned > 0 && totalPaid > sanctioned) {
+      // The fee money paid to college must not exceed the sanctioned amount. For a College
+      // Account the RTF auto-credit is excluded (it becomes advance when the fee is fully paid).
+      if (sanctioned > 0 && manualPaid > sanctioned) {
         toast.error(
-          `Year ${year.student_year}: Total paid amount (${totalPaid}) cannot exceed sanctioned amount (${sanctioned})`
+          `Year ${year.student_year}: Total paid amount (${manualPaid}) cannot exceed sanctioned amount (${sanctioned})`
         );
         return;
       }
@@ -969,7 +1002,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         };
       });
 
-      const response = await api.put(`/student-scholarship/${encodeURIComponent(admissionNumber)}`, { years: payload });
+      const response = await api.put(`/student-scholarship/${encodeURIComponent(admissionNumber)}`, {
+        years: payload,
+        caste: selectedCaste || null
+      });
       if (response.data.success) {
         await saveScholarshipRemarks();
         toast.success('Scholarship history saved');
@@ -980,9 +1016,13 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         setYears(
           (payloadData.years || []).map((year) => syncCollegePaidTransactionsFromRtf(
             normalizeYearFromApi(year, payloadData, student, remarkData.map),
-            isCollegeAccount()
+            (payloadData.student?.caste || selectedCaste)
+              && casteAccountTypes[payloadData.student?.caste || selectedCaste] === 'college'
           ))
         );
+        if (payloadData.student?.caste) {
+          setSelectedCaste(payloadData.student.caste);
+        }
         onUpdated?.(payloadData);
       } else {
         toast.error(response.data.message || 'Failed to save scholarship history');
@@ -1066,6 +1106,35 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         )}
       </div>
 
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-wrap items-end gap-4">
+        <div className="flex flex-col gap-1 min-w-[180px]">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Caste</label>
+          {isEditingDisabled ? (
+            <span className="text-sm font-medium text-gray-800">{selectedCaste || student?.caste || '—'}</span>
+          ) : (
+            <select
+              value={selectedCaste}
+              onChange={(e) => handleCasteChange(e.target.value)}
+              className="w-full min-w-[180px] px-2.5 py-2 border border-gray-200 rounded-lg text-xs text-gray-800 bg-white"
+            >
+              <option value="">Select caste</option>
+              {casteOptions.map((caste) => (
+                <option key={caste} value={caste}>{caste}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {selectedCaste && casteAccountTypes[selectedCaste] && (
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+            casteAccountTypes[selectedCaste] === 'college'
+              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+              : 'text-blue-700 bg-blue-50 border-blue-200'
+          }`}>
+            {casteAccountTypes[selectedCaste] === 'college' ? 'College Account' : 'Mother Account'}
+          </span>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Year-wise Scholarship Summary</h4>
@@ -1080,7 +1149,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Sanctioned</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
+                {hasAnyAdvance && (
+                  <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
+                )}
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_DUE_LABEL}</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
@@ -1214,19 +1285,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         )}
                       </td>
                     )}
-                    {semesterIndex === 0 && (
+                    {hasAnyAdvance && semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
-                        {year.releasesEligible ? (
-                          year.advance_amount > 0 ? (
-                            <span className="font-semibold text-violet-700 text-xs">
-                              {formatCurrency(year.advance_amount)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )
+                        {year.releasesEligible && year.advance_amount > 0 ? (
+                          <span className="font-semibold text-violet-700 text-xs">
+                            {formatCurrency(year.advance_amount)}
+                          </span>
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
@@ -1238,7 +1305,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
                         {year.releasesEligible ? (
-                          year.advance_mode ? (
+                          hasAnyAdvance && year.advance_amount > 0 ? (
                             <span className="text-gray-400">—</span>
                           ) : (
                             <span className={`font-semibold text-xs ${year.rtf_due_amount > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
@@ -1322,7 +1389,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE}</h4>
           <p className="text-[11px] text-gray-400 mt-1">
             Shown only for years with every semester marked Eligible.
-            When college fee is fully paid, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
+            {hasAnyAdvance && (
+              <span className="ml-1">
+                When college fee is fully paid manually, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
+              </span>
+            )}
             {isCollegeAccount() && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                 College Account — Paid Transactions auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL}
@@ -1342,16 +1413,12 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             const stateYear = years[yearIndex] || year;
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
             const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
-            const totalPaidAmt = sumPaid(stateYear.paid_transactions || []);
             // Advance mode considers manually entered payments only (college auto-credit excluded).
             const manualPaidAmt = sumManualPaid(stateYear, isCollegeAccount());
             const totalReleasedAmt = sumReleased(stateYear.releases);
-            const feeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
-            const advanceMode = sanctionedAmt > 0
-              && calculateScholarshipFeeDue(sanctionedAmt, manualPaidAmt) === 0
-              && totalReleasedAmt > 0;
             const totalRtfDueAmt = calculateScholarshipRtfDue(sanctionedAmt, totalReleasedAmt, manualPaidAmt);
             const totalAdvanceAmt = calculateScholarshipAdvanceAmount(sanctionedAmt, totalReleasedAmt, manualPaidAmt);
+            const showAdvanceForYear = totalAdvanceAmt > 0;
             const isReleasedOver = sanctionedAmt > 0 && totalReleasedAmt > sanctionedAmt;
 
             return (
@@ -1367,17 +1434,17 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       </span>
                     )}
                   </span>
-                  {totalAdvanceAmt > 0 && (
+                  {hasAnyAdvance && showAdvanceForYear && (
                     <span className="text-xs font-semibold text-violet-700">
                       {SCHOLARSHIP_ADVANCE_LABEL}: {formatCurrency(totalAdvanceAmt)}
                     </span>
                   )}
-                  {sanctionedAmt > 0 && !advanceMode && (
+                  {sanctionedAmt > 0 && (!showAdvanceForYear || !hasAnyAdvance) && (
                     <span className={`text-xs font-semibold ${totalRtfDueAmt > 0 ? 'text-sky-600' : 'text-gray-500'}`}>
                       {SCHOLARSHIP_RTF_DUE_LABEL}: {formatCurrency(totalRtfDueAmt)}
                     </span>
                   )}
-                  {sanctionedAmt > 0 && advanceMode && (
+                  {hasAnyAdvance && sanctionedAmt > 0 && showAdvanceForYear && (
                     <span className="text-xs font-semibold text-gray-500">
                       {SCHOLARSHIP_RTF_DUE_LABEL}: —
                     </span>
@@ -1392,14 +1459,18 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Remitted Date</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_RELEASED_LABEL} Amount</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_DUE_LABEL} / {SCHOLARSHIP_ADVANCE_LABEL}</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">
+                        {hasAnyAdvance
+                          ? `${SCHOLARSHIP_RTF_DUE_LABEL} / ${SCHOLARSHIP_ADVANCE_LABEL}`
+                          : SCHOLARSHIP_RTF_DUE_LABEL}
+                      </th>
                       {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {stateYear.releases.map((release, releaseIndex) => {
                       const rowReleased = parseAmount(release.released_amount);
-                      const isAdvanceRow = advanceMode && rowReleased > 0;
+                      const isAdvanceRow = hasAnyAdvance && showAdvanceForYear && rowReleased > 0;
                       const remainingRtfDueBefore = calculateRemainingRtfDueBeforeRow(
                         sanctionedAmt,
                         stateYear.releases,
@@ -1412,7 +1483,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         manualPaidAmt,
                         releaseIndex
                       );
-                      const isRowReleasedOver = !advanceMode && sanctionedAmt > 0 && rowReleased > remainingRtfDueBefore;
+                      const isRowReleasedOver = !showAdvanceForYear && sanctionedAmt > 0 && rowReleased > remainingRtfDueBefore;
 
                       return (
                       <tr key={`${year.student_year}-rtf-${releaseIndex}`}>
@@ -1473,7 +1544,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             <span className="text-xs font-semibold tabular-nums text-violet-700">
                               {rowReleased > 0 ? formatCurrency(rowReleased) : '—'}
                             </span>
-                          ) : sanctionedAmt > 0 && !advanceMode ? (
+                          ) : sanctionedAmt > 0 && !showAdvanceForYear ? (
                             <span className={`text-xs font-semibold tabular-nums ${rtfDueAfterRow > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
                               {formatCurrency(rtfDueAfterRow)}
                             </span>
@@ -1528,7 +1599,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 Rows matching {SCHOLARSHIP_RTF_RELEASED_LABEL} are auto-filled; add extra rows for additional payments
               </span>
             )}
-            {!isCollegeAccount() && student?.caste && casteAccountTypes[student.caste] !== undefined && (
+            {!isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                 Mother Account — enter paid amount and date manually
               </span>

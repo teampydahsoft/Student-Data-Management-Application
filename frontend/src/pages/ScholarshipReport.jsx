@@ -127,6 +127,15 @@ function ScholarshipReport() {
     });
   }, [reportData, sort]);
 
+  const hasAnyAdvance = useMemo(
+    () => reportData.some((student) => (
+      (student.years || []).some((year) => Number(year.advance_amount) > 0)
+    )),
+    [reportData]
+  );
+
+  const colsPerYear = hasAnyAdvance ? 6 : 5;
+
   const filtersReady = Boolean(filters.college && filters.batch && filters.course && filters.branch);
 
   const handleFilterChange = (field, value) => {
@@ -567,7 +576,7 @@ function ScholarshipReport() {
                   {yearColumns.map((year) => (
                     <th
                       key={`year-${year}`}
-                      colSpan={6}
+                      colSpan={colsPerYear}
                       className="border-b border-r border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-700 bg-amber-50/60 text-[11px]"
                     >
                       {formatAcademicYearLabel(filters.batch, year)}
@@ -583,9 +592,11 @@ function ScholarshipReport() {
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-emerald-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_RELEASED_LABEL}
                       </th>
-                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-violet-600 whitespace-nowrap">
-                        {SCHOLARSHIP_ADVANCE_LABEL}
-                      </th>
+                      {hasAnyAdvance && (
+                        <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-violet-600 whitespace-nowrap">
+                          {SCHOLARSHIP_ADVANCE_LABEL}
+                        </th>
+                      )}
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_DUE_LABEL}
                       </th>
@@ -627,7 +638,7 @@ function ScholarshipReport() {
                         due_amount: 0,
                         advance_amount: 0
                       };
-                      const showRtfDue = !(yearData.advance_amount > 0);
+                      const showRtfDue = !(hasAnyAdvance && yearData.advance_amount > 0);
                       return (
                         <React.Fragment key={`${student.student_id}-${year}`}>
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-gray-700 tabular-nums text-[11px]">
@@ -636,9 +647,11 @@ function ScholarshipReport() {
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-emerald-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.released_amount)}
                           </td>
-                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-violet-700 tabular-nums text-[11px]">
-                            {formatAmount(yearData.advance_amount)}
-                          </td>
+                          {hasAnyAdvance && (
+                            <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-violet-700 tabular-nums text-[11px]">
+                              {formatAmount(yearData.advance_amount)}
+                            </td>
+                          )}
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
                             {showRtfDue ? formatAmount(yearData.due_amount) : '—'}
                           </td>

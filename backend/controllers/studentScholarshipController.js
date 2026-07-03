@@ -68,6 +68,22 @@ const getRtfLockedAmount = async (college, batch, course, branch, studentYear, c
   }
 };
 
+const isCollegeAccountForCaste = async (caste) => {
+  try {
+    const [rows] = await masterPool.query(
+      "SELECT value FROM settings WHERE `key` = 'rtf_amount_config' LIMIT 1"
+    );
+    if (!rows.length) return false;
+    const config = JSON.parse(rows[0].value || '{}');
+    const map = (config && typeof config.casteAccountTypes === 'object' && config.casteAccountTypes)
+      ? config.casteAccountTypes
+      : {};
+    return map[String(caste || '').trim()] === 'college';
+  } catch {
+    return false;
+  }
+};
+
 const DEFAULT_TOTAL_YEARS = 4;
 
 const toNumber = (value) => {
@@ -201,7 +217,8 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
       course: student.course,
       branch: student.branch,
       batch: student.batch,
-      stud_type: student.stud_type
+      stud_type: student.stud_type,
+      caste: student.caste || ''
     },
     totalYears,
     semestersPerYear: extra.semestersPerYear ?? 2,
@@ -455,7 +472,7 @@ exports.saveScholarshipHistory = async (req, res) => {
 
   try {
     const { admission_number: admissionNumber } = req.params;
-    const { years } = req.body || {};
+    const { years, caste: casteInput } = req.body || {};
 
     if (!Array.isArray(years)) {
       return res.status(400).json({ success: false, message: 'years array is required' });
@@ -473,12 +490,25 @@ exports.saveScholarshipHistory = async (req, res) => {
       });
     }
 
-    const validation = await validateScholarshipYearsPayload(connection, student.id, years);
+    const effectiveCaste = casteInput !== undefined && casteInput !== null
+      ? String(casteInput).trim()
+      : String(student.caste || '').trim();
+
+    const isCollege = await isCollegeAccountForCaste(effectiveCaste);
+    const validation = await validateScholarshipYearsPayload(connection, student.id, years, { isCollege });
     if (!validation.valid) {
       return res.status(400).json({ success: false, message: validation.message });
     }
 
     await connection.beginTransaction();
+
+    if (casteInput !== undefined && effectiveCaste !== String(student.caste || '').trim()) {
+      await connection.query(
+        'UPDATE students SET caste = ? WHERE id = ?',
+        [effectiveCaste || null, student.id]
+      );
+      student.caste = effectiveCaste;
+    }
 
     const historyActor = resolveHistoryActor(req.user);
     const semestersPerYear = await resolveSemestersPerYearForStudent(student);

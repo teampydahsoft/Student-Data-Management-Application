@@ -271,7 +271,10 @@ const buildScholarshipReportData = async (req) => {
 
 const buildExcelBuffer = (data, totalYears, filters) => {
   const fixedCols = 6; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste
-  const colsPerYear = 6;
+  const hasAnyAdvance = data.some((student) => (
+    (student.years || []).some((year) => Number(year.advance_amount) > 0)
+  ));
+  const colsPerYear = hasAnyAdvance ? 6 : 5;
   const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste'];
   const row2 = ['', '', '', '', '', ''];
   const merges = [
@@ -283,9 +286,13 @@ const buildExcelBuffer = (data, totalYears, filters) => {
     { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } }
   ];
 
+  const yearSubHeaders = hasAnyAdvance
+    ? ['Sanctioned', 'RTF Released', 'Advance', 'RTF Due', 'Paid', 'Fee Due']
+    : ['Sanctioned', 'RTF Released', 'RTF Due', 'Paid', 'Fee Due'];
+
   for (let year = 1; year <= totalYears; year += 1) {
-    row1.push(`Year ${year}`, '', '', '', '', '');
-    row2.push('Sanctioned', 'RTF Released', 'Advance', 'RTF Due', 'Paid', 'Fee Due');
+    row1.push(`Year ${year}`, ...Array(colsPerYear - 1).fill(''));
+    row2.push(...yearSubHeaders);
     const startCol = fixedCols + (year - 1) * colsPerYear;
     merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + colsPerYear - 1 } });
   }
@@ -320,13 +327,17 @@ const buildExcelBuffer = (data, totalYears, filters) => {
         due_amount: 0,
         advance_amount: 0
       };
-      const rtfDueCell = yearData.advance_amount > 0
+      const rtfDueCell = hasAnyAdvance && yearData.advance_amount > 0
         ? ''
         : yearData.due_amount;
       row.push(
         yearData.sanctioned_amount,
-        yearData.released_amount,
-        yearData.advance_amount || 0,
+        yearData.released_amount
+      );
+      if (hasAnyAdvance) {
+        row.push(yearData.advance_amount || 0);
+      }
+      row.push(
         rtfDueCell,
         yearData.paid_amount,
         yearData.pending_amount

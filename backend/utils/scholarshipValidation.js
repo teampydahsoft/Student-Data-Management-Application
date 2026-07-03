@@ -225,7 +225,8 @@ const allSemestersEligible = (semesters = []) => (
   && semesters.every((sem) => isSemesterEligible(sem.eligible))
 );
 
-const validateScholarshipYearsPayload = async (connection, studentId, years = []) => {
+const validateScholarshipYearsPayload = async (connection, studentId, years = [], options = {}) => {
+  const { isCollege = false } = options;
   const duplicateIds = findDuplicateApplicationIdsInPayload(years);
   if (duplicateIds.length) {
     return {
@@ -315,20 +316,29 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       );
       if (!paidValidation.valid) return paidValidation;
 
-      const sanctionedValue = sanctionedValidation.value ?? 0;
-      const remainingFeeDue = Math.max(0, sanctionedValue - totalPaidAmount);
-      if (sanctionedValue > 0 && paidAmount > remainingFeeDue) {
-        return {
-          valid: false,
-          message: `Year ${studentYear}: Paid amount on row ${index + 1} (${paidAmount}) exceeds remaining Fee Due (${remainingFeeDue})`
-        };
+      // For a College Account the RTF auto-credit is added on top of manual payments and can
+      // legitimately exceed the fee (the surplus is the advance). Skip the per-row Fee Due cap
+      // there; the manual-paid total is validated below instead.
+      if (!isCollege) {
+        const sanctionedValue = sanctionedValidation.value ?? 0;
+        const remainingFeeDue = Math.max(0, sanctionedValue - totalPaidAmount);
+        if (sanctionedValue > 0 && paidAmount > remainingFeeDue) {
+          return {
+            valid: false,
+            message: `Year ${studentYear}: Paid amount on row ${index + 1} (${paidAmount}) exceeds remaining Fee Due (${remainingFeeDue})`
+          };
+        }
       }
 
       totalPaidAmount += paidAmount;
     }
 
     const sanctionedValue = sanctionedValidation.value ?? 0;
-    const feeDueValue = calculateFeeDue(sanctionedValue, totalPaidAmount);
+    // Advance considers manual fee payments only; the college RTF auto-credit is excluded.
+    const manualPaidAmount = isCollege
+      ? Math.max(0, totalPaidAmount - totalReleasedAmount)
+      : totalPaidAmount;
+    const feeDueValue = calculateFeeDue(sanctionedValue, manualPaidAmount);
 
     let runningReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
@@ -359,11 +369,12 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       };
     }
 
-    // Total paid must not exceed sanctioned amount
-    if (sanctionedValue > 0 && totalPaidAmount > sanctionedValue) {
+    // The fee money paid to college must not exceed the sanctioned amount. For a College Account
+    // the RTF auto-credit is excluded (it becomes advance once the fee is fully paid).
+    if (sanctionedValue > 0 && manualPaidAmount > sanctionedValue) {
       return {
         valid: false,
-        message: `Year ${studentYear}: Total paid amount (${totalPaidAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
+        message: `Year ${studentYear}: Total paid amount (${manualPaidAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
       };
     }
   }
