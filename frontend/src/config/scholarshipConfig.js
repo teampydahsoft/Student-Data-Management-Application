@@ -40,6 +40,12 @@ export const isScholarshipQuotaLocked = (student, scholarshipMeta = null) => (
   || isScholarshipIneligibleQuota(student?.stud_type || student?.StudType)
 );
 
+/** Convenor quota (CQ is stored as CONV). */
+export const isConvScholarshipQuota = (student) => {
+  const code = normalizeStudTypeCode(student?.stud_type || student?.StudType);
+  return code === 'CONV' || code === 'CQ';
+};
+
 export const normalizeScholarshipStatusValue = (status) => {
   const raw = String(status ?? '').trim().toLowerCase();
   if (!raw || raw === 'null' || raw === 'undefined') return '';
@@ -118,6 +124,11 @@ export const isYearFeeOnlyScholarshipMode = (year) => {
 /** Sanctioned amount (and optionally paid transactions) may be recorded for this year. */
 export const hasYearScholarshipFinancialTracking = (year) => (
   isYearScholarshipEligible(year) || isYearFeeOnlyScholarshipMode(year)
+);
+
+/** Fee-only years on CONV students use tuition-fee labels instead of scholarship labels. */
+export const shouldUseTuitionFeeLabels = (student, year) => (
+  isConvScholarshipQuota(student) && isYearFeeOnlyScholarshipMode(year)
 );
 
 export const formatScholarshipStatusDisplay = (status) => {
@@ -233,12 +244,26 @@ export const parseScholarshipAmount = (value) => {
 };
 
 export const SCHOLARSHIP_RTF_RELEASED_LABEL = 'RTF Released';
-export const SCHOLARSHIP_RTF_DUE_LABEL = 'RTF Due';
+export const SCHOLARSHIP_RTF_DUE_LABEL = 'Due';
 export const SCHOLARSHIP_FEE_DUE_LABEL = 'Fee Due';
 export const SCHOLARSHIP_ADVANCE_LABEL = 'Advance';
 export const SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE = 'RTF Released Transactions (As per JnanaBhumi portal)';
 export const SCHOLARSHIP_PAID_TRANSACTIONS_TITLE = 'Paid Transactions (Fee paid to college)';
 export const SCHOLARSHIP_PAID_DATE_LABEL = 'Fee Paid Date';
+export const SCHOLARSHIP_TUITION_FEE_LABEL = 'Tuition Fee';
+export const SCHOLARSHIP_TUITION_FEE_PAID_LABEL = 'Tuition Fee Paid';
+export const SCHOLARSHIP_TUITION_FEE_DUE_LABEL = 'Tuition Fee Due';
+export const SCHOLARSHIP_TUITION_FEE_PAID_DATE_LABEL = 'Tuition Fee Paid Date';
+export const SCHOLARSHIP_TUITION_FEE_TRANSACTIONS_TITLE = 'Tuition Fee Payments';
+
+/** Summary column header — Tuition Fee for CONV fee-only years; Sanctioned otherwise. */
+export const getScholarshipSanctionedColumnLabel = (student, years = []) => {
+  if (!isConvScholarshipQuota(student)) return 'Sanctioned';
+  const hasFeeOnly = years.some((year) => isYearFeeOnlyScholarshipMode(year));
+  if (!hasFeeOnly) return 'Sanctioned';
+  const hasEligible = years.some((year) => isYearScholarshipEligible(year));
+  return hasEligible ? `Sanctioned / ${SCHOLARSHIP_TUITION_FEE_LABEL}` : SCHOLARSHIP_TUITION_FEE_LABEL;
+};
 
 /** Hide Paid and Fee Due columns in the year-wise scholarship summary table. */
 export const SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS = true;

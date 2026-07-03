@@ -10,6 +10,8 @@ const {
   buildIneligibleQuotaYears,
   buildAcademicYearContext,
   enrichScholarshipYears,
+  fetchBatchSanctionedAmountsByYear,
+  propagateBatchSanctionedAmount,
   mapReleaseRowForApi,
   normalizeReleaseForSave,
   resolveTotalYears: resolveScholarshipTotalYears,
@@ -282,17 +284,29 @@ const fetchScholarshipPayload = async (student) => {
 
   const archivedHistory = await fetchArchivedHistory(student.id);
 
-  const years = Array.from({ length: totalYears }, (_, index) => {
+  const batchSanctionedByYear = await fetchBatchSanctionedAmountsByYear(masterPool, student);
+
+  const years = await Promise.all(Array.from({ length: totalYears }, async (_, index) => {
     const studentYear = index + 1;
     const yearRows = yearMap[studentYear] || [];
-    if (!yearRows.length) {
-      return buildEmptyYear(studentYear, semestersPerYear);
-    }
+    const baseYear = !yearRows.length
+      ? buildEmptyYear(studentYear, semestersPerYear)
+      : {
+        student_year: studentYear,
+        ...buildYearEntryFromRows(yearRows, semestersPerYear)
+      };
+
+    const lockedAmount = await getRtfLockedAmount(
+      student.college, student.batch, student.course, student.branch, studentYear, student.caste
+    );
+    const peerAmount = batchSanctionedByYear[studentYear] || 0;
+    const batchSanctioned = Math.max(peerAmount, lockedAmount !== null ? toNumber(lockedAmount) : 0);
+
     return {
-      student_year: studentYear,
-      ...buildYearEntryFromRows(yearRows, semestersPerYear)
+      ...baseYear,
+      batch_sanctioned_amount: batchSanctioned
     };
-  });
+  }));
 
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
   const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
@@ -616,6 +630,15 @@ exports.saveScholarshipHistory = async (req, res) => {
             ]
           );
         }
+      }
+
+      if (summaryData.sanctioned_amount > 0) {
+        await propagateBatchSanctionedAmount(
+          connection,
+          student,
+          studentYear,
+          summaryData.sanctioned_amount
+        );
       }
 
       if (validRtfReleases.length > 0 || validPaidTransactions.length > 0) {

@@ -20,9 +20,7 @@ import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import {
   SCHOLARSHIP_RTF_RELEASED_LABEL,
-  SCHOLARSHIP_RTF_DUE_LABEL,
-  SCHOLARSHIP_FEE_DUE_LABEL,
-  SCHOLARSHIP_ADVANCE_LABEL
+  SCHOLARSHIP_RTF_DUE_LABEL
 } from '../config/scholarshipConfig';
 
 const formatAmount = (value) => {
@@ -51,6 +49,17 @@ const formatAcademicYearLabel = (batch, studentYear) => {
   if (!start) return `Year ${idx}`;
   const from = start + idx - 1;
   return `${from}-${from + 1}`;
+};
+
+/** Program year index (1, 2, …) for the current June–May academic cycle. */
+const getCurrentProgramYear = (batch, maxYears = 10) => {
+  const batchStart = extractBatchStartYear(batch);
+  if (!batchStart) return 1;
+  const now = new Date();
+  const calendarYear = now.getFullYear();
+  const academicStartYear = now.getMonth() >= 5 ? calendarYear : calendarYear - 1;
+  const programYear = academicStartYear - batchStart + 1;
+  return Math.min(Math.max(1, programYear), maxYears);
 };
 
 function ScholarshipReport() {
@@ -127,14 +136,7 @@ function ScholarshipReport() {
     });
   }, [reportData, sort]);
 
-  const hasAnyAdvance = useMemo(
-    () => reportData.some((student) => (
-      (student.years || []).some((year) => Number(year.advance_amount) > 0)
-    )),
-    [reportData]
-  );
-
-  const colsPerYear = hasAnyAdvance ? 6 : 5;
+  const colsPerYear = 3;
 
   const filtersReady = Boolean(filters.college && filters.batch && filters.course && filters.branch);
 
@@ -210,7 +212,7 @@ function ScholarshipReport() {
     return [...new Set(list.map((c) => c.name).filter(Boolean))].sort();
   }, [coursesWithLevels, collegesList, filters.college, filterOptions.courses]);
 
-  // Resolve total years for the selected course so we can build academic year options
+  // Resolve total years for the selected course; default academic year to current cycle
   useEffect(() => {
     if (!filters.course) {
       setBatchTotalYears(0);
@@ -219,10 +221,23 @@ function ScholarshipReport() {
     }
     const matched = coursesWithLevels.find((c) => c.name === filters.course);
     const years = matched?.total_years || matched?.totalYears || 4;
-    setBatchTotalYears(Number(years) || 4);
-    // Reset academic_year when course changes
-    setFilters((prev) => ({ ...prev, academic_year: '' }));
+    const total = Number(years) || 4;
+    setBatchTotalYears(total);
+    setFilters((prev) => {
+      const currentYear = getCurrentProgramYear(prev.batch, total);
+      return { ...prev, academic_year: String(currentYear) };
+    });
   }, [filters.course, coursesWithLevels]);
+
+  // When batch changes while course is selected, snap to current cycle (unless All Years)
+  useEffect(() => {
+    if (!filters.batch || !batchTotalYears || !filters.course) return;
+    const currentYear = String(getCurrentProgramYear(filters.batch, batchTotalYears));
+    setFilters((prev) => {
+      if (!prev.academic_year) return prev;
+      return { ...prev, academic_year: currentYear };
+    });
+  }, [filters.batch, batchTotalYears, filters.course]);
 
   useEffect(() => {
     if (!filtersReady) {
@@ -327,17 +342,22 @@ function ScholarshipReport() {
     }
   };
 
-  const yearColumns = useMemo(
-    () => Array.from({ length: totalYears }, (_, index) => index + 1),
-    [totalYears]
-  );
+  const yearColumns = useMemo(() => {
+    if (filters.academic_year && filters.academic_year !== 'all') {
+      return [Number(filters.academic_year)];
+    }
+    if (!totalYears) return [];
+    return Array.from({ length: totalYears }, (_, index) => index + 1);
+  }, [filters.academic_year, totalYears]);
 
   // Build academic year options: [{ value: '1', label: '2023-2024' }, ...]
   const academicYearOptions = useMemo(() => {
     if (!batchTotalYears || !filters.batch) return [];
+    const currentProgramYear = getCurrentProgramYear(filters.batch, batchTotalYears);
     return Array.from({ length: batchTotalYears }, (_, i) => ({
       value: String(i + 1),
-      label: formatAcademicYearLabel(filters.batch, i + 1)
+      label: formatAcademicYearLabel(filters.batch, i + 1),
+      isCurrent: i + 1 === currentProgramYear
     }));
   }, [batchTotalYears, filters.batch]);
 
@@ -360,7 +380,7 @@ function ScholarshipReport() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Scholarship Report</h1>
             <p className="text-sm text-gray-500">
-              Year-wise sanctioned, released, paid and pending amounts by batch, college, program and branch
+              Year-wise sanctioned, released and due amounts by batch, college, program and branch
             </p>
           </div>
         </div>
@@ -453,8 +473,10 @@ function ScholarshipReport() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 disabled:opacity-50 disabled:bg-gray-50"
             >
               <option value="">All Years</option>
-              {academicYearOptions.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
+              {academicYearOptions.map(({ value, label, isCurrent }) => (
+                <option key={value} value={value}>
+                  {label}{isCurrent ? ' (Current)' : ''}
+                </option>
               ))}
             </select>
           </div>
@@ -587,24 +609,13 @@ function ScholarshipReport() {
                   {yearColumns.map((year) => (
                     <React.Fragment key={`sub-${year}`}>
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-gray-500 whitespace-nowrap">
-                        Sanc.
+                        Sanctioned
                       </th>
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-emerald-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_RELEASED_LABEL}
                       </th>
-                      {hasAnyAdvance && (
-                        <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-violet-600 whitespace-nowrap">
-                          {SCHOLARSHIP_ADVANCE_LABEL}
-                        </th>
-                      )}
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_DUE_LABEL}
-                      </th>
-                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-blue-600 whitespace-nowrap">
-                        Paid
-                      </th>
-                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-amber-600 whitespace-nowrap">
-                        {SCHOLARSHIP_FEE_DUE_LABEL}
                       </th>
                     </React.Fragment>
                   ))}
@@ -633,10 +644,7 @@ function ScholarshipReport() {
                       const yearData = student.years?.find((entry) => entry.student_year === year) || {
                         sanctioned_amount: 0,
                         released_amount: 0,
-                        paid_amount: 0,
-                        pending_amount: 0,
-                        due_amount: 0,
-                        advance_amount: 0
+                        due_amount: 0
                       };
                       return (
                         <React.Fragment key={`${student.student_id}-${year}`}>
@@ -646,21 +654,8 @@ function ScholarshipReport() {
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-emerald-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.released_amount)}
                           </td>
-                          {hasAnyAdvance && (
-                            <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-violet-700 tabular-nums text-[11px]">
-                              {formatAmount(yearData.advance_amount)}
-                            </td>
-                          )}
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
                             {formatAmount(yearData.due_amount)}
-                          </td>
-                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-blue-700 tabular-nums text-[11px]">
-                            {formatAmount(yearData.paid_amount)}
-                          </td>
-                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right tabular-nums text-[11px]">
-                            <span className={yearData.pending_amount > 0 ? 'text-amber-600 font-medium' : 'text-gray-400'}>
-                              {formatAmount(yearData.pending_amount)}
-                            </span>
                           </td>
                         </React.Fragment>
                       );

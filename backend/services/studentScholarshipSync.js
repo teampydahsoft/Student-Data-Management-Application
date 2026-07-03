@@ -246,6 +246,56 @@ const enrichScholarshipYears = (student, years, totalYears) => {
   });
 };
 
+/**
+ * Max sanctioned amount per student_year from any student in the same batch + program + branch.
+ * Uses semester-1 summary rows and release rows that carry sanctioned_amount.
+ */
+const fetchBatchSanctionedAmountsByYear = async (pool, student) => {
+  const batch = String(student?.batch || '').trim();
+  const course = String(student?.course || '').trim();
+  const branch = String(student?.branch || '').trim();
+  if (!batch || !course || !branch) return {};
+
+  const [rows] = await pool.query(
+    `SELECT ss.student_year, MAX(ss.sanctioned_amount) AS sanctioned_amount
+     FROM student_scholarship ss
+     INNER JOIN students s ON s.id = ss.student_id
+     WHERE s.batch = ? AND s.course = ? AND s.branch = ?
+       AND ss.sanctioned_amount > 0
+     GROUP BY ss.student_year`,
+    [batch, course, branch]
+  );
+
+  const map = {};
+  for (const row of rows) {
+    const year = Math.max(1, toNumber(row.student_year));
+    const amount = toNumber(row.sanctioned_amount);
+    if (year && amount > 0) map[year] = amount;
+  }
+  return map;
+};
+
+/** Apply a sanctioned amount to every student in the same batch + program + branch for one year. */
+const propagateBatchSanctionedAmount = async (connection, student, studentYear, sanctionedAmount) => {
+  const batch = String(student?.batch || '').trim();
+  const course = String(student?.course || '').trim();
+  const branch = String(student?.branch || '').trim();
+  const amount = toNumber(sanctionedAmount);
+  const year = Math.max(1, toNumber(studentYear));
+
+  if (!batch || !course || !branch || !year || amount <= 0) return;
+
+  await connection.query(
+    `UPDATE student_scholarship ss
+     INNER JOIN students s ON s.id = ss.student_id
+     SET ss.sanctioned_amount = ?
+     WHERE s.batch = ? AND s.course = ? AND s.branch = ?
+       AND ss.student_year = ?
+       AND ss.sanctioned_amount IS NOT NULL`,
+    [amount, batch, course, branch, year]
+  );
+};
+
 const resolveTotalYears = async (pool, student) => {
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
   let configuredYears = 0;
@@ -1124,6 +1174,8 @@ module.exports = {
   formatAcademicYearLabel,
   buildAcademicYearContext,
   enrichScholarshipYears,
+  fetchBatchSanctionedAmountsByYear,
+  propagateBatchSanctionedAmount,
   mapReleaseRowForApi,
   normalizeReleaseForSave,
   formatDbDate,

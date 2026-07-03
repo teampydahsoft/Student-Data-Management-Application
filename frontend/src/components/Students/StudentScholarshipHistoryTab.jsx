@@ -31,6 +31,14 @@ import {
   SCHOLARSHIP_PAID_DATE_LABEL,
   SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS,
   SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION,
+  SCHOLARSHIP_TUITION_FEE_LABEL,
+  SCHOLARSHIP_TUITION_FEE_PAID_LABEL,
+  SCHOLARSHIP_TUITION_FEE_DUE_LABEL,
+  SCHOLARSHIP_TUITION_FEE_PAID_DATE_LABEL,
+  SCHOLARSHIP_TUITION_FEE_TRANSACTIONS_TITLE,
+  isConvScholarshipQuota,
+  shouldUseTuitionFeeLabels,
+  getScholarshipSanctionedColumnLabel,
   calculateScholarshipRtfDue,
   calculateScholarshipFeeDue,
   calculateScholarshipAdvanceAmount,
@@ -75,8 +83,10 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
   });
 
   const academicYearLabel = year.academic_year_label || getAcademicYearLabel(payload, year.student_year, student);
+  const batchSanctioned = parseAmount(year.batch_sanctioned_amount);
   const normalizedYear = {
     ...year,
+    batch_sanctioned_amount: batchSanctioned,
     sanctioned_amount: formatScholarshipAmountForInput(year.sanctioned_amount),
     semesters: normalizedSemesters,
     releases: mapReleasesFromApi(year.releases, academicYearLabel),
@@ -93,6 +103,11 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
     normalizedYear.paid_transactions = mapPaidTransactionsFromApi([], academicYearLabel);
   } else if (isYearFeeOnlyScholarshipMode(normalizedYear)) {
     normalizedYear.releases = mapReleasesFromApi([], academicYearLabel);
+    if (shouldUseTuitionFeeLabels(student, normalizedYear)) {
+      normalizedYear.sanctioned_amount = '';
+    }
+  } else if (batchSanctioned > 0 && isYearScholarshipEligible(normalizedYear)) {
+    normalizedYear.sanctioned_amount = formatScholarshipAmountForInput(batchSanctioned);
   }
 
   return normalizedYear;
@@ -385,6 +400,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
   const isEditingDisabled = readOnly || quotaLocked;
+  const convQuota = isConvScholarshipQuota(student);
 
   const casteOptions = useMemo(() => {
     const current = String(selectedCaste || student?.caste || meta?.student?.caste || '').trim();
@@ -469,30 +485,41 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const rtfEligible = isYearScholarshipEligible(year);
       const feeOnly = isYearFeeOnlyScholarshipMode(year);
       const financial = hasYearScholarshipFinancialTracking(year);
+      const tuitionFeeMode = shouldUseTuitionFeeLabels(student, year);
       const isCollege = casteAccountTypes[selectedCaste || student?.caste] === 'college';
-      const sanctioned = financial ? parseAmount(year.sanctioned_amount) : 0;
+      const batchSanctioned = parseAmount(year.batch_sanctioned_amount);
+      const ownSanctioned = financial ? parseAmount(year.sanctioned_amount) : 0;
+      const effectiveSanctioned = batchSanctioned || ownSanctioned;
+      const displaySanctioned = tuitionFeeMode ? 0 : effectiveSanctioned;
       const released = rtfEligible ? sumReleased(year.releases) : 0;
       const paid = financial ? sumPaid(year.paid_transactions || []) : 0;
       const manualPaid = rtfEligible ? sumManualPaid(year, isCollege) : paid;
-      const rtfDue = rtfEligible ? calculateScholarshipRtfDue(sanctioned, released) : 0;
-      const feeDue = financial ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
+      const rtfDue = rtfEligible ? calculateScholarshipRtfDue(effectiveSanctioned, released) : 0;
+      const dueAmount = tuitionFeeMode ? effectiveSanctioned : rtfDue;
+      const feeDue = financial && !tuitionFeeMode
+        ? calculateScholarshipFeeDue(effectiveSanctioned, paid)
+        : 0;
       const advance = rtfEligible
-        ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid, isCollege)
+        ? calculateScholarshipAdvanceAmount(effectiveSanctioned, released, manualPaid, isCollege)
         : 0;
       return {
         ...year,
         released_amount: released,
         paid_amount: paid,
         rtf_due_amount: rtfDue,
+        due_amount: dueAmount,
         fee_due_amount: feeDue,
         advance_amount: advance,
+        display_sanctioned_amount: displaySanctioned,
+        effective_sanctioned_amount: effectiveSanctioned,
         releasesEligible: rtfEligible,
         feeOnlyMode: feeOnly,
+        tuitionFeeMode,
         financialTracking: financial,
         showPaidAmount: rtfEligible || feeOnly || sumPaid(year.paid_transactions || []) > 0
       };
     }),
-    [years, selectedCaste, casteAccountTypes, student?.caste]
+    [years, selectedCaste, casteAccountTypes, student]
   );
 
   const hasAnyAdvance = useMemo(
@@ -512,6 +539,25 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       return sumPaid(year.paid_transactions || []) > 0;
     }),
     [years]
+  );
+
+  const tuitionFeeTransactionYears = useMemo(
+    () => (convQuota
+      ? years.filter((year) => shouldUseTuitionFeeLabels(student, year))
+      : []),
+    [years, convQuota, student]
+  );
+
+  const showTuitionFeePaymentsSection = convQuota && tuitionFeeTransactionYears.length > 0;
+  const showPaidTransactionsSection = !SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION
+    || showTuitionFeePaymentsSection;
+  const displayPaidTransactionYears = SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION
+    ? tuitionFeeTransactionYears
+    : paidTransactionYears;
+
+  const sanctionedColumnLabel = useMemo(
+    () => getScholarshipSanctionedColumnLabel(student, years),
+    [student, years]
   );
 
   const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
@@ -895,8 +941,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     }
 
     const validatePaidRows = (year, paidRows, sanctioned, options = {}) => {
-      const { skipPerRowFeeDueCap = false, useManualPaidTotal = false } = options;
+      const { skipPerRowFeeDueCap = false, useManualPaidTotal = false, tuitionFeeMode = false } = options;
       const isCollege = isCollegeAccount();
+      const paidDateLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_DATE_LABEL : SCHOLARSHIP_PAID_DATE_LABEL;
+      const paidAmountLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'Paid amount';
+      const feeDueLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_DUE_LABEL : SCHOLARSHIP_FEE_DUE_LABEL;
 
       for (let index = 0; index < paidRows.length; index += 1) {
         const transaction = paidRows[index];
@@ -904,11 +953,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         const hasPaidValue = parseAmount(transaction.paid_amount) > 0 || paidDate;
         if (!hasPaidValue) continue;
         if (String(transaction.paid_date || '').trim() && !paidDate) {
-          toast.error(`Year ${year.student_year}, paid row ${index + 1}: ${SCHOLARSHIP_PAID_DATE_LABEL} must use a valid 4-digit year`);
+          toast.error(`Year ${year.student_year}, paid row ${index + 1}: ${paidDateLabel} must use a valid 4-digit year`);
           return false;
         }
         if (!isValidScholarshipAmount(transaction.paid_amount)) {
-          toast.error(`Year ${year.student_year}, paid row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+          toast.error(`Year ${year.student_year}, paid row ${index + 1}: ${paidAmountLabel} must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
           return false;
         }
         if (!skipPerRowFeeDueCap) {
@@ -916,7 +965,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           const remainingFeeDue = calculateRemainingFeeDueBeforeRow(sanctioned, paidRows, index);
           if (sanctioned > 0 && rowPaid > remainingFeeDue) {
             toast.error(
-              `Year ${year.student_year}, paid row ${index + 1}: Paid amount (${rowPaid}) exceeds remaining ${SCHOLARSHIP_FEE_DUE_LABEL} (${remainingFeeDue})`
+              `Year ${year.student_year}, paid row ${index + 1}: ${paidAmountLabel} (${rowPaid}) exceeds remaining ${feeDueLabel} (${remainingFeeDue})`
             );
             return false;
           }
@@ -941,12 +990,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const feeOnly = isYearFeeOnlyScholarshipMode(year);
       if (!rtfEligible && !feeOnly) continue;
 
-      if (!isValidScholarshipAmount(year.sanctioned_amount)) {
+      const tuitionFeeMode = shouldUseTuitionFeeLabels(student, year);
+      const batchSanctioned = parseAmount(year.batch_sanctioned_amount);
+      const sanctioned = tuitionFeeMode
+        ? 0
+        : (parseAmount(year.sanctioned_amount) || batchSanctioned);
+
+      if (!tuitionFeeMode && year.sanctioned_amount && !isValidScholarshipAmount(year.sanctioned_amount)) {
         toast.error(`Year ${year.student_year}: Sanctioned amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
         return;
       }
-
-      const sanctioned = parseAmount(year.sanctioned_amount);
 
       if (rtfEligible) {
         for (let index = 0; index < year.releases.length; index += 1) {
@@ -1009,7 +1062,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         }
       } else if (feeOnly) {
         const paidRows = year.paid_transactions || [];
-        if (!validatePaidRows(year, paidRows, sanctioned)) return;
+        const feeCap = tuitionFeeMode ? batchSanctioned : sanctioned;
+        if (!validatePaidRows(year, paidRows, feeCap, {
+          tuitionFeeMode
+        })) return;
       }
     }
 
@@ -1019,15 +1075,20 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         const rtfEligible = isYearScholarshipEligible(year);
         const feeOnly = isYearFeeOnlyScholarshipMode(year);
         const financial = hasYearScholarshipFinancialTracking(year);
+        const tuitionFeeMode = shouldUseTuitionFeeLabels(student, year);
+        const batchSanctioned = parseAmount(year.batch_sanctioned_amount);
         const savePaid = rtfEligible || feeOnly;
         const paidSource = rtfEligible
           ? (applyCollegePaidSync(year).paid_transactions || [])
           : (year.paid_transactions || []);
+        const saveSanctioned = financial
+          ? (tuitionFeeMode ? 0 : (parseAmount(year.sanctioned_amount) || batchSanctioned))
+          : 0;
 
         return {
           student_year: year.student_year,
           application_id: normalizeApplicationIdInput(year.application_id) || '',
-          sanctioned_amount: financial ? parseAmount(year.sanctioned_amount) : 0,
+          sanctioned_amount: saveSanctioned,
           semesters: (year.semesters || buildDefaultSemesters(meta?.semestersPerYear || 2)).map((semester) => ({
             student_semester: semester.student_semester,
             eligible: normalizeScholarshipStatusValue(semester.eligible) || ''
@@ -1207,7 +1268,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Application ID</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Sem</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Sanctioned</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{sanctionedColumnLabel}</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
                 {hasAnyAdvance && (
                   <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
@@ -1314,9 +1375,13 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         className="px-2 py-2 align-middle text-center border-l border-gray-50"
                       >
                         {year.financialTracking ? (
-                          isEditingDisabled ? (
+                          year.tuitionFeeMode ? (
                             <span className="font-medium text-gray-800 text-xs">
-                              {formatCurrency(year.sanctioned_amount)}
+                              {formatCurrency(0)}
+                            </span>
+                          ) : isEditingDisabled ? (
+                            <span className="font-medium text-gray-800 text-xs">
+                              {formatCurrency(year.display_sanctioned_amount ?? year.effective_sanctioned_amount ?? year.sanctioned_amount)}
                             </span>
                           ) : (
                             <input
@@ -1328,6 +1393,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               onChange={(e) => updateYearField(yearIndex, 'sanctioned_amount', e.target.value)}
                               className="w-full min-w-[80px] px-1.5 py-1 border border-gray-200 rounded-lg text-xs text-center"
                               placeholder={`Max ${SCHOLARSHIP_MAX_AMOUNT}`}
+                              title={
+                                shouldUseTuitionFeeLabels(student, year)
+                                  ? SCHOLARSHIP_TUITION_FEE_LABEL
+                                  : 'Sanctioned amount'
+                              }
                             />
                           )
                         ) : (
@@ -1368,9 +1438,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
-                        {year.releasesEligible ? (
-                          <span className={`font-semibold text-xs ${year.rtf_due_amount > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
-                            {formatCurrency(year.rtf_due_amount)}
+                        {(year.releasesEligible || year.tuitionFeeMode) && (year.due_amount ?? 0) >= 0 ? (
+                          <span className={`font-semibold text-xs ${(year.due_amount ?? 0) > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
+                            {formatCurrency(year.due_amount ?? 0)}
                           </span>
                         ) : (
                           <span className="text-gray-400">—</span>
@@ -1472,7 +1542,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
             const stateYear = years[yearIndex] || year;
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
-            const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
+            const sanctionedAmt = parseAmount(stateYear.batch_sanctioned_amount)
+              || parseAmount(stateYear.sanctioned_amount);
             // Advance mode considers manually entered payments only (college auto-credit excluded).
             const manualPaidAmt = sumManualPaid(stateYear, isCollegeAccount());
             const totalReleasedAmt = sumReleased(stateYear.releases);
@@ -1638,18 +1709,26 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         )}
       </div>
 
-      {!SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION && (
+      {!quotaLocked && showPaidTransactionsSection && (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_PAID_TRANSACTIONS_TITLE}</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+            {showTuitionFeePaymentsSection && SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION
+              ? SCHOLARSHIP_TUITION_FEE_TRANSACTIONS_TITLE
+              : SCHOLARSHIP_PAID_TRANSACTIONS_TITLE}
+          </h4>
           <p className="text-[11px] text-gray-400 mt-1">
-            Fee paid to college — add a row for each payment.
-            {isCollegeAccount() && (
+            {showTuitionFeePaymentsSection && SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION ? (
+              <>Record tuition fee payments for years marked Not eligible, Pending, or other non-Eligible statuses.</>
+            ) : (
+              <>Fee paid to college — add a row for each payment.</>
+            )}
+            {!(showTuitionFeePaymentsSection && SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION) && isCollegeAccount() && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                 College Account — auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL} when Eligible; manual entry for other statuses
               </span>
             )}
-            {!isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
+            {!(showTuitionFeePaymentsSection && SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION) && !isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                 Mother Account — enter paid amount and date manually
               </span>
@@ -1657,25 +1736,33 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           </p>
         </div>
 
-        {paidTransactionYears.length === 0 ? (
+        {displayPaidTransactionYears.length === 0 ? (
           <div className="p-6 text-sm text-gray-500 text-center">
-            No paid transactions — mark all semesters as Eligible, or assign a status (Pending, Not eligible, etc.) to track fee paid to college.
+            {showTuitionFeePaymentsSection && SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION
+              ? `No tuition fee payments — assign a status (Pending, Not eligible, etc.) to track ${SCHOLARSHIP_TUITION_FEE_LABEL.toLowerCase()}.`
+              : 'No paid transactions — mark all semesters as Eligible, or assign a status (Pending, Not eligible, etc.) to track fee paid to college.'}
           </div>
         ) : (
         <div className="divide-y divide-gray-100">
-          {paidTransactionYears.map((year) => {
+          {displayPaidTransactionYears.map((year) => {
             const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
             const stateYear = years[yearIndex] || year;
             const feeOnly = isYearFeeOnlyScholarshipMode(stateYear);
+            const tuitionFeeMode = shouldUseTuitionFeeLabels(student, stateYear);
             const syncedYear = applyCollegePaidSync(stateYear);
             const paidTransactions = syncedYear.paid_transactions || [];
             const releaseCount = feeOnly ? 0 : countRealReleases(stateYear.releases);
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
-            const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
+            const batchSanctioned = parseAmount(stateYear.batch_sanctioned_amount);
+            const sanctionedAmt = batchSanctioned || parseAmount(stateYear.sanctioned_amount);
             const totalPaidAmt = sumPaid(paidTransactions);
             const totalFeeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
             const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
             const yearPaidEditingDisabled = isEditingDisabled;
+            const paidLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'Paid';
+            const feeDueLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_DUE_LABEL : SCHOLARSHIP_FEE_DUE_LABEL;
+            const paidDateLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_DATE_LABEL : SCHOLARSHIP_PAID_DATE_LABEL;
+            const amountCapLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_LABEL.toLowerCase() : 'sanctioned';
 
             return (
             <div key={`paid-transactions-${year.student_year}`} className="p-4">
@@ -1683,14 +1770,14 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <h5 className="text-sm font-bold text-gray-800">Year {year.student_year}</h5>
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`text-xs font-semibold ${isPaidOver ? 'text-red-600' : 'text-blue-700'}`}>
-                    Paid: {formatCurrency(totalPaidAmt)}
+                    {paidLabel}: {formatCurrency(totalPaidAmt)}
                     {isPaidOver && (
-                      <span className="ml-1">(exceeds sanctioned)</span>
+                      <span className="ml-1">(exceeds {amountCapLabel})</span>
                     )}
                   </span>
                   {sanctionedAmt > 0 && (
                     <span className={`text-xs font-semibold ${totalFeeDueAmt > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
-                      {SCHOLARSHIP_FEE_DUE_LABEL}: {formatCurrency(totalFeeDueAmt)}
+                      {feeDueLabel}: {formatCurrency(totalFeeDueAmt)}
                     </span>
                   )}
                 </div>
@@ -1701,9 +1788,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">{SCHOLARSHIP_PAID_DATE_LABEL}</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">{paidDateLabel}</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">
+                        {tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'Paid Amount'}
+                      </th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{feeDueLabel}</th>
                       {!yearPaidEditingDisabled && (
                         <th className="px-2 py-2 font-bold whitespace-nowrap text-center">Actions</th>
                       )}
@@ -1774,7 +1863,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                               />
                               {isRowPaidOver && (
                                 <p className="text-[10px] text-red-500 mt-0.5 text-right">
-                                  Exceeds {SCHOLARSHIP_FEE_DUE_LABEL.toLowerCase()} ({formatCurrency(remainingBeforeRow)})
+                                  Exceeds {feeDueLabel.toLowerCase()} ({formatCurrency(remainingBeforeRow)})
                                 </p>
                               )}
                             </>

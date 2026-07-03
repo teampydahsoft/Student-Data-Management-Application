@@ -23,6 +23,27 @@ const formatAmount = (value) => {
   return Math.round(num * 100) / 100;
 };
 
+const extractBatchStartYear = (batch) => {
+  if (!batch) return null;
+  const text = String(batch).trim();
+  const full = text.match(/^(\d{4})/);
+  if (full) return Number(full[1]);
+  const short = text.match(/^(\d{2})/);
+  if (short) {
+    const y = Number(short[1]);
+    return y <= 50 ? 2000 + y : 1900 + y;
+  }
+  return null;
+};
+
+const formatAcademicYearLabelForExport = (batch, studentYear) => {
+  const start = extractBatchStartYear(batch);
+  const idx = Math.max(1, Number(studentYear) || 1);
+  if (!start) return `Year ${idx}`;
+  const from = start + idx - 1;
+  return `${from}-${from + 1}`;
+};
+
 const getCasteAccountTypes = async () => {
   try {
     const [rows] = await masterPool.query(
@@ -125,13 +146,12 @@ const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear =
     }
   }
 
-  // When filtering to a single year, report totalYears as that year number
-  // so the table renders only the relevant column
+  // When filtering to a single year, only that year is returned in each student's data
   const effectiveTotalYears = filterAcademicYear && filterAcademicYear > 0
-    ? filterAcademicYear
+    ? 1
     : totalYears;
 
-  return { totalYears: effectiveTotalYears, years };
+  return { totalYears: effectiveTotalYears, years, displayYear: filterAcademicYear || null };
 };
 
 const buildScholarshipReportData = async (req) => {
@@ -268,15 +288,19 @@ const buildScholarshipReportData = async (req) => {
     });
   }
 
-  return { students, totalYears: maxTotalYears, data };
+  return { students, totalYears: maxTotalYears, data, displayYear: filterAcademicYear || null };
 };
 
-const buildExcelBuffer = (data, totalYears, filters) => {
+const resolveReportYears = (totalYears, displayYear) => {
+  if (displayYear && displayYear > 0) {
+    return [displayYear];
+  }
+  return Array.from({ length: totalYears }, (_, i) => i + 1);
+};
+
+const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
   const fixedCols = 6; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste
-  const hasAnyAdvance = data.some((student) => (
-    (student.years || []).some((year) => Number(year.advance_amount) > 0)
-  ));
-  const colsPerYear = hasAnyAdvance ? 6 : 5;
+  const colsPerYear = 3;
   const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste'];
   const row2 = ['', '', '', '', '', ''];
   const merges = [
@@ -288,14 +312,17 @@ const buildExcelBuffer = (data, totalYears, filters) => {
     { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } }
   ];
 
-  const yearSubHeaders = hasAnyAdvance
-    ? ['Sanctioned', 'RTF Released', 'Advance', 'RTF Due', 'Paid', 'Fee Due']
-    : ['Sanctioned', 'RTF Released', 'RTF Due', 'Paid', 'Fee Due'];
+  const yearSubHeaders = ['Sanctioned', 'RTF Released', 'Due'];
+  const reportYears = resolveReportYears(totalYears, displayYear);
 
-  for (let year = 1; year <= totalYears; year += 1) {
-    row1.push(`Year ${year}`, ...Array(colsPerYear - 1).fill(''));
+  for (const year of reportYears) {
+    const yearLabel = filters.batch
+      ? formatAcademicYearLabelForExport(filters.batch, year)
+      : `Year ${year}`;
+    row1.push(yearLabel, ...Array(colsPerYear - 1).fill(''));
     row2.push(...yearSubHeaders);
-    const startCol = fixedCols + (year - 1) * colsPerYear;
+    const yearIndex = reportYears.indexOf(year);
+    const startCol = fixedCols + yearIndex * colsPerYear;
     merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + colsPerYear - 1 } });
   }
 
@@ -320,26 +347,16 @@ const buildExcelBuffer = (data, totalYears, filters) => {
       student.stud_type || '',
       student.caste || ''
     ];
-    for (let year = 1; year <= totalYears; year += 1) {
+    for (const year of reportYears) {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
         sanctioned_amount: 0,
         released_amount: 0,
-        paid_amount: 0,
-        pending_amount: 0,
-        due_amount: 0,
-        advance_amount: 0
+        due_amount: 0
       };
       row.push(
         yearData.sanctioned_amount,
-        yearData.released_amount
-      );
-      if (hasAnyAdvance) {
-        row.push(yearData.advance_amount || 0);
-      }
-      row.push(
-        yearData.due_amount,
-        yearData.paid_amount,
-        yearData.pending_amount
+        yearData.released_amount,
+        yearData.due_amount
       );
     }
     rows.push(row);
@@ -363,8 +380,8 @@ const buildExcelBuffer = (data, totalYears, filters) => {
 
 exports.getScholarshipReport = async (req, res) => {
   try {
-    const { totalYears, data } = await buildScholarshipReportData(req);
-    res.json({ success: true, data, totalYears });
+    const { totalYears, data, displayYear } = await buildScholarshipReportData(req);
+    res.json({ success: true, data, totalYears, displayYear });
   } catch (error) {
     console.error('Error fetching scholarship report:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch scholarship report' });
@@ -373,7 +390,7 @@ exports.getScholarshipReport = async (req, res) => {
 
 exports.exportScholarshipReport = async (req, res) => {
   try {
-    const { totalYears, data } = await buildScholarshipReportData(req);
+    const { totalYears, data, displayYear } = await buildScholarshipReportData(req);
     const filters = {
       college: req.query.filter_college || '',
       batch: req.query.filter_batch || '',
@@ -381,7 +398,7 @@ exports.exportScholarshipReport = async (req, res) => {
       branch: req.query.filter_branch || '',
       academic_year: req.query.filter_academic_year || ''
     };
-    const buffer = buildExcelBuffer(data, totalYears, filters);
+    const buffer = buildExcelBuffer(data, totalYears, filters, displayYear);
     const dateStr = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Disposition', `attachment; filename="scholarship_report_${dateStr}.xlsx"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
