@@ -1,4 +1,5 @@
 const { masterPool } = require('../config/database');
+const { studentsCache } = require('../services/cache');
 const {
   syncScholarStatusColumn,
   archiveScholarshipYear,
@@ -673,6 +674,10 @@ exports.saveScholarshipHistory = async (req, res) => {
     const data = await fetchScholarshipPayload(student);
     const savedCurrentYearEligible = data.currentYearEligible || '';
     await syncScholarStatusColumn(masterPool, student.id, savedCurrentYearEligible);
+
+    if (studentsCache?.clear) {
+      studentsCache.clear();
+    }
 
     res.json({ success: true, message: 'Scholarship history saved successfully', data });
   } catch (error) {

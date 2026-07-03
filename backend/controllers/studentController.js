@@ -25,10 +25,9 @@ const {
   isScholarshipDisplayUnassigned,
   normalizeScholarStatusForResponse,
   STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS,
-  getScholarStatusColumnFilterClause,
   syncIneligibleQuotaScholarshipsForStudents,
   syncIneligibleQuotaScholarshipForStudent,
-  resolveScholarStatusForStudent
+  resolveRegistrationScholarStatusDisplay
 } = require('../services/studentScholarshipSync');
 const {
   isVerificationCompleteForCycle,
@@ -2469,6 +2468,8 @@ exports.getAllStudents = async (req, res) => {
       }
     }
 
+    const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null);
+
     let query = `
       SELECT 
         id, admission_number, admission_no, pin_no, student_name, student_data, 
@@ -2485,7 +2486,7 @@ exports.getAllStudents = async (req, res) => {
             (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
             (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
             (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-            (scholar_status IS NOT NULL AND TRIM(IFNULL(scholar_status,'')) != '')
+            (${registrationScholarshipCompleteSql})
           THEN 'Completed'
           ELSE 'pending'
         END AS registration_status_computed
@@ -2591,9 +2592,7 @@ exports.getAllStudents = async (req, res) => {
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           query += ` AND ${field} IS NULL`;
         } else if (field === 'scholar_status') {
-          const { clause, params: scholarParams } = getScholarStatusColumnFilterClause(filterValue);
-          query += clause;
-          params.push(...scholarParams);
+          query += getRegistrationScholarshipFilterClause(filterValue.trim(), null);
         } else if (field === 'caste') {
           query += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
           params.push(filterValue.trim());
@@ -2740,9 +2739,7 @@ exports.getAllStudents = async (req, res) => {
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
           countQuery += ` AND ${field} IS NULL`;
         } else if (field === 'scholar_status') {
-          const { clause, params: scholarParams } = getScholarStatusColumnFilterClause(filterValue);
-          countQuery += clause;
-          countParams.push(...scholarParams);
+          countQuery += getRegistrationScholarshipFilterClause(filterValue.trim(), null);
         } else if (field === 'caste') {
           countQuery += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
           countParams.push(filterValue.trim());
@@ -2774,6 +2771,8 @@ exports.getAllStudents = async (req, res) => {
     });
 
     const [countResult] = await masterPool.query(countQuery, countParams);
+
+    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students);
 
     const admissionNumbers = students.map(s => s.admission_number).filter(Boolean);
     const pinNumbers = students.map(s => s.pin_no).filter(Boolean);
@@ -2842,8 +2841,8 @@ exports.getAllStudents = async (req, res) => {
         ? 'Completed'
         : (student.registration_status_computed || dbRegistrationStatus || 'pending');
 
-      // Scholarship status — auto-synced for Management / Spot / Lateral Spot quotas
-      const normalizedScholarStatus = resolveScholarStatusForStudent(student, parsedData);
+      // Scholarship status — year-wise for 2026+ academic years, scholar_status column before that
+      const normalizedScholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, parsedData);
 
       // Determine accommodation
       let accommodation = 'Own Transport';
@@ -2902,6 +2901,7 @@ exports.getAllStudents = async (req, res) => {
 exports.getStudentByAdmission = async (req, res) => {
   try {
     const { admissionNumber } = req.params;
+    const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null, 's');
 
     const [students] = await masterPool.query(
       `SELECT s.*,
@@ -2915,7 +2915,7 @@ exports.getStudentByAdmission = async (req, res) => {
             (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
             (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
             (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-            (s.scholar_status IS NOT NULL AND TRIM(IFNULL(s.scholar_status,'')) != '')
+            (${registrationScholarshipCompleteSql})
           THEN 'Completed'
           ELSE 'pending'
         END AS registration_status_computed
@@ -2942,7 +2942,12 @@ exports.getStudentByAdmission = async (req, res) => {
 
     applyStageToPayload(parsedData, stage);
 
-    const normalizedScholarStatus = resolveScholarStatusForStudent(students[0], parsedData);
+    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, [students[0]]);
+    const normalizedScholarStatus = resolveRegistrationScholarStatusDisplay(
+      students[0],
+      scholarshipMap,
+      parsedData
+    );
 
     const student = {
       ...students[0],
@@ -5681,7 +5686,11 @@ exports.getStudentByAdmission = async (req, res) => {
       }
     }
 
-    const normalizedScholarStatus = resolveScholarStatusForStudent(student, parsedData);
+    const normalizedScholarStatus = resolveRegistrationScholarStatusDisplay(
+      student,
+      await buildRegistrationScholarshipMap(masterPool, [student]),
+      parsedData
+    );
 
     const responsePayload = {
       ...student,

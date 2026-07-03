@@ -10,6 +10,9 @@ const { parsePermissions, USER_ROLES } = require('../constants/rbac');
 const { getHRMSConnection } = require('../config/mongoConfig');
 const { getModel: getHRMSUserModel } = require('../models/HRMSUser');
 const { getModel: getHRMSEmployeeModel } = require('../models/HRMSEmployee');
+const { buildRegistrationScholarshipHasStatusSql } = require('../services/studentScholarshipSync');
+
+const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null, 's');
 
 const buildAdminResponse = (admin) => ({
   id: admin.id,
@@ -518,7 +521,7 @@ exports.createSSOSession = async (req, res) => {
               (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
               (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
               (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-              (s.scholar_status IS NOT NULL AND TRIM(IFNULL(s.scholar_status,'')) != '')
+              (${registrationScholarshipCompleteSql})
             THEN 'Completed'
             ELSE 'pending'
           END AS registration_status_computed,
@@ -733,7 +736,7 @@ exports.verifyToken = async (req, res) => {
               (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
               (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
               (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-              (s.scholar_status IS NOT NULL AND TRIM(IFNULL(s.scholar_status,'')) != '')
+              (${registrationScholarshipCompleteSql})
             THEN 'Completed'
             ELSE 'pending'
           END AS registration_status_computed,

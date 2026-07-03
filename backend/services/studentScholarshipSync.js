@@ -475,6 +475,20 @@ const resolveScholarStatusForStudent = (student, parsedData = null) => {
   return normalizeScholarStatusForResponse(rawScholarStatus);
 };
 
+const resolveRegistrationScholarStatusDisplay = (student, scholarshipMap = null, parsedData = null) => {
+  if (isScholarshipIneligibleQuota(student?.stud_type)) {
+    return 'not_eligible';
+  }
+  if (scholarshipMap?.has(student.id)) {
+    return normalizeScholarStatusForResponse(scholarshipMap.get(student.id));
+  }
+  const currentYear = Math.max(1, Number(student.current_year) || 1);
+  if (usesSemesterWiseScholarshipStatus(student.batch, currentYear)) {
+    return normalizeScholarStatusForResponse('');
+  }
+  return resolveScholarStatusForStudent(student, parsedData);
+};
+
 const getScholarshipEligibleForYear = async (
   pool,
   studentId,
@@ -1075,6 +1089,7 @@ module.exports = {
   syncIneligibleQuotaScholarshipsForStudents,
   syncAllIneligibleQuotaScholarships,
   resolveScholarStatusForStudent,
+  resolveRegistrationScholarStatusDisplay,
   INELIGIBLE_QUOTA_STUD_TYPE_SQL,
   normalizeScholarStatusForResponse,
   STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS,
