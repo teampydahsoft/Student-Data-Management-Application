@@ -6,6 +6,11 @@ const {
   buildYearSnapshotFromRows,
   resolveSemestersPerYear
 } = require('../../services/studentScholarshipSync');
+const {
+  calculateFeeDue,
+  calculateRtfDue,
+  calculateAdvanceAmount
+} = require('../../utils/scholarshipValidation');
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -15,6 +20,22 @@ const toNumber = (value) => {
 const formatAmount = (value) => {
   const num = toNumber(value);
   return Math.round(num * 100) / 100;
+};
+
+const getCasteAccountTypes = async () => {
+  try {
+    const [rows] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['rtf_amount_config']
+    );
+    if (!rows.length) return {};
+    const config = JSON.parse(rows[0].value);
+    return (config && typeof config.casteAccountTypes === 'object' && config.casteAccountTypes)
+      ? config.casteAccountTypes
+      : {};
+  } catch (e) {
+    return {};
+  }
 };
 
 const courseYearsCache = new Map();
@@ -38,21 +59,27 @@ const getTotalYearsForStudent = async (student) => {
   return Math.min(Math.max(configuredYears, currentYear), 10);
 };
 
-const buildYearAmountsFromRows = (yearRows, semestersPerYear) => {
+const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false) => {
   const snapshot = buildYearSnapshotFromRows(yearRows, semestersPerYear);
   const sanctioned = formatAmount(snapshot.sanctioned_amount);
   const released = formatAmount(snapshot.released_amount);
-  // Sum paid_amount across release rows in the snapshot
-  const paid = formatAmount(
-    (snapshot.releases || []).reduce((sum, r) => sum + (Number(r.paid_amount) || 0), 0)
-  );
-  const pending = formatAmount(Math.max(0, sanctioned - paid));
+  const paid = formatAmount(snapshot.paid_amount);
+  // Advance considers manually entered payments only. For a College Account the RTF-linked
+  // paid rows are auto-credited from the portal (paid mirrors released), so they are excluded
+  // and only any manual overpayment beyond the released amount counts toward advance.
+  const manualPaid = isCollege ? Math.max(0, paid - released) : paid;
+  const feeDue = formatAmount(calculateFeeDue(sanctioned, paid));
+  const rtfDue = formatAmount(calculateRtfDue(sanctioned, released, manualPaid));
+  const advance = formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid));
   return {
     sanctioned_amount: sanctioned,
     released_amount: released,
     paid_amount: paid,
-    pending_amount: pending,
-    due_amount: formatAmount(sanctioned - released)
+    pending_amount: feeDue,
+    due_amount: rtfDue,
+    fee_due_amount: feeDue,
+    rtf_due_amount: rtfDue,
+    advance_amount: advance
   };
 };
 
@@ -68,7 +95,7 @@ const groupScholarshipRows = (rows) => {
   return byStudent;
 };
 
-const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear = null) => {
+const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear = null, isCollege = false) => {
   const totalYears = await getTotalYearsForStudent(student);
   const semestersPerYear = await resolveSemestersPerYear(masterPool, student);
   const years = [];
@@ -82,7 +109,7 @@ const buildStudentYearEntries = async (student, yearRowMap, filterAcademicYear =
     if (yearRows.length) {
       years.push({
         student_year: studentYear,
-        ...buildYearAmountsFromRows(yearRows, semestersPerYear)
+        ...buildYearAmountsFromRows(yearRows, semestersPerYear, isCollege)
       });
     } else {
       years.push({
@@ -209,15 +236,18 @@ const buildScholarshipReportData = async (req) => {
   const [scholarshipRows] = await masterPool.query(scholarshipQuery, scholarshipParams);
 
   const scholarshipByStudent = groupScholarshipRows(scholarshipRows);
+  const casteAccountTypes = await getCasteAccountTypes();
   let maxTotalYears = 0;
   const data = [];
 
   for (const student of students) {
     const yearRowMap = scholarshipByStudent.get(student.id) || new Map();
+    const isCollege = casteAccountTypes[String(student.caste || '').trim()] === 'college';
     const { totalYears, years } = await buildStudentYearEntries(
       student,
       yearRowMap,
-      filterAcademicYear
+      filterAcademicYear,
+      isCollege
     );
     maxTotalYears = Math.max(maxTotalYears, totalYears);
     data.push({
@@ -241,6 +271,7 @@ const buildScholarshipReportData = async (req) => {
 
 const buildExcelBuffer = (data, totalYears, filters) => {
   const fixedCols = 6; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste
+  const colsPerYear = 6;
   const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste'];
   const row2 = ['', '', '', '', '', ''];
   const merges = [
@@ -253,20 +284,10 @@ const buildExcelBuffer = (data, totalYears, filters) => {
   ];
 
   for (let year = 1; year <= totalYears; year += 1) {
-    row1.push(`Year ${year}`, '', '', '');
-    row2.push('Sanctioned', 'Released', 'Paid', 'Pending');
-    const startCol = fixedCols + (year - 1) * 4;
-    merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + 3 } });
-  }
-
-  if (totalYears > 0) {
-    row1.push(...Array(totalYears).fill(''));
-    row1[fixedCols + totalYears * 4] = 'Due';
-    for (let year = 1; year <= totalYears; year += 1) {
-      row2.push(`Year ${year}`);
-    }
-    const dueStartCol = fixedCols + totalYears * 4;
-    merges.push({ s: { r: 0, c: dueStartCol }, e: { r: 0, c: dueStartCol + totalYears - 1 } });
+    row1.push(`Year ${year}`, '', '', '', '', '');
+    row2.push('Sanctioned', 'RTF Released', 'Advance', 'RTF Due', 'Paid', 'Fee Due');
+    const startCol = fixedCols + (year - 1) * colsPerYear;
+    merges.push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + colsPerYear - 1 } });
   }
 
   const rows = [row1, row2];
@@ -296,15 +317,20 @@ const buildExcelBuffer = (data, totalYears, filters) => {
         released_amount: 0,
         paid_amount: 0,
         pending_amount: 0,
-        due_amount: 0
+        due_amount: 0,
+        advance_amount: 0
       };
-      row.push(yearData.sanctioned_amount, yearData.released_amount, yearData.paid_amount, yearData.pending_amount);
-    }
-    for (let year = 1; year <= totalYears; year += 1) {
-      const yearData = student.years.find((entry) => entry.student_year === year) || {
-        due_amount: 0
-      };
-      row.push(yearData.due_amount);
+      const rtfDueCell = yearData.advance_amount > 0
+        ? ''
+        : yearData.due_amount;
+      row.push(
+        yearData.sanctioned_amount,
+        yearData.released_amount,
+        yearData.advance_amount || 0,
+        rtfDueCell,
+        yearData.paid_amount,
+        yearData.pending_amount
+      );
     }
     rows.push(row);
   });

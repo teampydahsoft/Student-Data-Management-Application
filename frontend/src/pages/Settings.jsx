@@ -1050,8 +1050,8 @@ const RtfAmountSection = ({
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <p className="text-sm text-blue-800 font-medium mb-1">Account Type per Caste</p>
             <p className="text-xs text-blue-600">
-              <strong>Mother Account</strong> — student receives the scholarship directly. Paid amount must be entered manually.<br />
-              <strong>College Account</strong> — college receives the scholarship on behalf of the student. Released amount is automatically treated as paid.
+              <strong>Mother Account</strong> — student receives the scholarship directly. Fee paid to college is entered manually in Paid Transactions.<br />
+              <strong>College Account</strong> — college receives the scholarship on behalf of the student. RTF Released amount is automatically copied to Paid Transactions; if an RTF Remitted date is entered, it is optionally copied as the fee paid date.
             </p>
           </div>
 
@@ -1098,8 +1098,8 @@ const RtfAmountSection = ({
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500">
                           {current === 'college'
-                            ? <span className="text-emerald-700 font-medium">Released amount auto-copied to Paid</span>
-                            : <span className="text-blue-700 font-medium">Paid amount entered manually</span>}
+                            ? <span className="text-emerald-700 font-medium">RTF Released auto-copied to Paid Transactions (date optional from RTF Remitted date)</span>
+                            : <span className="text-blue-700 font-medium">Paid Transactions entered manually</span>}
                         </td>
                       </tr>
                     );

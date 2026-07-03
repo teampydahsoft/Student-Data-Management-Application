@@ -18,6 +18,12 @@ import toast from 'react-hot-toast';
 import api from '../config/api';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
+import {
+  SCHOLARSHIP_RTF_RELEASED_LABEL,
+  SCHOLARSHIP_RTF_DUE_LABEL,
+  SCHOLARSHIP_FEE_DUE_LABEL,
+  SCHOLARSHIP_ADVANCE_LABEL
+} from '../config/scholarshipConfig';
 
 const formatAmount = (value) => {
   const num = Number(value);
@@ -561,7 +567,7 @@ function ScholarshipReport() {
                   {yearColumns.map((year) => (
                     <th
                       key={`year-${year}`}
-                      colSpan={5}
+                      colSpan={6}
                       className="border-b border-r border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-700 bg-amber-50/60 text-[11px]"
                     >
                       {formatAcademicYearLabel(filters.batch, year)}
@@ -575,16 +581,19 @@ function ScholarshipReport() {
                         Sanc.
                       </th>
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-emerald-600 whitespace-nowrap">
-                        Rel.
+                        {SCHOLARSHIP_RTF_RELEASED_LABEL}
+                      </th>
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-violet-600 whitespace-nowrap">
+                        {SCHOLARSHIP_ADVANCE_LABEL}
+                      </th>
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
+                        {SCHOLARSHIP_RTF_DUE_LABEL}
                       </th>
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-blue-600 whitespace-nowrap">
                         Paid
                       </th>
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-amber-600 whitespace-nowrap">
-                        Pend.
-                      </th>
-                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
-                        Due
+                        {SCHOLARSHIP_FEE_DUE_LABEL}
                       </th>
                     </React.Fragment>
                   ))}
@@ -615,8 +624,10 @@ function ScholarshipReport() {
                         released_amount: 0,
                         paid_amount: 0,
                         pending_amount: 0,
-                        due_amount: 0
+                        due_amount: 0,
+                        advance_amount: 0
                       };
+                      const showRtfDue = !(yearData.advance_amount > 0);
                       return (
                         <React.Fragment key={`${student.student_id}-${year}`}>
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-gray-700 tabular-nums text-[11px]">
@@ -625,6 +636,12 @@ function ScholarshipReport() {
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-emerald-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.released_amount)}
                           </td>
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-violet-700 tabular-nums text-[11px]">
+                            {formatAmount(yearData.advance_amount)}
+                          </td>
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
+                            {showRtfDue ? formatAmount(yearData.due_amount) : '—'}
+                          </td>
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-blue-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.paid_amount)}
                           </td>
@@ -632,9 +649,6 @@ function ScholarshipReport() {
                             <span className={yearData.pending_amount > 0 ? 'text-amber-600 font-medium' : 'text-gray-400'}>
                               {formatAmount(yearData.pending_amount)}
                             </span>
-                          </td>
-                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
-                            {formatAmount(yearData.due_amount)}
                           </td>
                         </React.Fragment>
                       );

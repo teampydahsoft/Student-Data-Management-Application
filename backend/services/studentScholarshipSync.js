@@ -118,6 +118,8 @@ const mapReleaseRowForApi = (row) => ({
   rtf_released_date: formatDbDate(row.from_date),
   rtf_date: formatDbDate(row.from_date),
   from_date: formatDbDate(row.from_date),
+  paid_date: formatDbDate(row.to_date),
+  to_date: formatDbDate(row.to_date),
   released_amount: toNumber(row.released_amount),
   paid_amount: toNumber(row.paid_amount)
 });
@@ -125,6 +127,9 @@ const mapReleaseRowForApi = (row) => ({
 const normalizeReleaseForSave = (release = {}) => ({
   rtf_released_date: normalizeRtfReleasedDate(
     release.rtf_released_date ?? release.rtf_date ?? release.from_date
+  ),
+  paid_date: normalizeRtfReleasedDate(
+    release.paid_date ?? release.to_date
   ),
   released_amount: clampScholarshipAmount(release.released_amount),
   paid_amount: clampScholarshipAmount(release.paid_amount)
@@ -145,6 +150,17 @@ const enrichScholarshipYears = (student, years, totalYears) => {
       releases: (year.releases || []).map((release) => ({
         ...mapReleaseRowForApi(release),
         academic_year: release.academic_year || academicYearLabel
+      })),
+      paid_transactions: (Array.isArray(year.paid_transactions) && year.paid_transactions.length
+        ? year.paid_transactions
+        : (year.releases || []).filter(
+          (entry) => Number(entry.paid_amount) > 0 || entry.paid_date || entry.to_date
+        )
+      ).map((transaction) => ({
+        id: transaction.id,
+        academic_year: transaction.academic_year || academicYearLabel,
+        paid_date: formatDbDate(transaction.paid_date || transaction.to_date),
+        paid_amount: toNumber(transaction.paid_amount)
       }))
     };
   });
@@ -212,6 +228,7 @@ const isReleaseRow = (row) => (
   Number(row.released_amount) > 0
   || Number(row.paid_amount) > 0
   || row.from_date
+  || row.to_date
   || row.rtf_released_date
   || row.rtf_date
 );
@@ -440,6 +457,7 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
   const semesterMap = {};
   let legacyEligible = '';
   const releases = [];
+  const paidTransactions = [];
 
   for (const row of rows) {
     if (!applicationId && row.application_id) applicationId = row.application_id;
@@ -448,13 +466,30 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
     }
 
     if (isReleaseRow(row)) {
-      releases.push({
-        academic_year: row.academic_year || null,
-        rtf_released_date: formatDbDate(row.from_date) || null,
-        from_date: row.from_date || null,
-        released_amount: Number(row.released_amount) || 0,
-        paid_amount: Number(row.paid_amount) || 0
-      });
+      const apiRow = mapReleaseRowForApi(row);
+      const label = row.academic_year || null;
+      if (Number(row.released_amount) > 0 || apiRow.rtf_released_date) {
+        releases.push({
+          academic_year: label,
+          rtf_released_date: apiRow.rtf_released_date || null,
+          from_date: row.from_date || null,
+          released_amount: Number(row.released_amount) || 0,
+          paid_amount: 0,
+          paid_date: null,
+          to_date: null
+        });
+      }
+      if (Number(row.paid_amount) > 0 || apiRow.paid_date) {
+        paidTransactions.push({
+          academic_year: label,
+          paid_date: apiRow.paid_date || null,
+          to_date: row.to_date || null,
+          paid_amount: Number(row.paid_amount) || 0,
+          released_amount: 0,
+          rtf_released_date: null,
+          from_date: null
+        });
+      }
     } else if (isSemesterSummaryRow(row)) {
       semesterMap[row.student_semester] = row.eligible || '';
     } else if (row.eligible) {
@@ -483,8 +518,12 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
     released_amount: allEligible
       ? releases.reduce((sum, row) => sum + row.released_amount, 0)
       : 0,
+    paid_amount: allEligible
+      ? paidTransactions.reduce((sum, row) => sum + row.paid_amount, 0)
+      : 0,
     semesters,
-    releases: allEligible ? releases : []
+    releases: allEligible ? releases : [],
+    paid_transactions: allEligible ? paidTransactions : []
   };
 };
 

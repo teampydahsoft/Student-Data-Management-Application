@@ -181,6 +181,99 @@ export const parseScholarshipAmount = (value) => {
   return Math.min(Math.max(0, Math.trunc(amount)), SCHOLARSHIP_MAX_AMOUNT);
 };
 
+export const SCHOLARSHIP_RTF_RELEASED_LABEL = 'RTF Released';
+export const SCHOLARSHIP_RTF_DUE_LABEL = 'RTF Due';
+export const SCHOLARSHIP_FEE_DUE_LABEL = 'Fee Due';
+export const SCHOLARSHIP_ADVANCE_LABEL = 'Advance';
+export const SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE = 'RTF Released Transactions (As per JnanaBhumi portal)';
+export const SCHOLARSHIP_PAID_TRANSACTIONS_TITLE = 'Paid Transactions (Fee paid to college)';
+export const SCHOLARSHIP_PAID_DATE_LABEL = 'Fee Paid Date';
+
+/** RTF released counted as advance only when college fee is fully paid (paid ≥ sanctioned). */
+export const calculateScholarshipAdvanceAmount = (sanctioned, released, paid) => {
+  const s = parseScholarshipAmount(sanctioned);
+  const r = typeof released === 'number' ? released : parseScholarshipAmount(released);
+  const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
+  if (s <= 0 || r <= 0) return 0;
+  const feeDue = Math.max(0, s - p);
+  if (feeDue === 0) return r;
+  return 0;
+};
+
+/** Sanctioned minus total released (RTF still to be released). Zero when fee is fully paid. */
+export const calculateScholarshipRtfDue = (sanctioned, released, paid = null) => {
+  const s = parseScholarshipAmount(sanctioned);
+  const r = typeof released === 'number' ? released : parseScholarshipAmount(released);
+  if (s <= 0) return 0;
+  if (paid !== null && paid !== undefined) {
+    const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
+    const feeDue = Math.max(0, s - p);
+    if (feeDue === 0) return 0;
+  }
+  return Math.max(0, s - r);
+};
+
+/** Sanctioned minus total paid (fee still to be paid). */
+export const calculateScholarshipFeeDue = (sanctioned, paid) => {
+  const s = parseScholarshipAmount(sanctioned);
+  const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
+  return s > 0 ? Math.max(0, s - p) : 0;
+};
+
+/** Fee due remaining before a paid-transaction row (max allowed for that row). */
+export const calculateRemainingFeeDueBeforeRow = (sanctioned, paidTransactions = [], rowIndex = 0) => {
+  const s = parseScholarshipAmount(sanctioned);
+  if (s <= 0) return 0;
+  let paidBefore = 0;
+  for (let i = 0; i < rowIndex; i += 1) {
+    paidBefore += parseScholarshipAmount(paidTransactions[i]?.paid_amount);
+  }
+  return Math.max(0, s - paidBefore);
+};
+
+/** Fee due remaining after applying paid amounts through rowIndex (inclusive). */
+export const calculateFeeDueAfterRow = (sanctioned, paidTransactions = [], rowIndex = 0) => {
+  const s = parseScholarshipAmount(sanctioned);
+  if (s <= 0) return 0;
+  let paidThrough = 0;
+  for (let i = 0; i <= rowIndex; i += 1) {
+    paidThrough += parseScholarshipAmount(paidTransactions[i]?.paid_amount);
+  }
+  return Math.max(0, s - paidThrough);
+};
+
+/** RTF due remaining before a release row. Zero when college fee is fully paid. */
+export const calculateRemainingRtfDueBeforeRow = (sanctioned, releases = [], paid, rowIndex = 0) => {
+  const s = parseScholarshipAmount(sanctioned);
+  if (s <= 0) return 0;
+  const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
+  if (Math.max(0, s - p) === 0) return 0;
+  let releasedBefore = 0;
+  for (let i = 0; i < rowIndex; i += 1) {
+    releasedBefore += parseScholarshipAmount(releases[i]?.released_amount);
+  }
+  return Math.max(0, s - releasedBefore);
+};
+
+/** RTF due after applying releases through rowIndex. Zero when fee is fully paid. */
+export const calculateRtfDueAfterRow = (sanctioned, releases = [], paid, rowIndex = 0) => {
+  const s = parseScholarshipAmount(sanctioned);
+  if (s <= 0) return 0;
+  const p = typeof paid === 'number' ? paid : parseScholarshipAmount(paid);
+  if (Math.max(0, s - p) === 0) return 0;
+  let releasedThrough = 0;
+  for (let i = 0; i <= rowIndex; i += 1) {
+    releasedThrough += parseScholarshipAmount(releases[i]?.released_amount);
+  }
+  return Math.max(0, s - releasedThrough);
+};
+
+/** True when fee is fully paid before this RTF row — amount counts as advance. */
+export const isRtfRowAdvance = (sanctioned, totalPaid, rowReleasedAmount) => {
+  const feeDue = calculateScholarshipFeeDue(sanctioned, totalPaid);
+  return feeDue === 0 && parseScholarshipAmount(rowReleasedAmount) > 0;
+};
+
 export const RTF_RELEASED_DATE_MIN = '1900-01-01';
 export const RTF_RELEASED_DATE_MAX = '2099-12-31';
 export const RTF_RELEASED_MIN_YEAR = 1900;

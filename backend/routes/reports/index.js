@@ -70,7 +70,7 @@ router.get(
   smsReportController.getSmsReportLogs
 );
 
-// Scholarship report — per-student year-wise sanctioned, released, due
+// Scholarship report — per-student year-wise sanctioned, released, RTF due, paid, fee due
 router.get(
   '/scholarship',
   authMiddleware,

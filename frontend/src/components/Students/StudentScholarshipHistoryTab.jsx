@@ -22,7 +22,22 @@ import {
   RTF_RELEASED_DATE_MIN,
   RTF_RELEASED_DATE_MAX,
   normalizeRtfReleasedDateForInput,
-  isValidRtfReleasedDate
+  isValidRtfReleasedDate,
+  SCHOLARSHIP_RTF_RELEASED_LABEL,
+  SCHOLARSHIP_RTF_DUE_LABEL,
+  SCHOLARSHIP_FEE_DUE_LABEL,
+  SCHOLARSHIP_ADVANCE_LABEL,
+  SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE,
+  SCHOLARSHIP_PAID_TRANSACTIONS_TITLE,
+  SCHOLARSHIP_PAID_DATE_LABEL,
+  calculateScholarshipRtfDue,
+  calculateScholarshipFeeDue,
+  calculateScholarshipAdvanceAmount,
+  calculateRemainingFeeDueBeforeRow,
+  calculateFeeDueAfterRow,
+  calculateRemainingRtfDueBeforeRow,
+  calculateRtfDueAfterRow,
+  isRtfRowAdvance
 } from '../../config/scholarshipConfig';
 
 const ELIGIBLE_OPTIONS = SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS;
@@ -60,8 +75,9 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
     ...year,
     sanctioned_amount: formatScholarshipAmountForInput(year.sanctioned_amount),
     semesters: normalizedSemesters,
-    releases: mapReleasesFromApi(
-      year.releases,
+    releases: mapReleasesFromApi(year.releases, academicYearLabel),
+    paid_transactions: mapPaidTransactionsFromApi(
+      year.paid_transactions,
       academicYearLabel
     )
   };
@@ -70,6 +86,7 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
   if (!isYearScholarshipEligible(normalizedYear)) {
     normalizedYear.sanctioned_amount = '';
     normalizedYear.releases = mapReleasesFromApi([], academicYearLabel);
+    normalizedYear.paid_transactions = mapPaidTransactionsFromApi([], academicYearLabel);
   }
 
   return normalizedYear;
@@ -79,7 +96,13 @@ const emptyRelease = () => ({
   id: null,
   academic_year: '',
   rtf_released_date: '',
-  released_amount: '',
+  released_amount: ''
+});
+
+const emptyPaidTransaction = () => ({
+  id: null,
+  academic_year: '',
+  paid_date: '',
   paid_amount: ''
 });
 
@@ -93,7 +116,19 @@ const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', {
 const parseAmount = (value) => parseScholarshipAmount(value);
 
 const sumReleased = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.released_amount), 0);
-const sumPaid = (releases = []) => releases.reduce((sum, row) => sum + parseAmount(row.paid_amount), 0);
+const sumPaid = (paidTransactions = []) => paidTransactions.reduce((sum, row) => sum + parseAmount(row.paid_amount), 0);
+
+// Advance must only consider manually entered fee payments. For a College Account the
+// RTF-linked rows are auto-credited from the portal, so they are ignored here — only the
+// extra manually entered paid rows (after the auto rows) count toward advance.
+const sumManualPaid = (year, isCollege) => {
+  const paidRows = year.paid_transactions || [];
+  if (isCollege) {
+    const releaseCount = (year.releases || []).length;
+    return sumPaid(paidRows.slice(releaseCount));
+  }
+  return sumPaid(paidRows);
+};
 
 const normalizeDateForInput = (value) => normalizeRtfReleasedDateForInput(value);
 
@@ -108,7 +143,7 @@ const formatCalendarDate = (value) => {
 
 const mapReleasesFromApi = (releases = [], academicYearLabel = '') => (
   (releases.length ? releases : [emptyRelease()]).map((release) => ({
-    ...release,
+    id: release.id ?? null,
     academic_year: release.academic_year || academicYearLabel || '',
     rtf_released_date: normalizeRtfReleasedDateForInput(
       release.rtf_released_date || release.rtf_date || release.from_date
@@ -116,13 +151,46 @@ const mapReleasesFromApi = (releases = [], academicYearLabel = '') => (
     released_amount: (() => {
       const normalized = formatScholarshipAmountForInput(release.released_amount);
       return normalized === '' || normalized === '0' ? '' : normalized;
-    })(),
+    })()
+  }))
+);
+
+const mapPaidTransactionsFromApi = (transactions = [], academicYearLabel = '') => (
+  (transactions.length ? transactions : [emptyPaidTransaction()]).map((transaction) => ({
+    id: transaction.id ?? null,
+    academic_year: transaction.academic_year || academicYearLabel || '',
+    paid_date: normalizeRtfReleasedDateForInput(
+      transaction.paid_date || transaction.to_date
+    ),
     paid_amount: (() => {
-      const normalized = formatScholarshipAmountForInput(release.paid_amount);
+      const normalized = formatScholarshipAmountForInput(transaction.paid_amount);
       return normalized === '' || normalized === '0' ? '' : normalized;
     })()
   }))
 );
+
+/** College Account: auto-fill paid rows at RTF indices; preserve manual rows after RTF rows. */
+const syncCollegePaidTransactionsFromRtf = (year, isCollege) => {
+  if (!isCollege) return year;
+  const releases = year.releases || [];
+  const manualExtras = (year.paid_transactions || []).slice(releases.length);
+  const paid = releases.map((rtf, index) => {
+    const existing = (year.paid_transactions || [])[index] || emptyPaidTransaction();
+    return {
+      ...existing,
+      academic_year: rtf.academic_year || existing.academic_year || year.academic_year_label || '',
+      paid_amount: rtf.released_amount ?? '',
+      paid_date: normalizeRtfReleasedDateForInput(rtf.rtf_released_date) || ''
+    };
+  });
+  const combined = [...paid, ...manualExtras];
+  return {
+    ...year,
+    paid_transactions: combined.length
+      ? combined
+      : mapPaidTransactionsFromApi([], year.academic_year_label || '')
+  };
+};
 
 const formatArchivedAt = (value) => {
   if (!value) return '—';
@@ -166,10 +234,12 @@ const isYearScholarshipEligible = (year) => {
 
 const clearYearFinancialDataIfNotEligible = (year, academicYearLabel = '') => {
   if (isYearScholarshipEligible(year)) return year;
+  const label = academicYearLabel || year.academic_year_label || '';
   return {
     ...year,
     sanctioned_amount: '',
-    releases: mapReleasesFromApi([], academicYearLabel || year.academic_year_label || '')
+    releases: mapReleasesFromApi([], label),
+    paid_transactions: mapPaidTransactionsFromApi([], label)
   };
 };
 
@@ -231,7 +301,7 @@ const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
                         <p className="text-gray-800">{formatCurrency(snapshot.sanctioned_amount)}</p>
                       </div>
                       <div className="text-center sm:text-right">
-                        <p className="text-[10px] uppercase text-gray-400 font-bold">Released</p>
+                        <p className="text-[10px] uppercase text-gray-400 font-bold">{SCHOLARSHIP_RTF_RELEASED_LABEL}</p>
                         <p className="text-gray-800">{formatCurrency(snapshot.released_amount)}</p>
                       </div>
                     </div>
@@ -332,10 +402,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
       if (scholarshipResponse.data.success) {
         const payload = scholarshipResponse.data.data;
+        const accountTypes = rtfConfigRes?.data?.data?.casteAccountTypes || {};
+        const isCollege = accountTypes[student?.caste] === 'college';
         setMeta(payload);
         setScholarshipRemarks(remarkData.list);
         setYears(
-          (payload.years || []).map((year) => normalizeYearFromApi(year, payload, student, remarkData.map))
+          (payload.years || []).map((year) => syncCollegePaidTransactionsFromRtf(
+            normalizeYearFromApi(year, payload, student, remarkData.map),
+            isCollege
+          ))
         );
       } else {
         toast.error(scholarshipResponse.data.message || 'Failed to load scholarship history');
@@ -355,15 +430,24 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const summaryYears = useMemo(
     () => years.map((year) => {
       const eligible = isYearScholarshipEligible(year);
+      const isCollege = casteAccountTypes[student?.caste] === 'college';
       const sanctioned = eligible ? parseAmount(year.sanctioned_amount) : 0;
       const released = eligible ? sumReleased(year.releases) : 0;
-      const paid = eligible ? sumPaid(year.releases) : 0;
-      const pending = sanctioned > 0 ? Math.max(0, sanctioned - paid) : 0;
+      const paid = eligible ? sumPaid(year.paid_transactions || []) : 0;
+      // Advance mode is driven by manually entered payments only (college auto-credit excluded).
+      const manualPaid = eligible ? sumManualPaid(year, isCollege) : 0;
+      const rtfDue = eligible ? calculateScholarshipRtfDue(sanctioned, released, manualPaid) : 0;
+      const feeDue = eligible ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
+      const advance = eligible ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid) : 0;
+      const advanceMode = eligible && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0 && released > 0;
       return {
         ...year,
         released_amount: released,
         paid_amount: paid,
-        pending_amount: pending,
+        rtf_due_amount: rtfDue,
+        fee_due_amount: feeDue,
+        advance_amount: advance,
+        advance_mode: advanceMode,
         releasesEligible: eligible
       };
     }),
@@ -612,31 +696,52 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     }
   };
 
-  const isCollegeAccount = (caste) => {
-    const c = String(caste || student?.caste || '').trim();
-    return casteAccountTypes[c] === 'college';
+  const isCollegeAccount = () => {
+    const c = String(student?.caste || '').trim();
+    return c && casteAccountTypes[c] === 'college';
+  };
+
+  const applyCollegePaidSync = (year) => syncCollegePaidTransactionsFromRtf(year, isCollegeAccount());
+
+  const applyYearUpdate = (yearIndex, updater) => {
+    setYears((prev) => prev.map((year, index) => {
+      if (index !== yearIndex) return year;
+      return applyCollegePaidSync(updater(year));
+    }));
   };
 
   const updateReleaseField = (yearIndex, releaseIndex, field, value) => {
     let nextValue = value;
-    if (field === 'released_amount' || field === 'paid_amount') {
+    if (field === 'released_amount') {
       nextValue = normalizeScholarshipAmountInput(value);
     }
-    // For rtf_released_date: always store whatever the browser emits (YYYY-MM-DD or empty).
-    // Validation happens on blur — never block here or partial date input gets lost.
+    applyYearUpdate(yearIndex, (year) => {
+      const releases = year.releases.map((release, rIndex) => (
+        rIndex === releaseIndex ? { ...release, [field]: nextValue } : release
+      ));
+      return { ...year, releases };
+    });
+  };
+
+  const updatePaidTransactionField = (yearIndex, transactionIndex, field, value) => {
+    let nextValue = value;
+    if (field === 'paid_amount') {
+      nextValue = normalizeScholarshipAmountInput(value);
+    }
     setYears((prev) => prev.map((year, yIndex) => {
       if (yIndex !== yearIndex) return year;
-      const releases = year.releases.map((release, rIndex) => {
-        if (rIndex !== releaseIndex) return release;
-        const updated = { ...release, [field]: nextValue };
-        // College account: auto-copy released_amount → paid_amount
-        if (field === 'released_amount' && isCollegeAccount()) {
-          updated.paid_amount = nextValue;
-        }
-        return updated;
-      });
-      return { ...year, releases };
+      const paid_transactions = (year.paid_transactions || []).map((transaction, tIndex) => (
+        tIndex === transactionIndex ? { ...transaction, [field]: nextValue } : transaction
+      ));
+      return { ...year, paid_transactions };
     }));
+  };
+
+  const handlePaidDateBlur = (yearIndex, transactionIndex, value) => {
+    if (!value) return;
+    if (isValidRtfReleasedDate(value, { allowEmpty: false })) return;
+    toast.error(`${SCHOLARSHIP_PAID_DATE_LABEL} must use a valid 4-digit year (${RTF_RELEASED_DATE_MIN} to ${RTF_RELEASED_DATE_MAX})`);
+    updatePaidTransactionField(yearIndex, transactionIndex, 'paid_date', '');
   };
 
   const handleReleaseDateBlur = (yearIndex, releaseIndex, value) => {
@@ -647,14 +752,37 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   };
 
   const addReleaseRow = (yearIndex) => {
+    applyYearUpdate(yearIndex, (year) => ({
+      ...year,
+      releases: [
+        ...year.releases,
+        {
+          ...emptyRelease(),
+          academic_year: year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student)
+        }
+      ]
+    }));
+  };
+
+  const removeReleaseRow = (yearIndex, releaseIndex) => {
+    applyYearUpdate(yearIndex, (year) => {
+      const releases = year.releases.filter((_, rIndex) => rIndex !== releaseIndex);
+      return {
+        ...year,
+        releases: releases.length ? releases : [emptyRelease()]
+      };
+    });
+  };
+
+  const addPaidTransactionRow = (yearIndex) => {
     setYears((prev) => prev.map((year, index) => (
       index === yearIndex
         ? {
           ...year,
-          releases: [
-            ...year.releases,
+          paid_transactions: [
+            ...(year.paid_transactions || []),
             {
-              ...emptyRelease(),
+              ...emptyPaidTransaction(),
               academic_year: year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student)
             }
           ]
@@ -663,13 +791,25 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     )));
   };
 
-  const removeReleaseRow = (yearIndex, releaseIndex) => {
+  const removePaidTransactionRow = (yearIndex, transactionIndex) => {
     setYears((prev) => prev.map((year, yIndex) => {
       if (yIndex !== yearIndex) return year;
-      const releases = year.releases.filter((_, rIndex) => rIndex !== releaseIndex);
-      return { ...year, releases: releases.length ? releases : [emptyRelease()] };
+      if (isCollegeAccount() && transactionIndex < (year.releases || []).length) {
+        return year;
+      }
+      const paid_transactions = (year.paid_transactions || []).filter((_, tIndex) => tIndex !== transactionIndex);
+      return {
+        ...year,
+        paid_transactions: paid_transactions.length
+          ? paid_transactions
+          : mapPaidTransactionsFromApi([], year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student))
+      };
     }));
   };
+
+  const isCollegePaidRowAuto = (transactionIndex, releaseCount) => (
+    isCollegeAccount() && transactionIndex < releaseCount
+  );
 
   const handleSave = async () => {
     if (!admissionNumber) return;
@@ -699,42 +839,86 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       for (let index = 0; index < year.releases.length; index += 1) {
         const release = year.releases[index];
         const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
-        // A row is meaningful if it has a released amount, a paid amount, or a date.
-        // RTF Remitted date and released amount are both optional for a paid-amount-only entry.
-        const hasReleaseValue = parseAmount(release.released_amount) > 0
-          || parseAmount(release.paid_amount) > 0
-          || releaseDate;
+        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
         if (!hasReleaseValue) continue;
         if (String(release.rtf_released_date || '').trim() && !releaseDate) {
-          toast.error(`Year ${year.student_year}, release row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
+          toast.error(`Year ${year.student_year}, RTF row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
           return;
         }
         if (!isValidScholarshipAmount(release.released_amount)) {
-          toast.error(`Year ${year.student_year}, release row ${index + 1}: Amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+          toast.error(`Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
           return;
         }
+      }
 
-        // paid_amount: just validate it's a valid amount (≤ sanctioned enforced at year level)
-        if (release.paid_amount !== '' && release.paid_amount !== undefined) {
-          if (!isValidScholarshipAmount(release.paid_amount)) {
-            toast.error(`Year ${year.student_year}, release row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+      const paidRows = applyCollegePaidSync(year).paid_transactions || [];
+      const sanctioned = parseAmount(year.sanctioned_amount);
+
+      for (let index = 0; index < paidRows.length; index += 1) {
+        const transaction = paidRows[index];
+        const paidDate = normalizeRtfReleasedDateForInput(transaction.paid_date);
+        const hasPaidValue = parseAmount(transaction.paid_amount) > 0 || paidDate;
+        if (!hasPaidValue) continue;
+        if (String(transaction.paid_date || '').trim() && !paidDate) {
+          toast.error(`Year ${year.student_year}, paid row ${index + 1}: ${SCHOLARSHIP_PAID_DATE_LABEL} must use a valid 4-digit year`);
+          return;
+        }
+        if (!isValidScholarshipAmount(transaction.paid_amount)) {
+          toast.error(`Year ${year.student_year}, paid row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+          return;
+        }
+        const rowPaid = parseAmount(transaction.paid_amount);
+        const remainingFeeDue = calculateRemainingFeeDueBeforeRow(sanctioned, paidRows, index);
+        if (sanctioned > 0 && rowPaid > remainingFeeDue) {
+          toast.error(
+            `Year ${year.student_year}, paid row ${index + 1}: Paid amount (${rowPaid}) exceeds remaining ${SCHOLARSHIP_FEE_DUE_LABEL} (${remainingFeeDue})`
+          );
+          return;
+        }
+      }
+
+      const totalPaid = sumPaid(paidRows);
+      // Advance mode considers manually entered payments only (college auto-credit excluded).
+      const manualPaid = sumManualPaid(
+        { releases: year.releases, paid_transactions: paidRows },
+        isCollegeAccount()
+      );
+      const advanceMode = sanctioned > 0
+        && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0;
+
+      for (let index = 0; index < year.releases.length; index += 1) {
+        const release = year.releases[index];
+        const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
+        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
+        if (!hasReleaseValue) continue;
+
+        if (!advanceMode && sanctioned > 0) {
+          const rowReleased = parseAmount(release.released_amount);
+          const remainingRtfDue = calculateRemainingRtfDueBeforeRow(
+            sanctioned,
+            year.releases,
+            manualPaid,
+            index
+          );
+          if (rowReleased > remainingRtfDue) {
+            toast.error(
+              `Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount (${rowReleased}) exceeds remaining ${SCHOLARSHIP_RTF_DUE_LABEL} (${remainingRtfDue})`
+            );
             return;
           }
         }
       }
 
       // Total released must not exceed sanctioned amount
-      const sanctioned = parseAmount(year.sanctioned_amount);
       const totalReleased = sumReleased(year.releases);
       if (sanctioned > 0 && totalReleased > sanctioned) {
         toast.error(
-          `Year ${year.student_year}: Total released amount (${totalReleased}) cannot exceed sanctioned amount (${sanctioned})`
+          `Year ${year.student_year}: Total ${SCHOLARSHIP_RTF_RELEASED_LABEL.toLowerCase()} amount (${totalReleased}) cannot exceed sanctioned amount (${sanctioned})`
         );
         return;
       }
 
       // Total paid must not exceed sanctioned amount
-      const totalPaid = sumPaid(year.releases);
       if (sanctioned > 0 && totalPaid > sanctioned) {
         toast.error(
           `Year ${year.student_year}: Total paid amount (${totalPaid}) cannot exceed sanctioned amount (${sanctioned})`
@@ -759,16 +943,27 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             ? year.releases
               .filter((release) => (
                 parseAmount(release.released_amount) > 0
-                || parseAmount(release.paid_amount) > 0
                 || normalizeRtfReleasedDateForInput(release.rtf_released_date)
               ))
-              .map((release) => ({
-                academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
-                rtf_released_date: normalizeRtfReleasedDateForInput(release.rtf_released_date) || null,
-                released_amount: parseAmount(release.released_amount),
-                paid_amount: isCollegeAccount()
-                  ? parseAmount(release.released_amount)   // college account: paid = released
-                  : parseAmount(release.paid_amount)
+              .map((release) => {
+                const rtfDate = normalizeRtfReleasedDateForInput(release.rtf_released_date) || null;
+                return {
+                  academic_year: release.academic_year || getAcademicYearLabel(meta, year.student_year, student),
+                  rtf_released_date: rtfDate,
+                  released_amount: parseAmount(release.released_amount)
+                };
+              })
+            : [],
+          paid_transactions: releasesEligible
+            ? (applyCollegePaidSync(year).paid_transactions || [])
+              .filter((transaction) => (
+                parseAmount(transaction.paid_amount) > 0
+                || normalizeRtfReleasedDateForInput(transaction.paid_date)
+              ))
+              .map((transaction) => ({
+                academic_year: transaction.academic_year || getAcademicYearLabel(meta, year.student_year, student),
+                paid_date: normalizeRtfReleasedDateForInput(transaction.paid_date) || null,
+                paid_amount: parseAmount(transaction.paid_amount)
               }))
             : []
         };
@@ -783,7 +978,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         setMeta(payloadData);
         setScholarshipRemarks(remarkData.list);
         setYears(
-          (payloadData.years || []).map((year) => normalizeYearFromApi(year, payloadData, student, remarkData.map))
+          (payloadData.years || []).map((year) => syncCollegePaidTransactionsFromRtf(
+            normalizeYearFromApi(year, payloadData, student, remarkData.map),
+            isCollegeAccount()
+          ))
         );
         onUpdated?.(payloadData);
       } else {
@@ -881,9 +1079,11 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Sem</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Sanctioned</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Released</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_DUE_LABEL}</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Pending</th>
+                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Remarks</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">History</th>
               </tr>
@@ -1020,6 +1220,42 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
                         {year.releasesEligible ? (
+                          year.advance_amount > 0 ? (
+                            <span className="font-semibold text-violet-700 text-xs">
+                              {formatCurrency(year.advance_amount)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
+                    {semesterIndex === 0 && (
+                      <td
+                        rowSpan={rowSpan}
+                        className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
+                      >
+                        {year.releasesEligible ? (
+                          year.advance_mode ? (
+                            <span className="text-gray-400">—</span>
+                          ) : (
+                            <span className={`font-semibold text-xs ${year.rtf_due_amount > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
+                              {formatCurrency(year.rtf_due_amount)}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    )}
+                    {semesterIndex === 0 && (
+                      <td
+                        rowSpan={rowSpan}
+                        className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
+                      >
+                        {year.releasesEligible ? (
                           <span className="font-semibold text-blue-700 text-xs">
                             {formatCurrency(year.paid_amount)}
                           </span>
@@ -1034,8 +1270,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
                         {year.releasesEligible ? (
-                          <span className={`font-semibold text-xs ${year.pending_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                            {formatCurrency(year.pending_amount)}
+                          <span className={`font-semibold text-xs ${year.fee_due_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                            {formatCurrency(year.fee_due_amount)}
                           </span>
                         ) : (
                           <span className="text-gray-400">—</span>
@@ -1080,19 +1316,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       </div>
 
       {!quotaLocked && (
+      <>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Release Transactions</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE}</h4>
           <p className="text-[11px] text-gray-400 mt-1">
-            Shown only for years with at least one semester marked Eligible.
+            Shown only for years with every semester marked Eligible.
+            When college fee is fully paid, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
             {isCollegeAccount() && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                College Account — Paid auto-set from Released
-              </span>
-            )}
-            {!isCollegeAccount() && student?.caste && casteAccountTypes[student.caste] !== undefined && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                Mother Account — Enter Paid manually
+                College Account — Paid Transactions auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL}
               </span>
             )}
           </p>
@@ -1100,44 +1333,53 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
         {releaseTransactionYears.length === 0 ? (
           <div className="p-6 text-sm text-gray-500 text-center">
-            No release transactions — mark a semester as Eligible to record releases.
+            No RTF released transactions — mark all semesters as Eligible to record releases.
           </div>
         ) : (
         <div className="divide-y divide-gray-100">
           {releaseTransactionYears.map((year) => {
             const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
+            const stateYear = years[yearIndex] || year;
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
-            const sanctionedAmt = parseAmount(year.sanctioned_amount);
-            const totalReleasedAmt = sumReleased(year.releases);
-            const totalPaidAmt = sumPaid(year.releases);
-            // Pending = sanctioned - totalPaid (how much of sanctioned is still unpaid)
-            const totalPendingAmt = sanctionedAmt > 0 ? Math.max(0, sanctionedAmt - totalPaidAmt) : 0;
+            const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
+            const totalPaidAmt = sumPaid(stateYear.paid_transactions || []);
+            // Advance mode considers manually entered payments only (college auto-credit excluded).
+            const manualPaidAmt = sumManualPaid(stateYear, isCollegeAccount());
+            const totalReleasedAmt = sumReleased(stateYear.releases);
+            const feeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
+            const advanceMode = sanctionedAmt > 0
+              && calculateScholarshipFeeDue(sanctionedAmt, manualPaidAmt) === 0
+              && totalReleasedAmt > 0;
+            const totalRtfDueAmt = calculateScholarshipRtfDue(sanctionedAmt, totalReleasedAmt, manualPaidAmt);
+            const totalAdvanceAmt = calculateScholarshipAdvanceAmount(sanctionedAmt, totalReleasedAmt, manualPaidAmt);
             const isReleasedOver = sanctionedAmt > 0 && totalReleasedAmt > sanctionedAmt;
-            const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
 
             return (
-            <div key={`releases-${year.student_year}`} className="p-4">
-              {/* Year header: summary chips */}
+            <div key={`rtf-releases-${year.student_year}`} className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h5 className="text-sm font-bold text-gray-800">Year {year.student_year}</h5>
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`text-xs font-semibold ${isReleasedOver ? 'text-red-600' : 'text-emerald-700'}`}>
-                    Released: {formatCurrency(totalReleasedAmt)}
+                    {SCHOLARSHIP_RTF_RELEASED_LABEL}: {formatCurrency(totalReleasedAmt)}
                     {isReleasedOver && (
                       <span className="ml-1 text-red-500">
                         (exceeds sanctioned {formatCurrency(sanctionedAmt)})
                       </span>
                     )}
                   </span>
-                  <span className={`text-xs font-semibold ${isPaidOver ? 'text-red-600' : 'text-blue-700'}`}>
-                    Paid: {formatCurrency(totalPaidAmt)}
-                    {isPaidOver && (
-                      <span className="ml-1">(exceeds sanctioned)</span>
-                    )}
-                  </span>
-                  {sanctionedAmt > 0 && (
-                    <span className={`text-xs font-semibold ${totalPendingAmt > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
-                      Pending: {formatCurrency(totalPendingAmt)}
+                  {totalAdvanceAmt > 0 && (
+                    <span className="text-xs font-semibold text-violet-700">
+                      {SCHOLARSHIP_ADVANCE_LABEL}: {formatCurrency(totalAdvanceAmt)}
+                    </span>
+                  )}
+                  {sanctionedAmt > 0 && !advanceMode && (
+                    <span className={`text-xs font-semibold ${totalRtfDueAmt > 0 ? 'text-sky-600' : 'text-gray-500'}`}>
+                      {SCHOLARSHIP_RTF_DUE_LABEL}: {formatCurrency(totalRtfDueAmt)}
+                    </span>
+                  )}
+                  {sanctionedAmt > 0 && advanceMode && (
+                    <span className="text-xs font-semibold text-gray-500">
+                      {SCHOLARSHIP_RTF_DUE_LABEL}: —
                     </span>
                   )}
                 </div>
@@ -1149,29 +1391,36 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                       <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
                       <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Remitted Date</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Released Amount</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Pending</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_RELEASED_LABEL} Amount</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_DUE_LABEL} / {SCHOLARSHIP_ADVANCE_LABEL}</th>
                       {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {year.releases.map((release, releaseIndex) => {
+                    {stateYear.releases.map((release, releaseIndex) => {
                       const rowReleased = parseAmount(release.released_amount);
-                      const rowPaid = parseAmount(release.paid_amount);
-                      // Flag paid over sanctioned (year-level cap)
-                      const isRowPaidOver = sanctionedAmt > 0 && rowPaid > sanctionedAmt;
+                      const isAdvanceRow = advanceMode && rowReleased > 0;
+                      const remainingRtfDueBefore = calculateRemainingRtfDueBeforeRow(
+                        sanctionedAmt,
+                        stateYear.releases,
+                        manualPaidAmt,
+                        releaseIndex
+                      );
+                      const rtfDueAfterRow = calculateRtfDueAfterRow(
+                        sanctionedAmt,
+                        stateYear.releases,
+                        manualPaidAmt,
+                        releaseIndex
+                      );
+                      const isRowReleasedOver = !advanceMode && sanctionedAmt > 0 && rowReleased > remainingRtfDueBefore;
 
                       return (
-                      <tr key={`${year.student_year}-${releaseIndex}`}>
-                        {/* Academic Year */}
+                      <tr key={`${year.student_year}-rtf-${releaseIndex}`}>
                         <td className="px-2 py-2">
                           <span className="text-gray-700 whitespace-nowrap">
                             {release.academic_year || academicYearLabel}
                           </span>
                         </td>
-
-                        {/* RTF Remitted Date */}
                         <td className="px-2 py-2">
                           {isEditingDisabled ? (
                             <span className="text-gray-700">{formatCalendarDate(release.rtf_released_date) || '—'}</span>
@@ -1187,63 +1436,51 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                             />
                           )}
                         </td>
-
-                        {/* Released Amount */}
                         <td className="px-2 py-2 text-right">
                           {isEditingDisabled ? (
-                            <span className="font-medium text-gray-800">{formatCurrency(release.released_amount)}</span>
-                          ) : (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              maxLength={5}
-                              value={release.released_amount}
-                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'released_amount', e.target.value)}
-                              className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isReleasedOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
-                              placeholder={sanctionedAmt > 0 ? `Max ${sanctionedAmt}` : `Max ${SCHOLARSHIP_MAX_AMOUNT}`}
-                            />
-                          )}
-                        </td>
-
-                        {/* Paid Amount */}
-                        <td className="px-2 py-2 text-right">
-                          {isEditingDisabled || isCollegeAccount() ? (
                             <div className="flex flex-col items-end gap-0.5">
-                              <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
-                              {isCollegeAccount() && !isEditingDisabled && (
-                                <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">auto</span>
+                              <span className="font-medium text-gray-800">{formatCurrency(release.released_amount)}</span>
+                              {isAdvanceRow && (
+                                <span className="text-[9px] text-violet-600 font-semibold bg-violet-50 px-1 rounded">{SCHOLARSHIP_ADVANCE_LABEL}</span>
                               )}
                             </div>
                           ) : (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              maxLength={5}
-                              value={release.paid_amount}
-                              onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'paid_amount', e.target.value)}
-                              className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isRowPaidOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
-                              placeholder={sanctionedAmt > 0 ? `Max ${sanctionedAmt}` : 'Amount paid'}
-                            />
-                          )}
-                          {isRowPaidOver && (
-                            <p className="text-[10px] text-red-500 mt-0.5 text-right">Exceeds sanctioned</p>
+                            <>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={5}
+                                value={release.released_amount}
+                                onChange={(e) => updateReleaseField(yearIndex, releaseIndex, 'released_amount', e.target.value)}
+                                className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isRowReleasedOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
+                                placeholder={
+                                  isAdvanceRow
+                                    ? SCHOLARSHIP_ADVANCE_LABEL
+                                    : (remainingRtfDueBefore > 0 ? `Max ${remainingRtfDueBefore}` : `Max ${SCHOLARSHIP_MAX_AMOUNT}`)
+                                }
+                              />
+                              {isRowReleasedOver && (
+                                <p className="text-[10px] text-red-500 mt-0.5 text-right">
+                                  Exceeds {SCHOLARSHIP_RTF_DUE_LABEL.toLowerCase()} ({formatCurrency(remainingRtfDueBefore)})
+                                </p>
+                              )}
+                            </>
                           )}
                         </td>
-
-                        {/* Pending Amount — year-level (sanctioned − totalPaid), shown on first row only */}
                         <td className="px-2 py-2 text-right">
-                          {releaseIndex === 0 && sanctionedAmt > 0 ? (
-                            <span className={`text-xs font-semibold tabular-nums ${totalPendingAmt > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                              {formatCurrency(totalPendingAmt)}
+                          {isAdvanceRow ? (
+                            <span className="text-xs font-semibold tabular-nums text-violet-700">
+                              {rowReleased > 0 ? formatCurrency(rowReleased) : '—'}
+                            </span>
+                          ) : sanctionedAmt > 0 && !advanceMode ? (
+                            <span className={`text-xs font-semibold tabular-nums ${rtfDueAfterRow > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
+                              {formatCurrency(rtfDueAfterRow)}
                             </span>
                           ) : (
                             <span className="text-gray-300">—</span>
                           )}
                         </td>
-
-                        {/* Add / Remove actions */}
                         {!isEditingDisabled && (
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-center gap-1">
@@ -1251,7 +1488,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                                 type="button"
                                 onClick={() => addReleaseRow(yearIndex)}
                                 className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                title="Add another release for this year"
+                                title="Add another RTF released row for this year"
                               >
                                 <Plus size={14} />
                               </button>
@@ -1280,6 +1517,192 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         </div>
         )}
       </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_PAID_TRANSACTIONS_TITLE}</h4>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Fee paid to college — add a row for each payment.
+            {isCollegeAccount() && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Rows matching {SCHOLARSHIP_RTF_RELEASED_LABEL} are auto-filled; add extra rows for additional payments
+              </span>
+            )}
+            {!isCollegeAccount() && student?.caste && casteAccountTypes[student.caste] !== undefined && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Mother Account — enter paid amount and date manually
+              </span>
+            )}
+          </p>
+        </div>
+
+        {releaseTransactionYears.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500 text-center">
+            No paid transactions — mark all semesters as Eligible to record fee payments.
+          </div>
+        ) : (
+        <div className="divide-y divide-gray-100">
+          {releaseTransactionYears.map((year) => {
+            const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
+            const stateYear = years[yearIndex] || year;
+            const syncedYear = applyCollegePaidSync(stateYear);
+            const paidTransactions = syncedYear.paid_transactions || [];
+            const releaseCount = (stateYear.releases || []).length;
+            const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
+            const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
+            const totalPaidAmt = sumPaid(paidTransactions);
+            const totalFeeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
+            const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
+
+            return (
+            <div key={`paid-transactions-${year.student_year}`} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h5 className="text-sm font-bold text-gray-800">Year {year.student_year}</h5>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`text-xs font-semibold ${isPaidOver ? 'text-red-600' : 'text-blue-700'}`}>
+                    Paid: {formatCurrency(totalPaidAmt)}
+                    {isPaidOver && (
+                      <span className="ml-1">(exceeds sanctioned)</span>
+                    )}
+                  </span>
+                  {sanctionedAmt > 0 && (
+                    <span className={`text-xs font-semibold ${totalFeeDueAmt > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                      {SCHOLARSHIP_FEE_DUE_LABEL}: {formatCurrency(totalFeeDueAmt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap">{SCHOLARSHIP_PAID_DATE_LABEL}</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">Paid Amount</th>
+                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
+                      {!isEditingDisabled && (
+                        <th className="px-2 py-2 font-bold whitespace-nowrap text-center">Actions</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {paidTransactions.map((transaction, transactionIndex) => {
+                      const rowPaid = parseAmount(transaction.paid_amount);
+                      const remainingBeforeRow = calculateRemainingFeeDueBeforeRow(
+                        sanctionedAmt,
+                        paidTransactions,
+                        transactionIndex
+                      );
+                      const feeDueAfterRow = calculateFeeDueAfterRow(
+                        sanctionedAmt,
+                        paidTransactions,
+                        transactionIndex
+                      );
+                      const isRowPaidOver = sanctionedAmt > 0 && rowPaid > remainingBeforeRow;
+                      const isAutoRow = isCollegePaidRowAuto(transactionIndex, releaseCount);
+
+                      return (
+                      <tr key={`${year.student_year}-paid-${transactionIndex}`}>
+                        <td className="px-2 py-2">
+                          <span className="text-gray-700 whitespace-nowrap">
+                            {transaction.academic_year || academicYearLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">
+                          {isEditingDisabled || isAutoRow ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-gray-700">{formatCalendarDate(transaction.paid_date) || '—'}</span>
+                              {isAutoRow && !isEditingDisabled && transaction.paid_date && (
+                                <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded w-fit">auto</span>
+                              )}
+                            </div>
+                          ) : (
+                            <input
+                              type="date"
+                              min={RTF_RELEASED_DATE_MIN}
+                              max={RTF_RELEASED_DATE_MAX}
+                              value={transaction.paid_date || ''}
+                              onChange={(e) => updatePaidTransactionField(yearIndex, transactionIndex, 'paid_date', e.target.value)}
+                              onBlur={(e) => handlePaidDateBlur(yearIndex, transactionIndex, e.target.value)}
+                              className="w-full min-w-[130px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+                            />
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {isEditingDisabled || isAutoRow ? (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="font-medium text-blue-700">{rowPaid > 0 ? formatCurrency(rowPaid) : '—'}</span>
+                              {isAutoRow && !isEditingDisabled && (
+                                <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">auto</span>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={5}
+                                value={transaction.paid_amount}
+                                onChange={(e) => updatePaidTransactionField(yearIndex, transactionIndex, 'paid_amount', e.target.value)}
+                                className={`w-full min-w-[100px] px-2 py-1.5 border rounded-lg text-xs text-right ${isRowPaidOver ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200'}`}
+                                placeholder={remainingBeforeRow > 0 ? `Max ${remainingBeforeRow}` : 'Amount paid'}
+                              />
+                              {isRowPaidOver && (
+                                <p className="text-[10px] text-red-500 mt-0.5 text-right">
+                                  Exceeds {SCHOLARSHIP_FEE_DUE_LABEL.toLowerCase()} ({formatCurrency(remainingBeforeRow)})
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {sanctionedAmt > 0 ? (
+                            <span className={`text-xs font-semibold tabular-nums ${feeDueAfterRow > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                              {formatCurrency(feeDueAfterRow)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        {!isEditingDisabled && (
+                          <td className="px-2 py-2">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => addPaidTransactionRow(yearIndex)}
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                title="Add another paid transaction row for this year"
+                              >
+                                <Plus size={14} />
+                              </button>
+                              {paidTransactions.length > 1 && !isAutoRow && (
+                                <button
+                                  type="button"
+                                  onClick={() => removePaidTransactionRow(yearIndex, transactionIndex)}
+                                  className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+                                  title="Remove row"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            );
+          })}
+        </div>
+        )}
+      </div>
+      </>
       )}
 
       <YearHistoryModal
@@ -1307,7 +1730,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                   <th className="px-3 py-2 font-bold whitespace-nowrap">Status</th>
                   <th className="px-3 py-2 font-bold whitespace-nowrap">App ID</th>
                   <th className="px-3 py-2 font-bold whitespace-nowrap text-right">Sanctioned</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">Released</th>
+                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
                   <th className="px-3 py-2 font-bold whitespace-nowrap">Source</th>
                   <th className="px-3 py-2 font-bold whitespace-nowrap">Archived On</th>
                 </tr>

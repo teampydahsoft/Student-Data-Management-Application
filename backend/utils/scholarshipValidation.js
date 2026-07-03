@@ -114,6 +114,29 @@ const clampScholarshipAmount = (value) => {
   return normalized === '' ? 0 : toNumber(normalized);
 };
 
+const calculateFeeDue = (sanctioned, paid) => {
+  const s = clampScholarshipAmount(sanctioned);
+  const p = clampScholarshipAmount(paid);
+  return s > 0 ? Math.max(0, s - p) : 0;
+};
+
+const calculateRtfDue = (sanctioned, released, paid) => {
+  const s = clampScholarshipAmount(sanctioned);
+  const r = clampScholarshipAmount(released);
+  if (s <= 0) return 0;
+  if (calculateFeeDue(s, paid) === 0) return 0;
+  return Math.max(0, s - r);
+};
+
+const calculateAdvanceAmount = (sanctioned, released, paid) => {
+  const s = clampScholarshipAmount(sanctioned);
+  const r = clampScholarshipAmount(released);
+  const p = clampScholarshipAmount(paid);
+  if (s <= 0 || r <= 0) return 0;
+  if (calculateFeeDue(s, p) === 0) return r;
+  return 0;
+};
+
 const findDuplicateApplicationIdsInPayload = (years = []) => {
   const seen = new Map();
   const duplicates = [];
@@ -240,15 +263,15 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
     if (!sanctionedValidation.valid) return sanctionedValidation;
 
     const releases = allEligible && Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+    const paidTransactions = allEligible && Array.isArray(yearEntry.paid_transactions)
+      ? yearEntry.paid_transactions
+      : [];
     let totalReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
       const release = releases[index];
       const releaseAmount = clampScholarshipAmount(release.released_amount);
-      const paidAmount = clampScholarshipAmount(release.paid_amount);
       const releaseDate = release.rtf_released_date && String(release.rtf_released_date).trim();
-      // A release row is meaningful if it has ANY of: released amount, paid amount, or a date.
-      // RTF Remitted date and released amount are both optional for a paid-amount-only entry.
-      const hasReleaseValue = releaseAmount > 0 || paidAmount > 0 || releaseDate;
+      const hasReleaseValue = releaseAmount > 0 || releaseDate;
       if (!hasReleaseValue) continue;
 
       const dateValidation = validateRtfReleasedDate(release.rtf_released_date, {
@@ -257,43 +280,86 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       });
       if (!dateValidation.valid) return dateValidation;
 
-      // Released amount is optional (e.g. when only a paid amount is being recorded).
-      // Only require it when an RTF Remitted date is provided.
       const releaseValidation = validateScholarshipAmount(
         normalizeScholarshipAmountInput(release.released_amount),
         {
-          fieldLabel: `Year ${studentYear} release amount (row ${index + 1})`,
+          fieldLabel: `Year ${studentYear} RTF released amount (row ${index + 1})`,
           allowEmpty: !releaseDate
         }
       );
       if (!releaseValidation.valid) return releaseValidation;
 
-      // Validate paid_amount: must be a valid amount (≤ sanctioned enforced at year level)
-      if (release.paid_amount !== undefined && release.paid_amount !== null && release.paid_amount !== '') {
-        const paidValidation = validateScholarshipAmount(
-          normalizeScholarshipAmountInput(release.paid_amount),
-          {
-            fieldLabel: `Year ${studentYear} paid amount (row ${index + 1})`,
-            allowEmpty: true
-          }
-        );
-        if (!paidValidation.valid) return paidValidation;
-      }
-
       totalReleasedAmount += releaseAmount;
     }
 
-    // Total released must not exceed sanctioned amount
+    let totalPaidAmount = 0;
+    for (let index = 0; index < paidTransactions.length; index += 1) {
+      const transaction = paidTransactions[index];
+      const paidAmount = clampScholarshipAmount(transaction.paid_amount);
+      const paidDate = transaction.paid_date && String(transaction.paid_date).trim();
+      const hasPaidValue = paidAmount > 0 || paidDate;
+      if (!hasPaidValue) continue;
+
+      const paidDateValidation = validateRtfReleasedDate(transaction.paid_date, {
+        fieldLabel: `Year ${studentYear} fee paid date (row ${index + 1})`,
+        allowEmpty: true
+      });
+      if (!paidDateValidation.valid) return paidDateValidation;
+
+      const paidValidation = validateScholarshipAmount(
+        normalizeScholarshipAmountInput(transaction.paid_amount),
+        {
+          fieldLabel: `Year ${studentYear} paid amount (row ${index + 1})`,
+          allowEmpty: !paidDate
+        }
+      );
+      if (!paidValidation.valid) return paidValidation;
+
+      const sanctionedValue = sanctionedValidation.value ?? 0;
+      const remainingFeeDue = Math.max(0, sanctionedValue - totalPaidAmount);
+      if (sanctionedValue > 0 && paidAmount > remainingFeeDue) {
+        return {
+          valid: false,
+          message: `Year ${studentYear}: Paid amount on row ${index + 1} (${paidAmount}) exceeds remaining Fee Due (${remainingFeeDue})`
+        };
+      }
+
+      totalPaidAmount += paidAmount;
+    }
+
     const sanctionedValue = sanctionedValidation.value ?? 0;
+    const feeDueValue = calculateFeeDue(sanctionedValue, totalPaidAmount);
+
+    let runningReleasedAmount = 0;
+    for (let index = 0; index < releases.length; index += 1) {
+      const release = releases[index];
+      const releaseAmount = clampScholarshipAmount(release.released_amount);
+      const releaseDate = release.rtf_released_date && String(release.rtf_released_date).trim();
+      const hasReleaseValue = releaseAmount > 0 || releaseDate;
+      if (!hasReleaseValue) continue;
+
+      if (sanctionedValue > 0 && feeDueValue > 0) {
+        const remainingRtfDue = Math.max(0, sanctionedValue - runningReleasedAmount);
+        if (releaseAmount > remainingRtfDue) {
+          return {
+            valid: false,
+            message: `Year ${studentYear}: RTF released amount on row ${index + 1} (${releaseAmount}) exceeds remaining RTF Due (${remainingRtfDue})`
+          };
+        }
+      }
+
+      runningReleasedAmount += releaseAmount;
+    }
+
+    // Total released must not exceed sanctioned amount
     if (sanctionedValue > 0 && totalReleasedAmount > sanctionedValue) {
       return {
         valid: false,
-        message: `Year ${studentYear}: Total released amount (${totalReleasedAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
+        message: `Year ${studentYear}: Total RTF released amount (${totalReleasedAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
       };
     }
 
     // Total paid must not exceed sanctioned amount
-    const totalPaidAmount = releases.reduce((sum, r) => sum + clampScholarshipAmount(r.paid_amount), 0);
     if (sanctionedValue > 0 && totalPaidAmount > sanctionedValue) {
       return {
         valid: false,
@@ -316,5 +382,8 @@ module.exports = {
   validateRtfReleasedDate,
   validateScholarshipYearsPayload,
   checkApplicationIdAvailability,
-  clampScholarshipAmount
+  clampScholarshipAmount,
+  calculateFeeDue,
+  calculateRtfDue,
+  calculateAdvanceAmount
 };

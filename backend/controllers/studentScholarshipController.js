@@ -100,6 +100,7 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
   const semesterMap = {};
   let legacyEligible = '';
   const releases = [];
+  const paidTransactions = [];
 
   for (const row of rows) {
     if (!applicationId && row.application_id) applicationId = row.application_id;
@@ -108,7 +109,9 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
     }
 
     if (isReleaseRow(row)) {
-      releases.push(mapReleaseRowForApi(row));
+      const { rtfRow, paidRow } = splitDbReleaseRow(row);
+      if (rtfRow) releases.push(rtfRow);
+      if (paidRow) paidTransactions.push(paidRow);
     } else if (isSemesterSummaryRow(row)) {
       semesterMap[row.student_semester] = row.eligible || '';
     } else if (row.eligible) {
@@ -134,8 +137,12 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
     released_amount: allEligible
       ? releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0)
       : 0,
+    paid_amount: allEligible
+      ? paidTransactions.reduce((sum, row) => sum + toNumber(row.paid_amount), 0)
+      : 0,
     semesters,
-    releases: allEligible ? releases : []
+    releases: allEligible ? releases : [],
+    paid_transactions: allEligible ? paidTransactions : []
   };
 };
 
@@ -298,13 +305,44 @@ const hasYearSummaryData = (yearEntry) => {
   );
 };
 
-const hasReleaseData = (release) => {
+const hasRtfReleaseData = (release) => {
   const normalized = normalizeReleaseForSave(release);
   return (
     normalized.released_amount > 0
-    || normalized.paid_amount > 0
-    || normalized.rtf_released_date
+    || Boolean(normalized.rtf_released_date)
   );
+};
+
+const hasPaidTransactionData = (transaction) => {
+  const normalized = normalizeReleaseForSave(transaction);
+  return (
+    normalized.paid_amount > 0
+    || Boolean(normalized.paid_date)
+  );
+};
+
+const hasReleaseData = (release) => hasRtfReleaseData(release) || hasPaidTransactionData(release);
+
+const splitDbReleaseRow = (row, academicYearLabel = '') => {
+  const apiRow = mapReleaseRowForApi(row);
+  const label = row.academic_year || academicYearLabel || '';
+  const rtfRow = (toNumber(row.released_amount) > 0 || apiRow.rtf_released_date)
+    ? {
+      id: row.id,
+      academic_year: label,
+      rtf_released_date: apiRow.rtf_released_date,
+      released_amount: apiRow.released_amount
+    }
+    : null;
+  const paidRow = (toNumber(row.paid_amount) > 0 || apiRow.paid_date)
+    ? {
+      id: row.id,
+      academic_year: label,
+      paid_date: apiRow.paid_date,
+      paid_amount: apiRow.paid_amount
+    }
+    : null;
+  return { rtfRow, paidRow };
 };
 
 const buildIncomingYearSnapshot = (yearEntry) => {
@@ -316,26 +354,48 @@ const buildIncomingYearSnapshot = (yearEntry) => {
 
   const allEligible = allSemestersEligible(semesters);
 
-  const releases = allEligible
+  const rtfReleases = allEligible
     ? (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
-        .filter(hasReleaseData)
+        .filter(hasRtfReleaseData)
         .map((release) => {
           const normalized = normalizeReleaseForSave(release);
           return {
             from_date: normalized.rtf_released_date || null,
             rtf_released_date: normalized.rtf_released_date || null,
             released_amount: normalized.released_amount,
-            paid_amount: normalized.paid_amount
+            paid_amount: 0,
+            paid_date: null,
+            to_date: null
           };
         })
     : [];
 
+  const paidTransactions = allEligible
+    ? (Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [])
+        .filter(hasPaidTransactionData)
+        .map((transaction) => {
+          const normalized = normalizeReleaseForSave(transaction);
+          return {
+            from_date: null,
+            rtf_released_date: null,
+            released_amount: 0,
+            paid_amount: normalized.paid_amount,
+            paid_date: normalized.paid_date || null,
+            to_date: normalized.paid_date || null
+          };
+        })
+    : [];
+
+  const releases = [...rtfReleases, ...paidTransactions];
+
   return {
     application_id: yearEntry.application_id || null,
     sanctioned_amount: allEligible ? toNumber(yearEntry.sanctioned_amount) : 0,
-    released_amount: releases.reduce((sum, row) => sum + row.released_amount, 0),
+    released_amount: rtfReleases.reduce((sum, row) => sum + row.released_amount, 0),
+    paid_amount: paidTransactions.reduce((sum, row) => sum + row.paid_amount, 0),
     semesters,
-    releases
+    releases,
+    paid_transactions: paidTransactions
   };
 };
 
@@ -428,6 +488,7 @@ exports.saveScholarshipHistory = async (req, res) => {
       if (!studentYear || studentYear < 1) continue;
 
       const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+      const paidTransactions = Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [];
       const semesters = Array.isArray(yearEntry.semesters) && yearEntry.semesters.length
         ? yearEntry.semesters
         : buildDefaultSemesters(semestersPerYear);
@@ -436,7 +497,8 @@ exports.saveScholarshipHistory = async (req, res) => {
       // force sanctioned amount to zero and drop releases.
       const allEligible = allSemestersEligible(semesters);
 
-      const validReleases = allEligible ? releases.filter(hasReleaseData) : [];
+      const validRtfReleases = allEligible ? releases.filter(hasRtfReleaseData) : [];
+      const validPaidTransactions = allEligible ? paidTransactions.filter(hasPaidTransactionData) : [];
       const summaryData = {
         application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
         sanctioned_amount: allEligible
@@ -517,9 +579,9 @@ exports.saveScholarshipHistory = async (req, res) => {
         }
       }
 
-      if (validReleases.length > 0) {
+      if (validRtfReleases.length > 0 || validPaidTransactions.length > 0) {
         const primaryEligible = semesters.find((semester) => semester.eligible)?.eligible || null;
-        for (const release of validReleases) {
+        for (const release of validRtfReleases) {
           const normalizedRelease = normalizeReleaseForSave(release);
           await connection.query(
             `INSERT INTO student_scholarship
@@ -536,7 +598,28 @@ exports.saveScholarshipHistory = async (req, res) => {
               null,
               null,
               normalizedRelease.released_amount,
-              normalizedRelease.paid_amount
+              0
+            ]
+          );
+        }
+        for (const transaction of validPaidTransactions) {
+          const normalizedPaid = normalizeReleaseForSave(transaction);
+          await connection.query(
+            `INSERT INTO student_scholarship
+             (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount,
+              from_date, to_date, proceeding, released_amount, paid_amount)
+             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              student.id,
+              studentYear,
+              summaryData.application_id,
+              primaryEligible,
+              summaryData.sanctioned_amount,
+              null,
+              normalizedPaid.paid_date || null,
+              null,
+              0,
+              normalizedPaid.paid_amount
             ]
           );
         }
