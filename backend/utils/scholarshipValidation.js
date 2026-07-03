@@ -120,21 +120,27 @@ const calculateFeeDue = (sanctioned, paid) => {
   return s > 0 ? Math.max(0, s - p) : 0;
 };
 
-const calculateRtfDue = (sanctioned, released, paid) => {
+// RTF Due = government reimbursement still pending = sanctioned minus what has been released.
+// Independent of what the student paid: even if the student paid the full fee in advance, the
+// RTF is still due from the portal until it is released (at which point it becomes an advance).
+const calculateRtfDue = (sanctioned, released) => {
   const s = clampScholarshipAmount(sanctioned);
   const r = clampScholarshipAmount(released);
   if (s <= 0) return 0;
-  if (calculateFeeDue(s, paid) === 0) return 0;
   return Math.max(0, s - r);
 };
 
+// Advance = fee money the student paid out of pocket that the released RTF now reimburses. It
+// only exists once RTF is released (released > 0) and never exceeds what the student paid
+// manually or the released amount. `paid` must be the manually-paid amount (auto-credited RTF
+// already excluded by the caller for a College Account).
 const calculateAdvanceAmount = (sanctioned, released, paid) => {
   const s = clampScholarshipAmount(sanctioned);
   const r = clampScholarshipAmount(released);
   const p = clampScholarshipAmount(paid);
-  if (s <= 0 || r <= 0) return 0;
-  if (calculateFeeDue(s, p) === 0) return r;
-  return 0;
+  if (s <= 0 || r <= 0 || p <= 0) return 0;
+  const surplus = p + r - s;
+  return Math.max(0, Math.min(p, r, surplus));
 };
 
 const findDuplicateApplicationIdsInPayload = (years = []) => {

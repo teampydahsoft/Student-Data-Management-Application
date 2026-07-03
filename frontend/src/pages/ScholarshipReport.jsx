@@ -638,7 +638,6 @@ function ScholarshipReport() {
                         due_amount: 0,
                         advance_amount: 0
                       };
-                      const showRtfDue = !(hasAnyAdvance && yearData.advance_amount > 0);
                       return (
                         <React.Fragment key={`${student.student_id}-${year}`}>
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-gray-700 tabular-nums text-[11px]">
@@ -653,7 +652,7 @@ function ScholarshipReport() {
                             </td>
                           )}
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
-                            {showRtfDue ? formatAmount(yearData.due_amount) : '—'}
+                            {formatAmount(yearData.due_amount)}
                           </td>
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-blue-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.paid_amount)}

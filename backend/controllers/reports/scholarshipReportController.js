@@ -69,7 +69,7 @@ const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false)
   // and only any manual overpayment beyond the released amount counts toward advance.
   const manualPaid = isCollege ? Math.max(0, paid - released) : paid;
   const feeDue = formatAmount(calculateFeeDue(sanctioned, paid));
-  const rtfDue = formatAmount(calculateRtfDue(sanctioned, released, manualPaid));
+  const rtfDue = formatAmount(calculateRtfDue(sanctioned, released));
   const advance = formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid));
   return {
     sanctioned_amount: sanctioned,
@@ -327,9 +327,6 @@ const buildExcelBuffer = (data, totalYears, filters) => {
         due_amount: 0,
         advance_amount: 0
       };
-      const rtfDueCell = hasAnyAdvance && yearData.advance_amount > 0
-        ? ''
-        : yearData.due_amount;
       row.push(
         yearData.sanctioned_amount,
         yearData.released_amount
@@ -338,7 +335,7 @@ const buildExcelBuffer = (data, totalYears, filters) => {
         row.push(yearData.advance_amount || 0);
       }
       row.push(
-        rtfDueCell,
+        yearData.due_amount,
         yearData.paid_amount,
         yearData.pending_amount
       );
