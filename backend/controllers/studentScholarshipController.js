@@ -15,7 +15,10 @@ const {
   resolveSemestersPerYear,
   buildDefaultSemesters,
   isReleaseRow,
-  isSemesterSummaryRow
+  isSemesterSummaryRow,
+  allSemestersEligible,
+  isYearFeeOnlyScholarshipMode,
+  hasYearScholarshipFinancialTracking
 } = require('../services/studentScholarshipSync');
 const {
   normalizeApplicationIdInput,
@@ -36,11 +39,6 @@ const normalizeEligible = (value) => {
 
 // Financial data (sanctioned amount / releases) is allowed ONLY when every
 // semester in the year is Eligible. A single non-eligible semester forces null.
-const allSemestersEligible = (semesters = []) => (
-  Array.isArray(semesters)
-  && semesters.length > 0
-  && semesters.every((sem) => normalizeEligible(sem.eligible) === 'eligible')
-);
 
 const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
   try {
@@ -146,20 +144,22 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
   }));
 
   const allEligible = allSemestersEligible(semesters);
+  const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
+  const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
 
   return {
     application_id: applicationId || '',
     eligible: semesters[0]?.eligible || legacyEligible || '',
-    sanctioned_amount: allEligible ? sanctionedAmount : 0,
+    sanctioned_amount: hasFinancialTracking ? sanctionedAmount : 0,
     released_amount: allEligible
       ? releases.reduce((sum, row) => sum + toNumber(row.released_amount), 0)
       : 0,
-    paid_amount: allEligible
+    paid_amount: hasFinancialTracking
       ? paidTransactions.reduce((sum, row) => sum + toNumber(row.paid_amount), 0)
       : 0,
     semesters,
     releases: allEligible ? releases : [],
-    paid_transactions: allEligible ? paidTransactions : []
+    paid_transactions: hasFinancialTracking ? paidTransactions : []
   };
 };
 
@@ -363,7 +363,8 @@ const splitDbReleaseRow = (row, academicYearLabel = '') => {
   return { rtfRow, paidRow };
 };
 
-const buildIncomingYearSnapshot = (yearEntry) => {
+const buildIncomingYearSnapshot = (yearEntry, options = {}) => {
+  const { isCollege = false } = options;
   const semesters = (Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [])
     .map((semester) => ({
       student_semester: Math.max(1, toNumber(semester.student_semester) || 1),
@@ -371,6 +372,9 @@ const buildIncomingYearSnapshot = (yearEntry) => {
     }));
 
   const allEligible = allSemestersEligible(semesters);
+  const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
+  const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
+  const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
 
   const rtfReleases = allEligible
     ? (Array.isArray(yearEntry.releases) ? yearEntry.releases : [])
@@ -388,7 +392,7 @@ const buildIncomingYearSnapshot = (yearEntry) => {
         })
     : [];
 
-  const paidTransactions = allEligible
+  const paidTransactions = savePaidTransactions
     ? (Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [])
         .filter(hasPaidTransactionData)
         .map((transaction) => {
@@ -408,7 +412,7 @@ const buildIncomingYearSnapshot = (yearEntry) => {
 
   return {
     application_id: yearEntry.application_id || null,
-    sanctioned_amount: allEligible ? toNumber(yearEntry.sanctioned_amount) : 0,
+    sanctioned_amount: hasFinancialTracking ? toNumber(yearEntry.sanctioned_amount) : 0,
     released_amount: rtfReleases.reduce((sum, row) => sum + row.released_amount, 0),
     paid_amount: paidTransactions.reduce((sum, row) => sum + row.paid_amount, 0),
     semesters,
@@ -524,21 +528,23 @@ exports.saveScholarshipHistory = async (req, res) => {
         ? yearEntry.semesters
         : buildDefaultSemesters(semestersPerYear);
 
-      // Financial data is allowed only when EVERY semester is eligible — otherwise
-      // force sanctioned amount to zero and drop releases.
       const allEligible = allSemestersEligible(semesters);
+      const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
+      const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
+      const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
 
       const validRtfReleases = allEligible ? releases.filter(hasRtfReleaseData) : [];
-      const validPaidTransactions = allEligible ? paidTransactions.filter(hasPaidTransactionData) : [];
+      const validPaidTransactions = savePaidTransactions
+        ? paidTransactions.filter(hasPaidTransactionData)
+        : [];
       const summaryData = {
         application_id: normalizeApplicationIdInput(yearEntry.application_id) || null,
-        sanctioned_amount: allEligible
+        sanctioned_amount: hasFinancialTracking
           ? clampScholarshipAmount(normalizeScholarshipAmountInput(yearEntry.sanctioned_amount) || 0)
           : 0
       };
 
-      // If RTF amount is locked for this college/batch/course/branch/caste, use the locked amount
-      // — only applies when all semesters are eligible
+      // Locked RTF amount applies only when every semester is Eligible.
       if (allEligible) {
         const lockedAmount = await getRtfLockedAmount(
           student.college, student.batch, student.course, student.branch, studentYear, student.caste
@@ -558,7 +564,7 @@ exports.saveScholarshipHistory = async (req, res) => {
         [student.id, studentYear]
       );
 
-      const incomingSnapshot = buildIncomingYearSnapshot(yearEntry);
+      const incomingSnapshot = buildIncomingYearSnapshot(yearEntry, { isCollege });
       const existingSnapshot = existingRows.length > 0
         ? buildYearSnapshotFromRows(existingRows, semestersPerYear)
         : null;

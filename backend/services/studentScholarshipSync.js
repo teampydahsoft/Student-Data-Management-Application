@@ -1,7 +1,11 @@
 const { masterPool } = require('../config/database');
 const {
   normalizeRtfReleasedDate,
-  clampScholarshipAmount
+  clampScholarshipAmount,
+  allSemestersEligible,
+  allSemestersStatusAssigned,
+  isYearFeeOnlyScholarshipMode,
+  hasYearScholarshipFinancialTracking
 } = require('../utils/scholarshipValidation');
 
 const VALID_ELIGIBLE = ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'];
@@ -506,24 +510,24 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
     eligible: semesterMap[semester.student_semester] || ''
   }));
 
-  // Financial data counts only when EVERY semester in the year is eligible.
-  const allEligible = semesters.length > 0 && semesters.every(
-    (semester) => normalizeEligible(semester.eligible) === 'eligible'
-  );
+  // Eligible years: full RTF flow. Fee-only years: sanctioned + paid only (no RTF / advance).
+  const allEligible = allSemestersEligible(semesters);
+  const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
+  const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
 
   return {
     application_id: applicationId || null,
     eligible: semesters[0]?.eligible || legacyEligible || null,
-    sanctioned_amount: allEligible ? sanctionedAmount : 0,
+    sanctioned_amount: hasFinancialTracking ? sanctionedAmount : 0,
     released_amount: allEligible
       ? releases.reduce((sum, row) => sum + row.released_amount, 0)
       : 0,
-    paid_amount: allEligible
+    paid_amount: hasFinancialTracking
       ? paidTransactions.reduce((sum, row) => sum + row.paid_amount, 0)
       : 0,
     semesters,
     releases: allEligible ? releases : [],
-    paid_transactions: allEligible ? paidTransactions : []
+    paid_transactions: hasFinancialTracking ? paidTransactions : []
   };
 };
 
@@ -856,6 +860,10 @@ module.exports = {
   archiveScholarshipYear,
   resolveHistoryActor,
   buildYearSnapshotFromRows,
+  allSemestersEligible,
+  allSemestersStatusAssigned,
+  isYearFeeOnlyScholarshipMode,
+  hasYearScholarshipFinancialTracking,
   scholarshipHasCurrentYearStatusSql,
   getScholarshipFilterClause,
   scholarshipAssignedSumSql,

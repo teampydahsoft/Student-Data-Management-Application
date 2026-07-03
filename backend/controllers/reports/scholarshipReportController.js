@@ -4,7 +4,8 @@ const { buildReportFilters } = require('./categoryReportController');
 const {
   resolveTotalYears,
   buildYearSnapshotFromRows,
-  resolveSemestersPerYear
+  resolveSemestersPerYear,
+  allSemestersEligible
 } = require('../../services/studentScholarshipSync');
 const {
   calculateFeeDue,
@@ -61,16 +62,17 @@ const getTotalYearsForStudent = async (student) => {
 
 const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false) => {
   const snapshot = buildYearSnapshotFromRows(yearRows, semestersPerYear);
+  const semesters = snapshot.semesters || [];
+  const rtfEligible = allSemestersEligible(semesters);
   const sanctioned = formatAmount(snapshot.sanctioned_amount);
   const released = formatAmount(snapshot.released_amount);
   const paid = formatAmount(snapshot.paid_amount);
-  // Advance considers manually entered payments only. For a College Account the RTF-linked
-  // paid rows are auto-credited from the portal (paid mirrors released), so they are excluded
-  // and only any manual overpayment beyond the released amount counts toward advance.
-  const manualPaid = isCollege ? Math.max(0, paid - released) : paid;
+  const manualPaid = rtfEligible && isCollege ? Math.max(0, paid - released) : paid;
   const feeDue = formatAmount(calculateFeeDue(sanctioned, paid));
-  const rtfDue = formatAmount(calculateRtfDue(sanctioned, released));
-  const advance = formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid));
+  const rtfDue = rtfEligible ? formatAmount(calculateRtfDue(sanctioned, released)) : 0;
+  const advance = rtfEligible
+    ? formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid))
+    : 0;
   return {
     sanctioned_amount: sanctioned,
     released_amount: released,

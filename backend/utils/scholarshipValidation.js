@@ -224,11 +224,30 @@ const isSemesterEligible = (value) => (
   String(value || '').trim().toLowerCase() === 'eligible'
 );
 
-// Sanctioned amount / releases are permitted only when EVERY semester is eligible.
+const isSemesterStatusAssigned = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'].includes(normalized);
+};
+
 const allSemestersEligible = (semesters = []) => (
   Array.isArray(semesters)
   && semesters.length > 0
   && semesters.every((sem) => isSemesterEligible(sem.eligible))
+);
+
+const allSemestersStatusAssigned = (semesters = []) => (
+  Array.isArray(semesters)
+  && semesters.length > 0
+  && semesters.every((sem) => isSemesterStatusAssigned(sem.eligible))
+);
+
+/** Pending / not eligible / etc. — sanctioned feeds Fee Due; no RTF or advance. */
+const isYearFeeOnlyScholarshipMode = (semesters = []) => (
+  allSemestersStatusAssigned(semesters) && !allSemestersEligible(semesters)
+);
+
+const hasYearScholarshipFinancialTracking = (semesters = []) => (
+  allSemestersEligible(semesters) || isYearFeeOnlyScholarshipMode(semesters)
 );
 
 const validateScholarshipYearsPayload = async (connection, studentId, years = [], options = {}) => {
@@ -260,17 +279,49 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
 
     const semesters = Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [];
     const allEligible = allSemestersEligible(semesters);
+    const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);
+    const hasFinancialTracking = hasYearScholarshipFinancialTracking(semesters);
+    const savePaidTransactions = allEligible || (feeOnlyMode && isCollege);
 
     const sanctionedValidation = validateScholarshipAmount(
-      allEligible ? yearEntry.sanctioned_amount : 0,
+      hasFinancialTracking ? yearEntry.sanctioned_amount : 0,
       {
         fieldLabel: `Year ${studentYear} sanctioned amount`
       }
     );
     if (!sanctionedValidation.valid) return sanctionedValidation;
 
+    if (feeOnlyMode && !allEligible) {
+      const incomingReleases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
+      const hasRtfPayload = incomingReleases.some((release) => {
+        const releaseAmount = clampScholarshipAmount(release.released_amount);
+        const releaseDate = release.rtf_released_date && String(release.rtf_released_date).trim();
+        return releaseAmount > 0 || releaseDate;
+      });
+      if (hasRtfPayload) {
+        return {
+          valid: false,
+          message: `Year ${studentYear}: RTF released amounts are not allowed when semesters are not all Eligible`
+        };
+      }
+      if (!isCollege) {
+        const incomingPaid = Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [];
+        const hasPaidPayload = incomingPaid.some((transaction) => {
+          const paidAmount = clampScholarshipAmount(transaction.paid_amount);
+          const paidDate = transaction.paid_date && String(transaction.paid_date).trim();
+          return paidAmount > 0 || paidDate;
+        });
+        if (hasPaidPayload) {
+          return {
+            valid: false,
+            message: `Year ${studentYear}: Paid transactions are only allowed for College Account students when semesters are not all Eligible`
+          };
+        }
+      }
+    }
+
     const releases = allEligible && Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
-    const paidTransactions = allEligible && Array.isArray(yearEntry.paid_transactions)
+    const paidTransactions = savePaidTransactions && Array.isArray(yearEntry.paid_transactions)
       ? yearEntry.paid_transactions
       : [];
     let totalReleasedAmount = 0;
@@ -322,10 +373,10 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       );
       if (!paidValidation.valid) return paidValidation;
 
-      // For a College Account the RTF auto-credit is added on top of manual payments and can
-      // legitimately exceed the fee (the surplus is the advance). Skip the per-row Fee Due cap
-      // there; the manual-paid total is validated below instead.
-      if (!isCollege) {
+      // Eligible College Account: RTF auto-credit can exceed per-row Fee Due. Fee-only College
+      // Account and Mother Account: enforce per-row Fee Due cap.
+      const skipPerRowFeeDueCap = isCollege && allEligible;
+      if (!skipPerRowFeeDueCap) {
         const sanctionedValue = sanctionedValidation.value ?? 0;
         const remainingFeeDue = Math.max(0, sanctionedValue - totalPaidAmount);
         if (sanctionedValue > 0 && paidAmount > remainingFeeDue) {
@@ -340,12 +391,12 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
     }
 
     const sanctionedValue = sanctionedValidation.value ?? 0;
-    // Advance considers manual fee payments only; the college RTF auto-credit is excluded.
-    const manualPaidAmount = isCollege
-      ? Math.max(0, totalPaidAmount - totalReleasedAmount)
+    const manualPaidAmount = allEligible
+      ? (isCollege ? Math.max(0, totalPaidAmount - totalReleasedAmount) : totalPaidAmount)
       : totalPaidAmount;
     const feeDueValue = calculateFeeDue(sanctionedValue, manualPaidAmount);
 
+    if (allEligible) {
     let runningReleasedAmount = 0;
     for (let index = 0; index < releases.length; index += 1) {
       const release = releases[index];
@@ -375,12 +426,20 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
       };
     }
 
-    // The fee money paid to college must not exceed the sanctioned amount. For a College Account
-    // the RTF auto-credit is excluded (it becomes advance once the fee is fully paid).
+    // Eligible flow: manual paid must not exceed sanctioned (college excludes auto-credit).
     if (sanctionedValue > 0 && manualPaidAmount > sanctionedValue) {
       return {
         valid: false,
         message: `Year ${studentYear}: Total paid amount (${manualPaidAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
+      };
+    }
+    }
+
+    // Fee-only College Account: all paid entries are manual; total must not exceed sanctioned.
+    if (feeOnlyMode && isCollege && sanctionedValue > 0 && totalPaidAmount > sanctionedValue) {
+      return {
+        valid: false,
+        message: `Year ${studentYear}: Total paid amount (${totalPaidAmount}) cannot exceed sanctioned amount (${sanctionedValue})`
       };
     }
   }
@@ -402,5 +461,9 @@ module.exports = {
   clampScholarshipAmount,
   calculateFeeDue,
   calculateRtfDue,
-  calculateAdvanceAmount
+  calculateAdvanceAmount,
+  allSemestersEligible,
+  allSemestersStatusAssigned,
+  isYearFeeOnlyScholarshipMode,
+  hasYearScholarshipFinancialTracking
 };

@@ -83,6 +83,35 @@ export const isScholarshipStatusAssigned = (status) => (
   SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(String(status || '').trim().toLowerCase())
 );
 
+/** True when a semester has any assigned scholarship status (not blank). */
+export const isSemesterScholarshipStatusAssigned = (status) => (
+  Boolean(normalizeScholarshipStatusValue(status))
+);
+
+/** Every semester in the year is marked Eligible — full RTF / advance flow applies. */
+export const isYearScholarshipEligible = (year) => {
+  const semesters = year?.semesters || [];
+  return semesters.length > 0 && semesters.every(
+    (semester) => normalizeScholarshipStatusValue(semester.eligible) === 'eligible'
+  );
+};
+
+/**
+ * Fee-only mode: every semester has a status but not all are Eligible (pending, not eligible,
+ * rejected, not applied, etc.). Sanctioned amount feeds Fee Due directly; no RTF or advance.
+ */
+export const isYearFeeOnlyScholarshipMode = (year) => {
+  const semesters = year?.semesters || [];
+  if (!semesters.length) return false;
+  if (isYearScholarshipEligible(year)) return false;
+  return semesters.every((semester) => isSemesterScholarshipStatusAssigned(semester.eligible));
+};
+
+/** Sanctioned amount (and optionally paid transactions) may be recorded for this year. */
+export const hasYearScholarshipFinancialTracking = (year) => (
+  isYearScholarshipEligible(year) || isYearFeeOnlyScholarshipMode(year)
+);
+
 export const formatScholarshipStatusDisplay = (status) => {
   const normalized = normalizeScholarshipStatusValue(status);
   if (!normalized) return '—';

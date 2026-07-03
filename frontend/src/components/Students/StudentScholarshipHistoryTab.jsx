@@ -35,7 +35,10 @@ import {
   calculateRemainingFeeDueBeforeRow,
   calculateFeeDueAfterRow,
   calculateRemainingRtfDueBeforeRow,
-  calculateRtfDueAfterRow
+  calculateRtfDueAfterRow,
+  isYearScholarshipEligible,
+  isYearFeeOnlyScholarshipMode,
+  hasYearScholarshipFinancialTracking
 } from '../../config/scholarshipConfig';
 import { CASTE_OPTIONS } from '../../config/casteConfig';
 
@@ -81,11 +84,13 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
     )
   };
 
-  // When no semester is eligible, financial fields must be empty (pending/rejected/etc.).
-  if (!isYearScholarshipEligible(normalizedYear)) {
+  // Eligible years: full RTF flow. Fee-only years: keep sanctioned + paid; clear RTF rows.
+  if (!hasYearScholarshipFinancialTracking(normalizedYear)) {
     normalizedYear.sanctioned_amount = '';
     normalizedYear.releases = mapReleasesFromApi([], academicYearLabel);
     normalizedYear.paid_transactions = mapPaidTransactionsFromApi([], academicYearLabel);
+  } else if (isYearFeeOnlyScholarshipMode(normalizedYear)) {
+    normalizedYear.releases = mapReleasesFromApi([], academicYearLabel);
   }
 
   return normalizedYear;
@@ -232,19 +237,18 @@ const buildScholarshipRemarkMap = (remarks = []) => {
   return map;
 };
 
-// A year qualifies for financial entry (sanctioned amount / releases) ONLY when
-// EVERY semester in that year is marked Eligible. If any semester is not eligible
-// (or blank / pending / rejected / etc.), the sanctioned amount must stay null.
-const isYearScholarshipEligible = (year) => {
-  const semesters = year?.semesters || [];
-  return semesters.length > 0 && semesters.every(
-    (semester) => normalizeScholarshipStatusValue(semester.eligible) === 'eligible'
-  );
-};
-
-const clearYearFinancialDataIfNotEligible = (year, academicYearLabel = '') => {
+const reconcileYearFinancialData = (year, academicYearLabel = '') => {
   if (isYearScholarshipEligible(year)) return year;
+
   const label = academicYearLabel || year.academic_year_label || '';
+
+  if (isYearFeeOnlyScholarshipMode(year)) {
+    return {
+      ...year,
+      releases: mapReleasesFromApi([], label)
+    };
+  }
+
   return {
     ...year,
     sanctioned_amount: '',
@@ -460,16 +464,19 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
 
   const summaryYears = useMemo(
     () => years.map((year) => {
-      const eligible = isYearScholarshipEligible(year);
+      const rtfEligible = isYearScholarshipEligible(year);
+      const feeOnly = isYearFeeOnlyScholarshipMode(year);
+      const financial = hasYearScholarshipFinancialTracking(year);
       const isCollege = casteAccountTypes[selectedCaste || student?.caste] === 'college';
-      const sanctioned = eligible ? parseAmount(year.sanctioned_amount) : 0;
-      const released = eligible ? sumReleased(year.releases) : 0;
-      const paid = eligible ? sumPaid(year.paid_transactions || []) : 0;
-      // Advance mode is driven by manually entered payments only (college auto-credit excluded).
-      const manualPaid = eligible ? sumManualPaid(year, isCollege) : 0;
-      const rtfDue = eligible ? calculateScholarshipRtfDue(sanctioned, released) : 0;
-      const feeDue = eligible ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
-      const advance = eligible ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid) : 0;
+      const sanctioned = financial ? parseAmount(year.sanctioned_amount) : 0;
+      const released = rtfEligible ? sumReleased(year.releases) : 0;
+      const paid = financial ? sumPaid(year.paid_transactions || []) : 0;
+      const manualPaid = rtfEligible ? sumManualPaid(year, isCollege) : paid;
+      const rtfDue = rtfEligible ? calculateScholarshipRtfDue(sanctioned, released) : 0;
+      const feeDue = financial ? calculateScholarshipFeeDue(sanctioned, paid) : 0;
+      const advance = rtfEligible
+        ? calculateScholarshipAdvanceAmount(sanctioned, released, manualPaid)
+        : 0;
       return {
         ...year,
         released_amount: released,
@@ -477,7 +484,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         rtf_due_amount: rtfDue,
         fee_due_amount: feeDue,
         advance_amount: advance,
-        releasesEligible: eligible
+        releasesEligible: rtfEligible,
+        feeOnlyMode: feeOnly,
+        financialTracking: financial,
+        showPaidAmount: rtfEligible || (feeOnly && isCollege)
       };
     }),
     [years, selectedCaste, casteAccountTypes, student?.caste]
@@ -491,6 +501,15 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const releaseTransactionYears = useMemo(
     () => years.filter((year) => isYearScholarshipEligible(year)),
     [years]
+  );
+
+  const paidTransactionYears = useMemo(
+    () => years.filter((year) => {
+      if (isYearScholarshipEligible(year)) return true;
+      if (!isYearFeeOnlyScholarshipMode(year)) return false;
+      return casteAccountTypes[selectedCaste || student?.caste] === 'college';
+    }),
+    [years, selectedCaste, casteAccountTypes, student?.caste]
   );
 
   const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
@@ -705,7 +724,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const semesters = (year.semesters || []).map((semester, sIndex) => (
         sIndex === semesterIndex ? { ...semester, eligible: value } : semester
       ));
-      const nextYear = clearYearFinancialDataIfNotEligible({
+      const nextYear = reconcileYearFinancialData({
         ...year,
         semesters,
         eligible: semesters[0]?.eligible || ''
@@ -741,7 +760,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     setYears((prev) => prev.map((year) => syncCollegePaidTransactionsFromRtf(year, isCollege)));
   };
 
-  const applyCollegePaidSync = (year) => syncCollegePaidTransactionsFromRtf(year, isCollegeAccount());
+  const applyCollegePaidSync = (year) => {
+    if (!isYearScholarshipEligible(year)) return year;
+    return syncCollegePaidTransactionsFromRtf(year, isCollegeAccount());
+  };
 
   const applyYearUpdate = (yearIndex, updater) => {
     setYears((prev) => prev.map((year, index) => {
@@ -847,8 +869,10 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     }));
   };
 
-  const isCollegePaidRowAuto = (transactionIndex, releaseCount) => (
-    isCollegeAccount() && transactionIndex < releaseCount
+  const isCollegePaidRowAuto = (transactionIndex, releaseCount, year) => (
+    isCollegeAccount()
+    && isYearScholarshipEligible(year)
+    && transactionIndex < releaseCount
   );
 
   const handleSave = async () => {
@@ -868,31 +892,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       }
     }
 
-    for (const year of years) {
-      if (!isYearScholarshipEligible(year)) continue;
-
-      if (!isValidScholarshipAmount(year.sanctioned_amount)) {
-        toast.error(`Year ${year.student_year}: Sanctioned amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
-        return;
-      }
-
-      for (let index = 0; index < year.releases.length; index += 1) {
-        const release = year.releases[index];
-        const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
-        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
-        if (!hasReleaseValue) continue;
-        if (String(release.rtf_released_date || '').trim() && !releaseDate) {
-          toast.error(`Year ${year.student_year}, RTF row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
-          return;
-        }
-        if (!isValidScholarshipAmount(release.released_amount)) {
-          toast.error(`Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
-          return;
-        }
-      }
-
-      const paidRows = applyCollegePaidSync(year).paid_transactions || [];
-      const sanctioned = parseAmount(year.sanctioned_amount);
+    const validatePaidRows = (year, paidRows, sanctioned, options = {}) => {
+      const { skipPerRowFeeDueCap = false, useManualPaidTotal = false } = options;
       const isCollege = isCollegeAccount();
 
       for (let index = 0; index < paidRows.length; index += 1) {
@@ -902,90 +903,134 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         if (!hasPaidValue) continue;
         if (String(transaction.paid_date || '').trim() && !paidDate) {
           toast.error(`Year ${year.student_year}, paid row ${index + 1}: ${SCHOLARSHIP_PAID_DATE_LABEL} must use a valid 4-digit year`);
-          return;
+          return false;
         }
         if (!isValidScholarshipAmount(transaction.paid_amount)) {
           toast.error(`Year ${year.student_year}, paid row ${index + 1}: Paid amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
-          return;
+          return false;
         }
-        // For a College Account the RTF auto-credit is added on top of manual payments and can
-        // legitimately push the total beyond the fee (that surplus is the advance). Skip the
-        // per-row Fee Due cap there; the manual-paid total is validated below instead.
-        if (!isCollege) {
+        if (!skipPerRowFeeDueCap) {
           const rowPaid = parseAmount(transaction.paid_amount);
           const remainingFeeDue = calculateRemainingFeeDueBeforeRow(sanctioned, paidRows, index);
           if (sanctioned > 0 && rowPaid > remainingFeeDue) {
             toast.error(
               `Year ${year.student_year}, paid row ${index + 1}: Paid amount (${rowPaid}) exceeds remaining ${SCHOLARSHIP_FEE_DUE_LABEL} (${remainingFeeDue})`
             );
-            return;
+            return false;
           }
         }
       }
 
       const totalPaid = sumPaid(paidRows);
-      // Advance mode considers manually entered payments only (college auto-credit excluded).
-      const manualPaid = sumManualPaid(
-        { releases: year.releases, paid_transactions: paidRows },
-        isCollege
-      );
-      const advanceMode = sanctioned > 0
-        && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0;
-
-      for (let index = 0; index < year.releases.length; index += 1) {
-        const release = year.releases[index];
-        const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
-        const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
-        if (!hasReleaseValue) continue;
-
-        if (!advanceMode && sanctioned > 0) {
-          const rowReleased = parseAmount(release.released_amount);
-          const remainingRtfDue = calculateRemainingRtfDueBeforeRow(
-            sanctioned,
-            year.releases,
-            index
-          );
-          if (rowReleased > remainingRtfDue) {
-            toast.error(
-              `Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount (${rowReleased}) exceeds remaining ${SCHOLARSHIP_RTF_DUE_LABEL} (${remainingRtfDue})`
-            );
-            return;
-          }
-        }
-      }
-
-      // Total released must not exceed sanctioned amount
-      const totalReleased = sumReleased(year.releases);
-      if (sanctioned > 0 && totalReleased > sanctioned) {
-        toast.error(
-          `Year ${year.student_year}: Total ${SCHOLARSHIP_RTF_RELEASED_LABEL.toLowerCase()} amount (${totalReleased}) cannot exceed sanctioned amount (${sanctioned})`
-        );
-        return;
-      }
-
-      // The fee money paid to college must not exceed the sanctioned amount. For a College
-      // Account the RTF auto-credit is excluded (it becomes advance when the fee is fully paid).
+      const manualPaid = useManualPaidTotal
+        ? sumManualPaid({ releases: year.releases, paid_transactions: paidRows }, isCollege)
+        : totalPaid;
       if (sanctioned > 0 && manualPaid > sanctioned) {
         toast.error(
           `Year ${year.student_year}: Total paid amount (${manualPaid}) cannot exceed sanctioned amount (${sanctioned})`
         );
+        return false;
+      }
+      return true;
+    };
+
+    for (const year of years) {
+      const rtfEligible = isYearScholarshipEligible(year);
+      const feeOnly = isYearFeeOnlyScholarshipMode(year);
+      if (!rtfEligible && !feeOnly) continue;
+
+      if (!isValidScholarshipAmount(year.sanctioned_amount)) {
+        toast.error(`Year ${year.student_year}: Sanctioned amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
         return;
+      }
+
+      const sanctioned = parseAmount(year.sanctioned_amount);
+
+      if (rtfEligible) {
+        for (let index = 0; index < year.releases.length; index += 1) {
+          const release = year.releases[index];
+          const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
+          const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
+          if (!hasReleaseValue) continue;
+          if (String(release.rtf_released_date || '').trim() && !releaseDate) {
+            toast.error(`Year ${year.student_year}, RTF row ${index + 1}: RTF Remitted date must use a valid 4-digit year`);
+            return;
+          }
+          if (!isValidScholarshipAmount(release.released_amount)) {
+            toast.error(`Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount must be up to 5 digits (max ${SCHOLARSHIP_MAX_AMOUNT})`);
+            return;
+          }
+        }
+
+        const paidRows = applyCollegePaidSync(year).paid_transactions || [];
+        const isCollege = isCollegeAccount();
+        if (!validatePaidRows(year, paidRows, sanctioned, {
+          skipPerRowFeeDueCap: isCollege,
+          useManualPaidTotal: true
+        })) return;
+
+        const manualPaid = sumManualPaid(
+          { releases: year.releases, paid_transactions: paidRows },
+          isCollege
+        );
+        const advanceMode = sanctioned > 0
+          && calculateScholarshipFeeDue(sanctioned, manualPaid) === 0;
+
+        for (let index = 0; index < year.releases.length; index += 1) {
+          const release = year.releases[index];
+          const releaseDate = normalizeRtfReleasedDateForInput(release.rtf_released_date);
+          const hasReleaseValue = parseAmount(release.released_amount) > 0 || releaseDate;
+          if (!hasReleaseValue) continue;
+
+          if (!advanceMode && sanctioned > 0) {
+            const rowReleased = parseAmount(release.released_amount);
+            const remainingRtfDue = calculateRemainingRtfDueBeforeRow(
+              sanctioned,
+              year.releases,
+              index
+            );
+            if (rowReleased > remainingRtfDue) {
+              toast.error(
+                `Year ${year.student_year}, RTF row ${index + 1}: ${SCHOLARSHIP_RTF_RELEASED_LABEL} amount (${rowReleased}) exceeds remaining ${SCHOLARSHIP_RTF_DUE_LABEL} (${remainingRtfDue})`
+              );
+              return;
+            }
+          }
+        }
+
+        const totalReleased = sumReleased(year.releases);
+        if (sanctioned > 0 && totalReleased > sanctioned) {
+          toast.error(
+            `Year ${year.student_year}: Total ${SCHOLARSHIP_RTF_RELEASED_LABEL.toLowerCase()} amount (${totalReleased}) cannot exceed sanctioned amount (${sanctioned})`
+          );
+          return;
+        }
+      } else if (feeOnly && isCollegeAccount()) {
+        const paidRows = year.paid_transactions || [];
+        if (!validatePaidRows(year, paidRows, sanctioned)) return;
       }
     }
 
     setSaving(true);
     try {
       const payload = years.map((year) => {
-        const releasesEligible = isYearScholarshipEligible(year);
+        const rtfEligible = isYearScholarshipEligible(year);
+        const feeOnly = isYearFeeOnlyScholarshipMode(year);
+        const financial = hasYearScholarshipFinancialTracking(year);
+        const savePaid = rtfEligible || (feeOnly && isCollegeAccount());
+        const paidSource = rtfEligible
+          ? (applyCollegePaidSync(year).paid_transactions || [])
+          : (year.paid_transactions || []);
+
         return {
           student_year: year.student_year,
           application_id: normalizeApplicationIdInput(year.application_id) || '',
-          sanctioned_amount: releasesEligible ? parseAmount(year.sanctioned_amount) : 0,
+          sanctioned_amount: financial ? parseAmount(year.sanctioned_amount) : 0,
           semesters: (year.semesters || buildDefaultSemesters(meta?.semestersPerYear || 2)).map((semester) => ({
             student_semester: semester.student_semester,
             eligible: normalizeScholarshipStatusValue(semester.eligible) || ''
           })),
-          releases: releasesEligible
+          releases: rtfEligible
             ? year.releases
               .filter((release) => (
                 parseAmount(release.released_amount) > 0
@@ -1000,8 +1045,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 };
               })
             : [],
-          paid_transactions: releasesEligible
-            ? (applyCollegePaidSync(year).paid_transactions || [])
+          paid_transactions: savePaid
+            ? paidSource
               .filter((transaction) => (
                 parseAmount(transaction.paid_amount) > 0
                 || normalizeRtfReleasedDateForInput(transaction.paid_date)
@@ -1262,7 +1307,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center border-l border-gray-50"
                       >
-                        {year.releasesEligible ? (
+                        {year.financialTracking ? (
                           isEditingDisabled ? (
                             <span className="font-medium text-gray-800 text-xs">
                               {formatCurrency(year.sanctioned_amount)}
@@ -1331,7 +1376,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
-                        {year.releasesEligible ? (
+                        {year.showPaidAmount ? (
                           <span className="font-semibold text-blue-700 text-xs">
                             {formatCurrency(year.paid_amount)}
                           </span>
@@ -1345,7 +1390,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
-                        {year.releasesEligible ? (
+                        {year.financialTracking ? (
                           <span className={`font-semibold text-xs ${year.fee_due_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
                             {formatCurrency(year.fee_due_amount)}
                           </span>
@@ -1592,7 +1637,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
             Fee paid to college — add a row for each payment.
             {isCollegeAccount() && (
               <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Rows matching {SCHOLARSHIP_RTF_RELEASED_LABEL} are auto-filled; add extra rows for additional payments
+                College Account — auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL} when Eligible; manual entry for Pending / Not eligible / other statuses
               </span>
             )}
             {!isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
@@ -1603,18 +1648,19 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           </p>
         </div>
 
-        {releaseTransactionYears.length === 0 ? (
+        {paidTransactionYears.length === 0 ? (
           <div className="p-6 text-sm text-gray-500 text-center">
-            No paid transactions — mark all semesters as Eligible to record fee payments.
+            No paid transactions — mark all semesters as Eligible, or assign a status (Pending, Not eligible, etc.) for College Account fee tracking.
           </div>
         ) : (
         <div className="divide-y divide-gray-100">
-          {releaseTransactionYears.map((year) => {
+          {paidTransactionYears.map((year) => {
             const yearIndex = years.findIndex((entry) => entry.student_year === year.student_year);
             const stateYear = years[yearIndex] || year;
+            const feeOnly = isYearFeeOnlyScholarshipMode(stateYear);
             const syncedYear = applyCollegePaidSync(stateYear);
             const paidTransactions = syncedYear.paid_transactions || [];
-            const releaseCount = countRealReleases(stateYear.releases);
+            const releaseCount = feeOnly ? 0 : countRealReleases(stateYear.releases);
             const academicYearLabel = year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student);
             const sanctionedAmt = parseAmount(stateYear.sanctioned_amount);
             const totalPaidAmt = sumPaid(paidTransactions);
@@ -1667,7 +1713,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         transactionIndex
                       );
                       const isRowPaidOver = sanctionedAmt > 0 && rowPaid > remainingBeforeRow;
-                      const isAutoRow = isCollegePaidRowAuto(transactionIndex, releaseCount);
+                      const isAutoRow = isCollegePaidRowAuto(transactionIndex, releaseCount, stateYear);
 
                       return (
                       <tr key={`${year.student_year}-paid-${transactionIndex}`}>
