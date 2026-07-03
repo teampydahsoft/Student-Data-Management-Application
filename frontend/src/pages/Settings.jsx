@@ -719,12 +719,66 @@ const BranchSectionsEditor = ({ value, onChange }) => {
   );
 };
 
+const normalizeRtfConfigKey = (value) => String(value || '').trim().toLowerCase();
+
+const buildActiveRtfConfigLookup = (colleges = [], courses = []) => {
+  const activeCollegeNames = new Set(
+    colleges
+      .filter((college) => college.isActive !== false)
+      .map((college) => normalizeRtfConfigKey(college.name))
+      .filter(Boolean)
+  );
+
+  const activeConfigKeys = new Set();
+  const collegeById = new Map(
+    colleges
+      .filter((college) => college.isActive !== false)
+      .map((college) => [college.id, college])
+  );
+
+  courses.forEach((course) => {
+    if (course.isActive === false) return;
+    const college = collegeById.get(course.collegeId);
+    if (!college) return;
+
+    const collegeKey = normalizeRtfConfigKey(college.name);
+    const courseKey = normalizeRtfConfigKey(course.name);
+    if (!collegeKey || !courseKey) return;
+
+    (course.branches || []).forEach((branch) => {
+      if (branch.isActive === false) return;
+      const branchKey = normalizeRtfConfigKey(branch.name);
+      if (!branchKey) return;
+      activeConfigKeys.add(`${collegeKey}||${courseKey}||${branchKey}`);
+    });
+  });
+
+  return { activeCollegeNames, activeConfigKeys };
+};
+
+const isRtfEntryInActiveConfig = (entry, colleges = [], courses = []) => {
+  if (!entry) return false;
+  const college = normalizeRtfConfigKey(entry.college);
+  const course = normalizeRtfConfigKey(entry.course);
+  const branch = normalizeRtfConfigKey(entry.branch);
+  if (!college || !course || !branch) return false;
+
+  const { activeCollegeNames, activeConfigKeys } = buildActiveRtfConfigLookup(colleges, courses);
+  if (!activeCollegeNames.has(college)) return false;
+  return activeConfigKeys.has(`${college}||${course}||${branch}`);
+};
+
 const RtfAmountSection = ({
-  config, loading, saving, applying, filterOptions, coursesWithLevels,
+  config, loading, saving, applying, filterOptions, coursesWithLevels, activeColleges = [],
   newEntry, setNewEntry, onSave, onApply, onRefresh, onCascadeChange
 }) => {
   const [activeTab, setActiveTab] = React.useState('configure');
   const entries = config?.entries || [];
+  const visibleEntries = React.useMemo(
+    () => entries.filter((entry) => isRtfEntryInActiveConfig(entry, activeColleges, coursesWithLevels)),
+    [entries, activeColleges, coursesWithLevels]
+  );
+  const hiddenEntryCount = entries.length - visibleEntries.length;
 
   const resolveCourseTotalYears = (course) => {
     const matched = (coursesWithLevels || []).find((c) => c.name === course);
@@ -853,8 +907,8 @@ const RtfAmountSection = ({
             }`}
           >
             {label}
-            {key === 'saved' && entries.length > 0 && (
-              <span className="ml-1.5 bg-pink-100 text-pink-700 text-xs px-1.5 py-0.5 rounded-full">{entries.length}</span>
+            {key === 'saved' && visibleEntries.length > 0 && (
+              <span className="ml-1.5 bg-pink-100 text-pink-700 text-xs px-1.5 py-0.5 rounded-full">{visibleEntries.length}</span>
             )}
           </button>
         ))}
@@ -978,7 +1032,12 @@ const RtfAmountSection = ({
       {/* ── SAVED TAB ── */}
       {activeTab === 'saved' && (
         <div>
-          {entries.length === 0 ? (
+          {hiddenEntryCount > 0 && (
+            <p className="mb-3 text-xs text-gray-500">
+              {hiddenEntryCount} saved configuration{hiddenEntryCount === 1 ? '' : 's'} for removed or inactive colleges, programs, or branches are hidden.
+            </p>
+          )}
+          {visibleEntries.length === 0 ? (
             <div className="text-center py-16 text-gray-500 text-sm">
               No configurations saved yet. Use the Configure tab to add amounts.
             </div>
@@ -993,7 +1052,7 @@ const RtfAmountSection = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {entries.map((entry) => (
+                  {visibleEntries.map((entry) => (
                     <tr key={entry.id} className={`hover:bg-gray-50/60 ${entry.locked ? 'bg-amber-50/30' : ''}`}>
                       <td className="px-3 py-2 text-xs text-gray-700 whitespace-nowrap">{entry.college}</td>
                       <td className="px-3 py-2 text-xs font-semibold text-blue-700 whitespace-nowrap">{entry.batch}</td>
@@ -1208,7 +1267,8 @@ const Settings = () => {
   const [rtfApplying, setRtfApplying] = useState(null); // entryId being applied
   const [rtfFilterOptions, setRtfFilterOptions] = useState({ colleges: [], batches: [], courses: [], branches: [], castes: [] });
   const [rtfNewEntry, setRtfNewEntry] = useState({ college: '', batch: '', course: '', branch: '', caste: '' });
-  const [rtfCoursesWithLevels, setRtfCoursesWithLevels]= useState([]);
+  const [rtfCoursesWithLevels, setRtfCoursesWithLevels] = useState([]);
+  const [rtfActiveColleges, setRtfActiveColleges] = useState([]);
 
   // QR Config state
   const [qrRoleConfigs, setQrRoleConfigs] = useState({}); // { roleKey: ['field1', 'field2'] }
@@ -1598,11 +1658,11 @@ const Settings = () => {
   const fetchRtfConfig = async () => {
     setRtfLoading(true);
     try {
-      const [configRes, filtersRes, coursesRes, casteRes] = await Promise.all([
+      const [configRes, filtersRes, coursesRes, collegesRes] = await Promise.all([
         api.get('/settings/rtf-amount'),
         api.get('/students/quick-filters?applyExclusions=true'),
         api.get('/courses?includeInactive=false'),
-        api.get('/students/quick-filters?applyExclusions=true').then((r) => r) // reuse below
+        api.get('/colleges?includeInactive=false')
       ]);
       if (configRes.data?.success) setRtfConfig(configRes.data.data || { entries: [], casteAccountTypes: {} });
       if (filtersRes.data?.success) {
@@ -1616,6 +1676,7 @@ const Settings = () => {
         }));
       }
       if (coursesRes.data?.success) setRtfCoursesWithLevels(coursesRes.data.data || []);
+      if (collegesRes.data?.success) setRtfActiveColleges(collegesRes.data.data || []);
       // Fetch distinct castes from students
       try {
         const casteListRes = await api.get('/students/distinct-castes');
@@ -5483,6 +5544,7 @@ const Settings = () => {
               applying={rtfApplying}
               filterOptions={rtfFilterOptions}
               coursesWithLevels={rtfCoursesWithLevels}
+              activeColleges={rtfActiveColleges}
               newEntry={rtfNewEntry}
               setNewEntry={setRtfNewEntry}
               onSave={saveRtfConfig}
