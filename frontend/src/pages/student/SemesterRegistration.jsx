@@ -27,7 +27,7 @@ import {
 import {
   computeRegistrationStageDisplays,
   RegistrationStageBadge
-} from '../../config/registrationStages';
+} from '../../config/registrationStages.jsx';
 
 const SemesterRegistration = () => {
     const { user } = useAuthStore();
