@@ -76,6 +76,13 @@ export const getScholarshipStatusForYear = (scholarshipData, studentYear, studen
 };
 
 export const getCurrentScholarshipStatus = (scholarshipData, student) => {
+  // currentYearEligible is pre-computed by the backend for the student's current year+semester
+  // and is the most reliable single source of truth — use it first when available.
+  const fromCurrentYearEligible = normalizeScholarshipStatusValue(
+    scholarshipData?.currentYearEligible
+  );
+  if (fromCurrentYearEligible) return fromCurrentYearEligible;
+
   const currentYear = Number(student?.current_year) || 1;
   const currentSemester = Number(
     student?.current_semester
@@ -83,9 +90,19 @@ export const getCurrentScholarshipStatus = (scholarshipData, student) => {
     || scholarshipData?.student?.current_semester
   ) || 1;
 
+  // For current academic year (2026+), only read from the student_scholarship table rows.
+  // The legacy scholar_status column is only valid for past (pre-2026) academic years.
+  const isSemesterWise = usesSemesterWiseScholarshipStatus(
+    student?.batch || scholarshipData?.student?.batch,
+    currentYear
+  );
+
   const fromTable = getScholarshipStatusForSemester(scholarshipData, currentYear, currentSemester)
     || getScholarshipStatusForYear(scholarshipData, currentYear);
   if (fromTable) return fromTable;
+
+  // Only fall back to the legacy scholar_status column for pre-2026 academic years.
+  if (isSemesterWise) return '';
 
   return normalizeScholarshipStatusValue(
     student?.scholar_status
@@ -96,6 +113,54 @@ export const getCurrentScholarshipStatus = (scholarshipData, student) => {
 export const isScholarshipStatusAssigned = (status) => (
   SCHOLARSHIP_ELIGIBLE_OPTIONS.includes(String(status || '').trim().toLowerCase())
 );
+
+/**
+ * Determines whether the scholarship registration stage is satisfied for a student.
+ *
+ * Rules:
+ * - Academic year < 2026 (legacy mode): complete if scholar_status column has a valid value.
+ * - Academic year >= 2026 (semester-wise mode):
+ *     • Ineligible-quota students (MANG/SPOT/LSPOT/MQ): auto-complete — no action needed.
+ *     • All others: complete only if the admin has explicitly set an eligible value in the
+ *       student_scholarship table for the current year + semester (i.e. a real DB row exists).
+ *       The legacy scholar_status column is NOT used as a fallback in this mode.
+ *
+ * @param {object} scholarshipData  - Full payload from /student-scholarship API
+ * @param {object} student          - Student object (needs batch, current_year, current_semester, stud_type)
+ */
+export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
+  const currentYear = Number(student?.current_year) || 1;
+  const batch = student?.batch || scholarshipData?.student?.batch;
+  const studType = student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type;
+
+  const isSemesterWise = usesSemesterWiseScholarshipStatus(batch, currentYear);
+
+  if (!isSemesterWise) {
+    // Legacy path: use whatever was resolved as the current status
+    return isScholarshipStatusAssigned(
+      getCurrentScholarshipStatus(scholarshipData, student)
+    );
+  }
+
+  // Semester-wise path (2026+ academic year):
+  // Ineligible-quota students are always considered complete
+  if (isScholarshipIneligibleQuota(studType)) return true;
+
+  // Only complete if the admin explicitly saved a semester row in student_scholarship
+  const currentSemester = Number(
+    student?.current_semester
+    || scholarshipData?.currentSemester
+    || scholarshipData?.student?.current_semester
+  ) || 1;
+
+  const yearData = scholarshipData?.years?.find(
+    (y) => Number(y.student_year) === currentYear
+  );
+  const semesterRow = yearData?.semesters?.find(
+    (s) => Number(s.student_semester) === currentSemester
+  );
+  return isScholarshipStatusAssigned(semesterRow?.eligible);
+};
 
 /** True when a semester has any assigned scholarship status (not blank). */
 export const isSemesterScholarshipStatusAssigned = (status) => (

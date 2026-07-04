@@ -5,7 +5,7 @@ import {
 } from './registrationCycle';
 import {
   getCurrentScholarshipStatus,
-  isScholarshipStatusAssigned,
+  isScholarshipRegistrationComplete,
   formatScholarshipStatusDisplay
 } from './scholarshipConfig';
 
@@ -67,7 +67,7 @@ export const computeRegistrationStageDisplays = (student, scholarshipData) => {
     currentSemester
   );
   const scholarStatus = getCurrentScholarshipStatus(scholarshipData, { ...student, ...studentData });
-  const isScholarshipComplete = isScholarshipStatusAssigned(scholarStatus);
+  const isScholarshipComplete = isScholarshipRegistrationComplete(scholarshipData, { ...student, ...studentData });
 
   return {
     verification: {

@@ -70,7 +70,7 @@ import {
   SCHOLARSHIP_STATUS_FILTER_OPTIONS,
   getCurrentScholarshipStatus,
   formatScholarshipStatusDisplay,
-  isScholarshipStatusAssigned
+  isScholarshipRegistrationComplete
 } from '../config/scholarshipConfig';
 import {
   isVerificationCompleteForCycle,
@@ -745,10 +745,9 @@ const Students = () => {
       if (response.data.success) {
         const data = response.data.data;
         setScholarshipData(data);
-        const status = data.currentYearEligible || '';
-        if (status) {
-          setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
-        }
+        // Derive the most accurate status from the full scholarship payload
+        const status = getCurrentScholarshipStatus(data, data?.student);
+        setSelectedStudent((prev) => (prev ? { ...prev, scholar_status: status } : prev));
         return data;
       }
     } catch (error) {
@@ -2144,10 +2143,6 @@ const Students = () => {
         prev
           ? {
             ...prev,
-            scholar_status: getCurrentScholarshipStatus(scholarshipData, {
-              ...prev,
-              ...synchronizedData
-            }) || prev.scholar_status,
             current_year:
               synchronizedData.current_year ?? prev.current_year,
             current_semester:
@@ -4071,7 +4066,10 @@ const Students = () => {
                       ...selectedStudent,
                       ...studentData
                     });
-                    const isScholarshipComplete = isScholarshipStatusAssigned(scholarStatus);
+                    const isScholarshipComplete = isScholarshipRegistrationComplete(scholarshipData, {
+                      ...selectedStudent,
+                      ...studentData
+                    });
 
                     const studentMobile = selectedStudent.student_mobile || studentData.student_mobile;
                     const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
@@ -4241,14 +4239,12 @@ const Students = () => {
                       student={selectedStudent}
                       onUpdated={(data) => {
                         setScholarshipData(data);
-                        const status = data?.currentYearEligible || getCurrentScholarshipStatus(data, selectedStudent);
-                        if (status || data?.student?.caste) {
-                          setSelectedStudent((prev) => (prev ? {
-                            ...prev,
-                            ...(status ? { scholar_status: status } : {}),
-                            ...(data?.student?.caste ? { caste: data.student.caste } : {})
-                          } : prev));
-                        }
+                        const status = getCurrentScholarshipStatus(data, data?.student || selectedStudent);
+                        setSelectedStudent((prev) => (prev ? {
+                          ...prev,
+                          scholar_status: status,
+                          ...(data?.student?.caste ? { caste: data.student.caste } : {})
+                        } : prev));
                       }}
                     />
                   )}
