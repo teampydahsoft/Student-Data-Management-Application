@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     User,
@@ -21,14 +21,13 @@ import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 import api from '../../config/api';
 import {
-  getCurrentScholarshipStatus,
-  isScholarshipStatusAssigned,
-  formatScholarshipStatusDisplay
-} from '../../config/scholarshipConfig';
-import {
-  isVerificationCompleteForCycle,
-  REGISTRATION_EMPTY_DISPLAY
+  isStudentMobileVerifiedForCycle,
+  isParentMobileVerifiedForCycle
 } from '../../config/registrationCycle';
+import {
+  computeRegistrationStageDisplays,
+  RegistrationStageBadge
+} from '../../config/registrationStages';
 
 const SemesterRegistration = () => {
     const { user } = useAuthStore();
@@ -62,12 +61,19 @@ const SemesterRegistration = () => {
             if (response.data.success) {
                 const student = response.data.data;
                 const sData = student.student_data || {};
-                const studentVerified = isVerificationCompleteForCycle(sData, student.current_year, student.current_semester)
-                  ? sData.is_student_mobile_verified === true
-                  : false;
-                const parentVerified = isVerificationCompleteForCycle(sData, student.current_year, student.current_semester)
-                  ? sData.is_parent_mobile_verified === true
-                  : false;
+                const parsedData = typeof sData === 'string'
+                  ? (() => { try { return JSON.parse(sData || '{}'); } catch { return {}; } })()
+                  : sData;
+                const studentVerified = isStudentMobileVerifiedForCycle(
+                  parsedData,
+                  student.current_year,
+                  student.current_semester
+                );
+                const parentVerified = isParentMobileVerifiedForCycle(
+                  parsedData,
+                  student.current_year,
+                  student.current_semester
+                );
 
                 setStudentData(student);
                 setVerificationState(prev => ({
@@ -167,38 +173,27 @@ const SemesterRegistration = () => {
 
     // ------------ STATUS CHECKERS ------------
 
+    const registrationStages = useMemo(
+      () => computeRegistrationStageDisplays(studentData, scholarshipData),
+      [studentData, scholarshipData]
+    );
+
     const getStepStatus = (id) => {
         if (!studentData) return 'pending';
 
-        const parsedStudentData = typeof studentData.student_data === 'string'
-            ? (() => {
-                try { return JSON.parse(studentData.student_data || '{}'); } catch { return {}; }
-            })()
-            : (studentData.student_data || {});
-
         switch (id) {
-            case 1: // Verification — must match current academic cycle
-                return isVerificationCompleteForCycle(
-                    parsedStudentData,
-                    studentData.current_year,
-                    studentData.current_semester
-                ) ? 'completed' : 'pending';
-            case 2: // Certificates
-                return (studentData.certificates_status || '').toLowerCase().includes('verified') ? 'completed' : 'pending';
-            case 3: // Fee
-                const feeRaw = (studentData.fee_status || '').toLowerCase().replace(/\s+/g, '_');
-                return ['completed', 'no_due', 'nodue', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s))
-                    ? 'completed' : 'pending';
-            case 4: // Promotion — always complete for current placement
-                return 'completed';
-            case 5: // Scholarship — current academic year only (from student_scholarship table)
-                return isScholarshipStatusAssigned(
-                    getCurrentScholarshipStatus(scholarshipData, studentData)
-                ) ? 'completed' : 'pending';
-            case 6: // Confirmation
-                // Always pending until finalized
+            case 1:
+                return registrationStages.verification.completed ? 'completed' : 'pending';
+            case 2:
+                return registrationStages.certificates.completed ? 'completed' : 'pending';
+            case 3:
+                return registrationStages.fee.completed ? 'completed' : 'pending';
+            case 4:
+                return registrationStages.promotion.completed ? 'completed' : 'pending';
+            case 5:
+                return registrationStages.scholarship.completed ? 'completed' : 'pending';
+            default:
                 return 'pending';
-            default: return 'pending';
         }
     };
 
@@ -344,6 +339,19 @@ const SemesterRegistration = () => {
     const currentYear = studentData?.current_year ?? '1';
     const currentSemester = studentData?.current_semester ?? '1';
 
+    const stageSummaryItems = [
+        { id: 1, title: 'Mobile Verification', stage: registrationStages.verification },
+        { id: 2, title: 'Certificate Status', stage: registrationStages.certificates },
+        { id: 3, title: 'Fee Payment', stage: registrationStages.fee },
+        { id: 4, title: 'Promotion Status', stage: registrationStages.promotion },
+        { id: 5, title: 'Scholarship Status', stage: registrationStages.scholarship }
+    ];
+
+    const getStageForStep = (stepId) => {
+        const item = stageSummaryItems.find((entry) => entry.id === stepId);
+        return item?.stage;
+    };
+
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-20">
             {/* Header */}
@@ -357,11 +365,56 @@ const SemesterRegistration = () => {
                 </div>
             </div>
 
+            <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide px-1">
+                    Registration Stages
+                </h2>
+                <div className="grid grid-cols-1 gap-3">
+                    {stageSummaryItems.map((item) => (
+                        <div
+                            key={item.id}
+                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                            <div>
+                                <p className="text-sm font-semibold text-gray-900">{item.id}. {item.title}</p>
+                                {item.id === 1 && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Student: {verificationState.studentMobile || 'No number'} • Parent: {verificationState.parentMobile || 'No number'}
+                                    </p>
+                                )}
+                                {item.id === 2 && (
+                                    <p className="text-xs text-gray-500 mt-1 capitalize">
+                                        Current Status: {registrationStages.certStatus || 'Pending'}
+                                    </p>
+                                )}
+                                {item.id === 3 && (
+                                    <p className="text-xs text-gray-500 mt-1 capitalize">
+                                        Current Status: {registrationStages.feeStatus || 'Pending'}
+                                    </p>
+                                )}
+                                {item.id === 4 && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Year {currentYear} • Sem {currentSemester}
+                                    </p>
+                                )}
+                                {item.id === 5 && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Year {currentYear} status from scholarship records
+                                    </p>
+                                )}
+                            </div>
+                            <RegistrationStageBadge display={item.stage.display} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             {/* Steps Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {steps.map(step => {
                     const isComplete = isStepCompleted(step.id);
                     const Icon = step.icon;
+                    const stage = getStageForStep(step.id);
 
                     return (
                         <div
@@ -397,6 +450,11 @@ const SemesterRegistration = () => {
                             <p className="text-sm text-gray-500">
                                 {step.description}
                             </p>
+                            {stage && (
+                                <div className="mt-3">
+                                    <RegistrationStageBadge display={stage.display} />
+                                </div>
+                            )}
 
                             <div className="mt-4 flex items-center text-blue-600 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                                 View Details <ArrowRight size={16} className="ml-1" />
@@ -446,6 +504,9 @@ const SemesterRegistration = () => {
                             {/* STEP 1: VERIFICATION */}
                             {activeStepId === 1 && (
                                 <div className="space-y-6">
+                                    <div className="flex justify-center">
+                                        <RegistrationStageBadge display={registrationStages.verification.display} />
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Student Mobile</label>
@@ -506,10 +567,12 @@ const SemesterRegistration = () => {
                             {/* STEP 2: CERTIFICATES */}
                             {activeStepId === 2 && (
                                 <div className="text-center">
-                                    <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full text-lg font-bold mb-6 ${isStepCompleted(2) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                        {isStepCompleted(2) ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
-                                        Status: {studentData?.certificates_status || 'Pending'}
+                                    <div className="flex justify-center mb-6">
+                                        <RegistrationStageBadge display={registrationStages.certificates.display} />
                                     </div>
+                                    <p className="text-sm text-gray-500 mb-6 capitalize">
+                                        Current Status: {studentData?.certificates_status || 'Pending'}
+                                    </p>
                                     {!isStepCompleted(2) && (
                                         <div className="bg-yellow-50 text-yellow-800 p-6 rounded-xl text-left border border-yellow-100">
                                             <h4 className="font-bold mb-3 flex items-center gap-2"><AlertCircle size={18} /> Action Required</h4>
@@ -534,7 +597,10 @@ const SemesterRegistration = () => {
                                     </div>
 
                                     <div className={`p-6 rounded-xl border text-center ${isStepCompleted(3) ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                                        <span className={`text-2xl font-bold ${isStepCompleted(3) ? 'text-green-700' : 'text-red-700'} capitalize`}>
+                                        <div className="flex justify-center mb-3">
+                                            <RegistrationStageBadge display={registrationStages.fee.display} />
+                                        </div>
+                                        <span className={`text-lg font-medium ${isStepCompleted(3) ? 'text-green-700' : 'text-red-700'} capitalize block`}>
                                             {studentData?.fee_status ? studentData.fee_status.replace(/_/g, ' ') : 'Pending'}
                                         </span>
                                         <p className="text-gray-500 text-sm mt-2">
@@ -553,6 +619,12 @@ const SemesterRegistration = () => {
                                             <span className="text-3xl font-bold text-gray-900">Year {studentData?.current_year || 1}</span>
                                             <span className="text-xl text-gray-600">Semester {studentData?.current_semester || 1}</span>
                                         </div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                            Year {studentData?.current_year || 1} • Sem {studentData?.current_semester || 1}
+                                        </span>
+                                        <RegistrationStageBadge display={registrationStages.promotion.display} />
                                     </div>
                                     <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 flex items-start gap-3">
                                         <Zap className="text-blue-600 mt-1 flex-shrink-0" />
@@ -575,9 +647,9 @@ const SemesterRegistration = () => {
                                     <p className="text-xs text-gray-400 mb-2">
                                         Year {studentData?.current_year || 1}
                                     </p>
-                                    <p className={`text-2xl font-bold my-4 capitalize ${getCurrentScholarshipStatus(scholarshipData, studentData) ? 'text-indigo-600' : 'text-gray-400'}`}>
-                                        {formatScholarshipStatusDisplay(getCurrentScholarshipStatus(scholarshipData, studentData))}
-                                    </p>
+                                    <div className="flex justify-center my-4">
+                                        <RegistrationStageBadge display={registrationStages.scholarship.display} />
+                                    </div>
                                     <p className="text-gray-500 text-sm">If you believe this is incorrect, please contact the admin office.</p>
                                 </div>
                             )}

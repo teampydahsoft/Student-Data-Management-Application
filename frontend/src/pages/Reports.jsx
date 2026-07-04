@@ -39,33 +39,37 @@ import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 import { formatDateToLocalISO } from '../utils/dateUtils';
 
-const StatusBadge = ({ status, type = 'icon' }) => {
-  const isCompleted = status === 'completed' || status === 'Verified' || status === 'No Due';
-  const isPermitted = status === 'Permitted';
-  const isPending = status === 'pending' || status === 'Unverified' || status === 'Pending' || status === '—';
-  const isTemporary = status === 'Temporary' || status === 'temporary';
+const StatusBadge = ({ status, type = 'text' }) => {
+  const display = status === 'completed'
+    ? 'Completed'
+    : status === 'pending'
+      ? 'Pending'
+      : status;
 
-  if (type === 'text') {
-    let colorClass = 'bg-gray-100 text-gray-700'; // Default
-    if (status === 'No Due' || status === 'Verified' || status === 'completed' || status === 'eligible' || status === 'rejected') colorClass = 'bg-green-100 text-green-700';
-    else if (status === 'Permitted') colorClass = 'bg-orange-100 text-orange-700';
-    else if (status === 'Unverified' || status === 'Pending' || status === 'pending' || status === '—') colorClass = 'bg-gray-100 text-gray-500';
-    else if (isTemporary) colorClass = 'bg-amber-100 text-amber-700';
+  const isCompleted = display === 'Completed';
+  const isEmpty = display === '—';
+  const isTemporary = display === 'Temporary';
+  const isPending = display === 'Pending';
 
+  let colorClass = 'bg-yellow-100 text-yellow-700';
+  if (isCompleted) colorClass = 'bg-green-100 text-green-700';
+  else if (isTemporary) colorClass = 'bg-amber-100 text-amber-700';
+  else if (isEmpty || isPending) colorClass = 'bg-gray-100 text-gray-500';
+  else if (display === 'Not eligible' || display === 'Rejected') colorClass = 'bg-red-100 text-red-700';
+  else if (display === 'Eligible' || display === 'Not applied') colorClass = 'bg-green-100 text-green-700';
+
+  if (type === 'icon') {
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap capitalize ${colorClass}`}>
-        {status === 'completed' ? 'Completed' : status === 'pending' ? 'Pending' : status}
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+        {isCompleted ? <CheckCircle size={12} /> : isTemporary ? <AlertCircle size={12} /> : <Clock size={12} />}
+        {display}
       </span>
     );
   }
 
-  // Icon checks (strictly for 'completed' vs others logic usually)
-  const isIconCompleted = status === 'completed';
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${isIconCompleted ? 'bg-green-100 text-green-700' : isTemporary ? 'bg-amber-100 text-amber-700' : 'bg-yellow-100 text-yellow-700'
-      }`}>
-      {isIconCompleted ? <CheckCircle size={12} /> : isTemporary ? <AlertCircle size={12} /> : <Clock size={12} />}
-      {isIconCompleted ? 'Completed' : isTemporary ? 'Temporary' : 'Pending'}
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${colorClass}`}>
+      {display}
     </span>
   );
 };
@@ -2246,12 +2250,12 @@ const Reports = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex justify-center">
-                            <StatusBadge status={student.stages.certificates} type="text" />
+                            <StatusBadge status={student.stages.certificates} />
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex justify-center">
-                            <StatusBadge status={student.stages.fee} type="text" />
+                            <StatusBadge status={student.stages.fee} />
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -2261,7 +2265,7 @@ const Reports = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex justify-center">
-                            <StatusBadge status={student.stages.scholarship} type="text" />
+                            <StatusBadge status={student.stages.scholarship} />
                           </div>
                         </td>
                       </tr>

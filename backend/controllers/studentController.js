@@ -42,6 +42,7 @@ const {
   REGISTRATION_EMPTY_DISPLAY
 } = require('../services/registrationCycle');
 const { buildRegistrationAbstractQuery } = require('../services/registrationReportSql');
+const { computeRegistrationStages, parseStudentData } = require('../services/registrationStages');
 const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
 
@@ -7032,7 +7033,7 @@ exports.getRegistrationReport = async (req, res) => {
     // Get Data - specific columns only for performance
     const dataQuery = `
       SELECT 
-        id, pin_no, student_name, admission_number, batch, course, branch, 
+        id, pin_no, student_name, admission_number, batch, course, branch, stud_type,
         current_year, current_semester, student_data, 
         certificates_status, fee_status, scholar_status, registration_status
       ${baseQuery} 
@@ -7044,88 +7045,10 @@ exports.getRegistrationReport = async (req, res) => {
     const [students] = await masterPool.query(dataQuery, dataParams);
     const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear });
 
-    // Process students to calculate 5 stages status
-    const reportData = students.map(student => {
-      let studentData = {};
-      try {
-        studentData = typeof student.student_data === 'string'
-          ? JSON.parse(student.student_data || '{}')
-          : (student.student_data || {});
-      } catch (e) {
-        const raw = student.student_data || '';
-        const studentVerMatch = raw.match(/"is_student_mobile_verified"\s*:\s*(true|false)/);
-        const parentVerMatch  = raw.match(/"is_parent_mobile_verified"\s*:\s*(true|false)/);
-        studentData = {
-          is_student_mobile_verified: studentVerMatch ? studentVerMatch[1] === 'true' : false,
-          is_parent_mobile_verified:  parentVerMatch  ? parentVerMatch[1]  === 'true' : false,
-        };
-      }
-
-      // Stage 1: Verification — must match current academic cycle
-      const verificationStatus = isVerificationCompleteForCycle(
-        studentData,
-        student.current_year,
-        student.current_semester
-      ) ? 'completed' : 'pending';
-
-      // Stage 2: Certificates
-      const certStatusRaw = (student.certificates_status || '').toLowerCase();
-      const isCertVerified = certStatusRaw.includes('verified');
-      const isCertTemporary = certStatusRaw.includes('temporary');
-
-      let certificatesStatusDisplay = 'Unverified';
-      let certificatesStatus = 'pending';
-
-      if (isCertTemporary) {
-        certificatesStatusDisplay = 'Temporary';
-        certificatesStatus = 'temporary';
-      } else if (isCertVerified) {
-        certificatesStatusDisplay = 'Verified';
-        certificatesStatus = 'completed';
-      }
-
-      // Stage 3: Fee Status
-      const feeRaw = (student.fee_status || '').toLowerCase();
-      let feeStatusDisplay = student.fee_status || 'Pending';
-      if (feeRaw.includes('no_due') || feeRaw.includes('nodue') || feeRaw.includes('no due')) feeStatusDisplay = 'No Due';
-      else if (feeRaw.includes('permitted')) feeStatusDisplay = 'Permitted';
-      else if (feeRaw.includes('completed')) feeStatusDisplay = 'No Due';
-
-      const isFeeCleared = ['completed', 'no_due', 'nodue', 'no due', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s));
-      const feeStatus = isFeeCleared ? 'completed' : 'pending';
-
-      // Stage 4: Promotion — acknowledged for current academic cycle
-      const promotionStatus = isPromotionCompleteForCycle(
-        studentData,
-        student.current_year,
-        student.current_semester
-      ) ? 'completed' : 'pending';
-
-      // Stage 5: Scholarship — current academic year from student_scholarship only
-      const scholarshipStage = resolveRegistrationScholarshipStage(scholarshipMap.get(student.id));
-      const scholarshipStatusDisplay = scholarshipStage.display;
-      const scholarshipStatus = scholarshipStage.status;
-
-      // Overall Registration Status — all 5 stages required for current cycle
-      let overallStatus = 'pending';
-
-      if (
-        verificationStatus === 'completed' &&
-        certificatesStatus === 'completed' &&
-        feeStatus === 'completed' &&
-        promotionStatus === 'completed' &&
-        scholarshipStatus === 'completed'
-      ) {
-        overallStatus = 'completed';
-      } else if (
-        verificationStatus === 'completed' &&
-        certificatesStatus === 'temporary' &&
-        feeStatus === 'completed' &&
-        promotionStatus === 'completed' &&
-        scholarshipStatus === 'completed'
-      ) {
-        overallStatus = 'Temporary';
-      }
+    const reportData = students.map((student) => {
+      const studentData = parseStudentData(student);
+      const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
+      const stages = computeRegistrationStages(student, studentData, scholarStatus);
 
       return {
         id: student.id,
@@ -7138,13 +7061,13 @@ exports.getRegistrationReport = async (req, res) => {
         current_year: student.current_year,
         current_semester: student.current_semester,
         stages: {
-          verification: verificationStatus,
-          certificates: certificatesStatusDisplay,
-          fee: feeStatusDisplay,
-          promotion: promotionStatus,
-          scholarship: scholarshipStatusDisplay
+          verification: stages.verification.display,
+          certificates: stages.certificates.display,
+          fee: stages.fee.display,
+          promotion: stages.promotion.display,
+          scholarship: stages.scholarship.display
         },
-        overall_status: overallStatus
+        overall_status: stages.overallStatus
       };
     });
 
@@ -7616,7 +7539,7 @@ exports.exportRegistrationReport = async (req, res) => {
     // --- Data Query ---
     const dataQuery = `
       SELECT 
-        id, pin_no, student_name, admission_number, course, branch, college, batch,
+        id, pin_no, student_name, admission_number, course, branch, college, batch, stud_type,
         current_year, current_semester, student_data, 
         certificates_status, fee_status, scholar_status, registration_status
       ${baseQuery} 
@@ -7628,85 +7551,16 @@ exports.exportRegistrationReport = async (req, res) => {
       academicYearFromYear: academicYearFromYearExport
     });
 
-    // Process Data
-    const processedData = students.map(student => {
-      let studentData = {};
-      try {
-        studentData = typeof student.student_data === 'string'
-          ? JSON.parse(student.student_data || '{}')
-          : (student.student_data || {});
-      } catch (e) {
-        // student_data may be truncated (TEXT column limit) or malformed JSON.
-        // Extract only the fields we need via regex as a fallback.
-        const raw = student.student_data || '';
-        const studentVerMatch = raw.match(/"is_student_mobile_verified"\s*:\s*(true|false)/);
-        const parentVerMatch  = raw.match(/"is_parent_mobile_verified"\s*:\s*(true|false)/);
-        studentData = {
-          is_student_mobile_verified: studentVerMatch ? studentVerMatch[1] === 'true' : false,
-          is_parent_mobile_verified:  parentVerMatch  ? parentVerMatch[1]  === 'true' : false,
-        };
-      }
+    const processedData = students.map((student) => {
+      const studentData = parseStudentData(student);
+      const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
+      const stages = computeRegistrationStages(student, studentData, scholarStatus);
 
-      const verificationStatus = isVerificationCompleteForCycle(
-        studentData,
-        student.current_year,
-        student.current_semester
-      ) ? 'Completed' : REGISTRATION_EMPTY_DISPLAY;
-
-      const certStatusRaw = (student.certificates_status || '').toLowerCase();
-      const isCertVerified = certStatusRaw.includes('verified') || certStatusRaw === 'completed';
-      const isCertTemporary = certStatusRaw.includes('temporary');
-
-      let certificatesStatus = 'Unverified';
-      if (isCertTemporary) {
-        certificatesStatus = 'Temporary';
-      } else if (isCertVerified) {
-        certificatesStatus = 'Verified';
-      }
-
-      const feeRaw = (student.fee_status || '').toLowerCase();
-      let feeStatus = student.fee_status || 'Pending';
-      if (feeRaw.includes('no_due') || feeRaw.includes('nodue') || feeRaw.includes('completed')) feeStatus = 'No Due';
-      else if (feeRaw.includes('permitted')) feeStatus = 'Permitted';
-
-      // Same fee-cleared logic as main report and stats query (including partial/permitted)
-      const isFeeCleared = ['completed', 'no_due', 'nodue', 'no due', 'partially_completed', 'partial', 'permitted'].some(s => feeRaw.includes(s));
-
-      const scholarshipStage = resolveRegistrationScholarshipStage(scholarshipMap.get(student.id));
-      const scholarshipStatus = scholarshipStage.display;
-
-      const promotionStatus = isPromotionCompleteForCycle(
-        studentData,
-        student.current_year,
-        student.current_semester
-      ) ? 'Completed' : REGISTRATION_EMPTY_DISPLAY;
-
-      // Overall Status Logic - must match main report and stats query (all 5 steps including scholarship)
-      const isScholarshipCompleted = !isScholarshipDisplayUnassigned(
-        resolveRegistrationScholarshipStage(scholarshipMap.get(student.id)).display
-      );
-      const isVerificationCompleted = verificationStatus === 'Completed';
-      const isPromotionCompleted = promotionStatus === 'Completed';
-
-      // Overall Status — all 5 stages required for current cycle
-      let overallStatus = 'Pending';
-      if (
-        verificationStatus === 'Completed' &&
-        certificatesStatus === 'Verified' &&
-        isFeeCleared &&
-        promotionStatus === 'Completed' &&
-        isScholarshipCompleted
-      ) {
-        overallStatus = 'Completed';
-      } else if (
-        verificationStatus === 'Completed' &&
-        certificatesStatus === 'Temporary' &&
-        isFeeCleared &&
-        promotionStatus === 'Completed' &&
-        isScholarshipCompleted
-      ) {
-        overallStatus = 'Temporary';
-      }
+      const overallLabel = stages.overallStatus === 'completed'
+        ? 'Completed'
+        : stages.overallStatus === 'Temporary'
+          ? 'Temporary'
+          : 'Pending';
 
       return {
         'Pin No': student.pin_no,
@@ -7718,12 +7572,12 @@ exports.exportRegistrationReport = async (req, res) => {
         'Branch': student.branch,
         'Year': student.current_year,
         'Semester': student.current_semester,
-        'Verification': verificationStatus,
-        'Certificates': certificatesStatus,
-        'Fees': feeStatus,
-        'Promotion': promotionStatus,
-        'Scholarship': scholarshipStatus,
-        'overall_status': overallStatus
+        'Verification': stages.verification.display,
+        'Certificates': stages.certificates.display,
+        'Fees': stages.fee.display,
+        'Promotion': stages.promotion.display,
+        'Scholarship': stages.scholarship.display,
+        'overall_status': overallLabel
       };
     });
 
