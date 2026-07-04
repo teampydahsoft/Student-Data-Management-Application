@@ -7254,6 +7254,145 @@ exports.getRegistrationAcademicYears = async (req, res) => {
   }
 };
 
+/** Shared registration abstract query — same SQL as preview UI and main Reports page. */
+const fetchRegistrationAbstractRows = async (req) => {
+  const {
+    filter_batch,
+    filter_course,
+    filter_branch,
+    filter_year,
+    filter_semester,
+    filter_college,
+    filter_level,
+    filter_scholarship_status,
+    filter_academic_year,
+    search
+  } = req.query;
+
+  const scholarshipFilter = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
+  const normalizedAcademicYear = (filter_academic_year || '').trim();
+
+  let excludedStudents = [];
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['attendance_config']
+    );
+    if (settings && settings.length > 0) {
+      const config = JSON.parse(settings[0].value);
+      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+    }
+  } catch (err) {
+    console.warn('Failed to fetch attendance config for abstract:', err);
+  }
+
+  const whereParts = ['1=1'];
+  const params = [];
+
+  if (req.userScope) {
+    const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'base');
+    if (scopeCondition) {
+      whereParts.push(scopeCondition);
+      params.push(...scopeParams);
+    }
+  }
+
+  whereParts.push("base.student_status = 'Regular'");
+
+  if (excludedStudents.length > 0) {
+    whereParts.push(`base.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`);
+    params.push(...excludedStudents);
+  }
+
+  const normalizedFilterBatch = filter_batch && filter_batch.trim().length > 0 ? filter_batch.trim() : null;
+  const normalizedFilterCollege = filter_college && filter_college.trim().length > 0 ? filter_college.trim() : null;
+  const normalizedFilterCourse = filter_course && filter_course.trim().length > 0 ? filter_course.trim() : null;
+  const normalizedFilterBranch = filter_branch && filter_branch.trim().length > 0 ? filter_branch.trim() : null;
+  const parsedFilterYear = filter_year ? parseInt(filter_year, 10) : null;
+  const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
+
+  if (normalizedFilterBatch) { whereParts.push('base.batch = ?'); params.push(normalizedFilterBatch); }
+  if (normalizedFilterCollege) { whereParts.push('base.college = ?'); params.push(normalizedFilterCollege); }
+  if (normalizedFilterCourse) { whereParts.push('base.course = ?'); params.push(normalizedFilterCourse); }
+  if (normalizedFilterBranch) { whereParts.push('base.branch = ?'); params.push(normalizedFilterBranch); }
+  if (parsedFilterYear) { whereParts.push('base.current_year = ?'); params.push(parsedFilterYear); }
+  if (parsedFilterSemester) { whereParts.push('base.current_semester = ?'); params.push(parsedFilterSemester); }
+
+  if (filter_level) {
+    try {
+      const [levelCourses] = await masterPool.query(
+        'SELECT name FROM courses WHERE level = ? AND is_active = 1',
+        [filter_level]
+      );
+      const validCourseNames = levelCourses.map((c) => c.name);
+      if (validCourseNames.length > 0) {
+        whereParts.push(`base.course IN (${validCourseNames.map(() => '?').join(',')})`);
+        params.push(...validCourseNames);
+      } else {
+        whereParts.push('1=0');
+      }
+    } catch (err) {
+      console.warn('Failed to filter by level:', err);
+    }
+  }
+
+  if (search) {
+    const { clause, params: searchParams } = buildStudentSearchCondition(search, 'base');
+    whereParts.push(clause.replace(/^\s*AND\s+/i, ''));
+    params.push(...searchParams);
+  }
+
+  if (normalizedAcademicYear) {
+    const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(normalizedAcademicYear, 'base');
+    if (ayClause) {
+      whereParts.push(ayClause.replace(/^\s*AND\s+/i, ''));
+      params.push(...ayParams);
+    }
+  }
+
+  const { query, params: queryParams } = buildRegistrationAbstractQuery({
+    whereClause: whereParts.join(' AND '),
+    params,
+    scholarshipFilter,
+    academicYearFromYear: parseAcademicYearFromYear(normalizedAcademicYear)
+  });
+
+  const [rows] = await masterPool.query(query, queryParams);
+  return rows;
+};
+
+const mapRegistrationAbstractRowToExcel = (row) => {
+  const total = parseInt(row.total || 0, 10);
+  const completed = parseInt(row.overall_completed || 0, 10);
+  const verificationCompleted = parseInt(row.verification_completed || 0, 10);
+  const certificatesVerified = parseInt(row.certificates_verified || 0, 10);
+  const feeCleared = parseInt(row.fee_cleared || 0, 10);
+  const promotionCompleted = parseInt(row.promotion_completed || 0, 10);
+  const scholarshipAssigned = parseInt(row.scholarship_assigned || 0, 10);
+  const scholarshipPending = parseInt(
+    row.scholarship_pending ?? (total - scholarshipAssigned),
+    10
+  );
+  const ratio = (done) => `${done}/${Math.max(0, total - done)}`;
+
+  return {
+    Batch: row.batch || '',
+    College: row.college || '',
+    Course: row.course || '',
+    Branch: row.branch || '',
+    Year: row.current_year ?? '',
+    Sem: row.current_semester ?? '',
+    'Total Students': total,
+    'Overall Completed': completed,
+    Pending: total - completed,
+    Verification: ratio(verificationCompleted),
+    Certificates: ratio(certificatesVerified),
+    Fees: ratio(feeCleared),
+    Promotion: ratio(promotionCompleted),
+    Scholarship: `${scholarshipAssigned}/${scholarshipPending}`
+  };
+};
+
 // Get Registration Abstract (College/Course wise summary)
 exports.getRegistrationAbstract = async (req, res) => {
   try {
@@ -7292,94 +7431,7 @@ exports.getRegistrationAbstract = async (req, res) => {
       return res.json(cached);
     }
 
-    // Fetch exclude settings (cached in memory for 10 min via filterOptionsCache pattern)
-    let excludedStudents = [];
-    try {
-      const [settings] = await masterPool.query(
-        'SELECT value FROM settings WHERE `key` = ?',
-        ['attendance_config']
-      );
-      if (settings && settings.length > 0) {
-        const config = JSON.parse(settings[0].value);
-        if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
-      }
-    } catch (err) {
-      console.warn('Failed to fetch attendance config for abstract:', err);
-    }
-
-    const whereParts = ['1=1'];
-    const params = [];
-
-    if (req.userScope) {
-      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'base');
-      if (scopeCondition) {
-        whereParts.push(scopeCondition);
-        params.push(...scopeParams);
-      }
-    }
-
-    whereParts.push("base.student_status = 'Regular'");
-
-    if (excludedStudents.length > 0) {
-      whereParts.push(`base.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`);
-      params.push(...excludedStudents);
-    }
-
-    const normalizedFilterBatch = filter_batch && filter_batch.trim().length > 0 ? filter_batch.trim() : null;
-    const normalizedFilterCollege = filter_college && filter_college.trim().length > 0 ? filter_college.trim() : null;
-    const normalizedFilterCourse = filter_course && filter_course.trim().length > 0 ? filter_course.trim() : null;
-    const normalizedFilterBranch = filter_branch && filter_branch.trim().length > 0 ? filter_branch.trim() : null;
-    const parsedFilterYear = filter_year ? parseInt(filter_year, 10) : null;
-    const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
-
-    if (normalizedFilterBatch) { whereParts.push('base.batch = ?'); params.push(normalizedFilterBatch); }
-    if (normalizedFilterCollege) { whereParts.push('base.college = ?'); params.push(normalizedFilterCollege); }
-    if (normalizedFilterCourse) { whereParts.push('base.course = ?'); params.push(normalizedFilterCourse); }
-    if (normalizedFilterBranch) { whereParts.push('base.branch = ?'); params.push(normalizedFilterBranch); }
-    if (parsedFilterYear) { whereParts.push('base.current_year = ?'); params.push(parsedFilterYear); }
-    if (parsedFilterSemester) { whereParts.push('base.current_semester = ?'); params.push(parsedFilterSemester); }
-
-    if (filter_level) {
-      try {
-        const [levelCourses] = await masterPool.query(
-          'SELECT name FROM courses WHERE level = ? AND is_active = 1',
-          [filter_level]
-        );
-        const validCourseNames = levelCourses.map((c) => c.name);
-        if (validCourseNames.length > 0) {
-          whereParts.push(`base.course IN (${validCourseNames.map(() => '?').join(',')})`);
-          params.push(...validCourseNames);
-        } else {
-          whereParts.push('1=0');
-        }
-      } catch (err) {
-        console.warn('Failed to filter by level:', err);
-      }
-    }
-
-    if (search) {
-      const { clause, params: searchParams } = buildStudentSearchCondition(search, 'base');
-      whereParts.push(clause.replace(/^\s*AND\s+/i, ''));
-      params.push(...searchParams);
-    }
-
-    // Academic year filter — derived from batch + current_year
-    if (normalizedAcademicYear) {
-      const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(normalizedAcademicYear, 'base');
-      if (ayClause) {
-        whereParts.push(ayClause.replace(/^\s*AND\s+/i, ''));
-        params.push(...ayParams);
-      }
-    }
-
-    const { query, params: queryParams } = buildRegistrationAbstractQuery({
-      whereClause: whereParts.join(' AND '),
-      params,
-      scholarshipFilter: scholarshipFilterAbstract,
-      academicYearFromYear: parseAcademicYearFromYear(normalizedAcademicYear)
-    });
-
-    const [rows] = await masterPool.query(query, queryParams);
+    const rows = await fetchRegistrationAbstractRows(req);
 
     const payload = {
       success: true,
@@ -7700,110 +7752,47 @@ exports.exportRegistrationReport = async (req, res) => {
       ];
       const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
 
-      // -- 1. Aggregate Data for Abstract Table --
-      const groupedData = {};
+      // Abstract sheet — same SQL aggregation as preview UI (not client-side regrouping)
+      const abstractRows = await fetchRegistrationAbstractRows(req);
+      const abstractSheetData = abstractRows.map(mapRegistrationAbstractRowToExcel);
 
-      processedData.forEach(student => {
-        const batchKey = (student.Batch || 'Unknown').toString();
-        const collegeKey = (student.College || 'Unknown').toString();
-        const courseKey = (student.Course || 'Unknown').toString();
-        const branchKey = (student.Branch || 'Unknown').toString();
-        const yearKey = (student.Year || '0').toString();
-        const semKey = (student.Semester || '0').toString();
-
-        const uniqueKey = `${batchKey}|${collegeKey}|${courseKey}|${branchKey}|${yearKey}|${semKey}`;
-
-        if (!groupedData[uniqueKey]) {
-          groupedData[uniqueKey] = {
-            batch: batchKey,
-            college: collegeKey,
-            course: courseKey,
-            branch: branchKey,
-            year: yearKey,
-            sem: semKey,
-            total: 0,
-            overall_completed: 0,
-            pending: 0,
-            verification_completed: 0,
-            certificates_verified: 0,
-            fee_cleared: 0,
-            promotion_completed: 0,
-            scholarship_assigned: 0,
-            scholarship_pending: 0
-          };
-        }
-
-        const group = groupedData[uniqueKey];
-        group.total++;
-
-        // Status Logic matching frontend/pdf
-        if (student.overall_status === 'Completed') group.overall_completed++;
-        else group.pending++;
-
-        // Detailed Breakdown
-        // Detailed Breakdown
-        if (student['Verification'] === 'Completed') group.verification_completed++;
-        if (student['Certificates'] === 'Verified' || student['Certificates'] === 'completed') group.certificates_verified++;
-        if (student['Fees'] === 'No Due' || student['Fees'] === 'Permitted' || student['Fees'] === 'completed') group.fee_cleared++;
-        if (student['Promotion'] === 'Completed') group.promotion_completed++;
-        if (!isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_assigned++;
-        if (isScholarshipDisplayUnassigned(student['Scholarship'])) group.scholarship_pending++;
-      });
-
-      // Convert to rows and sort
-      const abstractExcelRows = Object.values(groupedData).sort((a, b) => {
-        if (a.batch !== b.batch) return a.batch.localeCompare(b.batch);
-        if (a.college !== b.college) return a.college.localeCompare(b.college);
-        if (a.course !== b.course) return a.course.localeCompare(b.course);
-        if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
-        if (a.year !== b.year) return a.year.localeCompare(b.year);
-        return a.sem.localeCompare(b.sem);
-      });
-
-      // Prepare Abstract Sheet Data
-      // Columns: Batch, College, Course, Branch, Year, Sem, Total, Overall Completed, Pending, Verify, Certs, Fees, Promo, Schol
-      const abstractSheetData = abstractExcelRows.map(row => ({
-        Batch: row.batch,
-        College: row.college,
-        Course: row.course,
-        Branch: row.branch,
-        Year: row.year,
-        Sem: row.sem,
-        'Total Students': row.total,
-        'Overall Completed': row.overall_completed,
-        'Pending': row.pending,
-        'Verification': `${row.verification_completed}/${row.total - row.verification_completed}`,
-        'Certificates': `${row.certificates_verified}/${row.total - row.certificates_verified}`,
-        'Fees': `${row.fee_cleared}/${row.total - row.fee_cleared}`,
-        'Promotion': `${row.promotion_completed}/${row.total - row.promotion_completed}`,
-        'Scholarship': `${row.scholarship_assigned}/${row.scholarship_pending}`,
-      }));
-
-      // Add Grand Total Row
-      const totals = abstractExcelRows.reduce((acc, row) => {
-        acc.total += row.total;
-        acc.overall_completed += row.overall_completed;
-        acc.pending += row.pending;
-        acc.verification_completed += row.verification_completed;
-        acc.certificates_verified += row.certificates_verified;
-        acc.fee_cleared += row.fee_cleared;
-        acc.promotion_completed += row.promotion_completed;
-        acc.scholarship_assigned += row.scholarship_assigned;
-        acc.scholarship_pending += row.scholarship_pending;
+      const totals = abstractRows.reduce((acc, row) => {
+        const total = parseInt(row.total || 0, 10);
+        acc.total += total;
+        acc.overall_completed += parseInt(row.overall_completed || 0, 10);
+        acc.verification_completed += parseInt(row.verification_completed || 0, 10);
+        acc.certificates_verified += parseInt(row.certificates_verified || 0, 10);
+        acc.fee_cleared += parseInt(row.fee_cleared || 0, 10);
+        acc.promotion_completed += parseInt(row.promotion_completed || 0, 10);
+        acc.scholarship_assigned += parseInt(row.scholarship_assigned || 0, 10);
+        acc.scholarship_pending += parseInt(row.scholarship_pending ?? (total - parseInt(row.scholarship_assigned || 0, 10)), 10);
         return acc;
-      }, { total: 0, overall_completed: 0, pending: 0, verification_completed: 0, certificates_verified: 0, fee_cleared: 0, promotion_completed: 0, scholarship_assigned: 0, scholarship_pending: 0 });
+      }, {
+        total: 0,
+        overall_completed: 0,
+        verification_completed: 0,
+        certificates_verified: 0,
+        fee_cleared: 0,
+        promotion_completed: 0,
+        scholarship_assigned: 0,
+        scholarship_pending: 0
+      });
 
       abstractSheetData.push({
         Batch: 'TOTAL',
-        College: '', Course: '', Branch: '', Year: '', Sem: '',
+        College: '',
+        Course: '',
+        Branch: '',
+        Year: '',
+        Sem: '',
         'Total Students': totals.total,
         'Overall Completed': totals.overall_completed,
-        'Pending': totals.pending,
-        'Verification': totals.verification_completed,
-        'Certificates': totals.certificates_verified,
-        'Fees': totals.fee_cleared,
-        'Promotion': totals.promotion_completed,
-        'Scholarship': `${totals.scholarship_assigned}/${totals.scholarship_pending}`
+        Pending: totals.total - totals.overall_completed,
+        Verification: `${totals.verification_completed}/${Math.max(0, totals.total - totals.verification_completed)}`,
+        Certificates: `${totals.certificates_verified}/${Math.max(0, totals.total - totals.certificates_verified)}`,
+        Fees: `${totals.fee_cleared}/${Math.max(0, totals.total - totals.fee_cleared)}`,
+        Promotion: `${totals.promotion_completed}/${Math.max(0, totals.total - totals.promotion_completed)}`,
+        Scholarship: `${totals.scholarship_assigned}/${totals.scholarship_pending}`
       });
 
       const abstractWs = XLSX.utils.json_to_sheet(abstractSheetData);
