@@ -115,6 +115,19 @@ export const isScholarshipStatusAssigned = (status) => (
 );
 
 /**
+ * Whether a scholarship status counts as a FINAL/COMPLETE decision for registration purposes.
+ * 'pending' is NOT complete — it means the admin has not made a final decision yet.
+ * Only eligible, not_eligible, rejected, not_applied are considered final.
+ */
+export const isScholarshipStatusFinal = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return normalized === 'eligible'
+    || normalized === 'not_eligible'
+    || normalized === 'rejected'
+    || normalized === 'not_applied';
+};
+
+/**
  * Determines whether the scholarship registration stage is satisfied for a student.
  *
  * Rules:
@@ -136,17 +149,18 @@ export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
   const isSemesterWise = usesSemesterWiseScholarshipStatus(batch, currentYear);
 
   if (!isSemesterWise) {
-    // Legacy path: use whatever was resolved as the current status
-    return isScholarshipStatusAssigned(
+    // Legacy path: status must be a final decision (not pending).
+    return isScholarshipStatusFinal(
       getCurrentScholarshipStatus(scholarshipData, student)
     );
   }
 
   // Semester-wise path (2026+ academic year):
-  // Ineligible-quota students are always considered complete
-  if (isScholarshipIneligibleQuota(studType)) return true;
+  // Ineligible-quota students are always considered complete —
+  // check both the student object and the API's scholarshipQuotaLocked flag.
+  if (isScholarshipIneligibleQuota(studType) || scholarshipData?.scholarshipQuotaLocked) return true;
 
-  // Only complete if the admin explicitly saved a semester row in student_scholarship
+  // Only complete if the admin explicitly saved a FINAL semester row in student_scholarship
   const currentSemester = Number(
     student?.current_semester
     || scholarshipData?.currentSemester
@@ -159,7 +173,7 @@ export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
   const semesterRow = yearData?.semesters?.find(
     (s) => Number(s.student_semester) === currentSemester
   );
-  return isScholarshipStatusAssigned(semesterRow?.eligible);
+  return isScholarshipStatusFinal(semesterRow?.eligible);
 };
 
 /** True when a semester has any assigned scholarship status (not blank). */

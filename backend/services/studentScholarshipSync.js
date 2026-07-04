@@ -544,25 +544,48 @@ const getScholarshipEligibleForYear = async (
   studentId,
   studentYear,
   studType = null,
-  studentSemester = null
+  studentSemester = null,
+  batch = null
 ) => {
   const year = Math.max(1, Number(studentYear) || 1);
 
   let quotaCode = studType;
   let semester = Math.max(1, Number(studentSemester) || 0);
-  if (!quotaCode || !semester) {
+  let studentBatch = batch;
+
+  if (!quotaCode || !semester || !studentBatch) {
     const [studentRows] = await pool.query(
-      'SELECT stud_type, current_semester FROM students WHERE id = ? LIMIT 1',
+      'SELECT stud_type, current_semester, batch FROM students WHERE id = ? LIMIT 1',
       [studentId]
     );
     if (!quotaCode) quotaCode = studentRows[0]?.stud_type;
     if (!semester) semester = Math.max(1, toNumber(studentRows[0]?.current_semester) || 1);
+    if (!studentBatch) studentBatch = studentRows[0]?.batch;
   }
 
   if (isScholarshipIneligibleQuota(quotaCode)) {
     return 'not_eligible';
   }
 
+  // For academic years 2026+ (semester-wise mode), only the specific semester row counts.
+  // For pre-2026 (legacy), fall through to the broader year query below.
+  const isSemesterWise = usesSemesterWiseScholarshipStatus(studentBatch, year);
+
+  if (isSemesterWise) {
+    // Must find an exact match for the current year AND current semester.
+    const [rows] = await pool.query(
+      `SELECT eligible
+       FROM student_scholarship
+       WHERE student_id = ? AND student_year = ? AND student_semester = ?
+         AND eligible IS NOT NULL AND TRIM(eligible) != ''
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+      [studentId, year, semester]
+    );
+    return normalizeEligible(rows[0]?.eligible);
+  }
+
+  // Legacy path: any row for the year (semester match preferred).
   const [rows] = await pool.query(
     `SELECT eligible, student_semester
      FROM student_scholarship
@@ -582,9 +605,15 @@ const getScholarshipEligibleForYear = async (
   return normalizeEligible(rows[0]?.eligible);
 };
 
-const isScholarshipCompleteForRegistration = (eligible) => (
-  VALID_ELIGIBLE.includes(String(eligible || '').trim().toLowerCase())
-);
+const isScholarshipCompleteForRegistration = (eligible) => {
+  // 'pending' means the admin has not made a final decision yet — not complete.
+  // Only definitive statuses count: eligible, not_eligible, rejected, not_applied.
+  const normalized = String(eligible || '').trim().toLowerCase();
+  return normalized === 'eligible'
+    || normalized === 'not_eligible'
+    || normalized === 'rejected'
+    || normalized === 'not_applied';
+};
 
 const resolveHistoryActor = (user) => {
   if (!user?.id) return { adminId: null, rbacId: null };
@@ -785,21 +814,21 @@ const semesterWiseRegistrationStatusSql = (alias = 'students') => `(
         )
       )
       AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'not_applied')
   )
   OR EXISTS (
     SELECT 1 FROM student_scholarship ss
     WHERE ss.student_id = ${alias}.id
       AND ss.student_year = GREATEST(1, IFNULL(${alias}.current_year, 1))
       AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
-      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+      AND LOWER(TRIM(ss.eligible)) IN ('eligible', 'not_eligible', 'rejected', 'not_applied')
   )
 )`;
 
 const legacyRegistrationStatusSql = (alias = 'students') => `(
   ${alias}.scholar_status IS NOT NULL
   AND TRIM(${alias}.scholar_status) != ''
-  AND LOWER(TRIM(${alias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'pending', 'not_applied')
+  AND LOWER(TRIM(${alias}.scholar_status)) IN ('eligible', 'not_eligible', 'rejected', 'not_applied')
 )`;
 
 const buildRegistrationScholarshipHasStatusSql = (academicYearFromYear = null, alias = 'students') => {

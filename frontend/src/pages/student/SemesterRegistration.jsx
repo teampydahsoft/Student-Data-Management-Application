@@ -28,6 +28,7 @@ import {
   computeRegistrationStageDisplays,
   RegistrationStageBadge
 } from '../../config/registrationStages.jsx';
+import { usesSemesterWiseScholarshipStatus } from '../../config/scholarshipConfig';
 
 const SemesterRegistration = () => {
     const { user } = useAuthStore();
@@ -200,16 +201,13 @@ const SemesterRegistration = () => {
     const isStepCompleted = (id) => getStepStatus(id) === 'completed';
 
     const canFinalize = () => {
-        // Requirements to finalize: 
-        // 1. Verification done
-        // 2. Certificates verified
-        // 3. Fee cleared/permitted
-        // 4. Promotion completed
-        // 5. Scholarship status assigned (MANDATORY)
+        // All 5 stages must be complete for registration to finalize.
+        // Step 5 (scholarship) uses isScholarshipRegistrationComplete which respects
+        // semester-wise (2026+) vs legacy logic — see registrationStages.jsx.
         return isStepCompleted(1) && isStepCompleted(2) && isStepCompleted(3) && isStepCompleted(4) && isStepCompleted(5);
     };
 
-    // Auto-completion effect
+    // Auto-completion effect — re-runs whenever any stage data changes
     useEffect(() => {
         if (!initialLoading && !loading && canFinalize() && (studentData?.registration_status || '').toLowerCase() !== 'completed') {
             const autoFinalize = async () => {
@@ -229,7 +227,7 @@ const SemesterRegistration = () => {
             };
             autoFinalize();
         }
-    }, [initialLoading, studentData, verificationState]);
+    }, [initialLoading, studentData, scholarshipData, verificationState]);
 
     // ------------ DATA & CONFIG ------------
 
@@ -399,7 +397,9 @@ const SemesterRegistration = () => {
                                 )}
                                 {item.id === 5 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Year {currentYear} status from scholarship records
+                                        {usesSemesterWiseScholarshipStatus(studentData?.batch, currentYear)
+                                            ? `Year ${currentYear} • Sem ${currentSemester} from scholarship records`
+                                            : `Year ${currentYear} status from scholarship records`}
                                     </p>
                                 )}
                             </div>
@@ -645,12 +645,29 @@ const SemesterRegistration = () => {
                                     <Award size={48} className="text-indigo-200 mx-auto mb-4" />
                                     <h3 className="text-lg font-bold text-gray-900">Scholarship Status</h3>
                                     <p className="text-xs text-gray-400 mb-2">
-                                        Year {studentData?.current_year || 1}
+                                        {usesSemesterWiseScholarshipStatus(studentData?.batch, studentData?.current_year || 1)
+                                            ? `Year ${studentData?.current_year || 1} • Semester ${studentData?.current_semester || 1}`
+                                            : `Year ${studentData?.current_year || 1}`}
                                     </p>
                                     <div className="flex justify-center my-4">
                                         <RegistrationStageBadge display={registrationStages.scholarship.display} />
                                     </div>
-                                    <p className="text-gray-500 text-sm">If you believe this is incorrect, please contact the admin office.</p>
+                                    {!registrationStages.scholarship.completed && (
+                                        <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-xl p-4 text-left">
+                                            <p className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
+                                                <AlertCircle size={16} /> Pending Action
+                                            </p>
+                                            <p className="text-sm text-yellow-700 mt-1">
+                                                Your scholarship status for this semester has not been set yet.
+                                                Please contact the admin office to get it assigned.
+                                            </p>
+                                        </div>
+                                    )}
+                                    {registrationStages.scholarship.completed && (
+                                        <p className="text-gray-500 text-sm mt-2">
+                                            Your scholarship status is recorded. No further action needed.
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
