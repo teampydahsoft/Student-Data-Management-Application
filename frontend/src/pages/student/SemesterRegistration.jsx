@@ -207,27 +207,41 @@ const SemesterRegistration = () => {
         return isStepCompleted(1) && isStepCompleted(2) && isStepCompleted(3) && isStepCompleted(4) && isStepCompleted(5);
     };
 
-    // Auto-completion effect — re-runs whenever any stage data changes
+    const autoFinalizedRef = React.useRef(false);
+
+    // Auto-completion effect — fires once when all 5 stages become complete
     useEffect(() => {
-        if (!initialLoading && !loading && canFinalize() && (studentData?.registration_status || '').toLowerCase() !== 'completed') {
-            const autoFinalize = async () => {
-                setLoading(true);
-                try {
-                    // Even though backend auto-checks on verify, we double check here
-                    const response = await api.get(`/students/${user.admission_number}`);
-                    if (response.data?.success) {
-                        setStudentData(response.data.data);
-                        toast.success('Registration finalized automatically!');
-                    }
-                } catch (e) {
-                    console.error('Auto-finalize sync error:', e);
-                } finally {
-                    setLoading(false);
-                }
-            };
-            autoFinalize();
+        // Already completed — nothing to do
+        if ((studentData?.registration_status || '').toLowerCase() === 'completed') {
+            autoFinalizedRef.current = false; // reset so future cycles can re-trigger
+            return;
         }
-    }, [initialLoading, studentData, scholarshipData, verificationState]);
+        // Guard: don't run during loading or before data is ready
+        if (initialLoading || loading || !studentData) return;
+        // Guard: don't re-trigger if we already finalized this cycle
+        if (autoFinalizedRef.current) return;
+        // All 5 stages must be complete
+        if (!canFinalize()) return;
+
+        autoFinalizedRef.current = true;
+        const autoFinalize = async () => {
+            setLoading(true);
+            try {
+                const response = await api.get(`/students/${user.admission_number}`);
+                if (response.data?.success) {
+                    setStudentData(response.data.data);
+                    toast.success('Registration finalized automatically!');
+                }
+            } catch (e) {
+                console.error('Auto-finalize sync error:', e);
+                autoFinalizedRef.current = false;
+            } finally {
+                setLoading(false);
+            }
+        };
+        autoFinalize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialLoading, scholarshipData, verificationState, registrationStages]);
 
     // ------------ DATA & CONFIG ------------
 
@@ -305,9 +319,10 @@ const SemesterRegistration = () => {
         );
     }
 
-    // Already Completed View
+    // Already Completed View — show if DB says completed OR all 5 stages are verified complete
     const regStatus = (studentData?.registration_status || '').toLowerCase();
-    if (regStatus === 'completed') {
+    const isActuallyComplete = regStatus === 'completed' || (!initialLoading && canFinalize());
+    if (isActuallyComplete) {
         return (
             <div className="max-w-4xl mx-auto py-10 animate-fade-in">
                 <div className="bg-green-600 rounded-3xl p-10 text-white shadow-sm relative overflow-hidden">
