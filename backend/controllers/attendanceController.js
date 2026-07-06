@@ -1172,29 +1172,31 @@ exports.getAttendance = async (req, res) => {
       unmarked: unmarkedCount
     };
 
-    const attendanceGate = await buildAttendanceGate({
-      attendanceDate,
-      batch,
-      course,
-      branch,
-      currentYear,
-      currentSemester,
-      userScope: req.userScope
-    });
-
-    let semesterCalendar = { configured: false, startDate: null, endDate: null };
-    try {
-      semesterCalendar = await resolveSemesterCalendarForFilters({
+    // Run independent async operations in parallel to reduce load time
+    const [attendanceGate, semesterCalendarResult] = await Promise.all([
+      buildAttendanceGate({
+        attendanceDate,
+        batch,
+        course,
+        branch,
+        currentYear,
+        currentSemester,
+        userScope: req.userScope
+      }),
+      resolveSemesterCalendarForFilters({
         college: college || null,
         course: course || null,
         batch: batch || null,
         currentYear: currentYear || null,
         currentSemester: currentSemester || null,
         attendanceDate
-      });
-    } catch (calendarError) {
-      console.warn('Failed to resolve semester calendar for attendance:', calendarError.message || calendarError);
-    }
+      }).catch((calendarError) => {
+        console.warn('Failed to resolve semester calendar for attendance:', calendarError.message || calendarError);
+        return { configured: false, startDate: null, endDate: null };
+      })
+    ]);
+
+    const semesterCalendar = semesterCalendarResult;
 
     // Apply pagination to data query
     if (parsedLimit && parsedLimit > 0) {
@@ -1780,6 +1782,30 @@ exports.markAttendance = async (req, res) => {
     }
 
     await connection.commit();
+
+    // ============================================================
+    // RESPOND IMMEDIATELY — attendance is saved in the database.
+    // All post-save work (SMS, PDF reports, emails) runs in the
+    // background so it can never cause a false server-error response.
+    // ============================================================
+    res.json({
+      success: true,
+      message: 'Attendance updated successfully',
+      data: {
+        attendanceDate: normalizedDate,
+        updatedCount,
+        insertedCount,
+        // SMS/report results are processed asynchronously; return empty arrays here.
+        // The frontend only uses these for optional display — not for success detection.
+        smsResults: [],
+        reportResults: [],
+        dayEndReportResults: []
+      }
+    });
+
+    // Fire-and-forget: run notifications and report generation after the response is sent
+    setImmediate(async () => {
+      try {
 
     // Get notification settings for attendance
     let notificationSettings = null;
@@ -2607,9 +2633,12 @@ exports.markAttendance = async (req, res) => {
       console.log(`\n⏳ No day-end reports sent - no college/course combinations with all batches marked`);
     }
 
-    // Combine report results
-    const allReportResults = [...reportResults, ...dayEndReportResults];
+      } catch (postSaveError) {
+        console.error('Post-save background processing error (attendance already saved):', postSaveError);
+      }
+    }); // end setImmediate
 
+    // Audit log runs outside fire-and-forget since it's lightweight
     logAudit(req, {
       actionType: 'MARK',
       entityType: 'ATTENDANCE',
@@ -2622,22 +2651,6 @@ exports.markAttendance = async (req, res) => {
           acc[record.status] = (acc[record.status] || 0) + 1;
           return acc;
         }, {})
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'Attendance updated successfully',
-      data: {
-        attendanceDate: normalizedDate,
-        updatedCount,
-        insertedCount,
-        smsResults: notificationResults.map(r => ({
-          ...r,
-          success: r.smsSent || r.emailSent
-        })),
-        reportResults: allReportResults,
-        dayEndReportResults
       }
     });
   } catch (error) {
