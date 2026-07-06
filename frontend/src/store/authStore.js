@@ -197,9 +197,16 @@ const useAuthStore = create((set) => {
       }
     },
 
-    updateUser: (userData) => set((state) => ({
-      user: { ...state.user, ...userData }
-    })),
+    updateUser: (userData) => set((state) => {
+      const updatedUser = { ...state.user, ...userData };
+      // Persist the updated user to localStorage so hard refreshes reflect the change
+      try {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } catch (e) {
+        console.warn('Failed to persist user update to localStorage:', e);
+      }
+      return { user: updatedUser };
+    }),
 
     logout: () => {
       // Clear all React Query cache immediately

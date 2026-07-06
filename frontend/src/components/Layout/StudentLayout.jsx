@@ -85,6 +85,16 @@ const StudentLayout = ({ children }) => {
             }
         };
         fetchStudentStatus();
+
+        // Re-fetch when the browser tab becomes visible again (e.g. student completes
+        // registration in another tab or the page had been backgrounded).
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchStudentStatus();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [user?.admission_number]);
 
     // Check Internship Status
@@ -132,14 +142,45 @@ const StudentLayout = ({ children }) => {
         return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
     })();
 
+    // Re-fetch registration status on route change so that after completing
+    // registration on /student/semester-registration, navigating elsewhere
+    // immediately unlocks access without requiring a full page reload.
+    useEffect(() => {
+        if (!user?.admission_number) return;
+        // Only re-fetch when not already marked completed (avoid unnecessary requests)
+        if (fetchedStatus && (fetchedStatus.registration_status || '').toLowerCase() === 'completed') return;
+        const refetch = async () => {
+            try {
+                const res = await api.get(`/students/${user.admission_number}`);
+                if (res.data.success && res.data.data) {
+                    setFetchedStatus(res.data.data);
+                }
+            } catch (error) {
+                // silent — main fetch already has error handling
+            }
+        };
+        refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname]);
+
     // Registration Status Check
+    // Priority: if EITHER fetchedStatus OR authStore user shows 'Completed', unlock immediately.
+    // This ensures that when SemesterRegistration calls updateUser({ registration_status: 'Completed' }),
+    // the layout unlocks without waiting for its own async re-fetch.
     const isRegistrationPending = () => {
+        const sources = [fetchedStatus, user];
+        for (const data of sources) {
+            const rawSource = data?.registration_status
+                || (data?.student_data ? (data.student_data['Registration Status'] || data.student_data.registration_status) : '')
+                || '';
+            if (String(rawSource).trim().toLowerCase() === 'completed') return false;
+        }
+        // Default to pending if neither source says completed
         const data = fetchedStatus || user;
         const rawSource = data?.registration_status
             || (data?.student_data ? (data.student_data['Registration Status'] || data.student_data.registration_status) : '')
             || '';
-        const raw = String(rawSource).trim().toLowerCase();
-        return raw !== 'completed';
+        return String(rawSource).trim().toLowerCase() !== 'completed';
     };
 
     const isPending = isRegistrationPending();

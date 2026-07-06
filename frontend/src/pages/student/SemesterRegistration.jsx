@@ -31,7 +31,7 @@ import {
 import { usesSemesterWiseScholarshipStatus } from '../../config/scholarshipConfig';
 
 const SemesterRegistration = () => {
-    const { user } = useAuthStore();
+    const { user, updateUser } = useAuthStore();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false); // Action loading
     const [initialLoading, setInitialLoading] = useState(true);
@@ -230,6 +230,9 @@ const SemesterRegistration = () => {
                 const response = await api.get(`/students/${user.admission_number}`);
                 if (response.data?.success) {
                     setStudentData(response.data.data);
+                    // Immediately sync registration_status into authStore so StudentLayout
+                    // sees 'Completed' right away without waiting for its own re-fetch.
+                    updateUser({ registration_status: 'Completed' });
                     toast.success('Registration finalized automatically!');
                 }
             } catch (e) {
@@ -323,6 +326,11 @@ const SemesterRegistration = () => {
     const regStatus = (studentData?.registration_status || '').toLowerCase();
     const isActuallyComplete = regStatus === 'completed' || (!initialLoading && canFinalize());
     if (isActuallyComplete) {
+        // Sync authStore so StudentLayout unlocks immediately on navigation
+        const authRegStatus = (user?.registration_status || '').toLowerCase();
+        if (authRegStatus !== 'completed') {
+            updateUser({ registration_status: 'Completed' });
+        }
         return (
             <div className="max-w-4xl mx-auto py-10 animate-fade-in">
                 <div className="bg-green-600 rounded-3xl p-10 text-white shadow-sm relative overflow-hidden">

@@ -5693,54 +5693,64 @@ exports.getStudentByAdmission = async (req, res) => {
       parsedData
     );
 
-    // Recompute registration_status from current conditions — never trust the stored column alone.
-    // This ensures that if any condition changed (e.g. scholarship set back to pending),
-    // the student portal reflects the real current state immediately.
-    const { getScholarshipEligibleForYear, isScholarshipCompleteForRegistration } = require('../services/studentScholarshipSync');
-
-    const isMobileVerified = isVerificationCompleteForCycle(
-      parsedData,
-      stage.year,
-      stage.semester
-    );
-    const certStatus = student.certificates_status || '';
-    const certificatesCompleted =
-      certStatus &&
-      (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed');
-    const feeForReg = (student.fee_status || '').toLowerCase();
-    const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].some(
-      (s) => feeForReg.includes(s)
-    );
-    const promotionCompleted = isPromotionCompleteForCycle(parsedData, stage.year, stage.semester);
-
-    const currentYearForReg = Math.max(1, Number(stage.year) || 1);
-    const currentSemesterForReg = Math.max(1, Number(stage.semester) || 1);
-    const yearEligible = await getScholarshipEligibleForYear(
-      masterPool,
-      student.id,
-      currentYearForReg,
-      student.stud_type,
-      currentSemesterForReg,
-      student.batch
-    );
-    const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible);
-
-    const allConditionsMet =
-      isMobileVerified &&
-      certificatesCompleted &&
-      feeCompleted &&
-      promotionCompleted &&
-      scholarshipCompleted;
-
-    const computedRegistrationStatus = allConditionsMet ? 'Completed' : 'pending';
-
-    // If computed status differs from stored, silently sync the DB column
+    // Determine registration_status:
+    // If the DB column already stores 'Completed', trust that value — registration is a
+    // one-time action and should not be reverted by dynamic condition re-evaluation.
+    // Only compute from live conditions when the stored value is still pending/empty,
+    // so that newly-eligible students are detected automatically.
     const storedReg = (student.registration_status || '').trim().toLowerCase();
-    if (storedReg !== computedRegistrationStatus.toLowerCase()) {
-      masterPool.query(
-        'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-        [computedRegistrationStatus, admissionNumber]
-      ).catch((err) => console.warn('Registration status sync failed:', err.message));
+    let computedRegistrationStatus;
+
+    if (storedReg === 'completed') {
+      // Already marked complete by the admin or the registration flow — keep it.
+      computedRegistrationStatus = 'Completed';
+    } else {
+      // Not yet completed — evaluate live conditions to see if the student now qualifies.
+      const { getScholarshipEligibleForYear, isScholarshipCompleteForRegistration } = require('../services/studentScholarshipSync');
+
+      const isMobileVerified = isVerificationCompleteForCycle(
+        parsedData,
+        stage.year,
+        stage.semester
+      );
+      const certStatus = student.certificates_status || '';
+      const certificatesCompleted =
+        certStatus &&
+        (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed');
+      const feeForReg = (student.fee_status || '').toLowerCase();
+      const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].some(
+        (s) => feeForReg.includes(s)
+      );
+      const promotionCompleted = isPromotionCompleteForCycle(parsedData, stage.year, stage.semester);
+
+      const currentYearForReg = Math.max(1, Number(stage.year) || 1);
+      const currentSemesterForReg = Math.max(1, Number(stage.semester) || 1);
+      const yearEligible = await getScholarshipEligibleForYear(
+        masterPool,
+        student.id,
+        currentYearForReg,
+        student.stud_type,
+        currentSemesterForReg,
+        student.batch
+      );
+      const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible);
+
+      const allConditionsMet =
+        isMobileVerified &&
+        certificatesCompleted &&
+        feeCompleted &&
+        promotionCompleted &&
+        scholarshipCompleted;
+
+      computedRegistrationStatus = allConditionsMet ? 'Completed' : 'pending';
+
+      // If all conditions are now met, persist the completed status to the DB
+      if (computedRegistrationStatus === 'Completed' && storedReg !== 'completed') {
+        masterPool.query(
+          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
+          ['Completed', admissionNumber]
+        ).catch((err) => console.warn('Registration status sync failed:', err.message));
+      }
     }
 
     const responsePayload = {
@@ -6229,16 +6239,10 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
         clearStudentsCache();
       }
       await syncRegistrationJson('Completed');
-    } else if (columnReg.toLowerCase() === 'completed' || jsonReg.toLowerCase() === 'completed') {
-      if (hasRegColumn) {
-        await masterPool.query(
-          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-          ['pending', admissionNumber]
-        );
-        clearStudentsCache();
-      }
-      await syncRegistrationJson('pending');
     }
+    // NOTE: We intentionally do NOT demote a 'Completed' registration back to 'pending'.
+    // Registration is a one-time milestone. Once set to 'Completed' (by admin or the
+    // registration flow), it stays completed. Only an explicit admin action should reset it.
   } catch (err) {
     console.error(`Check auto-complete error for ${admissionNumber}:`, err);
   }
