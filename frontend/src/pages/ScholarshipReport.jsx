@@ -613,7 +613,7 @@ function ScholarshipReport() {
                       <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-emerald-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_RELEASED_LABEL}
                       </th>
-                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-sky-600 whitespace-nowrap">
+                      <th className="border-b border-r border-gray-200 px-1.5 py-1 text-center text-[10px] font-medium text-pink-600 whitespace-nowrap">
                         {SCHOLARSHIP_RTF_DUE_LABEL}
                       </th>
                     </React.Fragment>
@@ -675,7 +675,7 @@ function ScholarshipReport() {
                           <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-emerald-700 tabular-nums text-[11px]">
                             {formatAmount(yearData.released_amount)}
                           </td>
-                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-sky-700 tabular-nums text-[11px] font-medium">
+                          <td className="border-b border-r border-gray-100 px-1.5 py-1.5 text-right text-pink-700 tabular-nums text-[11px] font-medium">
                             {formatAmount(yearData.due_amount)}
                           </td>
                         </React.Fragment>

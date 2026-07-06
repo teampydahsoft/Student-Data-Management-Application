@@ -5,7 +5,8 @@ const {
   resolveTotalYears,
   buildYearSnapshotFromRows,
   resolveSemestersPerYear,
-  allSemestersEligible
+  allSemestersEligible,
+  isYearFeeOnlyScholarshipMode
 } = require('../../services/studentScholarshipSync');
 const {
   calculateFeeDue,
@@ -85,6 +86,7 @@ const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false)
   const snapshot = buildYearSnapshotFromRows(yearRows, semestersPerYear);
   const semesters = snapshot.semesters || [];
   const rtfEligible = allSemestersEligible(semesters);
+  const feeOnly = isYearFeeOnlyScholarshipMode(semesters);
   const sanctioned = formatAmount(snapshot.sanctioned_amount);
   const released = formatAmount(snapshot.released_amount);
   const paid = formatAmount(snapshot.paid_amount);
@@ -94,12 +96,14 @@ const buildYearAmountsFromRows = (yearRows, semestersPerYear, isCollege = false)
   const advance = rtfEligible && isCollege
     ? formatAmount(calculateAdvanceAmount(sanctioned, released, manualPaid, true))
     : 0;
+  // For not-eligible / fee-only candidates show sanctioned amount as due (mirrors frontend logic)
+  const dueAmount = (rtfEligible || feeOnly) ? (feeOnly ? sanctioned : rtfDue) : rtfDue;
   return {
     sanctioned_amount: sanctioned,
     released_amount: released,
     paid_amount: paid,
     pending_amount: feeDue,
-    due_amount: rtfDue,
+    due_amount: dueAmount,
     fee_due_amount: feeDue,
     rtf_due_amount: rtfDue,
     advance_amount: advance

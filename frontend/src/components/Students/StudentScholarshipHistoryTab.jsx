@@ -493,7 +493,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
       const paid = financial ? sumPaid(year.paid_transactions || []) : 0;
       const manualPaid = rtfEligible ? sumManualPaid(year, isCollege) : paid;
       const rtfDue = rtfEligible ? calculateScholarshipRtfDue(effectiveSanctioned, released) : 0;
-      const dueAmount = tuitionFeeMode ? effectiveSanctioned : rtfDue;
+      // For tuition fee mode or fee-only mode (not eligible), show sanctioned amount as due
+      const dueAmount = (tuitionFeeMode || feeOnly) ? effectiveSanctioned : rtfDue;
       const feeDue = financial && !tuitionFeeMode
         ? calculateScholarshipFeeDue(effectiveSanctioned, paid)
         : 0;
@@ -1426,8 +1427,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center whitespace-nowrap border-l border-gray-50"
                       >
-                        {(year.releasesEligible || year.tuitionFeeMode) && (year.due_amount ?? 0) >= 0 ? (
-                          <span className={`font-semibold text-xs ${(year.due_amount ?? 0) > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
+                        {(year.releasesEligible || year.tuitionFeeMode || year.feeOnlyMode) && (year.due_amount ?? 0) >= 0 ? (
+                          <span className={`font-semibold text-xs ${(year.due_amount ?? 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
                             {formatCurrency(year.due_amount ?? 0)}
                           </span>
                         ) : (
@@ -1561,7 +1562,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                     </span>
                   )}
                   {sanctionedAmt > 0 && (
-                    <span className={`text-xs font-semibold ${totalRtfDueAmt > 0 ? 'text-sky-600' : 'text-gray-500'}`}>
+                    <span className={`text-xs font-semibold ${totalRtfDueAmt > 0 ? 'text-pink-600' : 'text-gray-500'}`}>
                       {SCHOLARSHIP_RTF_DUE_LABEL}: {formatCurrency(totalRtfDueAmt)}
                     </span>
                   )}
@@ -1653,7 +1654,7 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         </td>
                         <td className="px-2 py-2 text-right">
                           {sanctionedAmt > 0 ? (
-                            <span className={`text-xs font-semibold tabular-nums ${rtfDueAfterRow > 0 ? 'text-sky-600' : 'text-gray-400'}`}>
+                            <span className={`text-xs font-semibold tabular-nums ${rtfDueAfterRow > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
                               {formatCurrency(rtfDueAfterRow)}
                             </span>
                           ) : (
