@@ -2388,16 +2388,26 @@ const Students = () => {
     if (value === true || value === 'Yes' || value === 'yes') return true;
     // Also consider any non-empty string as present if it's from a dropdown
     if (typeof value === 'string' && value.trim() !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'pending') return true;
+    // If no individual cert value stored but overall status is Verified/Temporary, treat all as present
+    const overallStatus = editData?.certificates_status || selectedStudent?.certificates_status || '';
+    if (!value && (overallStatus === 'Verified' || overallStatus === 'Temporary')) return true;
     return false;
   };
 
   // Helper function to get certificate status display
-  const getCertificateStatusDisplay = (certKey) => {
+  // overallStatus is passed from the render context (editData.certificates_status)
+  const getCertificateStatusDisplay = (certKey, overallStatus) => {
     const studentData = editData || selectedStudent?.student_data || {};
     const parsedData = typeof studentData === 'string' ? JSON.parse(studentData || '{}') : studentData;
     const value = parsedData[certKey];
 
-    if (!value || value === false || value === 'No' || value === 'no') return 'No';
+    if (!value || value === false || value === 'No' || value === 'no') {
+      // If no individual cert value is stored but the overall status is Verified/Temporary,
+      // show "Yes" so verified students don't incorrectly appear as missing certificates
+      const resolvedOverall = overallStatus || editData?.certificates_status || selectedStudent?.certificates_status || '';
+      if (resolvedOverall === 'Verified' || resolvedOverall === 'Temporary') return 'Yes';
+      return 'No';
+    }
     if (value === true || value === 'Yes' || value === 'yes') return 'Yes';
     return value; // Return the specific dropdown value like "Original"
   };
