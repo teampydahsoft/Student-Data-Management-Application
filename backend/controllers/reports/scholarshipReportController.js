@@ -180,6 +180,7 @@ const buildScholarshipReportData = async (req) => {
   const studentQuery = `
     SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste, scholar_status
     ${baseQuery}
+    AND UPPER(TRIM(IFNULL(stud_type,''))) NOT IN ('MANG', 'MQ', 'SPOT', 'LSPOT')
     ORDER BY student_name ASC, admission_number ASC
   `;
   let [students] = await masterPool.query(studentQuery, params);
@@ -190,6 +191,7 @@ const buildScholarshipReportData = async (req) => {
 
   // When academic year + scholarship status are BOTH set, filter students by their
   // eligible status in student_scholarship for that specific year — not scholar_status column.
+  let yearStatusMap = new Map(); // student_id → year-specific eligible status (when applicable)
   if (filterAcademicYear && filterAcademicYear > 0 && filterScholarshipStatus) {
     const studentIds = students.map((s) => s.id);
 
@@ -205,7 +207,6 @@ const buildScholarshipReportData = async (req) => {
     );
 
     // Build a map: student_id → normalized eligible status for that year
-    const yearStatusMap = new Map();
     for (const row of yearEligibleRows) {
       // Only set the first (primary) status per student for that year
       if (!yearStatusMap.has(row.student_id)) {
@@ -214,10 +215,18 @@ const buildScholarshipReportData = async (req) => {
     }
 
     // Filter students based on the year-specific status
+    // Also always exclude management/quota students regardless of scholarship status
+    const EXCLUDED_QUOTA_TYPES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
     students = students.filter((student) => {
+      if (EXCLUDED_QUOTA_TYPES.has((student.stud_type || '').trim().toUpperCase())) return false;
       const yearStatus = yearStatusMap.get(student.id) || '';
       if (filterScholarshipStatus === 'eligible') {
         return yearStatus.includes('eligible') && !yearStatus.includes('not');
+      }
+      if (filterScholarshipStatus === 'non_eligible_all') {
+        // All remaining: not eligible, pending, rejected, not applied, or no record
+        if (!yearStatus) return true; // no record = pending/unknown
+        return !(yearStatus.includes('eligible') && !yearStatus.includes('not'));
       }
       if (filterScholarshipStatus === 'not_eligible') {
         return yearStatus.includes('not') && yearStatus.includes('eligible');
@@ -272,6 +281,11 @@ const buildScholarshipReportData = async (req) => {
       isCollege
     );
     maxTotalYears = Math.max(maxTotalYears, totalYears);
+    // For the "All Remaining" column: use year-specific status when an academic year is filtered,
+    // otherwise fall back to the global scholar_status field.
+    const displayScholarStatus = (filterAcademicYear && filterAcademicYear > 0 && yearStatusMap.size > 0)
+      ? (yearStatusMap.get(student.id) || student.scholar_status || '')
+      : (student.scholar_status || '');
     data.push({
       student_id: student.id,
       admission_number: student.admission_number,
@@ -283,7 +297,7 @@ const buildScholarshipReportData = async (req) => {
       course: student.course,
       branch: student.branch || '',
       caste: student.caste || '',
-      scholar_status: student.scholar_status || '',
+      scholar_status: displayScholarStatus,
       years
     });
   }

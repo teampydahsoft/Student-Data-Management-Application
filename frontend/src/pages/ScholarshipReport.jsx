@@ -489,11 +489,7 @@ function ScholarshipReport() {
             >
               <option value="">All Statuses</option>
               <option value="eligible">✅ Eligible</option>
-              <option value="non_eligible_all">🔴 Non-Eligible (All Remaining)</option>
-              <option value="pending">⏳ Pending</option>
-              <option value="rejected">❌ Rejected</option>
-              <option value="not_eligible">🚫 Not Eligible</option>
-              <option value="not_applied">— Not Applied</option>
+              <option value="non_eligible_all">🔴 All Remaining (Non-Eligible)</option>
             </select>
           </div>
         </div>
@@ -533,12 +529,8 @@ function ScholarshipReport() {
             )}
             {filters.scholarship_status && (() => {
               const statusMeta = {
-                eligible:         { label: 'Eligible',                cls: 'bg-green-50 border-green-200 text-green-700' },
-                non_eligible_all: { label: 'Non-Eligible (All)',      cls: 'bg-red-50 border-red-200 text-red-700' },
-                pending:          { label: 'Pending',                 cls: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-                rejected:         { label: 'Rejected',                cls: 'bg-red-50 border-red-200 text-red-700' },
-                not_eligible:     { label: 'Not Eligible',            cls: 'bg-orange-50 border-orange-200 text-orange-700' },
-                not_applied:      { label: 'Not Applied',             cls: 'bg-gray-50 border-gray-300 text-gray-600' }
+                eligible:         { label: 'Eligible',                    cls: 'bg-green-50 border-green-200 text-green-700' },
+                non_eligible_all: { label: 'All Remaining (Non-Eligible)', cls: 'bg-red-50 border-red-200 text-red-700' }
               };
               const meta = statusMeta[filters.scholarship_status] || { label: filters.scholarship_status, cls: 'bg-gray-50 border-gray-200 text-gray-600' };
               return (
@@ -597,6 +589,11 @@ function ScholarshipReport() {
                   <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                     Caste
                   </th>
+                  {filters.scholarship_status === 'non_eligible_all' && (
+                    <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
+                      Scholarship Status
+                    </th>
+                  )}
                   {yearColumns.map((year) => (
                     <th
                       key={`year-${year}`}
@@ -642,6 +639,28 @@ function ScholarshipReport() {
                     <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-600 text-[11px]">
                       {student.caste || '—'}
                     </td>
+                    {filters.scholarship_status === 'non_eligible_all' && (
+                      <td className="border-b border-r border-gray-100 px-2 py-1.5 text-[11px]">
+                        {(() => {
+                          const raw = (student.scholar_status || '').toLowerCase().trim();
+                          const statusDisplay = {
+                            not_eligible: { label: 'Not Eligible',  cls: 'text-orange-700 bg-orange-50 border border-orange-200' },
+                            pending:      { label: 'Pending',        cls: 'text-yellow-700 bg-yellow-50 border border-yellow-200' },
+                            rejected:     { label: 'Rejected',       cls: 'text-red-700 bg-red-50 border border-red-200' },
+                            not_applied:  { label: 'Not Applied',    cls: 'text-gray-600 bg-gray-50 border border-gray-200' }
+                          };
+                          const meta = statusDisplay[raw];
+                          if (meta) {
+                            return (
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${meta.cls}`}>
+                                {meta.label}
+                              </span>
+                            );
+                          }
+                          return <span className="text-gray-500">{student.scholar_status || '—'}</span>;
+                        })()}
+                      </td>
+                    )}
                     {yearColumns.map((year) => {
                       const yearData = student.years?.find((entry) => entry.student_year === year) || {
                         sanctioned_amount: 0,

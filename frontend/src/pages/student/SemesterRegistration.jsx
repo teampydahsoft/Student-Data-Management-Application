@@ -209,13 +209,10 @@ const SemesterRegistration = () => {
 
     const autoFinalizedRef = React.useRef(false);
 
-    // Auto-completion effect — fires once when all 5 stages become complete
+    // Auto-completion effect — fires once when all 5 live stages become complete.
+    // We do NOT short-circuit when the DB registration_status says 'completed', because
+    // the page is now driven by canFinalize() (live stage checks) rather than the DB column.
     useEffect(() => {
-        // Already completed — nothing to do
-        if ((studentData?.registration_status || '').toLowerCase() === 'completed') {
-            autoFinalizedRef.current = false; // reset so future cycles can re-trigger
-            return;
-        }
         // Guard: don't run during loading or before data is ready
         if (initialLoading || loading || !studentData) return;
         // Guard: don't re-trigger if we already finalized this cycle
@@ -322,9 +319,12 @@ const SemesterRegistration = () => {
         );
     }
 
-    // Already Completed View — show if DB says completed OR all 5 stages are verified complete
-    const regStatus = (studentData?.registration_status || '').toLowerCase();
-    const isActuallyComplete = regStatus === 'completed' || (!initialLoading && canFinalize());
+    // Already Completed View — show ONLY if all 5 stages are currently verified complete.
+    // We intentionally do NOT trust the DB registration_status column alone here, because
+    // a student may have had their year/semester cycled, scholarship reset, or mobile
+    // verification invalidated AFTER the DB was stamped 'Completed'.
+    // The live stage checks (canFinalize) are the source of truth on the student portal.
+    const isActuallyComplete = !initialLoading && canFinalize();
     if (isActuallyComplete) {
         // Sync authStore so StudentLayout unlocks immediately on navigation
         const authRegStatus = (user?.registration_status || '').toLowerCase();
