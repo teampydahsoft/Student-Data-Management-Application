@@ -54,6 +54,7 @@ import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../
 import RegistrationPendingModal from '../RegistrationPendingModal';
 import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 import { navigateToCrtApp } from '../../utils/crtAppUrl';
+import { computeRegistrationStageDisplays } from '../../config/registrationStages.jsx';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -63,6 +64,7 @@ const StudentLayout = ({ children }) => {
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [showRestrictionModal, setShowRestrictionModal] = useState(false);
     const [fetchedStatus, setFetchedStatus] = useState(null);
+    const [fetchedScholarshipData, setFetchedScholarshipData] = useState(null);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
     const [hasInternship, setHasInternship] = useState(false);
     const [layoutSettings, setLayoutSettings] = useState(null);
@@ -75,9 +77,17 @@ const StudentLayout = ({ children }) => {
         const fetchStudentStatus = async () => {
             if (user?.admission_number) {
                 try {
-                    const res = await api.get(`/students/${user.admission_number}`);
-                    if (res.data.success && res.data.data) {
-                        setFetchedStatus(res.data.data);
+                    const [studentRes, scholarshipRes] = await Promise.all([
+                        api.get(`/students/${user.admission_number}`),
+                        api.get(`/student-scholarship/${encodeURIComponent(user.admission_number)}`)
+                    ]);
+                    if (studentRes.data.success && studentRes.data.data) {
+                        setFetchedStatus(studentRes.data.data);
+                    }
+                    if (scholarshipRes.data?.success) {
+                        setFetchedScholarshipData(scholarshipRes.data.data);
+                    } else {
+                        setFetchedScholarshipData(null);
                     }
                 } catch (error) {
                     console.error('Failed to fetch student status in layout', error);
@@ -147,13 +157,19 @@ const StudentLayout = ({ children }) => {
     // immediately unlocks access without requiring a full page reload.
     useEffect(() => {
         if (!user?.admission_number) return;
-        // Only re-fetch when not already marked completed (avoid unnecessary requests)
-        if (fetchedStatus && (fetchedStatus.registration_status || '').toLowerCase() === 'completed') return;
         const refetch = async () => {
             try {
-                const res = await api.get(`/students/${user.admission_number}`);
-                if (res.data.success && res.data.data) {
-                    setFetchedStatus(res.data.data);
+                const [studentRes, scholarshipRes] = await Promise.all([
+                    api.get(`/students/${user.admission_number}`),
+                    api.get(`/student-scholarship/${encodeURIComponent(user.admission_number)}`)
+                ]);
+                if (studentRes.data.success && studentRes.data.data) {
+                    setFetchedStatus(studentRes.data.data);
+                }
+                if (scholarshipRes.data?.success) {
+                    setFetchedScholarshipData(scholarshipRes.data.data);
+                } else {
+                    setFetchedScholarshipData(null);
                 }
             } catch (error) {
                 // silent — main fetch already has error handling
@@ -164,23 +180,30 @@ const StudentLayout = ({ children }) => {
     }, [location.pathname]);
 
     // Registration Status Check
-    // Priority: if EITHER fetchedStatus OR authStore user shows 'Completed', unlock immediately.
-    // This ensures that when SemesterRegistration calls updateUser({ registration_status: 'Completed' }),
-    // the layout unlocks without waiting for its own async re-fetch.
+    // Use live stage evaluation (same logic as SemesterRegistration page) so that
+    // a student whose mobile verification or scholarship was reset after the DB was
+    // stamped 'Completed' is correctly treated as pending again.
+    // Fast-path: if authStore already has 'Completed' AND fetchedStatus also confirms it,
+    // skip the stage computation to avoid showing a flash of the restriction modal
+    // during the async fetch on first load.
     const isRegistrationPending = () => {
-        const sources = [fetchedStatus, user];
-        for (const data of sources) {
-            const rawSource = data?.registration_status
-                || (data?.student_data ? (data.student_data['Registration Status'] || data.student_data.registration_status) : '')
-                || '';
-            if (String(rawSource).trim().toLowerCase() === 'completed') return false;
+        // If we haven't received the live student data yet, fall back to authStore
+        // so the layout doesn't lock the student out during the initial load.
+        if (!fetchedStatus) {
+            const authReg = (user?.registration_status || '').toLowerCase();
+            return authReg !== 'completed';
         }
-        // Default to pending if neither source says completed
-        const data = fetchedStatus || user;
-        const rawSource = data?.registration_status
-            || (data?.student_data ? (data.student_data['Registration Status'] || data.student_data.registration_status) : '')
-            || '';
-        return String(rawSource).trim().toLowerCase() !== 'completed';
+
+        // Run the same 5-stage live check used on the SemesterRegistration page.
+        const stages = computeRegistrationStageDisplays(fetchedStatus, fetchedScholarshipData);
+        const allComplete = (
+            stages.verification.completed &&
+            stages.certificates.completed &&
+            stages.fee.completed &&
+            stages.promotion.completed &&
+            stages.scholarship.completed
+        );
+        return !allComplete;
     };
 
     const isPending = isRegistrationPending();
@@ -198,7 +221,6 @@ const StudentLayout = ({ children }) => {
         if (isPending && !allowedPaths.includes(path)) {
             e.preventDefault();
             setShowRestrictionModal(true);
-            setMostRecentNavClick(null); // specific logic cleaner
         }
         setMoreMenuOpen(false); // Close mobile drawer on nav
     };

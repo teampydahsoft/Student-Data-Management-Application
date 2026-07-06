@@ -386,52 +386,6 @@ const SemesterRegistration = () => {
                 </div>
             </div>
 
-            <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide px-1">
-                    Registration Stages
-                </h2>
-                <div className="grid grid-cols-1 gap-3">
-                    {stageSummaryItems.map((item) => (
-                        <div
-                            key={item.id}
-                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                        >
-                            <div>
-                                <p className="text-sm font-semibold text-gray-900">{item.id}. {item.title}</p>
-                                {item.id === 1 && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Student: {verificationState.studentMobile || 'No number'} • Parent: {verificationState.parentMobile || 'No number'}
-                                    </p>
-                                )}
-                                {item.id === 2 && (
-                                    <p className="text-xs text-gray-500 mt-1 capitalize">
-                                        Current Status: {registrationStages.certStatus || 'Pending'}
-                                    </p>
-                                )}
-                                {item.id === 3 && (
-                                    <p className="text-xs text-gray-500 mt-1 capitalize">
-                                        Current Status: {registrationStages.feeStatus || 'Pending'}
-                                    </p>
-                                )}
-                                {item.id === 4 && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Year {currentYear} • Sem {currentSemester}
-                                    </p>
-                                )}
-                                {item.id === 5 && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        {usesSemesterWiseScholarshipStatus(studentData?.batch, currentYear)
-                                            ? `Year ${currentYear} • Sem ${currentSemester} from scholarship records`
-                                            : `Year ${currentYear} status from scholarship records`}
-                                    </p>
-                                )}
-                            </div>
-                            <RegistrationStageBadge display={item.stage.display} />
-                        </div>
-                    ))}
-                </div>
-            </div>
-
             {/* Steps Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {steps.map(step => {
