@@ -489,6 +489,7 @@ function ScholarshipReport() {
             >
               <option value="">All Statuses</option>
               <option value="eligible">✅ Eligible</option>
+              <option value="non_eligible_all">🔴 Non-Eligible (All Remaining)</option>
               <option value="pending">⏳ Pending</option>
               <option value="rejected">❌ Rejected</option>
               <option value="not_eligible">🚫 Not Eligible</option>
@@ -532,11 +533,12 @@ function ScholarshipReport() {
             )}
             {filters.scholarship_status && (() => {
               const statusMeta = {
-                eligible:     { label: 'Eligible',     cls: 'bg-green-50 border-green-200 text-green-700' },
-                pending:      { label: 'Pending',      cls: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-                rejected:     { label: 'Rejected',     cls: 'bg-red-50 border-red-200 text-red-700' },
-                not_eligible: { label: 'Not Eligible', cls: 'bg-orange-50 border-orange-200 text-orange-700' },
-                not_applied:  { label: 'Not Applied',  cls: 'bg-gray-50 border-gray-300 text-gray-600' }
+                eligible:         { label: 'Eligible',                cls: 'bg-green-50 border-green-200 text-green-700' },
+                non_eligible_all: { label: 'Non-Eligible (All)',      cls: 'bg-red-50 border-red-200 text-red-700' },
+                pending:          { label: 'Pending',                 cls: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+                rejected:         { label: 'Rejected',                cls: 'bg-red-50 border-red-200 text-red-700' },
+                not_eligible:     { label: 'Not Eligible',            cls: 'bg-orange-50 border-orange-200 text-orange-700' },
+                not_applied:      { label: 'Not Applied',             cls: 'bg-gray-50 border-gray-300 text-gray-600' }
               };
               const meta = statusMeta[filters.scholarship_status] || { label: filters.scholarship_status, cls: 'bg-gray-50 border-gray-200 text-gray-600' };
               return (

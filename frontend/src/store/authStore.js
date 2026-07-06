@@ -24,11 +24,6 @@ const resolveDefaultRoute = (user, userType = null) => {
     return '/student/dashboard';
   }
 
-  // Faculty users go to faculty portal
-  if (user.role === 'faculty' || user.role === 'branch_faculty') {
-    return '/faculty/dashboard';
-  }
-
   // Super admin and legacy admin have full access - go to dashboard
   if (isFullAccessRole(user.role)) return '/';
 

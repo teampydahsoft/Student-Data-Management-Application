@@ -105,6 +105,15 @@ async function buildReportFilters(req) {
     baseQuery += " AND LOWER(TRIM(IFNULL(scholar_status,''))) = 'rejected'";
   } else if (scholarshipFilter === 'not_applied') {
     baseQuery += " AND LOWER(TRIM(IFNULL(scholar_status,''))) IN ('not_applied', 'not applied')";
+  } else if (scholarshipFilter === 'non_eligible_all') {
+    // All remaining cases (everything except Eligible):
+    // not_eligible + rejected + not_applied + pending (NULL/empty scholar_status)
+    // Also exclude auto-ineligible quota students (MANG/MQ/SPOT/LSPOT) — their
+    // not_eligible is auto-assigned by quota, not a real scholarship decision.
+    baseQuery += ` AND (
+      (scholar_status IS NULL OR TRIM(IFNULL(scholar_status,'')) = '')
+      OR LOWER(TRIM(IFNULL(scholar_status,''))) IN ('not_eligible', 'not eligible', 'rejected', 'not_applied', 'not applied', 'pending')
+    ) AND UPPER(TRIM(IFNULL(stud_type,''))) NOT IN ('MANG', 'MQ', 'SPOT', 'LSPOT')`;
   }
 
   return { baseQuery, params };
