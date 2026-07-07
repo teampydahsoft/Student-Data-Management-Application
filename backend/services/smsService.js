@@ -502,10 +502,10 @@ const convertTemplateToDLT = (template, variables) => {
   let dltTemplate = template;
   const dltVariables = [];
 
-  // Replace {{studentName}} with first {#var#} and add "your ward" to variables
+  // Replace {{studentName}} with first {#var#} and add actual student name to variables
   if (dltTemplate.includes('{{studentName}}')) {
     dltTemplate = dltTemplate.replace(/\{\{studentName\}\}/g, '{#var#}');
-    dltVariables.push('your ward');
+    dltVariables.push(variables.studentName || 'your ward');
   }
 
   // Replace {{admissionNumber}} - include it in the message if present
@@ -549,17 +549,23 @@ exports.sendAbsenceNotification = async ({
   }
 
   const formattedDate = formatDateForMessage(attendanceDate);
+
+  // Resolve student name — student_data may be a JSON string or object
+  let parsedStudentData = student.student_data;
+  if (typeof parsedStudentData === 'string') {
+    try { parsedStudentData = JSON.parse(parsedStudentData); } catch { parsedStudentData = {}; }
+  }
   const studentName = student.student_name ||
-    (student.student_data && (student.student_data['Student Name'] || student.student_data['student_name'])) ||
+    (parsedStudentData && (parsedStudentData['Student Name'] || parsedStudentData['student_name'])) ||
     'your ward';
   const admissionNumber = student.admission_number || '';
 
   // Convert template format if needed
   let message;
   if (template.includes('{#var#}')) {
-    // DLT format - use as-is
+    // DLT format - replace first {#var#} with student name, second with date
     message = buildAbsenceMessage(template, [
-      'your ward',
+      studentName,
       formattedDate
     ]);
   } else {
