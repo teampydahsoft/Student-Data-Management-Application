@@ -7361,8 +7361,8 @@ const mapRegistrationAbstractRowToExcel = (row) => {
   const ratio = (done) => `${done}/${Math.max(0, total - done)}`;
 
   return {
-    Batch: row.batch || '',
     College: row.college || '',
+    Batch: row.batch || '',
     Course: row.course || '',
     Branch: row.branch || '',
     Year: row.current_year ?? '',
@@ -7695,8 +7695,8 @@ exports.exportRegistrationReport = async (req, res) => {
       });
 
       abstractSheetData.push({
-        Batch: 'TOTAL',
-        College: '',
+        College: 'TOTAL',
+        Batch: '',
         Course: '',
         Branch: '',
         Year: '',
