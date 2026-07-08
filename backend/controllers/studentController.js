@@ -48,6 +48,36 @@ const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/
 const crypto = require('crypto');
 
 /**
+ * Load the registration_stage_config setting from DB.
+ * Returns a map: { "branchCode::yearId": { optionalStages: [] } }
+ * Falls back to {} on any error so the system always degrades gracefully.
+ */
+const loadRegistrationStageConfig = async () => {
+  try {
+    const [rows] = await masterPool.query(
+      "SELECT value FROM settings WHERE `key` = 'registration_stage_config' LIMIT 1"
+    );
+    if (rows.length > 0) {
+      const parsed = JSON.parse(rows[0].value || '{}');
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    }
+  } catch (e) {
+    console.warn('loadRegistrationStageConfig: failed to load config', e.message);
+  }
+  return {};
+};
+
+/**
+ * Resolve optional stages for a student given the stage config map.
+ * branchCode = student.branch (string), studentYear = student.current_year (1/2/3/4).
+ */
+const resolveOptionalStages = (stageConfig, branchCode, studentYear) => {
+  if (!stageConfig || !branchCode) return [];
+  const key = `${String(branchCode).trim()}::${String(studentYear != null ? studentYear : '').trim()}`;
+  return stageConfig[key]?.optionalStages || [];
+};
+
+/**
  * Parse an academic year label like "2023-2024" → fromYear=2023
  * Returns null if the label is not in YYYY-YYYY format.
  */
@@ -5764,12 +5794,17 @@ exports.getStudentByAdmission = async (req, res) => {
 
       const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible, currentSemFeePaid, student.stud_type);
 
+      // Load optional stages for this branch+year to allow optional stages to count as satisfied
+      const stageConfigSingle = await loadRegistrationStageConfig();
+      const optionalStagesSingle = resolveOptionalStages(stageConfigSingle, student.branch, stage.year);
+      const optSetSingle = new Set(optionalStagesSingle);
+
       const allConditionsMet =
-        isMobileVerified &&
-        certificatesCompleted &&
-        feeCompleted &&
-        promotionCompleted &&
-        scholarshipCompleted;
+        (isMobileVerified || optSetSingle.has('verification')) &&
+        (certificatesCompleted || optSetSingle.has('certificates')) &&
+        (feeCompleted || optSetSingle.has('fee')) &&
+        (promotionCompleted || optSetSingle.has('promotion')) &&
+        (scholarshipCompleted || optSetSingle.has('scholarship'));
 
       computedRegistrationStatus = allConditionsMet ? 'Completed' : 'pending';
 
@@ -7136,12 +7171,14 @@ exports.getRegistrationReport = async (req, res) => {
     const [students] = await masterPool.query(dataQuery, dataParams);
     const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear });
     const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
+    const stageConfig = await loadRegistrationStageConfig();
 
     const reportData = students.map((student) => {
       const studentData = parseStudentData(student);
       const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
       const scholarFeePaid = feePaidMap.get(student.id) ?? null;
-      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid);
+      const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
+      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid, optionalStages);
 
       return {
         id: student.id,
@@ -7644,12 +7681,14 @@ exports.exportRegistrationReport = async (req, res) => {
       academicYearFromYear: academicYearFromYearExport
     });
     const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
+    const stageConfigExport = await loadRegistrationStageConfig();
 
     const processedData = students.map((student) => {
       const studentData = parseStudentData(student);
       const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
       const scholarFeePaid = feePaidMap.get(student.id) ?? null;
-      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid);
+      const optionalStages = resolveOptionalStages(stageConfigExport, student.branch, student.current_year);
+      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid, optionalStages);
 
       const overallLabel = stages.overallStatus === 'completed'
         ? 'Completed'

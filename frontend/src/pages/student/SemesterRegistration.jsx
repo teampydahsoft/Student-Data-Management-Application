@@ -37,6 +37,7 @@ const SemesterRegistration = () => {
     const [initialLoading, setInitialLoading] = useState(true);
     const [studentData, setStudentData] = useState(null);
     const [scholarshipData, setScholarshipData] = useState(null);
+    const [optionalStages, setOptionalStages] = useState([]);
     const [activeStepId, setActiveStepId] = useState(null); // For Modal
 
     // Step 1 State: Verification
@@ -84,6 +85,24 @@ const SemesterRegistration = () => {
                     studentVerified,
                     parentVerified
                 }));
+
+                // Fetch optional stages for this branch+year using student's current_year
+                try {
+                    const branchCode = student.branch;
+                    const currentYear = student.current_year;
+                    if (branchCode && currentYear != null) {
+                        const cfgRes = await api.get(
+                            `/settings/registration-stage-config/branch/${encodeURIComponent(branchCode)}`
+                        );
+                        if (cfgRes.data?.success) {
+                            const yearData = cfgRes.data.data || {};
+                            setOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                        }
+                    }
+                } catch (e) {
+                    // Optional — degrade gracefully
+                    setOptionalStages([]);
+                }
             }
 
             if (scholarshipResponse.data?.success) {
@@ -175,8 +194,8 @@ const SemesterRegistration = () => {
     // ------------ STATUS CHECKERS ------------
 
     const registrationStages = useMemo(
-      () => computeRegistrationStageDisplays(studentData, scholarshipData),
-      [studentData, scholarshipData]
+      () => computeRegistrationStageDisplays(studentData, scholarshipData, optionalStages),
+      [studentData, scholarshipData, optionalStages]
     );
 
     const getStepStatus = (id) => {
@@ -184,15 +203,15 @@ const SemesterRegistration = () => {
 
         switch (id) {
             case 1:
-                return registrationStages.verification.completed ? 'completed' : 'pending';
+                return (registrationStages.verification.completed || registrationStages.verification.optional) ? 'completed' : 'pending';
             case 2:
-                return registrationStages.certificates.completed ? 'completed' : 'pending';
+                return (registrationStages.certificates.completed || registrationStages.certificates.optional) ? 'completed' : 'pending';
             case 3:
-                return registrationStages.fee.completed ? 'completed' : 'pending';
+                return (registrationStages.fee.completed || registrationStages.fee.optional) ? 'completed' : 'pending';
             case 4:
-                return registrationStages.promotion.completed ? 'completed' : 'pending';
+                return (registrationStages.promotion.completed || registrationStages.promotion.optional) ? 'completed' : 'pending';
             case 5:
-                return registrationStages.scholarship.completed ? 'completed' : 'pending';
+                return (registrationStages.scholarship.completed || registrationStages.scholarship.optional) ? 'completed' : 'pending';
             default:
                 return 'pending';
         }
@@ -201,9 +220,8 @@ const SemesterRegistration = () => {
     const isStepCompleted = (id) => getStepStatus(id) === 'completed';
 
     const canFinalize = () => {
-        // All 5 stages must be complete for registration to finalize.
-        // Step 5 (scholarship) uses isScholarshipRegistrationComplete which respects
-        // semester-wise (2026+) vs legacy logic — see registrationStages.jsx.
+        // All 5 stages must be complete (or optional) for registration to finalize.
+        // A stage is satisfied if it's actually completed OR if it's in the optionalStages list.
         return isStepCompleted(1) && isStepCompleted(2) && isStepCompleted(3) && isStepCompleted(4) && isStepCompleted(5);
     };
 

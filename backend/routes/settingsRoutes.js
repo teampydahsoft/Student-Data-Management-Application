@@ -52,6 +52,11 @@ router.get('/rtf-amount', settingsController.getRtfAmountConfig);
 router.put('/rtf-amount', settingsController.updateRtfAmountConfig);
 router.post('/rtf-amount/apply', settingsController.applyRtfAmountToStudents);
 
+// Registration Stage Config routes (optional stages per branch + student year 1/2/3/4)
+router.get('/registration-stage-config', settingsController.getRegistrationStageConfig);
+router.put('/registration-stage-config', settingsController.updateRegistrationStageConfig);
+router.get('/registration-stage-config/branch/:branchCode', settingsController.getRegistrationStageConfigForBranch);
+
 module.exports = router;
 
 

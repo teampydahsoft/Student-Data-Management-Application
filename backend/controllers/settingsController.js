@@ -830,3 +830,108 @@ exports.applyRtfAmountToStudents = async (req, res) => {
   }
 };
 
+
+/**
+ * GET /api/settings/registration-stage-config
+ * Shape: { "branchCode::1": { optionalStages: [] }, "branchCode::2": { optionalStages: ["scholarship"] }, ... }
+ * Key uses the student's academic year number (1, 2, 3, 4) — NOT the academic_years table id.
+ */
+exports.getRegistrationStageConfig = async (req, res) => {
+  try {
+    const [rows] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['registration_stage_config']
+    );
+    let config = {};
+    if (rows.length > 0) {
+      try { config = JSON.parse(rows[0].value); } catch (e) { /* use default */ }
+    }
+    if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
+    res.json({ success: true, data: config });
+  } catch (error) {
+    console.error('Get registration stage config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch registration stage config' });
+  }
+};
+
+/**
+ * PUT /api/settings/registration-stage-config
+ * Body: { branchCode: string, years: { "1": ["verification","fee"], "2": [], "3": [], "4": [] } }
+ * Saves optional stages per student year number for the given branch.
+ */
+exports.updateRegistrationStageConfig = async (req, res) => {
+  try {
+    const VALID_STAGES = ['verification', 'certificates', 'fee', 'promotion', 'scholarship'];
+
+    const [rows] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['registration_stage_config']
+    );
+    let existing = {};
+    if (rows.length > 0) {
+      try { existing = JSON.parse(rows[0].value) || {}; } catch (e) { existing = {}; }
+    }
+
+    const { branchCode, years } = req.body;
+    if (!branchCode || !years || typeof years !== 'object' || Array.isArray(years)) {
+      return res.status(400).json({ success: false, message: 'branchCode and years object are required' });
+    }
+
+    // years = { "1": ["verification"], "2": [], "3": ["scholarship"], "4": [] }
+    for (const [yearNum, stages] of Object.entries(years)) {
+      const configKey = `${String(branchCode).trim()}::${String(yearNum).trim()}`;
+      if (!Array.isArray(stages) || stages.length === 0) {
+        delete existing[configKey];
+      } else {
+        const sanitized = stages.filter((s) => VALID_STAGES.includes(String(s)));
+        if (sanitized.length === 0) {
+          delete existing[configKey];
+        } else {
+          existing[configKey] = { optionalStages: sanitized };
+        }
+      }
+    }
+
+    const value = JSON.stringify(existing);
+    await masterPool.query(
+      `INSERT INTO settings (\`key\`, value, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?, updated_at = ?`,
+      ['registration_stage_config', value, new Date(), value, new Date()]
+    );
+    auditSettingChange(req, 'registration_stage_config', { branchCode, yearKeys: Object.keys(years) });
+    res.json({ success: true, message: 'Registration stage config saved', data: existing });
+  } catch (error) {
+    console.error('Update registration stage config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save registration stage config' });
+  }
+};
+
+/**
+ * GET /api/settings/registration-stage-config/branch/:branchCode
+ * Returns all year entries for one branch.
+ * Response: { "1": { optionalStages: [] }, "2": { optionalStages: ["scholarship"] }, ... }
+ */
+exports.getRegistrationStageConfigForBranch = async (req, res) => {
+  try {
+    const { branchCode } = req.params;
+    const [rows] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ?',
+      ['registration_stage_config']
+    );
+    let config = {};
+    if (rows.length > 0) {
+      try { config = JSON.parse(rows[0].value) || {}; } catch (e) { config = {}; }
+    }
+    const prefix = `${String(branchCode).trim()}::`;
+    const result = {};
+    for (const [key, val] of Object.entries(config)) {
+      if (key.startsWith(prefix)) {
+        const yearNum = key.slice(prefix.length);
+        result[yearNum] = val;
+      }
+    }
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get registration stage config for branch error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch registration stage config' });
+  }
+};

@@ -28,14 +28,16 @@ export const parseStudentDataField = (student) => {
 };
 
 /** Registration stage display — aligned with admin student dialog and reports. */
-export const computeRegistrationStageDisplays = (student, scholarshipData) => {
+export const computeRegistrationStageDisplays = (student, scholarshipData, optionalStages = []) => {
+  const optSet = new Set(Array.isArray(optionalStages) ? optionalStages : []);
+
   if (!student) {
     return {
-      verification: { completed: false, display: REGISTRATION_EMPTY_DISPLAY },
-      certificates: { completed: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
-      fee: { completed: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
-      promotion: { completed: false, display: REGISTRATION_EMPTY_DISPLAY },
-      scholarship: { completed: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
+      verification: { completed: false, optional: false, display: REGISTRATION_EMPTY_DISPLAY },
+      certificates: { completed: false, optional: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
+      fee: { completed: false, optional: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
+      promotion: { completed: false, optional: false, display: REGISTRATION_EMPTY_DISPLAY },
+      scholarship: { completed: false, optional: false, display: REGISTRATION_EMPTY_DISPLAY, rawStatus: '' },
       certStatus: '',
       feeStatus: '',
       scholarStatus: '',
@@ -72,28 +74,33 @@ export const computeRegistrationStageDisplays = (student, scholarshipData) => {
   return {
     verification: {
       completed: isVerificationComplete,
-      display: getStageBadgeDisplay(isVerificationComplete)
+      optional: optSet.has('verification'),
+      display: getStageBadgeDisplay(isVerificationComplete || optSet.has('verification'))
     },
     certificates: {
       completed: isCertComplete,
-      display: getStageBadgeDisplay(isCertComplete, certStatus),
+      optional: optSet.has('certificates'),
+      display: getStageBadgeDisplay(isCertComplete || optSet.has('certificates'), certStatus),
       rawStatus: certStatus
     },
     fee: {
       completed: isFeeComplete,
-      display: getStageBadgeDisplay(isFeeComplete, feeStatus),
+      optional: optSet.has('fee'),
+      display: getStageBadgeDisplay(isFeeComplete || optSet.has('fee'), feeStatus),
       rawStatus: feeStatus
     },
     promotion: {
       completed: isPromotionComplete,
+      optional: optSet.has('promotion'),
       display: getStageBadgeDisplay(
-        isPromotionComplete,
+        isPromotionComplete || optSet.has('promotion'),
         isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY
       )
     },
     scholarship: {
       completed: isScholarshipComplete,
-      display: getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
+      optional: optSet.has('scholarship'),
+      display: getStageBadgeDisplay(isScholarshipComplete || optSet.has('scholarship'), scholarStatus),
       rawStatus: scholarStatus
     },
     certStatus,
@@ -103,13 +110,14 @@ export const computeRegistrationStageDisplays = (student, scholarshipData) => {
   };
 };
 
-export const RegistrationStageBadge = ({ display }) => {
+export const RegistrationStageBadge = ({ display, optional = false }) => {
   const isCompleted = display === 'Completed';
   const isEmpty = display === REGISTRATION_EMPTY_DISPLAY || display === '—';
   const isPending = display === 'Pending';
 
   let colorClass = 'bg-gray-100 text-gray-800';
   if (isCompleted) colorClass = 'bg-green-100 text-green-800';
+  else if (optional && (isEmpty || isPending)) colorClass = 'bg-blue-50 text-blue-600';
   else if (isEmpty || isPending) colorClass = 'bg-gray-100 text-gray-500';
   else if (display === 'Not eligible' || display === 'Rejected') colorClass = 'bg-red-100 text-red-700';
   else if (display === 'Eligible' || display === 'Not applied') colorClass = 'bg-green-100 text-green-700';
@@ -117,6 +125,7 @@ export const RegistrationStageBadge = ({ display }) => {
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${colorClass}`}>
       {display}
+      {optional && !isCompleted && <span className="ml-1 text-[10px] opacity-70">(optional)</span>}
     </span>
   );
 };

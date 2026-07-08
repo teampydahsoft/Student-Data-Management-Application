@@ -45,11 +45,16 @@ const parseStudentData = (student) => {
  * Registration stage display aligned with the student view dialog (Students.jsx registration tab).
  * scholarStatus: the eligible string for the current semester
  * scholarFeePaid: boolean — whether fee is marked paid for the current semester (CONV+not_eligible only)
+ * optionalStages: string[] — stage keys that are optional for this branch+year
+ *   (e.g. ['verification', 'scholarship']). When a stage is optional, it is treated as
+ *   complete for the overall status even if not actually completed.
  */
-const computeRegistrationStages = (student, studentData, scholarStatus, scholarFeePaid = null) => {
+const computeRegistrationStages = (student, studentData, scholarStatus, scholarFeePaid = null, optionalStages = []) => {
   const data = studentData || {};
   const currentYear = student.current_year || data.current_year;
   const currentSemester = student.current_semester || data.current_semester;
+
+  const optSet = new Set(Array.isArray(optionalStages) ? optionalStages : []);
 
   const isVerificationComplete = isVerificationCompleteForCycle(data, currentYear, currentSemester);
 
@@ -71,53 +76,54 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     studType
   );
 
+  // For overall status: an optional stage counts as satisfied regardless of actual completion
+  const verifSatisfied = isVerificationComplete || optSet.has('verification');
+  const certSatisfied = isCertComplete || optSet.has('certificates');
+  const feeSatisfied = isFeeComplete || optSet.has('fee');
+  const promotionSatisfied = isPromotionComplete || optSet.has('promotion');
+  const scholarSatisfied = isScholarshipComplete || optSet.has('scholarship');
+  const certTemporarySatisfied = (isCertTemporary || isCertComplete) || optSet.has('certificates');
+
   let overallStatus = 'pending';
-  if (
-    isVerificationComplete
-    && isCertComplete
-    && isFeeComplete
-    && isPromotionComplete
-    && isScholarshipComplete
-  ) {
+  if (verifSatisfied && certSatisfied && feeSatisfied && promotionSatisfied && scholarSatisfied) {
     overallStatus = 'completed';
-  } else if (
-    isVerificationComplete
-    && isCertTemporary
-    && isFeeComplete
-    && isPromotionComplete
-    && isScholarshipComplete
-  ) {
+  } else if (verifSatisfied && certTemporarySatisfied && feeSatisfied && promotionSatisfied && scholarSatisfied) {
     overallStatus = 'Temporary';
   }
 
   return {
     verification: {
       completed: isVerificationComplete,
-      display: getStageBadgeDisplay(isVerificationComplete),
-      status: isVerificationComplete ? 'completed' : 'pending'
+      optional: optSet.has('verification'),
+      display: getStageBadgeDisplay(isVerificationComplete || optSet.has('verification')),
+      status: isVerificationComplete ? 'completed' : (optSet.has('verification') ? 'optional' : 'pending')
     },
     certificates: {
       completed: isCertComplete,
-      display: getStageBadgeDisplay(isCertComplete, certStatus),
-      status: isCertTemporary ? 'temporary' : (isCertComplete ? 'completed' : 'pending')
+      optional: optSet.has('certificates'),
+      display: getStageBadgeDisplay(isCertComplete || optSet.has('certificates'), certStatus),
+      status: isCertTemporary ? 'temporary' : (isCertComplete ? 'completed' : (optSet.has('certificates') ? 'optional' : 'pending'))
     },
     fee: {
       completed: isFeeComplete,
-      display: getStageBadgeDisplay(isFeeComplete, feeStatus),
-      status: isFeeComplete ? 'completed' : 'pending'
+      optional: optSet.has('fee'),
+      display: getStageBadgeDisplay(isFeeComplete || optSet.has('fee'), feeStatus),
+      status: isFeeComplete ? 'completed' : (optSet.has('fee') ? 'optional' : 'pending')
     },
     promotion: {
       completed: isPromotionComplete,
+      optional: optSet.has('promotion'),
       display: getStageBadgeDisplay(
-        isPromotionComplete,
+        isPromotionComplete || optSet.has('promotion'),
         isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY
       ),
-      status: isPromotionComplete ? 'completed' : 'pending'
+      status: isPromotionComplete ? 'completed' : (optSet.has('promotion') ? 'optional' : 'pending')
     },
     scholarship: {
       completed: isScholarshipComplete,
-      display: getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
-      status: isScholarshipComplete ? 'completed' : 'pending'
+      optional: optSet.has('scholarship'),
+      display: getStageBadgeDisplay(isScholarshipComplete || optSet.has('scholarship'), scholarStatus),
+      status: isScholarshipComplete ? 'completed' : (optSet.has('scholarship') ? 'optional' : 'pending')
     },
     overallStatus
   };

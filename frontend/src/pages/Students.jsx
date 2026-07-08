@@ -319,6 +319,7 @@ const Students = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [scholarshipData, setScholarshipData] = useState(null);
   const [scholarshipLoading, setScholarshipLoading] = useState(false);
+  const [regOptionalStages, setRegOptionalStages] = useState([]); // optional stages for selected student's branch+year
   const [showModal, setShowModal] = useState(false);
   const [activeStudentTab, setActiveStudentTab] = useState('details');
   const [historySubTab, setHistorySubTab] = useState('remarks');
@@ -731,6 +732,7 @@ const Students = () => {
   useEffect(() => {
     setShowIdCardPreview(false);
     setScholarshipData(null);
+    setRegOptionalStages([]);
   }, [selectedStudent?.admission_number]);
 
   const fetchScholarshipForStudent = useCallback(async (admissionNumber) => {
@@ -768,23 +770,40 @@ const Students = () => {
   useEffect(() => {
     const fetchFullDetails = async () => {
       if (showModal && selectedStudent?.admission_number) {
-        // If photo is missing, we likely need to fetch full details
-        // We always fetch to ensure we have the latest data including the photo blob if it exists
         try {
           const response = await api.get(`/students/${selectedStudent.admission_number}`);
           if (response.data.success) {
+            const freshData = response.data.data;
             setSelectedStudent(prev => ({
-              ...prev, // Keep existing fields (like computed ones)
-              ...response.data.data, // Overwrite with fresh DB data (including photo)
-              // Ensure we don't lose the ID or crucial keys if the API returns slightly different structure
+              ...prev,
+              ...freshData,
               id: prev.id
             }));
-
-            // Also update editData if we are in edit mode or just to have it ready
             setEditData(prev => ({
               ...prev,
-              ...response.data.data
+              ...freshData
             }));
+
+            // Fetch optional stages using fresh branch + current_year from DB
+            const branchCode = freshData.branch || selectedStudent.branch;
+            const currentYear = freshData.current_year ?? selectedStudent.current_year;
+            if (branchCode && currentYear != null) {
+              try {
+                const cfgRes = await api.get(
+                  `/settings/registration-stage-config/branch/${encodeURIComponent(branchCode)}`
+                );
+                if (cfgRes.data?.success) {
+                  const yearData = cfgRes.data.data || {};
+                  setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                } else {
+                  setRegOptionalStages([]);
+                }
+              } catch {
+                setRegOptionalStages([]);
+              }
+            } else {
+              setRegOptionalStages([]);
+            }
           }
         } catch (error) {
           console.error("Failed to fetch full student details:", error);
@@ -4085,14 +4104,35 @@ const Students = () => {
                     const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
                     const canVerifyMobile = canViewField('registration_status');
 
-                    const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete && isPromotionComplete && isScholarshipComplete;
+                    // Build optional set for this student's branch+year
+                    const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
 
-                    const StatusBadge = ({ completed, text }) => (
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completed ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    // A stage is "satisfied" if actually complete OR marked optional
+                    const isRegistrationComplete =
+                      (isVerificationComplete || optSet.has('verification')) &&
+                      (isCertComplete        || optSet.has('certificates')) &&
+                      (isFeeComplete         || optSet.has('fee')) &&
+                      (isPromotionComplete   || optSet.has('promotion')) &&
+                      (isScholarshipComplete || optSet.has('scholarship'));
+
+                    // StatusBadge: green when complete, blue-tinted when optional+pending, gray otherwise
+                    const StatusBadge = ({ completed, optional = false, text }) => {
+                      const display = completed ? 'Completed' : (text ? formatScholarshipStatusDisplay(text) : '—');
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          completed
+                            ? 'bg-green-100 text-green-800'
+                            : optional
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : 'bg-gray-100 text-gray-800'
                         }`}>
-                        {completed ? 'Completed' : formatScholarshipStatusDisplay(text)}
-                      </span>
-                    );
+                          {display}
+                          {optional && !completed && (
+                            <span className="text-[10px] opacity-75">(optional)</span>
+                          )}
+                        </span>
+                      );
+                    };
 
                     return (
                       <div className="space-y-6">
@@ -4120,14 +4160,19 @@ const Students = () => {
                         </h4>
 
                         <div className="grid grid-cols-1 gap-4">
-                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col gap-4">
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col gap-4 ${isVerificationComplete ? 'bg-white border-gray-200' : optSet.has('verification') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                               <div className="flex items-start gap-3">
-                                <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : optSet.has('verification') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
                                   <MessageSquare size={20} />
                                 </div>
                                 <div>
-                                  <h5 className="font-semibold text-gray-900">1. Mobile Verification</h5>
+                                  <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                                    1. Mobile Verification
+                                    {optSet.has('verification') && !isVerificationComplete && (
+                                      <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                    )}
+                                  </h5>
                                   <p className="text-xs text-gray-500 mt-0.5">Send OTP to student or parent mobile for this semester</p>
                                   <div className="flex flex-col gap-1.5 mt-2">
                                     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -4146,7 +4191,7 @@ const Students = () => {
                                 </div>
                               </div>
                               <div className="flex flex-col sm:items-end gap-2 shrink-0">
-                                <StatusBadge completed={isVerificationComplete} />
+                                <StatusBadge completed={isVerificationComplete} optional={optSet.has('verification')} />
                                 {canVerifyMobile && (
                                   <button
                                     type="button"
@@ -4161,43 +4206,58 @@ const Students = () => {
                             </div>
                           </div>
 
-                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isCertComplete ? 'bg-white border-gray-200' : optSet.has('certificates') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : optSet.has('certificates') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
                                 <FileText size={20} />
                               </div>
                               <div>
-                                <h5 className="font-semibold text-gray-900">2. Certificate Status</h5>
+                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  2. Certificate Status
+                                  {optSet.has('certificates') && !isCertComplete && (
+                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                  )}
+                                </h5>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Current Status: <span className="font-medium text-gray-900 capitalize">{certStatus || 'Pending'}</span>
                                 </p>
                               </div>
                             </div>
-                            <StatusBadge completed={isCertComplete} text={certStatus} />
+                            <StatusBadge completed={isCertComplete} optional={optSet.has('certificates')} text={certStatus} />
                           </div>
 
-                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isFeeComplete ? 'bg-white border-gray-200' : optSet.has('fee') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : optSet.has('fee') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
                                 <span className="font-bold text-lg px-1">₹</span>
                               </div>
                               <div>
-                                <h5 className="font-semibold text-gray-900">3. Fee Payment</h5>
+                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  3. Fee Payment
+                                  {optSet.has('fee') && !isFeeComplete && (
+                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                  )}
+                                </h5>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Current Status: <span className="font-medium text-gray-900 capitalize">{feeStatus || 'Pending'}</span>
                                 </p>
                               </div>
                             </div>
-                            <StatusBadge completed={isFeeComplete} text={feeStatus} />
+                            <StatusBadge completed={isFeeComplete} optional={optSet.has('fee')} text={feeStatus} />
                           </div>
 
-                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isPromotionComplete ? 'bg-white border-gray-200' : optSet.has('promotion') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isPromotionComplete ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <div className={`mt-1 p-2 rounded-full ${isPromotionComplete ? 'bg-blue-100 text-blue-600' : optSet.has('promotion') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
                                 <TrendingUp size={20} />
                               </div>
                               <div>
-                                <h5 className="font-semibold text-gray-900">4. Promotion Status</h5>
+                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  4. Promotion Status
+                                  {optSet.has('promotion') && !isPromotionComplete && (
+                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                  )}
+                                </h5>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Acknowledged for current semester
                                 </p>
@@ -4209,25 +4269,31 @@ const Students = () => {
                               </span>
                               <StatusBadge
                                 completed={isPromotionComplete}
+                                optional={optSet.has('promotion')}
                                 text={isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY}
                               />
                             </div>
                           </div>
 
-                          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isScholarshipComplete ? 'bg-white border-gray-200' : optSet.has('scholarship') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-start gap-3">
-                              <div className="mt-1 p-2 rounded-full bg-purple-100 text-purple-600">
+                              <div className={`mt-1 p-2 rounded-full ${isScholarshipComplete ? 'bg-purple-100 text-purple-600' : optSet.has('scholarship') ? 'bg-blue-100 text-blue-500' : 'bg-purple-100 text-purple-600'}`}>
                                 <Book size={20} />
                               </div>
                               <div>
-                                <h5 className="font-semibold text-gray-900">5. Scholarship Status</h5>
+                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  5. Scholarship Status
+                                  {optSet.has('scholarship') && !isScholarshipComplete && (
+                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                  )}
+                                </h5>
                                 <p className="text-sm text-gray-500 mt-1">
                                   Year {selectedStudent.current_year || studentData.current_year || 1} status from scholarship records
                                 </p>
                               </div>
                             </div>
                             <div className="ml-auto flex items-center">
-                              <StatusBadge completed={isScholarshipComplete} text={scholarStatus} />
+                              <StatusBadge completed={isScholarshipComplete} optional={optSet.has('scholarship')} text={scholarStatus} />
                             </div>
                           </div>
 

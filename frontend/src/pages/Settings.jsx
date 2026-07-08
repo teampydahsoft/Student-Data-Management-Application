@@ -1203,6 +1203,24 @@ const Settings = () => {
   const [branchModalCourseId, setBranchModalCourseId] = useState(null);
   const [newBranch, setNewBranch] = useState({ name: '', code: '', ...defaultBranchSectionsState() });
 
+  // Registration Stage Setup modal state
+  const [regStageModal, setRegStageModal] = useState({
+    isOpen: false,
+    branch: null,          // the branch object
+    totalYears: 4,         // from the selected course
+    // yearStages: { "1": Set<stageKey>, "2": Set<stageKey>, ... }
+    yearStages: {},
+    saving: false,
+    loading: false
+  });
+  const REG_STAGE_KEYS = [
+    { key: 'verification', label: 'Verification', desc: 'OTP verify' },
+    { key: 'certificates', label: 'Certificates', desc: 'Cert status' },
+    { key: 'fee', label: 'Fee', desc: 'Fee clearance' },
+    { key: 'promotion', label: 'Promotion', desc: 'Year promotion' },
+    { key: 'scholarship', label: 'Scholarship', desc: 'Scholarship' }
+  ];
+
   // Academic Years state
   const [academicYears, setAcademicYears] = useState([]);
   const [academicYearsLoading, setAcademicYearsLoading] = useState(false);
@@ -3247,8 +3265,88 @@ const Settings = () => {
     }
   };
 
+  // ── Registration Stage Setup helpers ──────────────────────────────────────
+  const openRegStageModal = async (branch, course) => {
+    // Effective total years resolution (in priority order):
+    // 1. branch.yearSemesterConfig length (explicit per-year config array)
+    // 2. branch.metadata.hasAdditionalYear → total_years + additionalYear count
+    // 3. branch.totalYears (branch-level override)
+    // 4. course.yearSemesterConfig length
+    // 5. course.totalYears
+    // 6. fallback 4
+    let totalYears;
+    const branchYscLen = Array.isArray(branch.yearSemesterConfig) ? branch.yearSemesterConfig.length : 0;
+    if (branchYscLen > 0) {
+      totalYears = branchYscLen;
+    } else if (branch.metadata?.hasAdditionalYear && branch.metadata?.additionalYear) {
+      // Base years + the additional year number gives us the max year
+      totalYears = Math.max(
+        Number(branch.totalYears ?? course?.totalYears ?? 0),
+        Number(branch.metadata.additionalYear)
+      );
+    } else {
+      const courseYscLen = Array.isArray(course?.yearSemesterConfig) ? course.yearSemesterConfig.length : 0;
+      totalYears = Number(branch.totalYears ?? 0)
+        || courseYscLen
+        || Number(course?.totalYears ?? 0)
+        || 4;
+    }
+    // Always key by branch NAME — students.branch column stores the name, not the code
+    const branchCode = branch.name;
+    const initStages = {};
+    for (let y = 1; y <= totalYears; y++) initStages[String(y)] = new Set();
+    setRegStageModal({ isOpen: true, branch, totalYears, yearStages: initStages, saving: false, loading: true });
+    try {
+      const res = await api.get(`/settings/registration-stage-config/branch/${encodeURIComponent(branchCode)}`);
+      if (res.data?.success) {
+        const data = res.data.data || {};
+        const loaded = {};
+        for (let y = 1; y <= totalYears; y++) {
+          loaded[String(y)] = new Set(data[String(y)]?.optionalStages || []);
+        }
+        setRegStageModal(prev => ({ ...prev, yearStages: loaded, loading: false }));
+      } else {
+        setRegStageModal(prev => ({ ...prev, loading: false }));
+      }
+    } catch {
+      setRegStageModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const closeRegStageModal = () => {
+    setRegStageModal({ isOpen: false, branch: null, totalYears: 4, yearStages: {}, saving: false, loading: false });
+  };
+
+  const toggleRegStageForYear = (yearNum, stageKey) => {
+    setRegStageModal(prev => {
+      const current = new Set(prev.yearStages[yearNum] || []);
+      if (current.has(stageKey)) current.delete(stageKey);
+      else current.add(stageKey);
+      return { ...prev, yearStages: { ...prev.yearStages, [yearNum]: current } };
+    });
+  };
+
+  const saveRegStageConfig = async () => {
+    const { branch, yearStages } = regStageModal;
+    if (!branch) return;
+    // Always key by branch NAME — students.branch column stores the name, not the code
+    const branchCode = branch.name;
+    const yearsPayload = {};
+    for (const [y, stageSet] of Object.entries(yearStages)) {
+      yearsPayload[y] = Array.from(stageSet);
+    }
+    setRegStageModal(prev => ({ ...prev, saving: true }));
+    try {
+      await api.put('/settings/registration-stage-config', { branchCode, years: yearsPayload });
+      toast.success('Registration stage config saved');
+      closeRegStageModal();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save registration stage config');
+      setRegStageModal(prev => ({ ...prev, saving: false }));
+    }
+  };
+
   const handleDeleteBranch = async (courseId, branch) => {
-    // Determine scope: if filtering by batch, delete specific branch ('single').
     // If showing all batches (grouped view), delete all branch versions ('all').
     const scope = branchBatchFilter ? 'single' : 'all';
 
@@ -3991,6 +4089,14 @@ const Settings = () => {
                                         )}
                                       </div>
                                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {/* Registration Setup button */}
+                                        <button
+                                          onClick={() => openRegStageModal(branch, selectedCourse)}
+                                          className="p-1 text-gray-400 hover:text-purple-600 transition-colors"
+                                          title="Registration Setup"
+                                        >
+                                          <Settings2 size={14} />
+                                        </button>
                                         <button
                                           onClick={() => startEditBranch(selectedCourse.id, branch, selectedCourse)}
                                           disabled={savingBranchId === branch.id}
@@ -6600,6 +6706,144 @@ const Settings = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Registration Stage Setup Modal ── */}
+      {regStageModal.isOpen && typeof document !== 'undefined' && document.body && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) closeRegStageModal(); }}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white shadow-2xl flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 flex-shrink-0">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <Settings2 size={15} className="text-purple-700" />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">Registration Setup</h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 ml-9">
+                  Branch: <span className="font-semibold text-purple-700">{regStageModal.branch?.name}</span>
+                  <span className="mx-1.5 text-gray-300">|</span>
+                  <span className="text-gray-500">{regStageModal.totalYears} year{regStageModal.totalYears !== 1 ? 's' : ''}</span>
+                  <span className="mx-1.5 text-gray-300">|</span>
+                  Select stages that are <span className="font-semibold text-gray-700">not required</span> for each year — those students' registration will auto-complete even if the stage is pending.
+                </p>
+              </div>
+              <button onClick={closeRegStageModal} className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {regStageModal.loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <LoadingAnimation width={28} height={28} showMessage={false} />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Column headers */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 flex-shrink-0" />
+                    {REG_STAGE_KEYS.map(({ key, label }) => (
+                      <div key={key} className="flex-1 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* One row per year */}
+                  {Array.from({ length: regStageModal.totalYears }, (_, i) => {
+                    const yearNum = String(i + 1);
+                    const yearSet = regStageModal.yearStages[yearNum] || new Set();
+                    const optCount = yearSet.size;
+                    return (
+                      <div
+                        key={yearNum}
+                        className={`flex items-center gap-2 rounded-xl border px-4 py-3 transition-colors ${
+                          optCount > 0 ? 'border-purple-200 bg-purple-50/60' : 'border-gray-200 bg-gray-50/50'
+                        }`}
+                      >
+                        {/* Year label */}
+                        <div className="w-24 flex-shrink-0">
+                          <span className="text-sm font-bold text-gray-800">Year {yearNum}</span>
+                          {optCount > 0 && (
+                            <div className="text-[10px] text-purple-600 font-medium mt-0.5">{optCount} optional</div>
+                          )}
+                        </div>
+
+                        {/* Stage toggles */}
+                        {REG_STAGE_KEYS.map(({ key, label }) => {
+                          const isOptional = yearSet.has(key);
+                          return (
+                            <div key={key} className="flex-1 flex justify-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleRegStageForYear(yearNum, key)}
+                                title={isOptional ? `${label} is optional for Year ${yearNum}` : `Mark ${label} as optional for Year ${yearNum}`}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center border-2 transition-all ${
+                                  isOptional
+                                    ? 'bg-purple-600 border-purple-600 shadow-sm'
+                                    : 'bg-white border-gray-300 hover:border-purple-400 hover:bg-purple-50'
+                                }`}
+                              >
+                                {isOptional ? (
+                                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  {/* Legend */}
+                  <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 mt-2">
+                    <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Checked stages are <span className="font-semibold">optional</span> — students in this branch for the selected year will have their registration counted as complete even if those stages are still pending or not done.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4 flex-shrink-0 bg-gray-50 rounded-b-xl">
+              <button
+                type="button"
+                onClick={closeRegStageModal}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveRegStageConfig}
+                disabled={regStageModal.saving || regStageModal.loading}
+                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {regStageModal.saving ? (
+                  <><LoadingAnimation width={14} height={14} showMessage={false} variant="inline" />Saving...</>
+                ) : (
+                  <><Save size={14} />Save Config</>
+                )}
+              </button>
+            </div>
           </div>
         </div>,
         document.body
