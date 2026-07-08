@@ -2484,7 +2484,11 @@ exports.getAllStudents = async (req, res) => {
           WHEN certificates_status = 'Temporary' THEN 'Temporary'
           WHEN
             ((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND 
-             (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%')) AND
+             (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') AND
+             (student_data LIKE CONCAT('%"mobile_verified_year":', current_year, '%') OR student_data LIKE CONCAT('%"mobile_verified_year": ', current_year, '%')) AND
+             (student_data LIKE CONCAT('%"mobile_verified_semester":', current_semester, '%') OR student_data LIKE CONCAT('%"mobile_verified_semester": ', current_semester, '%')) AND
+             (student_data LIKE CONCAT('%"parent_verified_year":', current_year, '%') OR student_data LIKE CONCAT('%"parent_verified_year": ', current_year, '%')) AND
+             (student_data LIKE CONCAT('%"parent_verified_semester":', current_semester, '%') OR student_data LIKE CONCAT('%"parent_verified_semester": ', current_semester, '%'))) AND
             (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
             (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
             (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
@@ -2833,15 +2837,17 @@ exports.getAllStudents = async (req, res) => {
         ? student.fee_status
         : (parsedData?.fee_status || parsedData?.['Fee Status'] || null);
 
-      // Prefer the DB registration_status column if it's 'Completed'
-      // Otherwise use the computed status or fallbacks
+      // Always prefer the live-computed status (registration_status_computed) — it is
+      // cycle-aware and checks mobile verification against the student's current
+      // year/semester. Only fall back to the stored DB column when the computed value
+      // is absent (e.g. legacy rows that pre-date the CASE column).
       const dbRegistrationStatus = (student.registration_status && String(student.registration_status).trim().length > 0)
         ? student.registration_status
         : (parsedData?.registration_status || parsedData?.['Registration Status'] || null);
 
-      const resolvedRegistrationStatus = (dbRegistrationStatus && String(dbRegistrationStatus).toLowerCase() === 'completed')
-        ? 'Completed'
-        : (student.registration_status_computed || dbRegistrationStatus || 'pending');
+      const resolvedRegistrationStatus = student.registration_status_computed
+        || dbRegistrationStatus
+        || 'pending';
 
       // Scholarship status — year-wise for 2026+ academic years, scholar_status column before that
       const normalizedScholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, parsedData);
@@ -2913,7 +2919,11 @@ exports.getStudentByAdmission = async (req, res) => {
         CASE
           WHEN s.certificates_status = 'Temporary' THEN 'Temporary'
           WHEN
-            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
+             (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
+             (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
+             (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
+             (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
             (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
             (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
             (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND

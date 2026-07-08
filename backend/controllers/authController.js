@@ -333,7 +333,11 @@ exports.unifiedLogin = async (req, res) => {
             cb.id as branch_id, col.id as college_id, c.level as course_level,
             CASE
               WHEN
-                (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+                (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
+                 (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
+                 (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
+                 (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
+                 (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
                 (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
                 (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%')
               THEN 'Completed'
@@ -517,7 +521,11 @@ exports.createSSOSession = async (req, res) => {
           cb.id as branch_id, col.id as college_id, c.level as course_level,
           CASE
             WHEN
-              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
+               (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
+               (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
+               (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
+               (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
               (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
               (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
               (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
@@ -732,7 +740,11 @@ exports.verifyToken = async (req, res) => {
           cb.id as branch_id, col.id as college_id, c.level as course_level,
           CASE
             WHEN
-              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
+               (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
+               (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
+               (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
+               (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
               (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
               (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
               (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND

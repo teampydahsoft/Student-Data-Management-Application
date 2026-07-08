@@ -680,7 +680,11 @@ exports.getAttendance = async (req, res) => {
         s.current_semester,
         CASE
           WHEN
-            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%') AND
+            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
+             (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
+             (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
+             (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
+             (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
             (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
             (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%')
           THEN 'Completed'

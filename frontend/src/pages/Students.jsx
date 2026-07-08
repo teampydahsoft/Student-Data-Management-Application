@@ -4085,7 +4085,7 @@ const Students = () => {
                     const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
                     const canVerifyMobile = canViewField('registration_status');
 
-                    const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete;
+                    const isRegistrationComplete = isVerificationComplete && isCertComplete && isFeeComplete && isPromotionComplete && isScholarshipComplete;
 
                     const StatusBadge = ({ completed, text }) => (
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completed ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
