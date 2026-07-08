@@ -186,6 +186,7 @@ export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
   if (isConv && isNotEligible) {
     const semFeePaid = semesterRow?.fee_paid === true || semesterRow?.fee_paid === 1;
     const apiFeePaid = scholarshipData?.currentSemesterFeePaid === true;
+    // null/undefined means not yet confirmed — treat as NOT paid (require explicit check).
     return semFeePaid || apiFeePaid;
   }
 

@@ -618,7 +618,9 @@ const isScholarshipCompleteForRegistration = (eligible, feePaid = null, studType
   const isConv = ['conv', 'cq'].includes(String(studType || '').trim().toLowerCase());
   const isNotEligible = normalized === 'not_eligible';
 
-  if (isConv && isNotEligible && feePaid !== null) {
+  if (isConv && isNotEligible) {
+    // feePaid=null means no row found for this semester — treat as NOT paid (require explicit check).
+    // feePaid=true/1 means admin explicitly ticked the checkbox.
     return feePaid === true || feePaid === 1;
   }
   return true;
