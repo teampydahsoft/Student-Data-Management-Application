@@ -43,8 +43,10 @@ const parseStudentData = (student) => {
 
 /**
  * Registration stage display aligned with the student view dialog (Students.jsx registration tab).
+ * scholarStatus: the eligible string for the current semester
+ * scholarFeePaid: boolean — whether fee is marked paid for the current semester (CONV+not_eligible only)
  */
-const computeRegistrationStages = (student, studentData, scholarStatus) => {
+const computeRegistrationStages = (student, studentData, scholarStatus, scholarFeePaid = null) => {
   const data = studentData || {};
   const currentYear = student.current_year || data.current_year;
   const currentSemester = student.current_semester || data.current_semester;
@@ -61,7 +63,13 @@ const computeRegistrationStages = (student, studentData, scholarStatus) => {
   const isFeeComplete = FEE_COMPLETE_STATUSES.some((s) => feeStatus.includes(s));
 
   const isPromotionComplete = isPromotionCompleteForCycle(data, currentYear, currentSemester);
-  const isScholarshipComplete = isScholarshipCompleteForRegistration(scholarStatus);
+  // Pass studType so the check only applies to CONV + not_eligible semesters.
+  const studType = student.stud_type || data.stud_type || '';
+  const isScholarshipComplete = isScholarshipCompleteForRegistration(
+    scholarStatus,
+    scholarFeePaid,
+    studType
+  );
 
   let overallStatus = 'pending';
   if (

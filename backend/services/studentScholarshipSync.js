@@ -605,14 +605,23 @@ const getScholarshipEligibleForYear = async (
   return normalizeEligible(rows[0]?.eligible);
 };
 
-const isScholarshipCompleteForRegistration = (eligible) => {
+const isScholarshipCompleteForRegistration = (eligible, feePaid = null, studType = null) => {
   // 'pending' means the admin has not made a final decision yet — not complete.
   // Only definitive statuses count: eligible, not_eligible, rejected, not_applied.
   const normalized = String(eligible || '').trim().toLowerCase();
-  return normalized === 'eligible'
-    || normalized === 'not_eligible'
-    || normalized === 'rejected'
-    || normalized === 'not_applied';
+  if (!['eligible', 'not_eligible', 'rejected', 'not_applied'].includes(normalized)) {
+    return false;
+  }
+  // fee_paid check applies ONLY to CONV quota students whose semester is marked not_eligible.
+  // All other final statuses (eligible, rejected, not_applied) and non-CONV students
+  // are complete as soon as a final status is set — no fee_paid required.
+  const isConv = ['conv', 'cq'].includes(String(studType || '').trim().toLowerCase());
+  const isNotEligible = normalized === 'not_eligible';
+
+  if (isConv && isNotEligible && feePaid !== null) {
+    return feePaid === true || feePaid === 1;
+  }
+  return true;
 };
 
 const resolveHistoryActor = (user) => {
@@ -664,19 +673,23 @@ const buildYearSnapshotFromRows = (rows, semestersPerYear = DEFAULT_SEMESTERS_PE
         });
       }
     } else if (isSemesterSummaryRow(row)) {
-      semesterMap[row.student_semester] = row.eligible || '';
+      semesterMap[row.student_semester] = {
+        eligible: row.eligible || '',
+        fee_paid: row.fee_paid ? 1 : 0
+      };
     } else if (row.eligible) {
       legacyEligible = row.eligible;
     }
   }
 
   if (!Object.keys(semesterMap).length && legacyEligible) {
-    semesterMap[1] = legacyEligible;
+    semesterMap[1] = { eligible: legacyEligible, fee_paid: 0 };
   }
 
   const semesters = buildDefaultSemesters(semestersPerYear).map((semester) => ({
     student_semester: semester.student_semester,
-    eligible: semesterMap[semester.student_semester] || ''
+    eligible: (semesterMap[semester.student_semester]?.eligible) || '',
+    fee_paid: semesterMap[semester.student_semester]?.fee_paid || 0
   }));
 
   // Eligible years: full RTF flow. Fee-only years: sanctioned + paid only (no RTF / advance).
@@ -1149,6 +1162,40 @@ const buildRegistrationScholarshipMap = async (pool, students, { academicYearFro
 
 const buildCurrentYearScholarshipMap = buildRegistrationScholarshipMap;
 
+/**
+ * Build a map of student_id → fee_paid (boolean) for the current semester.
+ * Used in registration reports to determine if scholarship Step 5 is complete for eligible students.
+ */
+const buildRegistrationFeePaidMap = async (pool, students) => {
+  const map = new Map();
+  if (!students?.length) return map;
+
+  const studentIds = students.map((student) => student.id);
+
+  const [rows] = await pool.query(
+    `SELECT ss.student_id, ss.fee_paid
+     FROM student_scholarship ss
+     INNER JOIN students s ON s.id = ss.student_id
+     WHERE ss.student_id IN (?)
+       AND ss.student_year = GREATEST(1, IFNULL(s.current_year, 1))
+       AND ss.student_semester = GREATEST(1, IFNULL(s.current_semester, 1))
+       AND ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
+     ORDER BY
+       ss.student_id ASC,
+       ss.updated_at DESC,
+       ss.id DESC`,
+    [studentIds]
+  );
+
+  for (const row of rows) {
+    if (!map.has(row.student_id)) {
+      map.set(row.student_id, row.fee_paid === 1);
+    }
+  }
+
+  return map;
+};
+
 module.exports = {
   VALID_ELIGIBLE,
   SCHOLARSHIP_INELIGIBLE_QUOTA_CODES,
@@ -1190,6 +1237,7 @@ module.exports = {
   isScholarshipDisplayUnassigned,
   buildCurrentYearScholarshipMap,
   buildRegistrationScholarshipMap,
+  buildRegistrationFeePaidMap,
   buildRegistrationScholarshipHasStatusSql,
   getRegistrationScholarshipFilterClause,
   buildRegistrationScholarshipAssignedSumSql,

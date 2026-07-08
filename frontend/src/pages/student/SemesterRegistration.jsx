@@ -277,7 +277,7 @@ const SemesterRegistration = () => {
         {
             id: 5,
             title: 'Scholarship',
-            description: 'Scholarship status must be assigned (Required).',
+            description: 'Scholarship status must be assigned. For eligible students, fee must also be marked as paid.',
             icon: Award,
             color: 'indigo'
         }
@@ -629,14 +629,76 @@ const SemesterRegistration = () => {
                                     <div className="flex justify-center my-4">
                                         <RegistrationStageBadge display={registrationStages.scholarship.display} />
                                     </div>
+
+                                    {/* Fee Paid indicator — shown only for CONV quota + not_eligible semester */}
+                                    {(() => {
+                                        const currentYear = Number(studentData?.current_year) || 1;
+                                        const currentSemester = Number(studentData?.current_semester) || 1;
+                                        const yearData = scholarshipData?.years?.find(
+                                            (y) => Number(y.student_year) === currentYear
+                                        );
+                                        const semRow = yearData?.semesters?.find(
+                                            (s) => Number(s.student_semester) === currentSemester
+                                        );
+                                        const status = String(semRow?.eligible || '').trim().toLowerCase();
+                                        const isConv = (studentData?.stud_type || '').toUpperCase() === 'CONV'
+                                            || (studentData?.stud_type || '').toUpperCase() === 'CQ';
+                                        const isNotEligible = status === 'not_eligible';
+                                        if (!isConv || !isNotEligible) return null;
+
+                                        const feePaid = semRow?.fee_paid === 1 || semRow?.fee_paid === true
+                                            || scholarshipData?.currentSemesterFeePaid === true;
+
+                                        return (
+                                            <div className={`mx-auto max-w-xs mt-2 mb-4 px-4 py-2.5 rounded-xl border flex items-center gap-3 ${
+                                                feePaid
+                                                    ? 'bg-green-50 border-green-200 text-green-800'
+                                                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                                            }`}>
+                                                <span className={`inline-flex items-center justify-center w-5 h-5 rounded border-2 flex-shrink-0 ${
+                                                    feePaid ? 'bg-green-500 border-green-500' : 'bg-white border-amber-400'
+                                                }`}>
+                                                    {feePaid && (
+                                                        <svg viewBox="0 0 10 8" className="w-3 h-3" fill="none">
+                                                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                                        </svg>
+                                                    )}
+                                                </span>
+                                                <div className="text-left">
+                                                    <p className="text-xs font-bold">Fee Paid</p>
+                                                    <p className="text-xs">{feePaid ? 'Fee has been marked as paid.' : 'Fee payment not yet confirmed by admin.'}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {!registrationStages.scholarship.completed && (
                                         <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-xl p-4 text-left">
                                             <p className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
                                                 <AlertCircle size={16} /> Pending Action
                                             </p>
                                             <p className="text-sm text-yellow-700 mt-1">
-                                                Your scholarship status for this semester has not been set yet.
-                                                Please contact the admin office to get it assigned.
+                                                {(() => {
+                                                    const currentYear = Number(studentData?.current_year) || 1;
+                                                    const currentSemester = Number(studentData?.current_semester) || 1;
+                                                    const yearData = scholarshipData?.years?.find(
+                                                        (y) => Number(y.student_year) === currentYear
+                                                    );
+                                                    const semRow = yearData?.semesters?.find(
+                                                        (s) => Number(s.student_semester) === currentSemester
+                                                    );
+                                                    const status = String(semRow?.eligible || '').trim().toLowerCase();
+                                                    const isConv = (studentData?.stud_type || '').toUpperCase() === 'CONV'
+                                                        || (studentData?.stud_type || '').toUpperCase() === 'CQ';
+                                                    const isNotEligible = status === 'not_eligible';
+                                                    const feePaid = semRow?.fee_paid === 1 || semRow?.fee_paid === true
+                                                        || scholarshipData?.currentSemesterFeePaid === true;
+
+                                                    if (isConv && isNotEligible && !feePaid) {
+                                                        return 'Your scholarship is marked not eligible but fee payment has not been confirmed yet. Please contact the admin office.';
+                                                    }
+                                                    return 'Your scholarship status for this semester has not been set yet. Please contact the admin office to get it assigned.';
+                                                })()}
                                             </p>
                                         </div>
                                     )}

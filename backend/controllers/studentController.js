@@ -27,7 +27,8 @@ const {
   STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS,
   syncIneligibleQuotaScholarshipsForStudents,
   syncIneligibleQuotaScholarshipForStudent,
-  resolveRegistrationScholarStatusDisplay
+  resolveRegistrationScholarStatusDisplay,
+  buildRegistrationFeePaidMap
 } = require('../services/studentScholarshipSync');
 const {
   isVerificationCompleteForCycle,
@@ -5733,7 +5734,25 @@ exports.getStudentByAdmission = async (req, res) => {
         currentSemesterForReg,
         student.batch
       );
-      const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible);
+
+      // Also check fee_paid for the current semester (required when eligible)
+      let currentSemFeePaid = null;
+      try {
+        const [feePaidRows] = await masterPool.query(
+          `SELECT fee_paid FROM student_scholarship
+           WHERE student_id = ? AND student_year = ? AND student_semester = ?
+           AND eligible IS NOT NULL AND TRIM(eligible) != ''
+           ORDER BY updated_at DESC, id DESC LIMIT 1`,
+          [student.id, currentYearForReg, currentSemesterForReg]
+        );
+        if (feePaidRows.length > 0) {
+          currentSemFeePaid = feePaidRows[0].fee_paid === 1;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch fee_paid for scholarship check:', e.message);
+      }
+
+      const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible, currentSemFeePaid, student.stud_type);
 
       const allConditionsMet =
         isMobileVerified &&
@@ -7106,11 +7125,13 @@ exports.getRegistrationReport = async (req, res) => {
 
     const [students] = await masterPool.query(dataQuery, dataParams);
     const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear });
+    const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
 
     const reportData = students.map((student) => {
       const studentData = parseStudentData(student);
       const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
-      const stages = computeRegistrationStages(student, studentData, scholarStatus);
+      const scholarFeePaid = feePaidMap.get(student.id) ?? null;
+      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid);
 
       return {
         id: student.id,
@@ -7612,11 +7633,13 @@ exports.exportRegistrationReport = async (req, res) => {
     const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, {
       academicYearFromYear: academicYearFromYearExport
     });
+    const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
 
     const processedData = students.map((student) => {
       const studentData = parseStudentData(student);
       const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
-      const stages = computeRegistrationStages(student, studentData, scholarStatus);
+      const scholarFeePaid = feePaidMap.get(student.id) ?? null;
+      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid);
 
       const overallLabel = stages.overallStatus === 'completed'
         ? 'Completed'

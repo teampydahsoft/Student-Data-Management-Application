@@ -137,6 +137,8 @@ export const isScholarshipStatusFinal = (status) => {
  *     • All others: complete only if the admin has explicitly set an eligible value in the
  *       student_scholarship table for the current year + semester (i.e. a real DB row exists).
  *       The legacy scholar_status column is NOT used as a fallback in this mode.
+ *     • CONV quota + not_eligible semester: additionally requires fee_paid = true.
+ *       All other final statuses (eligible, rejected, not_applied) do NOT require fee_paid.
  *
  * @param {object} scholarshipData  - Full payload from /student-scholarship API
  * @param {object} student          - Student object (needs batch, current_year, current_semester, stud_type)
@@ -173,7 +175,21 @@ export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
   const semesterRow = yearData?.semesters?.find(
     (s) => Number(s.student_semester) === currentSemester
   );
-  return isScholarshipStatusFinal(semesterRow?.eligible);
+
+  if (!isScholarshipStatusFinal(semesterRow?.eligible)) return false;
+
+  // Extra fee_paid check applies ONLY to CONV quota students whose current semester
+  // is marked not_eligible (i.e. tuition fee mode — not the RTF/eligible flow).
+  const isConv = isConvScholarshipQuota(student) || isConvScholarshipQuota({ stud_type: studType });
+  const isNotEligible = String(semesterRow?.eligible || '').trim().toLowerCase() === 'not_eligible';
+
+  if (isConv && isNotEligible) {
+    const semFeePaid = semesterRow?.fee_paid === true || semesterRow?.fee_paid === 1;
+    const apiFeePaid = scholarshipData?.currentSemesterFeePaid === true;
+    return semFeePaid || apiFeePaid;
+  }
+
+  return true;
 };
 
 /** True when a semester has any assigned scholarship status (not blank). */

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import {
   SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS,
   isScholarshipQuotaLocked,
+  isConvScholarshipQuota,
   formatScholarshipStatusDisplay,
   normalizeScholarshipStatusValue,
   getAcademicYearLabel,
@@ -56,6 +57,7 @@ const buildDefaultSemesters = (semestersPerYear = 2, eligible = '') => (
   Array.from({ length: Math.max(1, semestersPerYear) }, (_, index) => ({
     student_semester: index + 1,
     eligible,
+    fee_paid: false,
     remark: ''
   }))
 );
@@ -76,6 +78,7 @@ const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
     return {
       ...(existing || semester),
       student_semester: semester.student_semester,
+      fee_paid: existing?.fee_paid === 1 || existing?.fee_paid === true,
       remark
     };
   });
@@ -550,6 +553,17 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
     [student, years]
   );
 
+  // Show the "Fee Paid" column only for CONV quota students who have at least one
+  // not_eligible semester — that's the only case where the checkbox is relevant.
+  const showFeePaidColumn = useMemo(
+    () => isConvScholarshipQuota(student) && years.some(
+      (year) => (year.semesters || []).some(
+        (sem) => normalizeScholarshipStatusValue(sem.eligible) === 'not_eligible'
+      )
+    ),
+    [student, years]
+  );
+
   const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
     if (remoteAppIdTimersRef.current[studentYear]) {
       clearTimeout(remoteAppIdTimersRef.current[studentYear]);
@@ -768,6 +782,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         eligible: semesters[0]?.eligible || ''
       }, year.academic_year_label || getAcademicYearLabel(meta, year.student_year, student));
       return nextYear;
+    }));
+  };
+
+  const updateSemesterFeePaid = (yearIndex, semesterIndex, checked) => {
+    setYears((prev) => prev.map((year, index) => {
+      if (index !== yearIndex) return year;
+      const semesters = (year.semesters || []).map((semester, sIndex) => (
+        sIndex === semesterIndex ? { ...semester, fee_paid: checked } : semester
+      ));
+      return { ...year, semesters };
     }));
   };
 
@@ -1080,7 +1104,8 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
           sanctioned_amount: saveSanctioned,
           semesters: (year.semesters || buildDefaultSemesters(meta?.semestersPerYear || 2)).map((semester) => ({
             student_semester: semester.student_semester,
-            eligible: normalizeScholarshipStatusValue(semester.eligible) || ''
+            eligible: normalizeScholarshipStatusValue(semester.eligible) || '',
+            fee_paid: semester.fee_paid === true ? 1 : 0
           })),
           releases: rtfEligible
             ? year.releases
@@ -1257,6 +1282,9 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Application ID</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Sem</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
+                {showFeePaidColumn && (
+                  <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Fee Paid</th>
+                )}
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{sanctionedColumnLabel}</th>
                 <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
                 {hasAnyAdvance && (
@@ -1358,6 +1386,55 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
                         </select>
                       )}
                     </td>
+                    {/* Fee Paid checkbox — shown only for CONV quota students with not_eligible semester */}
+                    {showFeePaidColumn && (
+                    <td className="px-2 py-2 text-center">
+                      {(() => {
+                        const normalizedStatus = normalizeScholarshipStatusValue(semester.eligible);
+                        // Only show for CONV quota + not_eligible semesters
+                        const isConv = isConvScholarshipQuota(student);
+                        const isNotEligible = normalizedStatus === 'not_eligible';
+                        const feePaid = semester.fee_paid === true || semester.fee_paid === 1;
+
+                        if (!isConv || !isNotEligible) {
+                          return <span className="text-gray-300 text-xs">—</span>;
+                        }
+
+                        if (isEditingDisabled) {
+                          return (
+                            <span
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded border ${
+                                feePaid
+                                  ? 'bg-green-500 border-green-500 text-white'
+                                  : 'bg-white border-gray-300'
+                              }`}
+                              title={feePaid ? 'Fee Paid' : 'Fee Not Paid'}
+                            >
+                              {feePaid && (
+                                <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-current">
+                                  <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </span>
+                          );
+                        }
+                        return (
+                          <label className="inline-flex items-center gap-1 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={feePaid}
+                              onChange={(e) => updateSemesterFeePaid(yearIndex, semesterIndex, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer"
+                              title="Mark fee as paid for this semester"
+                            />
+                            <span className={`text-[10px] font-medium whitespace-nowrap ${feePaid ? 'text-green-700' : 'text-gray-400'}`}>
+                              {feePaid ? 'Paid' : 'No'}
+                            </span>
+                          </label>
+                        );
+                      })()}
+                    </td>
+                    )}
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}

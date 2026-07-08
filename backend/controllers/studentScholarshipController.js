@@ -131,19 +131,23 @@ const buildYearEntryFromRows = (rows, semestersPerYear) => {
       if (rtfRow) releases.push(rtfRow);
       if (paidRow) paidTransactions.push(paidRow);
     } else if (isSemesterSummaryRow(row)) {
-      semesterMap[row.student_semester] = row.eligible || '';
+      semesterMap[row.student_semester] = {
+        eligible: row.eligible || '',
+        fee_paid: row.fee_paid ? 1 : 0
+      };
     } else if (row.eligible) {
       legacyEligible = row.eligible;
     }
   }
 
   if (!Object.keys(semesterMap).length && legacyEligible) {
-    semesterMap[1] = legacyEligible;
+    semesterMap[1] = { eligible: legacyEligible, fee_paid: 0 };
   }
 
   const semesters = buildDefaultSemesters(semestersPerYear).map((semester) => ({
     student_semester: semester.student_semester,
-    eligible: semesterMap[semester.student_semester] || ''
+    eligible: semesterMap[semester.student_semester]?.eligible || '',
+    fee_paid: semesterMap[semester.student_semester]?.fee_paid || 0
   }));
 
   const allEligible = allSemestersEligible(semesters);
@@ -232,6 +236,7 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
     firstAcademicYear: academicContext.firstAcademicYear,
     academicYearLabels: academicContext.labels,
     currentYearEligible: extra.currentYearEligible ?? '',
+    currentSemesterFeePaid: extra.currentSemesterFeePaid ?? false,
     years: enrichedYears,
     archivedHistory,
     scholarshipQuotaLocked: Boolean(extra.scholarshipQuotaLocked)
@@ -265,7 +270,7 @@ const fetchScholarshipPayload = async (student) => {
     `SELECT id, student_year, student_semester, application_id, eligible, sanctioned_amount,
             DATE_FORMAT(from_date, '%Y-%m-%d') AS from_date,
             DATE_FORMAT(to_date, '%Y-%m-%d') AS to_date,
-            proceeding, released_amount, paid_amount
+            proceeding, released_amount, paid_amount, fee_paid
      FROM student_scholarship
      WHERE student_id = ?
      ORDER BY student_year ASC, student_semester ASC, id ASC`,
@@ -311,9 +316,11 @@ const fetchScholarshipPayload = async (student) => {
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
   const currentSemester = Math.max(1, toNumber(student.current_semester) || 1);
   const currentYearData = years.find((entry) => entry.student_year === currentYear);
-  const currentSemesterEligible = currentYearData?.semesters?.find(
+  const currentSemData = currentYearData?.semesters?.find(
     (semester) => semester.student_semester === currentSemester
-  )?.eligible || currentYearData?.eligible || '';
+  );
+  const currentSemesterEligible = currentSemData?.eligible || currentYearData?.eligible || '';
+  const currentSemesterFeePaid = currentSemData?.fee_paid ? true : false;
 
   return buildScholarshipResponse(
     student,
@@ -322,6 +329,7 @@ const fetchScholarshipPayload = async (student) => {
     archivedHistory,
     {
       currentYearEligible: currentSemesterEligible,
+      currentSemesterFeePaid,
       scholarshipQuotaLocked: false,
       semestersPerYear
     }
@@ -384,7 +392,8 @@ const buildIncomingYearSnapshot = (yearEntry, options = {}) => {
   const semesters = (Array.isArray(yearEntry.semesters) ? yearEntry.semesters : [])
     .map((semester) => ({
       student_semester: Math.max(1, toNumber(semester.student_semester) || 1),
-      eligible: semester.eligible || null
+      eligible: semester.eligible || null,
+      fee_paid: semester.fee_paid ? 1 : 0
     }));
 
   const allEligible = allSemestersEligible(semesters);
@@ -618,15 +627,16 @@ exports.saveScholarshipHistory = async (req, res) => {
 
           await connection.query(
             `INSERT INTO student_scholarship
-             (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount, released_amount)
-             VALUES (?, ?, ?, ?, ?, ?, 0)`,
+             (student_id, student_year, student_semester, application_id, eligible, sanctioned_amount, released_amount, fee_paid)
+             VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
             [
               student.id,
               studentYear,
               semester.student_semester,
               semester.student_semester === 1 ? summaryData.application_id : null,
               eligible,
-              semester.student_semester === 1 ? summaryData.sanctioned_amount : 0
+              semester.student_semester === 1 ? summaryData.sanctioned_amount : 0,
+              semesterEntry.fee_paid ? 1 : 0
             ]
           );
         }
