@@ -87,10 +87,42 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.SETTINGS]: {
-    permissions: ['view', 'edit'],
+    permissions: [
+      'view_courses', 'edit_courses',
+      'view_calendar', 'edit_calendar',
+      'view_academic_calendar', 'edit_academic_calendar',
+      'view_forms', 'edit_forms',
+      'view_quotas', 'edit_quotas',
+      'view_notifications', 'edit_notifications',
+      'view_college_transfer', 'edit_college_transfer',
+      'view_student_layout', 'edit_student_layout',
+      'view_qr_config', 'edit_qr_config',
+      'view_rtf_amount', 'edit_rtf_amount',
+      'view_freeze_database', 'edit_freeze_database'
+    ],
     labels: {
-      view: 'View Settings',
-      edit: 'Edit Settings'
+      view_courses: 'View Courses / Colleges / Branches',
+      edit_courses: 'Edit Courses / Colleges / Branches',
+      view_calendar: 'View Holiday Calendar',
+      edit_calendar: 'Edit Holiday Calendar',
+      view_academic_calendar: 'View Academic Calendar',
+      edit_academic_calendar: 'Edit Academic Calendar',
+      view_forms: 'View Registration Forms',
+      edit_forms: 'Edit Registration Forms',
+      view_quotas: 'View Student Quotas',
+      edit_quotas: 'Edit Student Quotas',
+      view_notifications: 'View Notification Settings',
+      edit_notifications: 'Edit Notification Settings',
+      view_college_transfer: 'View College Transfer',
+      edit_college_transfer: 'Edit College Transfer',
+      view_student_layout: 'View Student Portal Layout',
+      edit_student_layout: 'Edit Student Portal Layout',
+      view_qr_config: 'View QR Configuration',
+      edit_qr_config: 'Edit QR Configuration',
+      view_rtf_amount: 'View RTF Amount Setup',
+      edit_rtf_amount: 'Edit RTF Amount Setup',
+      view_freeze_database: 'View Freeze Database',
+      edit_freeze_database: 'Manage Freeze Database'
     }
   },
   [BACKEND_MODULES.USER_MANAGEMENT]: {

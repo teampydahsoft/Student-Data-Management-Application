@@ -42,8 +42,7 @@ import AcademicCalendar from '../components/AcademicCalendar';
 import NotificationSettings from '../components/NotificationSettings';
 import CollegeTransfer from './CollegeTransfer';
 import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettings';
-import { isFullAccessRole } from '../constants/rbac';
-import { hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
+import { isFullAccessRole, hasPermission, BACKEND_MODULES } from '../constants/rbac';
 import { formatDateToLocalISO } from '../utils/dateUtils';
 import TargetSelector from '../components/TargetSelector';
 import { emptyHolidayTargets, formatHolidayScope } from '../utils/holidayTargeting';
@@ -770,7 +769,7 @@ const isRtfEntryInActiveConfig = (entry, colleges = [], courses = []) => {
 
 const RtfAmountSection = ({
   config, loading, saving, applying, filterOptions, coursesWithLevels, activeColleges = [],
-  newEntry, setNewEntry, onSave, onApply, onRefresh, onCascadeChange
+  newEntry, setNewEntry, onSave, onApply, onRefresh, onCascadeChange, readOnly = false
 }) => {
   const [activeTab, setActiveTab] = React.useState('configure');
   const entries = config?.entries || [];
@@ -997,25 +996,33 @@ const RtfAmountSection = ({
                           <div className="flex items-center justify-center gap-1">
                             {existingEntry ? (
                               <>
+                                {!readOnly && (
                                 <button onClick={() => toggleLock(existingEntry.id)} disabled={saving}
                                   className={`p-1.5 rounded border text-xs ${isLocked ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
                                   {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
                                 </button>
+                                )}
+                                {!readOnly && (
                                 <button onClick={() => onApply(existingEntry)} disabled={applying === existingEntry.id || saving}
                                   className="p-1.5 rounded border text-xs bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 disabled:opacity-50">
                                   {applying === existingEntry.id ? <RefreshCcw size={11} className="animate-spin" /> : <Save size={11} />}
                                 </button>
+                                )}
+                                {!readOnly && (
                                 <button onClick={() => removeEntry(existingEntry.id)} disabled={saving}
                                   className="p-1.5 rounded border text-xs bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
                                   <Trash2 size={11} />
                                 </button>
+                                )}
                               </>
                             ) : (
+                              !readOnly && (
                               <button onClick={() => saveDraftForCaste(caste)}
                                 disabled={saving || yearCols.every((yr) => !getDraftAmount(caste, yr))}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-40">
                                 <Plus size={11} /> Save
                               </button>
+                              )
                             )}
                           </div>
                         </td>
@@ -1078,20 +1085,26 @@ const RtfAmountSection = ({
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5">
+                          {!readOnly && (
                           <button onClick={() => toggleLock(entry.id)} disabled={saving}
                             className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border font-medium ${entry.locked ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-300 hover:bg-gray-100'}`}>
                             {entry.locked ? <Unlock size={10} /> : <Lock size={10} />}
                             {entry.locked ? 'Unlock' : 'Lock'}
                           </button>
+                          )}
+                          {!readOnly && (
                           <button onClick={() => onApply(entry)} disabled={applying === entry.id || saving}
                             className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
                             {applying === entry.id ? <RefreshCcw size={10} className="animate-spin" /> : <Save size={10} />}
                             Apply
                           </button>
+                          )}
+                          {!readOnly && (
                           <button onClick={() => removeEntry(entry.id)} disabled={saving}
                             className="p-1 rounded text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200">
                             <Trash2 size={12} />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1139,7 +1152,9 @@ const RtfAmountSection = ({
                         <td className="px-4 py-3">
                           <select
                             value={current}
+                            disabled={readOnly}
                             onChange={(e) => {
+                              if (readOnly) return;
                               const updated = {
                                 ...config,
                                 casteAccountTypes: {
@@ -1149,7 +1164,7 @@ const RtfAmountSection = ({
                               };
                               onSave(updated);
                             }}
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400"
+                            className={`rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400 ${readOnly ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''}`}
                           >
                             <option value="mother">Mother Account</option>
                             <option value="college">College Account</option>
@@ -1793,6 +1808,16 @@ const Settings = () => {
 
   const user = useAuthStore((state) => state.user);
   const isAdmin = isFullAccessRole(user?.role);
+
+  // Granular settings permissions helper
+  const canView = (section) => {
+    if (isAdmin) return true;
+    return hasPermission(user?.permissions, BACKEND_MODULES.SETTINGS, `view_${section}`);
+  };
+  const canEdit = (section) => {
+    if (isAdmin) return true;
+    return hasPermission(user?.permissions, BACKEND_MODULES.SETTINGS, `edit_${section}`);
+  };
 
   // Fetch colleges from API
   const fetchColleges = async ({ silent = false } = {}) => {
@@ -3529,6 +3554,7 @@ const Settings = () => {
 
         {/* Navigation Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {canView('courses') && (
           <button
             onClick={() => setActiveSection('courses')}
             className={`rounded-lg border-2 p-3 sm:p-4 text-left transition-all touch-manipulation min-h-[80px] ${activeSection === 'courses'
@@ -3543,11 +3569,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Colleges & Programs</h2>
-                <p className="text-xs text-gray-500">Manage colleges, programs & branches</p>
+                <p className="text-xs text-gray-500">{canEdit('courses') ? 'Manage colleges, programs & branches' : 'View colleges, programs & branches'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('calendar') && (
           <button
             onClick={() => setActiveSection('calendar')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'calendar'
@@ -3562,11 +3590,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Attendance Calendar</h2>
-                <p className="text-xs text-gray-500">Holidays & attendance calendar</p>
+                <p className="text-xs text-gray-500">{canEdit('calendar') ? 'Holidays & attendance calendar' : 'View attendance calendar'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('academic_calendar') && (
           <button
             onClick={() => setActiveSection('academic-calendar')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'academic-calendar'
@@ -3581,11 +3611,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Academic Calendar</h2>
-                <p className="text-xs text-gray-500">Manage semester dates</p>
+                <p className="text-xs text-gray-500">{canEdit('academic_calendar') ? 'Manage semester dates' : 'View semester dates'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('forms') && (
           <button
             onClick={() => setActiveSection('forms')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'forms'
@@ -3600,11 +3632,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Registration Form</h2>
-                <p className="text-xs text-gray-500">Student registration form fields</p>
+                <p className="text-xs text-gray-500">{canEdit('forms') ? 'Student registration form fields' : 'View registration form fields'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('quotas') && (
           <button
             onClick={() => setActiveSection('quotas')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'quotas'
@@ -3619,11 +3653,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Student Quotas</h2>
-                <p className="text-xs text-gray-500">Quota names & codes</p>
+                <p className="text-xs text-gray-500">{canEdit('quotas') ? 'Quota names & codes' : 'View quota names & codes'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('notifications') && (
           <button
             onClick={() => setActiveSection('notifications')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'notifications'
@@ -3638,11 +3674,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
-                <p className="text-xs text-gray-500">SMS & Email templates</p>
+                <p className="text-xs text-gray-500">{canEdit('notifications') ? 'SMS & Email templates' : 'View SMS & Email templates'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('college_transfer') && (
           <button
             onClick={() => setActiveSection('college-transfer')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'college-transfer'
@@ -3657,11 +3695,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">College Transfer</h2>
-                <p className="text-xs text-gray-500">Manual student transfers</p>
+                <p className="text-xs text-gray-500">{canEdit('college_transfer') ? 'Manual student transfers' : 'View student transfers'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('student_layout') && (
           <button
             onClick={() => setActiveSection('student-layout')}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'student-layout'
@@ -3676,11 +3716,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Student Portal Layout</h2>
-                <p className="text-xs text-gray-500">Enable/Disable sidebar items</p>
+                <p className="text-xs text-gray-500">{canEdit('student_layout') ? 'Enable/Disable sidebar items' : 'View sidebar items'}</p>
               </div>
             </div>
           </button>
+          )}
 
+          {canView('qr_config') && (
           <button
             onClick={() => { setActiveSection('qr-config'); fetchQrConfig(); }}
             className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'qr-config'
@@ -3695,12 +3737,13 @@ const Settings = () => {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">QR Code Config</h2>
-                <p className="text-xs text-gray-500">Per-role student field visibility</p>
+                <p className="text-xs text-gray-500">{canEdit('qr_config') ? 'Per-role student field visibility' : 'View per-role student field visibility'}</p>
               </div>
             </div>
           </button>
+          )}
 
-          {isAdmin && (
+          {(isAdmin || canView('rtf_amount')) && (
             <button
               onClick={() => setActiveSection('rtf-amount')}
               className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'rtf-amount'
@@ -3714,13 +3757,13 @@ const Settings = () => {
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">RTF Amount Setup</h2>
-                  <p className="text-xs text-gray-500">Scholarship sanctioned amounts per batch</p>
+                  <p className="text-xs text-gray-500">{canEdit('rtf_amount') ? 'Scholarship sanctioned amounts per batch' : 'View scholarship sanctioned amounts'}</p>
                 </div>
               </div>
             </button>
           )}
 
-          {isAdmin && (
+          {(isAdmin || canView('freeze_database')) && (
             <button
               onClick={() => setActiveSection('freeze-database')}
               className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'freeze-database'
@@ -3735,7 +3778,7 @@ const Settings = () => {
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Freeze Database</h2>
-                  <p className="text-xs text-gray-500">Lock records by batch</p>
+                  <p className="text-xs text-gray-500">{canEdit('freeze_database') ? 'Lock records by batch' : 'View locked records by batch'}</p>
                 </div>
               </div>
             </button>
@@ -3792,6 +3835,7 @@ const Settings = () => {
                   </div>
                   <div className="p-2">
                     {/* Add College Button */}
+                    {canEdit('courses') && (
                     <button
                       onClick={() => setIsAddCollegeModalOpen(true)}
                       className="mb-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-colors"
@@ -3799,6 +3843,7 @@ const Settings = () => {
                       <Plus size={14} />
                       Add College
                     </button>
+                    )}
 
                     {/* College List */}
                     <div className="space-y-1 max-h-[300px] overflow-y-auto">
@@ -3822,6 +3867,7 @@ const Settings = () => {
                                 {college.name}
                               </span>
                             </div>
+                            {canEdit('courses') && (
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleEditCollege(college); }}
@@ -3845,6 +3891,7 @@ const Settings = () => {
                                 <Trash2 size={14} />
                               </button>
                             </div>
+                            )}
                           </div>
                         ))
                       )}
@@ -3968,6 +4015,7 @@ const Settings = () => {
                                     </span>
                                   </div>
                                 </div>
+                                {canEdit('courses') && (
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleEditCourse(course); }}
@@ -3991,6 +4039,7 @@ const Settings = () => {
                                     <Trash2 size={14} />
                                   </button>
                                 </div>
+                                )}
                               </div>
                             ))
                           )}
@@ -3998,6 +4047,7 @@ const Settings = () => {
                         {/* Add Course Button Below List */}
                         {selectedCollege ? (
                           <div className="mt-2 pt-2 border-t border-gray-200 flex-shrink-0">
+                            {canEdit('courses') ? (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -4011,6 +4061,9 @@ const Settings = () => {
                               <Plus size={16} />
                               Add New Program
                             </button>
+                            ) : (
+                              <p className="text-xs text-gray-400 text-center py-1">View only — no edit access</p>
+                            )}
                           </div>
                         ) : (
                           <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-400 text-center flex-shrink-0">
@@ -4049,6 +4102,7 @@ const Settings = () => {
 
                             {/* Add Branch Button */}
                             <div className="border-b border-gray-100 p-4">
+                              {canEdit('courses') ? (
                               <button
                                 onClick={() => {
                                   setBranchModalCourseId(selectedCourse.id);
@@ -4059,6 +4113,9 @@ const Settings = () => {
                                 <Plus size={16} />
                                 Add New Branch
                               </button>
+                              ) : (
+                                <p className="text-xs text-gray-400 text-center py-1">View only — no edit access</p>
+                              )}
                             </div>
 
                             {/* Branch List */}
@@ -4090,6 +4147,7 @@ const Settings = () => {
                                       </div>
                                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         {/* Registration Setup button */}
+                                        {canEdit('courses') && (
                                         <button
                                           onClick={() => openRegStageModal(branch, selectedCourse)}
                                           className="p-1 text-gray-400 hover:text-purple-600 transition-colors"
@@ -4097,6 +4155,8 @@ const Settings = () => {
                                         >
                                           <Settings2 size={14} />
                                         </button>
+                                        )}
+                                        {canEdit('courses') && (
                                         <button
                                           onClick={() => startEditBranch(selectedCourse.id, branch, selectedCourse)}
                                           disabled={savingBranchId === branch.id}
@@ -4105,6 +4165,8 @@ const Settings = () => {
                                         >
                                           <Pencil size={14} />
                                         </button>
+                                        )}
+                                        {canEdit('courses') && (
                                         <button
                                           onClick={() => toggleBranchActive(selectedCourse.id, branch)}
                                           disabled={savingBranchId === branch.id}
@@ -4113,6 +4175,8 @@ const Settings = () => {
                                         >
                                           {branch.isActive ? <ToggleRight size={14} className="text-green-500" /> : <ToggleLeft size={14} />}
                                         </button>
+                                        )}
+                                        {canEdit('courses') && (
                                         <button
                                           onClick={() => handleDeleteBranch(selectedCourse.id, branch)}
                                           disabled={savingBranchId === branch.id}
@@ -4121,6 +4185,7 @@ const Settings = () => {
                                         >
                                           <Trash2 size={14} />
                                         </button>
+                                        )}
                                       </div>
                                     </div>
                                   ))}
@@ -4373,7 +4438,7 @@ const Settings = () => {
                 </div>
 
                 {/* Holiday Management (Admin Only) */}
-                {isAdmin && selectedCalendarDate && (() => {
+                {(isAdmin || canEdit('calendar')) && selectedCalendarDate && (() => {
                   const data = calendarViewData || { customHolidays: [] };
                   const holidaysForDate = (data.customHolidays || []).filter(
                     (holiday) => holiday.date?.split('T')[0] === selectedCalendarDate
@@ -4500,6 +4565,7 @@ const Settings = () => {
               colleges={colleges}
               courses={courses}
               academicYears={academicYears}
+              readOnly={!canEdit('academic_calendar')}
             />
           </div>
         )}
@@ -4522,7 +4588,7 @@ const Settings = () => {
             ) : (() => {
               const form = registrationForms[0]; // Only show the first/single form
 
-              return isEditingForm ? (
+              return isEditingForm && canEdit('forms') ? (
                 // Inline Form Editor
                 <div className="p-4">
                   {/* Editor Header */}
@@ -5153,6 +5219,7 @@ const Settings = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {canEdit('forms') && (
                       <button
                         onClick={() => startEditingForm(form)}
                         className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -5160,6 +5227,8 @@ const Settings = () => {
                         <Pencil size={16} />
                         Edit Form
                       </button>
+                      )}
+                      {canEdit('forms') && (
                       <button
                         onClick={() => toggleFormActive(form)}
                         disabled={savingFormId === form.form_id}
@@ -5171,6 +5240,7 @@ const Settings = () => {
                         {form.is_active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                         {form.is_active ? 'Active' : 'Inactive'}
                       </button>
+                      )}
                     </div>
                   </div>
 
@@ -5330,7 +5400,7 @@ const Settings = () => {
         {/* Notifications Section */}
         {activeSection === 'notifications' && (
           <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-            <NotificationSettings />
+            <NotificationSettings readOnly={!canEdit('notifications')} />
           </div>
         )}
 
@@ -5354,6 +5424,7 @@ const Settings = () => {
               </div>
             </div>
 
+            {canEdit('quotas') && (
             <div className="p-4 border-b border-gray-100">
               <form onSubmit={handleCreateQuota} className="grid gap-2 sm:grid-cols-[1fr,140px,auto]">
                 <input
@@ -5381,6 +5452,7 @@ const Settings = () => {
                 </button>
               </form>
             </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -5389,19 +5461,19 @@ const Settings = () => {
                     <th className="px-4 py-3">Quota Name</th>
                     <th className="px-4 py-3">Code</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    {canEdit('quotas') && <th className="px-4 py-3 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {quotasLoading ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8">
+                      <td colSpan={canEdit('quotas') ? 4 : 3} className="px-4 py-8">
                         <SkeletonList count={4} />
                       </td>
                     </tr>
                   ) : studentQuotas.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
+                      <td colSpan={canEdit('quotas') ? 4 : 3} className="px-4 py-8 text-center text-sm text-gray-400">
                         No quotas configured yet
                       </td>
                     </tr>
@@ -5413,7 +5485,7 @@ const Settings = () => {
                       return (
                         <tr key={quota.id} className="hover:bg-gray-50/80">
                           <td className="px-4 py-3">
-                            {isEditing ? (
+                            {isEditing && canEdit('quotas') ? (
                               <input
                                 type="text"
                                 value={draft.name}
@@ -5428,7 +5500,7 @@ const Settings = () => {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {isEditing ? (
+                            {isEditing && canEdit('quotas') ? (
                               <input
                                 type="text"
                                 value={draft.code}
@@ -5450,6 +5522,7 @@ const Settings = () => {
                               {quota.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </td>
+                          {canEdit('quotas') && (
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1">
                               {isEditing ? (
@@ -5497,6 +5570,7 @@ const Settings = () => {
                               )}
                             </div>
                           </td>
+                          )}
                         </tr>
                       );
                     })
@@ -5510,13 +5584,13 @@ const Settings = () => {
         {/* College Transfer Section */}
         {activeSection === 'college-transfer' && (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 min-h-[500px]">
-            <CollegeTransfer />
+            <CollegeTransfer readOnly={!canEdit('college_transfer')} />
           </div>
         )}
 
         {activeSection === 'student-layout' && (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
-            <StudentPortalLayoutSettings />
+            <StudentPortalLayoutSettings readOnly={!canEdit('student_layout')} />
           </div>
         )}
 
@@ -5534,6 +5608,7 @@ const Settings = () => {
                   Define <strong>Public Fields</strong> (visible to anyone who scans) and <strong>Private Fields</strong> per role (requires staff login).
                 </p>
               </div>
+              {canEdit('qr_config') && (
               <button
                 onClick={saveQrConfig}
                 disabled={qrConfigSaving || qrConfigLoading}
@@ -5542,6 +5617,7 @@ const Settings = () => {
                 <Save size={16} />
                 {qrConfigSaving ? 'Saving...' : 'Save Config'}
               </button>
+              )}
             </div>
 
             {qrConfigLoading ? (
@@ -5569,6 +5645,7 @@ const Settings = () => {
                         {qrPublicFields.length} selected
                       </span>
                     </div>
+                    {canEdit('qr_config') && (
                     <button
                       onClick={toggleAllQrPublicFields}
                       className="text-xs text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1"
@@ -5577,8 +5654,9 @@ const Settings = () => {
                         ? <><CheckSquare size={14} /> Deselect All</>
                         : <><Square size={14} /> Select All</>}
                     </button>
+                    )}
                   </div>
-                  {renderQrFieldGrid(qrPublicFields, toggleQrPublicField)}
+                  {renderQrFieldGrid(qrPublicFields, canEdit('qr_config') ? toggleQrPublicField : () => {})}
                 </div>
 
                 {/* ── DIVIDER ── */}
@@ -5615,7 +5693,7 @@ const Settings = () => {
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {isExpanded && (
+                          {isExpanded && canEdit('qr_config') && (
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleAllQrFields(role.key); }}
                               className="text-xs text-slate-600 hover:text-slate-800 font-medium flex items-center gap-1"
@@ -5631,7 +5709,7 @@ const Settings = () => {
                           </svg>
                         </div>
                       </button>
-                      {isExpanded && renderQrFieldGrid(selectedFields, (fieldKey) => toggleQrField(role.key, fieldKey))}
+                      {isExpanded && renderQrFieldGrid(selectedFields, canEdit('qr_config') ? (fieldKey) => toggleQrField(role.key, fieldKey) : () => {})}
                     </div>
                   );
                 })}
@@ -5653,10 +5731,11 @@ const Settings = () => {
               activeColleges={rtfActiveColleges}
               newEntry={rtfNewEntry}
               setNewEntry={setRtfNewEntry}
-              onSave={saveRtfConfig}
-              onApply={applyRtfEntry}
+              onSave={canEdit('rtf_amount') ? saveRtfConfig : undefined}
+              onApply={canEdit('rtf_amount') ? applyRtfEntry : undefined}
               onRefresh={fetchRtfConfig}
               onCascadeChange={updateRtfCascadeFilters}
+              readOnly={!canEdit('rtf_amount')}
             />
           </div>
         )}
@@ -5718,6 +5797,7 @@ const Settings = () => {
                       </div>
 
                       <div className="flex gap-2 mt-2 pt-4 border-t border-gray-100/50">
+                        {canEdit('freeze_database') ? (
                         <button
                           onClick={() => openFreezeConfigModal(batchValue)}
                           disabled={isSaving}
@@ -5734,6 +5814,9 @@ const Settings = () => {
                             </>
                           )}
                         </button>
+                        ) : (
+                          <span className="flex-1 text-center text-xs text-gray-400 py-1.5">View only</span>
+                        )}
                       </div>
                     </div>
                   );
@@ -5834,6 +5917,7 @@ const Settings = () => {
                     >
                       Cancel
                     </button>
+                    {canEdit('freeze_database') && (
                     <button
                       onClick={saveFreezeConfig}
                       disabled={savingFrozenBatch === freezeConfigModal.batch}
@@ -5851,6 +5935,7 @@ const Settings = () => {
                         </>
                       )}
                     </button>
+                    )}
                   </div>
                 </div>
               </div>

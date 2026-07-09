@@ -7,7 +7,7 @@ import api from '../config/api';
 import toast from 'react-hot-toast';
 import { SkeletonTable } from '../components/SkeletonLoader';
 
-const CollegeTransfer = () => {
+const CollegeTransfer = ({ readOnly = false }) => {
     // --- State ---
 
     // 1. Source Filters
@@ -537,12 +537,19 @@ const CollegeTransfer = () => {
                 <div className="text-sm text-gray-600">
                     Selected <span className="font-bold text-indigo-600 text-lg">{selectedAdmissionNumbers.size}</span> students for transfer
                 </div>
+                {!readOnly && (
                 <button
                     onClick={prepareTransfer}
                     className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all flex items-center gap-2"
                 >
                     Review & Transfer <ArrowRight size={18} />
                 </button>
+                )}
+                {readOnly && (
+                <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-medium">
+                  View only — no transfer access
+                </span>
+                )}
             </div>
 
             {/* Table */}
@@ -669,6 +676,7 @@ const CollegeTransfer = () => {
                             >
                                 Cancel
                             </button>
+                            {!readOnly && (
                             <button
                                 onClick={executeTransfer}
                                 disabled={submitting}
@@ -677,6 +685,7 @@ const CollegeTransfer = () => {
                                 {submitting && <Loader2 size={18} className="animate-spin" />}
                                 Confirm Transfer
                             </button>
+                            )}
                         </div>
                     </div>
                 </div>

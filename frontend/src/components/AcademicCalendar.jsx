@@ -98,7 +98,7 @@ const matchesAcademicYearLabel = (candidateLabel, selectedLabel) => {
 const selectClass =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 disabled:cursor-not-allowed';
 
-const AcademicCalendar = ({ colleges, courses, academicYears }) => {
+const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }) => {
   const [activeSubTab, setActiveSubTab] = useState('configure');
   const [semesters, setSemesters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -884,6 +884,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                     All years as Year-Sem (1-1, 1-2, 2-1, …). Set start and end dates for each.
                   </p>
                 </div>
+                {!readOnly && (
                 <button
                   type="button"
                   onClick={saveAllDirty}
@@ -893,6 +894,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                   {bulkSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                   Save All
                 </button>
+                )}
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -949,6 +951,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
+                          {!readOnly && (
                           <button
                             type="button"
                             onClick={() => saveSemesterRow(row)}
@@ -962,6 +965,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                             )}
                             {row.existing ? 'Update' : 'Save'}
                           </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1237,6 +1241,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                                     </button>
                                   </div>
                                 ) : (
+                                  !readOnly && (
                                   <button
                                     type="button"
                                     onClick={() => startEditReportRow(row)}
@@ -1244,6 +1249,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears }) => {
                                   >
                                     {row.status === 'Configured' ? 'Edit' : 'Configure'}
                                   </button>
+                                  )
                                 )}
                               </td>
                             </tr>

@@ -2699,8 +2699,74 @@ const UserManagement = () => {
                           <button type="button" onClick={() => toggleAll(false)} className="px-3 py-1.5 text-[11px] font-semibold bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 border border-slate-200">Revoke All</button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {modulePerms.permissions.map((permKey) => {
+                      <div className={`${effectiveModuleKey === BACKEND_MODULES.SETTINGS ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-2'}`}>
+                        {effectiveModuleKey === BACKEND_MODULES.SETTINGS ? (
+                          /* Settings: grouped read/write per section */
+                          (() => {
+                            const settingsSections = [
+                              { key: 'courses', label: 'Colleges & Programs' },
+                              { key: 'calendar', label: 'Attendance Calendar' },
+                              { key: 'academic_calendar', label: 'Academic Calendar' },
+                              { key: 'forms', label: 'Registration Forms' },
+                              { key: 'quotas', label: 'Student Quotas' },
+                              { key: 'notifications', label: 'Notifications' },
+                              { key: 'college_transfer', label: 'College Transfer' },
+                              { key: 'student_layout', label: 'Student Portal Layout' },
+                              { key: 'qr_config', label: 'QR Code Config' },
+                              { key: 'rtf_amount', label: 'RTF Amount Setup' },
+                              { key: 'freeze_database', label: 'Freeze Database' },
+                            ];
+                            return (
+                              <div className="space-y-1.5">
+                                <div className="grid grid-cols-[1fr,100px,100px] gap-2 mb-2 px-2">
+                                  <span className="text-[11px] font-bold text-slate-400 uppercase">Section</span>
+                                  <span className="text-[11px] font-bold text-blue-500 uppercase text-center">Read</span>
+                                  <span className="text-[11px] font-bold text-emerald-500 uppercase text-center">Write</span>
+                                </div>
+                                {settingsSections.map(section => {
+                                  const viewKey = `view_${section.key}`;
+                                  const editKey = `edit_${section.key}`;
+                                  const viewEnabled = permsForRole[viewKey] === true;
+                                  const editEnabled = permsForRole[editKey] === true;
+                                  return (
+                                    <div key={section.key} className="grid grid-cols-[1fr,100px,100px] gap-2 items-center rounded-lg px-3 py-2 bg-slate-50 border border-slate-200">
+                                      <span className="text-xs font-medium text-slate-700">{section.label}</span>
+                                      {/* Read */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toggleOne(viewKey);
+                                          if (viewEnabled && editEnabled) toggleOne(editKey);
+                                        }}
+                                        className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-all ${viewEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                      >
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center ${viewEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                          {viewEnabled ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                                        </span>
+                                        {viewEnabled ? 'On' : 'Off'}
+                                      </button>
+                                      {/* Write */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toggleOne(editKey);
+                                          if (!editEnabled && !viewEnabled) toggleOne(viewKey);
+                                        }}
+                                        className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-all ${editEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                      >
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center ${editEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                          {editEnabled ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                                        </span>
+                                        {editEnabled ? 'On' : 'Off'}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                        modulePerms.permissions.map((permKey) => {
                           const enabled = permsForRole[permKey] === true;
                           const label = modulePerms.labels?.[permKey] || permKey;
                           const isStudentMgmtView = effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && permKey === 'view';
@@ -2730,7 +2796,8 @@ const UserManagement = () => {
                               )}
                             </div>
                           );
-                        })}
+                        })
+                        )}
                       </div>
                     </div>
                   );
@@ -3009,8 +3076,74 @@ const UserManagement = () => {
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {modulePerms.permissions.map((permKey) => {
+                          <div className={`${effectiveModuleKey === BACKEND_MODULES.SETTINGS ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-3'}`}>
+                            {effectiveModuleKey === BACKEND_MODULES.SETTINGS ? (
+                              /* Settings: grouped read/write per section */
+                              (() => {
+                                const settingsSections = [
+                                  { key: 'courses', label: 'Colleges & Programs' },
+                                  { key: 'calendar', label: 'Attendance Calendar' },
+                                  { key: 'academic_calendar', label: 'Academic Calendar' },
+                                  { key: 'forms', label: 'Registration Forms' },
+                                  { key: 'quotas', label: 'Student Quotas' },
+                                  { key: 'notifications', label: 'Notifications' },
+                                  { key: 'college_transfer', label: 'College Transfer' },
+                                  { key: 'student_layout', label: 'Student Portal Layout' },
+                                  { key: 'qr_config', label: 'QR Code Config' },
+                                  { key: 'rtf_amount', label: 'RTF Amount Setup' },
+                                  { key: 'freeze_database', label: 'Freeze Database' },
+                                ];
+                                return (
+                                  <div className="space-y-1.5">
+                                    <div className="grid grid-cols-[1fr,100px,100px] gap-2 mb-2 px-2">
+                                      <span className="text-[11px] font-bold text-slate-400 uppercase">Section</span>
+                                      <span className="text-[11px] font-bold text-blue-500 uppercase text-center">Read</span>
+                                      <span className="text-[11px] font-bold text-emerald-500 uppercase text-center">Write</span>
+                                    </div>
+                                    {settingsSections.map(section => {
+                                      const viewKey = `view_${section.key}`;
+                                      const editKey = `edit_${section.key}`;
+                                      const viewEnabled = permsForUser[viewKey] === true;
+                                      const editEnabled = permsForUser[editKey] === true;
+                                      return (
+                                        <div key={section.key} className="grid grid-cols-[1fr,100px,100px] gap-2 items-center rounded-lg px-3 py-2 bg-slate-50 border border-slate-200">
+                                          <span className="text-xs font-medium text-slate-700">{section.label}</span>
+                                          {/* Read */}
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              toggleSinglePermission(viewKey);
+                                              if (viewEnabled && editEnabled) toggleSinglePermission(editKey);
+                                            }}
+                                            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-all ${viewEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                          >
+                                            <span className={`w-4 h-4 rounded flex items-center justify-center ${viewEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                              {viewEnabled ? <Check size={10} /> : <X size={10} />}
+                                            </span>
+                                            {viewEnabled ? 'On' : 'Off'}
+                                          </button>
+                                          {/* Write */}
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              toggleSinglePermission(editKey);
+                                              if (!editEnabled && !viewEnabled) toggleSinglePermission(viewKey);
+                                            }}
+                                            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold transition-all ${editEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                          >
+                                            <span className={`w-4 h-4 rounded flex items-center justify-center ${editEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                              {editEnabled ? <Check size={10} /> : <X size={10} />}
+                                            </span>
+                                            {editEnabled ? 'On' : 'Off'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                            modulePerms.permissions.map((permKey) => {
                               const enabled = permsForUser[permKey] === true;
                               const label = modulePerms.labels[permKey] || permKey;
                               const isStudentMgmtView = effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && permKey === 'view';
@@ -3069,7 +3202,8 @@ const UserManagement = () => {
                                   </div>
                                 </div>
                               );
-                            })}
+                            })
+                            )}
                           </div>
 
                           {allEnabled && (
@@ -3614,8 +3748,78 @@ const UserManagement = () => {
                             </div>
 
                             {/* Permissions Grid */}
-                            <div className="p-3 grid grid-cols-2 gap-2">
-                              {modulePerms.permissions.map(permKey => {
+                            <div className={`p-3 ${moduleKey === BACKEND_MODULES.SETTINGS ? '' : 'grid grid-cols-2 gap-2'}`}>
+                              {moduleKey === BACKEND_MODULES.SETTINGS ? (
+                                /* Settings: group permissions as read/write pairs per section */
+                                (() => {
+                                  const sections = [
+                                    { key: 'courses', label: 'Colleges & Programs' },
+                                    { key: 'calendar', label: 'Attendance Calendar' },
+                                    { key: 'academic_calendar', label: 'Academic Calendar' },
+                                    { key: 'forms', label: 'Registration Forms' },
+                                    { key: 'quotas', label: 'Student Quotas' },
+                                    { key: 'notifications', label: 'Notifications' },
+                                    { key: 'college_transfer', label: 'College Transfer' },
+                                    { key: 'student_layout', label: 'Student Portal Layout' },
+                                    { key: 'qr_config', label: 'QR Code Config' },
+                                    { key: 'rtf_amount', label: 'RTF Amount Setup' },
+                                    { key: 'freeze_database', label: 'Freeze Database' },
+                                  ];
+                                  return (
+                                    <div className="space-y-1.5">
+                                      <div className="grid grid-cols-[1fr,80px,80px] gap-1 mb-1 px-1">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Section</span>
+                                        <span className="text-[10px] font-bold text-blue-400 uppercase text-center">Read</span>
+                                        <span className="text-[10px] font-bold text-emerald-400 uppercase text-center">Write</span>
+                                      </div>
+                                      {sections.map(section => {
+                                        const viewKey = `view_${section.key}`;
+                                        const editKey = `edit_${section.key}`;
+                                        const viewEnabled = editForm?.permissions?.[moduleKey]?.[viewKey] || false;
+                                        const editEnabled = editForm?.permissions?.[moduleKey]?.[editKey] || false;
+                                        return (
+                                          <div key={section.key} className="grid grid-cols-[1fr,80px,80px] gap-1 items-center rounded-lg px-2 py-1.5 bg-slate-50 border border-slate-200">
+                                            <span className="text-xs font-medium text-slate-700 truncate">{section.label}</span>
+                                            {/* Read toggle */}
+                                            <label className="flex items-center justify-center gap-1 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={viewEnabled}
+                                                onChange={() => {
+                                                  toggleEditPermission(moduleKey, viewKey);
+                                                  // If unchecking read, also uncheck write
+                                                  if (viewEnabled && editEnabled) toggleEditPermission(moduleKey, editKey);
+                                                }}
+                                                className="w-3.5 h-3.5 rounded text-blue-500"
+                                              />
+                                              <span className={`text-[10px] font-semibold ${viewEnabled ? 'text-blue-600' : 'text-slate-400'}`}>
+                                                {viewEnabled ? 'Yes' : 'No'}
+                                              </span>
+                                            </label>
+                                            {/* Write toggle */}
+                                            <label className="flex items-center justify-center gap-1 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={editEnabled}
+                                                onChange={() => {
+                                                  toggleEditPermission(moduleKey, editKey);
+                                                  // If enabling write, also enable read
+                                                  if (!editEnabled && !viewEnabled) toggleEditPermission(moduleKey, viewKey);
+                                                }}
+                                                className="w-3.5 h-3.5 rounded text-emerald-500"
+                                              />
+                                              <span className={`text-[10px] font-semibold ${editEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                {editEnabled ? 'Yes' : 'No'}
+                                              </span>
+                                            </label>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()
+                              ) : (
+                              modulePerms.permissions.map(permKey => {
                                 const isEnabled = editForm?.permissions?.[moduleKey]?.[permKey] || false;
                                 const permLabel = modulePerms.labels[permKey] || permKey;
 
@@ -3636,7 +3840,8 @@ const UserManagement = () => {
                                     <span className="font-medium truncate">{permLabel}</span>
                                   </label>
                                 );
-                              })}
+                              })
+                              )}
                             </div>
                           </div>
                         );

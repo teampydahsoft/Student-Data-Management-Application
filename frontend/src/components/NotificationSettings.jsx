@@ -66,7 +66,7 @@ Login URL: {{loginUrl}}`,
   }
 };
 
-const NotificationSettings = () => {
+const NotificationSettings = ({ readOnly = false }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({});
@@ -168,6 +168,7 @@ const NotificationSettings = () => {
             Configure SMS and Email templates for various notifications
           </p>
         </div>
+        {!readOnly && (
         <button
           onClick={handleSave}
           disabled={saving}
@@ -185,6 +186,7 @@ const NotificationSettings = () => {
             </>
           )}
         </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
