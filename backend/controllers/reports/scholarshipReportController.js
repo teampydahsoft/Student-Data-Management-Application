@@ -395,11 +395,43 @@ const resolveReportYears = (totalYears, displayYear) => {
   return Array.from({ length: totalYears }, (_, i) => i + 1);
 };
 
+// Format year_status_counts into a readable string for Excel.
+// All-years: "Eligible: 3, Not Eligible: 1"   Specific year: "Not Eligible"
+const formatScholarStatusForExcel = (student) => {
+  const counts = student.year_status_counts;
+  if (counts) {
+    // All-years mode — show each non-zero bucket
+    const parts = [];
+    if (counts.eligible     > 0) parts.push(`Eligible: ${counts.eligible}`);
+    if (counts.not_eligible > 0) parts.push(`Not Eligible: ${counts.not_eligible}`);
+    if (counts.rejected     > 0) parts.push(`Rejected: ${counts.rejected}`);
+    if (counts.not_applied  > 0) parts.push(`Not Applied: ${counts.not_applied}`);
+    if (counts.pending      > 0) parts.push(`Pending: ${counts.pending}`);
+    return parts.join(', ') || '—';
+  }
+  // Specific-year mode — normalise the raw string
+  const raw = String(student.scholar_status || '').trim().toLowerCase();
+  if (!raw) return '—';
+  if (raw.includes('eligible') && !raw.includes('not')) return 'Eligible';
+  if (raw.includes('not') && raw.includes('eligible'))  return 'Not Eligible';
+  if (raw === 'rejected')    return 'Rejected';
+  if (raw === 'not_applied' || raw === 'not applied') return 'Not Applied';
+  if (raw === 'pending')     return 'Pending';
+  return student.scholar_status || '—';
+};
+
 const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
-  const fixedCols = 7; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste, Status
+  const hasScholarshipStatus = Boolean(filters.scholarship_status);
+  const fixedCols = hasScholarshipStatus ? 8 : 7; // +1 for Scholarship Status when filter is active
   const colsPerYear = 3;
+
   const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste', 'Status'];
   const row2 = ['', '', '', '', '', '', ''];
+  if (hasScholarshipStatus) {
+    row1.push('Scholarship Status');
+    row2.push('');
+  }
+
   const merges = [
     { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
     { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
@@ -407,7 +439,8 @@ const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
     { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
     { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },
     { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } },
-    { s: { r: 0, c: 6 }, e: { r: 1, c: 6 } }
+    { s: { r: 0, c: 6 }, e: { r: 1, c: 6 } },
+    ...(hasScholarshipStatus ? [{ s: { r: 0, c: 7 }, e: { r: 1, c: 7 } }] : [])
   ];
 
   const yearSubHeaders = ['Sanctioned', 'RTF Released', 'Due'];
@@ -446,6 +479,9 @@ const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
       student.caste || '',
       student.student_status || ''
     ];
+    if (hasScholarshipStatus) {
+      row.push(formatScholarStatusForExcel(student));
+    }
     for (const year of reportYears) {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
         sanctioned_amount: 0,
@@ -495,7 +531,8 @@ exports.exportScholarshipReport = async (req, res) => {
       batch: req.query.filter_batch || '',
       course: req.query.filter_course || '',
       branch: req.query.filter_branch || '',
-      academic_year: req.query.filter_academic_year || ''
+      academic_year: req.query.filter_academic_year || '',
+      scholarship_status: req.query.filter_scholarship_status || ''
     };
     const buffer = buildExcelBuffer(data, totalYears, filters, displayYear);
     const dateStr = new Date().toISOString().split('T')[0];
