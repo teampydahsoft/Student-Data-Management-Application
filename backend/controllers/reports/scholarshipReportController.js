@@ -220,54 +220,92 @@ const buildScholarshipReportData = async (req) => {
     const [yearEligibleRows] = await masterPool.query(yearEligibleQuery, yearEligibleParams);
 
     // Build status map:
-    // - Specific year: student_id → eligible status for that year
-    // - All years: student_id → 'eligible' if ANY year is eligible, else the most recent non-empty status
-    for (const row of yearEligibleRows) {
-      const normalized = String(row.eligible || '').trim().toLowerCase();
-      if (!filterAcademicYear || filterAcademicYear <= 0) {
-        // All-years mode: if any year is eligible, mark student as eligible overall
-        const existing = yearStatusMap.get(row.student_id);
-        const isEligible = normalized.includes('eligible') && !normalized.includes('not');
-        if (isEligible) {
-          yearStatusMap.set(row.student_id, 'eligible');
-        } else if (!existing || existing !== 'eligible') {
-          // Keep the first non-eligible status found (or overwrite with later ones)
-          yearStatusMap.set(row.student_id, normalized);
+    // - Specific year: student_id → single eligible status string for that year
+    // - All years: student_id → Map<student_year, resolved_status> (one entry per year)
+    //   Keyed by year so each year is counted once, regardless of how many semester rows exist.
+    if (!filterAcademicYear || filterAcademicYear <= 0) {
+      // All-years mode: for each student, keep the resolved status per year.
+      // A year is eligible only if ALL its semesters are eligible; otherwise use the
+      // first non-eligible status found for that year.
+      // yearStatusMap: student_id → Map<student_year, status_string>
+      for (const row of yearEligibleRows) {
+        const normalized = String(row.eligible || '').trim().toLowerCase();
+        if (!normalized) continue;
+        const studentYear = row.student_year;
+        if (!yearStatusMap.has(row.student_id)) yearStatusMap.set(row.student_id, new Map());
+        const yearMap = yearStatusMap.get(row.student_id);
+        const existing = yearMap.get(studentYear);
+        const rowIsEligible = normalized.includes('eligible') && !normalized.includes('not');
+        if (!existing) {
+          yearMap.set(studentYear, normalized);
+        } else {
+          // If any semester in this year is non-eligible, the whole year is non-eligible
+          const existingIsEligible = existing.includes('eligible') && !existing.includes('not');
+          if (existingIsEligible && !rowIsEligible) {
+            yearMap.set(studentYear, normalized); // downgrade year to non-eligible
+          }
         }
-      } else {
-        // Specific year: only keep the first row per student
+      }
+    } else {
+      // Specific year mode: keep the first (primary) status per student for that year
+      for (const row of yearEligibleRows) {
         if (!yearStatusMap.has(row.student_id)) {
-          yearStatusMap.set(row.student_id, normalized);
+          yearStatusMap.set(row.student_id, String(row.eligible || '').trim().toLowerCase());
         }
       }
     }
+
+    // Helper: get all year statuses as an array for a student (all-years mode)
+    // or a single string (specific-year mode).
+    const getYearStatuses = (studentId) => {
+      const val = yearStatusMap.get(studentId);
+      if (!val) return [];
+      if (val instanceof Map) return [...val.values()];
+      return [val];
+    };
+
+    const statusMatchesFilter = (studentId) => {
+      const val = yearStatusMap.get(studentId);
+      const isYearMap = val instanceof Map;
+
+      const checkEligible    = (s) => s.includes('eligible') && !s.includes('not');
+      const checkNotEligible = (s) => s.includes('not') && s.includes('eligible');
+      const checkRejected    = (s) => s === 'rejected';
+      const checkNotApplied  = (s) => s === 'not_applied' || s === 'not applied';
+      const checkPending     = (s) => !s || s === 'pending';
+
+      const statuses = getYearStatuses(studentId);
+
+      if (filterScholarshipStatus === 'eligible') {
+        // Show student if ANY year is marked eligible
+        return statuses.some(checkEligible);
+      }
+      if (filterScholarshipStatus === 'non_eligible_all') {
+        // Show student if ANY year has a non-eligible status, OR no record at all
+        if (!val || (isYearMap && val.size === 0)) return true;
+        return statuses.some((s) => !checkEligible(s));
+      }
+      if (filterScholarshipStatus === 'not_eligible') {
+        return statuses.some(checkNotEligible);
+      }
+      if (filterScholarshipStatus === 'rejected') {
+        return statuses.some(checkRejected);
+      }
+      if (filterScholarshipStatus === 'not_applied') {
+        return statuses.some(checkNotApplied);
+      }
+      if (filterScholarshipStatus === 'pending') {
+        if (!val || (isYearMap && val.size === 0)) return true;
+        return statuses.some(checkPending);
+      }
+      return true;
+    };
 
     // Filter students based on their resolved scholarship status
     const EXCLUDED_QUOTA_TYPES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
     students = students.filter((student) => {
       if (EXCLUDED_QUOTA_TYPES.has((student.stud_type || '').trim().toUpperCase())) return false;
-      const status = yearStatusMap.get(student.id) || '';
-      const isEligible = status.includes('eligible') && !status.includes('not');
-      if (filterScholarshipStatus === 'eligible') {
-        return isEligible;
-      }
-      if (filterScholarshipStatus === 'non_eligible_all') {
-        // Include students with no scholarship record at all (status = '') OR any non-eligible status
-        return !status || !isEligible;
-      }
-      if (filterScholarshipStatus === 'not_eligible') {
-        return status.includes('not') && status.includes('eligible');
-      }
-      if (filterScholarshipStatus === 'rejected') {
-        return status === 'rejected';
-      }
-      if (filterScholarshipStatus === 'not_applied') {
-        return status === 'not_applied' || status === 'not applied';
-      }
-      if (filterScholarshipStatus === 'pending') {
-        return !status || status === 'pending';
-      }
-      return true;
+      return statusMatchesFilter(student.id);
     });
 
     if (!students.length) {
@@ -307,10 +345,27 @@ const buildScholarshipReportData = async (req) => {
       isCollege
     );
     maxTotalYears = Math.max(maxTotalYears, totalYears);
-    // For the "All Remaining" column: use the resolved status from student_scholarship when available,
-    // otherwise fall back to the legacy scholar_status column.
-    const displayScholarStatus = yearStatusMap.size > 0
-      ? (yearStatusMap.get(student.id) || student.scholar_status || '')
+    // Build year_status_counts for display: { eligible, not_eligible, rejected, not_applied, pending }
+    // In all-years mode yearStatusMap holds a Set of all per-year statuses per student.
+    // In specific-year mode it holds a plain string.
+    const resolvedStatus = yearStatusMap.get(student.id);
+    let year_status_counts = null;
+    if (resolvedStatus instanceof Map) {
+      const counts = { eligible: 0, not_eligible: 0, rejected: 0, not_applied: 0, pending: 0 };
+      for (const s of resolvedStatus.values()) {
+        if (s.includes('eligible') && !s.includes('not')) counts.eligible += 1;
+        else if (s.includes('not') && s.includes('eligible')) counts.not_eligible += 1;
+        else if (s === 'rejected') counts.rejected += 1;
+        else if (s === 'not_applied' || s === 'not applied') counts.not_applied += 1;
+        else if (s === 'pending') counts.pending += 1;
+      }
+      year_status_counts = counts;
+    }
+
+    const displayScholarStatus = resolvedStatus
+      ? (resolvedStatus instanceof Map
+          ? [...resolvedStatus.values()].join(', ')
+          : resolvedStatus)
       : (student.scholar_status || '');
     data.push({
       student_id: student.id,
@@ -325,6 +380,7 @@ const buildScholarshipReportData = async (req) => {
       caste: student.caste || '',
       student_status: student.student_status || '',
       scholar_status: displayScholarStatus,
+      year_status_counts,
       years
     });
   }

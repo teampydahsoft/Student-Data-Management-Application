@@ -664,12 +664,38 @@ function ScholarshipReport() {
                     {filters.scholarship_status === 'non_eligible_all' && (
                       <td className="border-b border-r border-gray-100 px-2 py-1.5 text-[11px]">
                         {(() => {
+                          const counts = student.year_status_counts;
+
+                          // All-years mode: backend sends year_status_counts with per-status year counts
+                          if (counts) {
+                            const badges = [
+                              counts.eligible     > 0 && { label: 'Eligible',     count: counts.eligible,     cls: 'text-green-700 bg-green-50 border border-green-200' },
+                              counts.not_eligible > 0 && { label: 'Not Eligible', count: counts.not_eligible, cls: 'text-orange-700 bg-orange-50 border border-orange-200' },
+                              counts.rejected     > 0 && { label: 'Rejected',     count: counts.rejected,     cls: 'text-red-700 bg-red-50 border border-red-200' },
+                              counts.not_applied  > 0 && { label: 'Not Applied',  count: counts.not_applied,  cls: 'text-gray-600 bg-gray-50 border border-gray-200' },
+                              counts.pending      > 0 && { label: 'Pending',      count: counts.pending,      cls: 'text-yellow-700 bg-yellow-50 border border-yellow-200' },
+                            ].filter(Boolean);
+
+                            if (!badges.length) return <span className="text-gray-400">—</span>;
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {badges.map(({ label, count, cls }) => (
+                                  <span key={label} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${cls}`}>
+                                    {label} <span className="opacity-70">({count})</span>
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+
+                          // Specific-year mode: single status badge
                           const raw = (student.scholar_status || '').toLowerCase().trim();
                           const statusDisplay = {
                             not_eligible: { label: 'Not Eligible',  cls: 'text-orange-700 bg-orange-50 border border-orange-200' },
                             pending:      { label: 'Pending',        cls: 'text-yellow-700 bg-yellow-50 border border-yellow-200' },
                             rejected:     { label: 'Rejected',       cls: 'text-red-700 bg-red-50 border border-red-200' },
-                            not_applied:  { label: 'Not Applied',    cls: 'text-gray-600 bg-gray-50 border border-gray-200' }
+                            not_applied:  { label: 'Not Applied',    cls: 'text-gray-600 bg-gray-50 border border-gray-200' },
+                            eligible:     { label: 'Eligible',       cls: 'text-green-700 bg-green-50 border border-green-200' },
                           };
                           const meta = statusDisplay[raw];
                           if (meta) {
