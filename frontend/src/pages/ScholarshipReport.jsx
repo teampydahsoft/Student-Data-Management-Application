@@ -589,6 +589,9 @@ function ScholarshipReport() {
                   <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                     Caste
                   </th>
+                  <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
+                    Status
+                  </th>
                   {filters.scholarship_status === 'non_eligible_all' && (
                     <th rowSpan={2} className="border-b border-r border-gray-200 px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap text-[11px]">
                       Scholarship Status
@@ -638,6 +641,25 @@ function ScholarshipReport() {
                     </td>
                     <td className="border-b border-r border-gray-100 px-2 py-1.5 text-gray-600 text-[11px]">
                       {student.caste || '—'}
+                    </td>
+                    <td className="border-b border-r border-gray-100 px-2 py-1.5 text-[11px]">
+                      {(() => {
+                        const raw = (student.student_status || '').trim();
+                        const statusMeta = {
+                          Regular:          { cls: 'text-green-700 bg-green-50 border border-green-200' },
+                          Detained:         { cls: 'text-red-700 bg-red-50 border border-red-200' },
+                          'Course Completed': { cls: 'text-blue-700 bg-blue-50 border border-blue-200' }
+                        };
+                        const meta = statusMeta[raw];
+                        if (meta) {
+                          return (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${meta.cls}`}>
+                              {raw}
+                            </span>
+                          );
+                        }
+                        return <span className="text-gray-500">{raw || '—'}</span>;
+                      })()}
                     </td>
                     {filters.scholarship_status === 'non_eligible_all' && (
                       <td className="border-b border-r border-gray-100 px-2 py-1.5 text-[11px]">

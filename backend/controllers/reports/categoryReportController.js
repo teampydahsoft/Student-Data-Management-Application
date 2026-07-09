@@ -6,8 +6,12 @@ const { generateCategoryReportPDF } = require('../../services/pdfService');
 
 /**
  * Build base WHERE clause and params for report filters (same as registration abstract).
+ * @param {object} req   - Express request object
+ * @param {object} [options]
+ * @param {boolean} [options.skipStatusFilter=false] - When true, omits the `student_status = 'Regular'` restriction.
+ *   Set to true for scholarship reports where all students (detained, alumni, etc.) must be visible.
  */
-async function buildReportFilters(req) {
+async function buildReportFilters(req, options = {}) {
   const {
     filter_batch,
     filter_course,
@@ -45,7 +49,10 @@ async function buildReportFilters(req) {
     }
   }
 
-  baseQuery += " AND student_status = 'Regular'";
+  // Scholarship reports need all students regardless of status — callers pass skipStatusFilter: true.
+  if (!options.skipStatusFilter) {
+    baseQuery += " AND student_status = 'Regular'";
+  }
 
   // Only include students whose college exists in colleges table (exclude orphan/invalid college names)
   // Use COLLATE to avoid "Illegal mix of collations" when students.college and colleges.name differ (e.g. utf8mb4_0900_ai_ci vs utf8mb4_unicode_ci)

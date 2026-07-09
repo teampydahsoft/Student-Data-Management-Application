@@ -167,22 +167,21 @@ const buildScholarshipReportData = async (req) => {
     : null;
   const filterScholarshipStatus = (req.query.filter_scholarship_status || '').trim().toLowerCase();
 
-  // When an academic year is selected, the scholarship status must be checked against
-  // student_scholarship.eligible for that year — NOT students.scholar_status (which reflects
-  // the current/overall status). Strip filter_scholarship_status from the query before
-  // buildReportFilters so it doesn't pre-filter by the wrong column.
-  let reqForFilters = req;
-  if (filterAcademicYear && filterAcademicYear > 0 && filterScholarshipStatus) {
-    reqForFilters = {
-      ...req,
-      query: { ...req.query, filter_scholarship_status: '' }
-    };
-  }
+  // Always strip filter_scholarship_status before buildReportFilters.
+  // The legacy students.scholar_status column is unreliable for newer batches (2026+)
+  // where scholarship status is stored in the student_scholarship table.
+  // We apply the scholarship status filter ourselves in JS after fetching student_scholarship rows.
+  const reqForFilters = filterScholarshipStatus
+    ? { ...req, query: { ...req.query, filter_scholarship_status: '' } }
+    : req;
 
-  const { baseQuery, params } = await buildReportFilters(reqForFilters);
+  const { baseQuery, params } = await buildReportFilters(reqForFilters, { skipStatusFilter: true });
 
+  // Exclude management/spot quota types — these students are ineligible for government scholarship
+  // by admission quota (MANG/MQ/SPOT/LSPOT). This is a quota-type exclusion, not a status filter:
+  // all other students (Regular, Detained, Course Completed, etc.) are included regardless of status.
   const studentQuery = `
-    SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste, scholar_status
+    SELECT id, admission_number, pin_no, student_name, course, branch, batch, college, current_year, current_semester, stud_type, caste, scholar_status, student_status
     ${baseQuery}
     AND UPPER(TRIM(IFNULL(stud_type,''))) NOT IN ('MANG', 'MQ', 'SPOT', 'LSPOT')
     ORDER BY student_name ASC, admission_number ASC
@@ -193,57 +192,80 @@ const buildScholarshipReportData = async (req) => {
     return { students: [], totalYears: 0, data: [] };
   }
 
-  // When academic year + scholarship status are BOTH set, filter students by their
-  // eligible status in student_scholarship for that specific year — not scholar_status column.
-  let yearStatusMap = new Map(); // student_id → year-specific eligible status (when applicable)
-  if (filterAcademicYear && filterAcademicYear > 0 && filterScholarshipStatus) {
+  // Apply scholarship status filter in JS using student_scholarship table data.
+  // This is done post-SQL because students.scholar_status is unreliable for newer batches (2026+)
+  // where status is stored per-year in student_scholarship, not in the legacy column.
+  let yearStatusMap = new Map(); // student_id → effective scholarship status
+  if (filterScholarshipStatus) {
     const studentIds = students.map((s) => s.id);
 
-    // Fetch eligible values for all these students in the selected year
-    const [yearEligibleRows] = await masterPool.query(
-      `SELECT student_id, eligible
+    // Fetch eligible values from student_scholarship for the relevant year(s)
+    let yearEligibleQuery = `SELECT student_id, student_year, eligible
+       FROM student_scholarship
+       WHERE student_id IN (?)
+         AND eligible IS NOT NULL AND TRIM(eligible) != ''
+       ORDER BY student_id ASC, student_year ASC, id ASC`;
+    const yearEligibleParams = [studentIds];
+
+    if (filterAcademicYear && filterAcademicYear > 0) {
+      yearEligibleQuery = `SELECT student_id, student_year, eligible
        FROM student_scholarship
        WHERE student_id IN (?)
          AND student_year = ?
          AND eligible IS NOT NULL AND TRIM(eligible) != ''
-       ORDER BY student_id ASC, id ASC`,
-      [studentIds, filterAcademicYear]
-    );
+       ORDER BY student_id ASC, id ASC`;
+      yearEligibleParams.push(filterAcademicYear);
+    }
 
-    // Build a map: student_id → normalized eligible status for that year
+    const [yearEligibleRows] = await masterPool.query(yearEligibleQuery, yearEligibleParams);
+
+    // Build status map:
+    // - Specific year: student_id → eligible status for that year
+    // - All years: student_id → 'eligible' if ANY year is eligible, else the most recent non-empty status
     for (const row of yearEligibleRows) {
-      // Only set the first (primary) status per student for that year
-      if (!yearStatusMap.has(row.student_id)) {
-        yearStatusMap.set(row.student_id, String(row.eligible || '').trim().toLowerCase());
+      const normalized = String(row.eligible || '').trim().toLowerCase();
+      if (!filterAcademicYear || filterAcademicYear <= 0) {
+        // All-years mode: if any year is eligible, mark student as eligible overall
+        const existing = yearStatusMap.get(row.student_id);
+        const isEligible = normalized.includes('eligible') && !normalized.includes('not');
+        if (isEligible) {
+          yearStatusMap.set(row.student_id, 'eligible');
+        } else if (!existing || existing !== 'eligible') {
+          // Keep the first non-eligible status found (or overwrite with later ones)
+          yearStatusMap.set(row.student_id, normalized);
+        }
+      } else {
+        // Specific year: only keep the first row per student
+        if (!yearStatusMap.has(row.student_id)) {
+          yearStatusMap.set(row.student_id, normalized);
+        }
       }
     }
 
-    // Filter students based on the year-specific status
-    // Also always exclude management/quota students regardless of scholarship status
+    // Filter students based on their resolved scholarship status
     const EXCLUDED_QUOTA_TYPES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
     students = students.filter((student) => {
       if (EXCLUDED_QUOTA_TYPES.has((student.stud_type || '').trim().toUpperCase())) return false;
-      const yearStatus = yearStatusMap.get(student.id) || '';
+      const status = yearStatusMap.get(student.id) || '';
+      const isEligible = status.includes('eligible') && !status.includes('not');
       if (filterScholarshipStatus === 'eligible') {
-        return yearStatus.includes('eligible') && !yearStatus.includes('not');
+        return isEligible;
       }
       if (filterScholarshipStatus === 'non_eligible_all') {
-        // All remaining: not eligible, pending, rejected, not applied, or no record
-        if (!yearStatus) return true; // no record = pending/unknown
-        return !(yearStatus.includes('eligible') && !yearStatus.includes('not'));
+        // Include students with no scholarship record at all (status = '') OR any non-eligible status
+        return !status || !isEligible;
       }
       if (filterScholarshipStatus === 'not_eligible') {
-        return yearStatus.includes('not') && yearStatus.includes('eligible');
+        return status.includes('not') && status.includes('eligible');
       }
       if (filterScholarshipStatus === 'rejected') {
-        return yearStatus === 'rejected';
+        return status === 'rejected';
       }
       if (filterScholarshipStatus === 'not_applied') {
-        return yearStatus === 'not_applied' || yearStatus === 'not applied';
+        return status === 'not_applied' || status === 'not applied';
       }
       if (filterScholarshipStatus === 'pending') {
-        // Pending = no row for this year at all, or status is pending
-        return !yearStatus || yearStatus === 'pending';
+        return !status || status === 'pending';
       }
       return true;
     });
@@ -285,9 +307,9 @@ const buildScholarshipReportData = async (req) => {
       isCollege
     );
     maxTotalYears = Math.max(maxTotalYears, totalYears);
-    // For the "All Remaining" column: use year-specific status when an academic year is filtered,
-    // otherwise fall back to the global scholar_status field.
-    const displayScholarStatus = (filterAcademicYear && filterAcademicYear > 0 && yearStatusMap.size > 0)
+    // For the "All Remaining" column: use the resolved status from student_scholarship when available,
+    // otherwise fall back to the legacy scholar_status column.
+    const displayScholarStatus = yearStatusMap.size > 0
       ? (yearStatusMap.get(student.id) || student.scholar_status || '')
       : (student.scholar_status || '');
     data.push({
@@ -301,6 +323,7 @@ const buildScholarshipReportData = async (req) => {
       course: student.course,
       branch: student.branch || '',
       caste: student.caste || '',
+      student_status: student.student_status || '',
       scholar_status: displayScholarStatus,
       years
     });
@@ -317,17 +340,18 @@ const resolveReportYears = (totalYears, displayYear) => {
 };
 
 const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
-  const fixedCols = 6; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste
+  const fixedCols = 7; // S.No, Student Name, PIN/Admission No, Branch, Quota, Caste, Status
   const colsPerYear = 3;
-  const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste'];
-  const row2 = ['', '', '', '', '', ''];
+  const row1 = ['S.No', 'Student Name', 'PIN / Admission No', 'Branch', 'Quota', 'Caste', 'Status'];
+  const row2 = ['', '', '', '', '', '', ''];
   const merges = [
     { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
     { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
     { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
     { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
     { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },
-    { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } }
+    { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } },
+    { s: { r: 0, c: 6 }, e: { r: 1, c: 6 } }
   ];
 
   const yearSubHeaders = ['Sanctioned', 'RTF Released', 'Due'];
@@ -363,7 +387,8 @@ const buildExcelBuffer = (data, totalYears, filters, displayYear = null) => {
       pinOrAdmission,
       student.branch || '',
       student.stud_type || '',
-      student.caste || ''
+      student.caste || '',
+      student.student_status || ''
     ];
     for (const year of reportYears) {
       const yearData = student.years.find((entry) => entry.student_year === year) || {
