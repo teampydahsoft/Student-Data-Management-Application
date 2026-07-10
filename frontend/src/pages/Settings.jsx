@@ -30,7 +30,8 @@ import {
   Unlock,
   Users,
   Tags,
-  Upload
+  Upload,
+  MapPin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -1311,6 +1312,17 @@ const Settings = () => {
   const [qrConfigSaving, setQrConfigSaving] = useState(false);
   const [qrActiveRole, setQrActiveRole] = useState(null); // which role panel is expanded
 
+  // Campus state
+  const [campuses, setCampuses] = useState([]);
+  const [campusesLoading, setCampusesLoading] = useState(false);
+  const [campusForm, setCampusForm] = useState({ name: '', code: '', description: '' });
+  const [campusFormError, setCampusFormError] = useState('');
+  const [savingCampus, setSavingCampus] = useState(false);
+  const [editingCampus, setEditingCampus] = useState(null); // campus object being edited
+  const [editCampusDraft, setEditCampusDraft] = useState({ name: '', code: '', description: '' });
+  const [deletingCampusId, setDeletingCampusId] = useState(null);
+  const [campusCollegeAssigning, setCampusCollegeAssigning] = useState(null); // campus id being assigned
+
   // Known RBAC roles for QR config display
   const QR_CONFIGURABLE_ROLES = [
     { key: 'super_admin', label: 'Super Admin', color: 'purple' },
@@ -1837,6 +1849,20 @@ const Settings = () => {
       if (!silent) {
         setLoading(false);
       }
+    }
+  };
+
+  // Fetch campuses from API
+  const fetchCampuses = async () => {
+    try {
+      setCampusesLoading(true);
+      const res = await api.get('/campuses');
+      setCampuses(res.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch campuses', error);
+      toast.error('Failed to fetch campuses');
+    } finally {
+      setCampusesLoading(false);
     }
   };
 
@@ -2751,6 +2777,7 @@ const Settings = () => {
       await fetchCertificateSettings();
       await fetchAllBatches();
       await fetchFrozenBatches();
+      await fetchCampuses();
     };
     initializeData();
   }, []);
@@ -2927,6 +2954,7 @@ const Settings = () => {
     if (selectedCourseId && updatedCourses.some((course) => course.id === selectedCourseId)) {
       await loadBranches(selectedCourseId);
     }
+    await fetchCampuses();
   };
 
   const toggleCourseActive = async (course) => {
@@ -3782,6 +3810,26 @@ const Settings = () => {
                 </div>
               </div>
             </button>
+          )}
+
+          {isAdmin && (
+          <button
+            onClick={() => { setActiveSection('campus'); fetchCampuses(); }}
+            className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'campus'
+              ? 'border-emerald-500 bg-emerald-50 shadow-md'
+              : 'border-gray-200 bg-white hover:border-emerald-300 hover:shadow-sm'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-full p-2 ${activeSection === 'campus' ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-600'}`}>
+                <MapPin size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Campus Creation</h2>
+                <p className="text-xs text-gray-500">Group colleges under campuses</p>
+              </div>
+            </div>
+          </button>
           )}
 
         </div>
@@ -6513,6 +6561,345 @@ const Settings = () => {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Campus Creation Section */}
+        {activeSection === 'campus' && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 min-h-[500px]">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4 border-b border-gray-200 pb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <MapPin size={20} className="text-emerald-600" />
+                  Campus Creation
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Create campuses and assign colleges to them. Each college can only belong to one campus.
+                </p>
+              </div>
+              <button
+                onClick={fetchCampuses}
+                disabled={campusesLoading}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <RefreshCcw size={14} className={campusesLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-6">
+              {/* Left — Create Campus Form */}
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-1.5">
+                    <Plus size={14} className="text-emerald-600" />
+                    Add New Campus
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Campus Name <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={campusForm.name}
+                        onChange={(e) => setCampusForm((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="e.g. Main Campus"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Campus Code</label>
+                      <input
+                        type="text"
+                        value={campusForm.code}
+                        onChange={(e) => setCampusForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. MAIN"
+                        maxLength={20}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm uppercase focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                      <input
+                        type="text"
+                        value={campusForm.description}
+                        onChange={(e) => setCampusForm((p) => ({ ...p, description: e.target.value }))}
+                        placeholder="Optional short description"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      />
+                    </div>
+                    {campusFormError && (
+                      <p className="text-xs text-red-600 font-medium">{campusFormError}</p>
+                    )}
+                    <button
+                      disabled={savingCampus || !campusForm.name.trim()}
+                      onClick={async () => {
+                        setCampusFormError('');
+                        if (!campusForm.name.trim()) {
+                          setCampusFormError('Campus name is required');
+                          return;
+                        }
+                        setSavingCampus(true);
+                        try {
+                          await api.post('/campuses', {
+                            name: campusForm.name.trim(),
+                            code: campusForm.code.trim() || undefined,
+                            description: campusForm.description.trim() || undefined,
+                          });
+                          toast.success('Campus created');
+                          setCampusForm({ name: '', code: '', description: '' });
+                          await fetchCampuses();
+                        } catch (err) {
+                          setCampusFormError(err.response?.data?.message || 'Failed to create campus');
+                        } finally {
+                          setSavingCampus(false);
+                        }
+                      }}
+                      className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      {savingCampus ? <RefreshCcw size={14} className="animate-spin" /> : <Plus size={14} />}
+                      {savingCampus ? 'Creating...' : 'Create Campus'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Unassigned Colleges info */}
+                {(() => {
+                  const assignedIds = campuses.flatMap((c) => c.collegeIds || []);
+                  const unassigned = colleges.filter((col) => !assignedIds.includes(col.id));
+                  if (unassigned.length === 0) return null;
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs font-semibold text-amber-800 mb-1.5 flex items-center gap-1">
+                        <AlertTriangle size={12} />
+                        {unassigned.length} college{unassigned.length > 1 ? 's' : ''} not assigned to any campus
+                      </p>
+                      <div className="space-y-0.5">
+                        {unassigned.map((col) => (
+                          <p key={col.id} className="text-xs text-amber-700">• {col.name}</p>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Right — Campus List */}
+              <div>
+                {campusesLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <RefreshCcw size={20} className="animate-spin text-emerald-500 mr-2" />
+                    <span className="text-sm text-gray-500">Loading campuses...</span>
+                  </div>
+                ) : campuses.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                    <MapPin size={48} className="mb-3 text-gray-200" />
+                    <p className="text-sm font-medium text-gray-500">No campuses yet</p>
+                    <p className="text-xs text-gray-400">Create your first campus using the form on the left.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {campuses.map((campus) => (
+                      <div key={campus.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                        {/* Campus header */}
+                        <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 border-b border-emerald-100">
+                          {editingCampus?.id === campus.id ? (
+                            <div className="flex-1 flex flex-col sm:flex-row gap-2 mr-3">
+                              <input
+                                type="text"
+                                value={editCampusDraft.name}
+                                onChange={(e) => setEditCampusDraft((p) => ({ ...p, name: e.target.value }))}
+                                className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-emerald-500 outline-none"
+                                placeholder="Campus name"
+                              />
+                              <input
+                                type="text"
+                                value={editCampusDraft.code}
+                                onChange={(e) => setEditCampusDraft((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                                className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm uppercase focus:border-emerald-500 outline-none"
+                                placeholder="Code"
+                                maxLength={20}
+                              />
+                              <input
+                                type="text"
+                                value={editCampusDraft.description}
+                                onChange={(e) => setEditCampusDraft((p) => ({ ...p, description: e.target.value }))}
+                                className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-emerald-500 outline-none"
+                                placeholder="Description"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0">
+                              <MapPin size={15} className="text-emerald-600 flex-shrink-0" />
+                              <span className="font-semibold text-gray-900 text-sm truncate">{campus.name}</span>
+                              {campus.code && (
+                                <span className="text-xs font-mono bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{campus.code}</span>
+                              )}
+                              {campus.description && (
+                                <span className="text-xs text-gray-500 truncate hidden sm:block">{campus.description}</span>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {editingCampus?.id === campus.id ? (
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    if (!editCampusDraft.name.trim()) {
+                                      toast.error('Campus name is required');
+                                      return;
+                                    }
+                                    try {
+                                      await api.put(`/campuses/${campus.id}`, {
+                                        name: editCampusDraft.name.trim(),
+                                        code: editCampusDraft.code.trim() || null,
+                                        description: editCampusDraft.description.trim() || null,
+                                      });
+                                      toast.success('Campus updated');
+                                      setEditingCampus(null);
+                                      await fetchCampuses();
+                                    } catch (err) {
+                                      toast.error(err.response?.data?.message || 'Failed to update campus');
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                                  title="Save"
+                                >
+                                  <Save size={13} />
+                                </button>
+                                <button
+                                  onClick={() => setEditingCampus(null)}
+                                  className="p-1.5 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setEditingCampus(campus);
+                                    setEditCampusDraft({
+                                      name: campus.name,
+                                      code: campus.code || '',
+                                      description: campus.description || '',
+                                    });
+                                  }}
+                                  className="p-1.5 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                  title="Edit campus"
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  disabled={deletingCampusId === campus.id}
+                                  onClick={async () => {
+                                    if (!window.confirm(`Delete campus "${campus.name}"? The colleges under it will NOT be deleted — they'll just become unassigned.`)) return;
+                                    setDeletingCampusId(campus.id);
+                                    try {
+                                      await api.delete(`/campuses/${campus.id}`);
+                                      toast.success('Campus deleted');
+                                      await fetchCampuses();
+                                    } catch (err) {
+                                      toast.error(err.response?.data?.message || 'Failed to delete campus');
+                                    } finally {
+                                      setDeletingCampusId(null);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                  title="Delete campus"
+                                >
+                                  {deletingCampusId === campus.id ? <RefreshCcw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* College assignment */}
+                        <div className="p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Colleges under this campus</p>
+                          <div className="space-y-1.5">
+                            {/* Already assigned colleges */}
+                            {(campus.collegeIds || []).map((colId) => {
+                              const col = colleges.find((c) => c.id === colId);
+                              if (!col) return null;
+                              return (
+                                <div key={colId} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${col.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                    <span className="text-sm text-gray-800 truncate">{col.name}</span>
+                                    {col.code && <span className="text-[10px] font-mono text-gray-400">{col.code}</span>}
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const updatedIds = (campus.collegeIds || []).filter((id) => id !== colId);
+                                      try {
+                                        await api.put(`/campuses/${campus.id}`, { collegeIds: updatedIds });
+                                        toast.success(`"${col.name}" removed from campus`);
+                                        await fetchCampuses();
+                                      } catch (err) {
+                                        toast.error(err.response?.data?.message || 'Failed to update campus');
+                                      }
+                                    }}
+                                    className="p-1 text-gray-300 hover:text-red-400 transition-colors flex-shrink-0"
+                                    title="Remove from campus"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+
+                            {/* Dropdown to add a college */}
+                            {(() => {
+                              const assignedIds = campuses.flatMap((c) => c.collegeIds || []);
+                              const available = colleges.filter(
+                                (col) => !assignedIds.includes(col.id) || (campus.collegeIds || []).includes(col.id)
+                              );
+                              const addable = available.filter((col) => !(campus.collegeIds || []).includes(col.id));
+                              if (addable.length === 0) return (
+                                <p className="text-xs text-gray-400 italic px-1">
+                                  {colleges.length === 0 ? 'No colleges available' : 'All available colleges are assigned'}
+                                </p>
+                              );
+                              return (
+                                <select
+                                  value=""
+                                  disabled={campusCollegeAssigning === campus.id}
+                                  onChange={async (e) => {
+                                    const colId = parseInt(e.target.value, 10);
+                                    if (!colId) return;
+                                    const updatedIds = [...(campus.collegeIds || []), colId];
+                                    setCampusCollegeAssigning(campus.id);
+                                    try {
+                                      await api.put(`/campuses/${campus.id}`, { collegeIds: updatedIds });
+                                      const col = colleges.find((c) => c.id === colId);
+                                      toast.success(`"${col?.name}" added to campus`);
+                                      await fetchCampuses();
+                                    } catch (err) {
+                                      toast.error(err.response?.data?.message || 'Failed to assign college');
+                                    } finally {
+                                      setCampusCollegeAssigning(null);
+                                    }
+                                  }}
+                                  className="w-full rounded-lg border border-dashed border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer disabled:opacity-50"
+                                >
+                                  <option value="">+ Add a college to this campus</option>
+                                  {addable.map((col) => (
+                                    <option key={col.id} value={col.id}>{col.name}{col.code ? ` (${col.code})` : ''}</option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
