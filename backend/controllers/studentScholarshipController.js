@@ -16,6 +16,7 @@ const {
   normalizeReleaseForSave,
   resolveTotalYears: resolveScholarshipTotalYears,
   resolveSemestersPerYear,
+  resolveCourseAcademicStructure,
   buildDefaultSemesters,
   isReleaseRow,
   isSemesterSummaryRow,
@@ -100,7 +101,12 @@ const normalizeDateForSave = (value) => {
 };
 
 const resolveTotalYears = async (student) => resolveScholarshipTotalYears(masterPool, student);
-const resolveSemestersPerYearForStudent = async (student) => resolveSemestersPerYear(masterPool, student);
+const resolveSemestersPerYearForStudent = async (student, studentYear = null) => (
+  resolveSemestersPerYear(masterPool, student, studentYear)
+);
+const resolveAcademicStructureForStudent = async (student) => (
+  resolveCourseAcademicStructure(masterPool, student)
+);
 
 const buildEmptyYear = (studentYear, semestersPerYear = 2) => ({
   student_year: studentYear,
@@ -231,6 +237,8 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
     },
     totalYears,
     semestersPerYear: extra.semestersPerYear ?? 2,
+    academicStructure: extra.academicStructure ?? null,
+    yearSemesterConfig: extra.yearSemesterConfig ?? null,
     currentYear: Math.max(1, toNumber(student.current_year) || 1),
     currentSemester: Math.max(1, toNumber(student.current_semester) || 1),
     firstAcademicYear: academicContext.firstAcademicYear,
@@ -245,6 +253,7 @@ const buildScholarshipResponse = (student, totalYears, years, archivedHistory, e
 
 const fetchScholarshipPayload = async (student) => {
   const quotaLocked = isScholarshipIneligibleQuota(student.stud_type);
+  const academicStructure = await resolveAcademicStructureForStudent(student);
   const totalYears = await resolveTotalYears(student);
   const semestersPerYear = await resolveSemestersPerYearForStudent(student);
 
@@ -256,12 +265,18 @@ const fetchScholarshipPayload = async (student) => {
     return buildScholarshipResponse(
       student,
       totalYears,
-      buildIneligibleQuotaYears(totalYears, semestersPerYear),
+      buildIneligibleQuotaYears(totalYears, academicStructure.getSemestersForYear),
       archivedHistory,
       {
         currentYearEligible: 'not_eligible',
         scholarshipQuotaLocked: true,
-        semestersPerYear
+        semestersPerYear,
+        academicStructure: {
+          totalYears: academicStructure.totalYears,
+          semestersPerYear: academicStructure.semestersPerYear,
+          years: academicStructure.years
+        },
+        yearSemesterConfig: academicStructure.yearSemesterConfig
       }
     );
   }
@@ -293,12 +308,13 @@ const fetchScholarshipPayload = async (student) => {
 
   const years = await Promise.all(Array.from({ length: totalYears }, async (_, index) => {
     const studentYear = index + 1;
+    const semestersForYear = academicStructure.getSemestersForYear(studentYear);
     const yearRows = yearMap[studentYear] || [];
     const baseYear = !yearRows.length
-      ? buildEmptyYear(studentYear, semestersPerYear)
+      ? buildEmptyYear(studentYear, semestersForYear)
       : {
         student_year: studentYear,
-        ...buildYearEntryFromRows(yearRows, semestersPerYear)
+        ...buildYearEntryFromRows(yearRows, semestersForYear)
       };
 
     const lockedAmount = await getRtfLockedAmount(
@@ -331,7 +347,13 @@ const fetchScholarshipPayload = async (student) => {
       currentYearEligible: currentSemesterEligible,
       currentSemesterFeePaid,
       scholarshipQuotaLocked: false,
-      semestersPerYear
+      semestersPerYear,
+      academicStructure: {
+        totalYears: academicStructure.totalYears,
+        semestersPerYear: academicStructure.semestersPerYear,
+        years: academicStructure.years
+      },
+      yearSemesterConfig: academicStructure.yearSemesterConfig
     }
   );
 };
@@ -525,7 +547,11 @@ exports.saveScholarshipHistory = async (req, res) => {
       : String(student.caste || '').trim();
 
     const isCollege = await isCollegeAccountForCaste(effectiveCaste);
-    const validation = await validateScholarshipYearsPayload(connection, student.id, years, { isCollege });
+    const maxAccessibleProgramYear = Math.max(1, toNumber(student.current_year) || 1);
+    const validation = await validateScholarshipYearsPayload(connection, student.id, years, {
+      isCollege,
+      maxAccessibleProgramYear
+    });
     if (!validation.valid) {
       return res.status(400).json({ success: false, message: validation.message });
     }
@@ -541,7 +567,7 @@ exports.saveScholarshipHistory = async (req, res) => {
     }
 
     const historyActor = resolveHistoryActor(req.user);
-    const semestersPerYear = await resolveSemestersPerYearForStudent(student);
+    const academicStructure = await resolveAcademicStructureForStudent(student);
 
     for (const yearEntry of years) {
       const studentYear = toNumber(yearEntry.student_year);
@@ -549,9 +575,10 @@ exports.saveScholarshipHistory = async (req, res) => {
 
       const releases = Array.isArray(yearEntry.releases) ? yearEntry.releases : [];
       const paidTransactions = Array.isArray(yearEntry.paid_transactions) ? yearEntry.paid_transactions : [];
+      const semestersForYear = academicStructure.getSemestersForYear(studentYear);
       const semesters = Array.isArray(yearEntry.semesters) && yearEntry.semesters.length
         ? yearEntry.semesters
-        : buildDefaultSemesters(semestersPerYear);
+        : buildDefaultSemesters(semestersForYear);
 
       const allEligible = allSemestersEligible(semesters);
       const feeOnlyMode = isYearFeeOnlyScholarshipMode(semesters);

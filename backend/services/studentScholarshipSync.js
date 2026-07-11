@@ -7,11 +7,14 @@ const {
   isYearFeeOnlyScholarshipMode,
   hasYearScholarshipFinancialTracking
 } = require('../utils/scholarshipValidation');
+const {
+  DEFAULT_TOTAL_YEARS,
+  DEFAULT_SEMESTERS_PER_YEAR,
+  buildStructureFromDbRow
+} = require('../utils/courseAcademicStructure');
 
 const VALID_ELIGIBLE = ['eligible', 'not_eligible', 'rejected', 'pending', 'not_applied'];
 const SCHOLARSHIP_INELIGIBLE_QUOTA_CODES = new Set(['MANG', 'MQ', 'SPOT', 'LSPOT']);
-const DEFAULT_TOTAL_YEARS = 4;
-const DEFAULT_SEMESTERS_PER_YEAR = 2;
 
 const normalizeStudTypeCode = (value) => {
   const code = String(value || '').trim().toUpperCase();
@@ -297,54 +300,48 @@ const propagateBatchSanctionedAmount = async (connection, student, studentYear, 
 };
 
 const resolveTotalYears = async (pool, student) => {
+  const structure = await resolveCourseAcademicStructure(pool, student);
   const currentYear = Math.max(1, toNumber(student.current_year) || 1);
-  let configuredYears = 0;
-
-  if (student.course) {
-    const [courseRows] = await pool.query(
-      `SELECT c.total_years, cb.total_years AS branch_total_years
-       FROM courses c
-       LEFT JOIN course_branches cb ON cb.course_id = c.id AND cb.name = ?
-       WHERE c.name = ?
-       LIMIT 1`,
-      [student.branch || '', student.course]
-    );
-
-    if (courseRows.length > 0) {
-      configuredYears = toNumber(courseRows[0].branch_total_years) || toNumber(courseRows[0].total_years);
-    }
-  }
-
-  const totalYears = Math.max(DEFAULT_TOTAL_YEARS, configuredYears || DEFAULT_TOTAL_YEARS, currentYear);
-  return Math.min(totalYears, 10);
+  return Math.min(Math.max(structure.totalYears, currentYear), 10);
 };
 
-const resolveSemestersPerYear = async (pool, student) => {
-  let configuredSemesters = 0;
+const fetchCourseBranchRow = async (pool, student) => {
+  if (!student?.course) return null;
 
-  if (student?.course) {
-    const [courseRows] = await pool.query(
-      `SELECT c.semesters_per_year, cb.semesters_per_year AS branch_semesters_per_year
-       FROM courses c
-       LEFT JOIN course_branches cb ON cb.course_id = c.id AND cb.name = ?
-       WHERE c.name = ?
-       LIMIT 1`,
-      [student.branch || '', student.course]
-    );
+  const [courseRows] = await pool.query(
+    `SELECT c.total_years, c.semesters_per_year, c.year_semester_config,
+            cb.total_years AS branch_total_years,
+            cb.semesters_per_year AS branch_semesters_per_year,
+            cb.year_semester_config AS branch_year_semester_config
+     FROM courses c
+     LEFT JOIN course_branches cb ON cb.course_id = c.id AND cb.name = ?
+     WHERE c.name = ?
+     LIMIT 1`,
+    [student.branch || '', student.course]
+  );
 
-    if (courseRows.length > 0) {
-      configuredSemesters = toNumber(courseRows[0].branch_semesters_per_year)
-        || toNumber(courseRows[0].semesters_per_year);
-    }
+  return courseRows[0] || null;
+};
+
+const resolveCourseAcademicStructure = async (pool, student) => {
+  const row = await fetchCourseBranchRow(pool, student);
+  return buildStructureFromDbRow(row);
+};
+
+const resolveSemestersPerYear = async (pool, student, studentYear = null) => {
+  const structure = await resolveCourseAcademicStructure(pool, student);
+  const currentYear = Math.max(1, toNumber(student?.current_year) || 1);
+  const targetYear = studentYear != null
+    ? Math.max(1, toNumber(studentYear) || 1)
+    : currentYear;
+  const configured = structure.getSemestersForYear(targetYear);
+  const currentSemester = Math.max(1, toNumber(student?.current_semester) || 1);
+
+  if (targetYear === currentYear) {
+    return Math.min(Math.max(configured, currentSemester), 4);
   }
 
-  const currentSemester = Math.max(1, toNumber(student?.current_semester) || 1);
-  const semestersPerYear = Math.max(
-    DEFAULT_SEMESTERS_PER_YEAR,
-    configuredSemesters || DEFAULT_SEMESTERS_PER_YEAR,
-    currentSemester
-  );
-  return Math.min(semestersPerYear, 4);
+  return configured;
 };
 
 const buildDefaultSemesters = (semestersPerYear, eligible = '') => (
@@ -388,10 +385,14 @@ const scholarshipRowHasExtraData = (row) => (
   || (row.proceeding && String(row.proceeding).trim())
 );
 
-const buildIneligibleQuotaYears = (totalYears, semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR) => (
-  Array.from({ length: totalYears }, (_, index) => (
-    buildIneligibleQuotaYearEntry(index + 1, semestersPerYear)
-  ))
+const buildIneligibleQuotaYears = (totalYears, getSemestersForYear) => (
+  Array.from({ length: totalYears }, (_, index) => {
+    const studentYear = index + 1;
+    const semestersPerYear = typeof getSemestersForYear === 'function'
+      ? getSemestersForYear(studentYear)
+      : (getSemestersForYear || DEFAULT_SEMESTERS_PER_YEAR);
+    return buildIneligibleQuotaYearEntry(studentYear, semestersPerYear);
+  })
 );
 
 const upsertScholarshipEligible = async (pool, studentId, studentYear, eligible) => {
@@ -454,9 +455,10 @@ const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
   if (!needsSync) return false;
 
   await pool.query('DELETE FROM student_scholarship WHERE student_id = ?', [student.id]);
-  const semestersPerYear = await resolveSemestersPerYear(pool, student);
+  const structure = await resolveCourseAcademicStructure(pool, student);
   for (let year = 1; year <= totalYears; year += 1) {
-    for (let semester = 1; semester <= semestersPerYear; semester += 1) {
+    const semestersForYear = structure.getSemestersForYear(year);
+    for (let semester = 1; semester <= semestersForYear; semester += 1) {
       await pool.query(
         `INSERT INTO student_scholarship
          (student_id, student_year, student_semester, eligible, sanctioned_amount, released_amount)
@@ -1449,6 +1451,7 @@ module.exports = {
   syncScholarStatusColumn,
   resolveTotalYears,
   resolveSemestersPerYear,
+  resolveCourseAcademicStructure,
   buildDefaultSemesters,
   buildIneligibleQuotaYearEntry,
   buildIneligibleQuotaYears,

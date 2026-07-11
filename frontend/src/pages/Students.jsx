@@ -610,7 +610,11 @@ const Students = () => {
 
     // Determine total years from branch override or course default
     const branchObj = (courseObj.branches || []).find(b => b.name === branchName);
-    const totalYears = Number(branchObj?.totalYears || courseObj.totalYears) || 4;
+    const structure = branchObj?.structure || courseObj.structure;
+    const totalYears = Number(structure?.totalYears)
+      || Number(branchObj?.totalYears || courseObj.totalYears)
+      || (Array.isArray(structure?.years) ? structure.years.length : 0)
+      || 4;
 
     const years = Array.from({ length: totalYears }, (_, i) => String(i + 1));
 

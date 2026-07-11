@@ -50,7 +50,10 @@ import {
   hasYearScholarshipFinancialTracking,
   isScholarshipOptionalForRegistration,
   resolveRegistrationScholarshipTarget,
-  resolveRegistrationScholarshipDisplay
+  resolveRegistrationScholarshipDisplay,
+  isScholarshipProgramYearAccessible,
+  getMaxAccessibleScholarshipProgramYear,
+  getScholarshipSemestersForYear
 } from '../../config/scholarshipConfig';
 import { CASTE_OPTIONS } from '../../config/casteConfig';
 
@@ -66,7 +69,7 @@ const buildDefaultSemesters = (semestersPerYear = 2, eligible = '') => (
 );
 
 const normalizeYearFromApi = (year, payload, student, remarkMap = {}) => {
-  const semestersPerYear = payload?.semestersPerYear || 2;
+  const semestersPerYear = getScholarshipSemestersForYear(payload, year.student_year);
   const semesters = Array.isArray(year.semesters) && year.semesters.length
     ? year.semesters
     : buildDefaultSemesters(semestersPerYear, year.eligible || '');
@@ -411,6 +414,12 @@ const StudentScholarshipHistoryTab = ({
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
   const isEditingDisabled = readOnly || quotaLocked;
   const programYear = Math.max(1, Number(student?.current_year) || 1);
+  const maxAccessibleProgramYear = getMaxAccessibleScholarshipProgramYear(student, meta);
+  const isYearEditable = useCallback(
+    (studentYear) => !isEditingDisabled && isScholarshipProgramYearAccessible(studentYear, maxAccessibleProgramYear),
+    [isEditingDisabled, maxAccessibleProgramYear]
+  );
+  const hasLockedFutureYears = (meta?.totalYears || years.length) > maxAccessibleProgramYear;
   const scholarshipOptionalForRegistration = isScholarshipOptionalForRegistration(registrationOptionalStages);
   const registrationScholarshipTarget = resolveRegistrationScholarshipTarget(
     programYear,
@@ -548,19 +557,23 @@ const StudentScholarshipHistoryTab = ({
   );
 
   const releaseTransactionYears = useMemo(
-    () => years.filter((year) => isYearScholarshipEligible(year)),
-    [years]
+    () => years.filter(
+      (year) => isYearScholarshipEligible(year)
+        && isScholarshipProgramYearAccessible(year.student_year, maxAccessibleProgramYear)
+    ),
+    [years, maxAccessibleProgramYear]
   );
 
   const paidTransactionYears = useMemo(
     () => years.filter((year) => {
+      if (!isScholarshipProgramYearAccessible(year.student_year, maxAccessibleProgramYear)) return false;
       // CONV not-eligible years: tuition fee shows in Due only — no entry section below
       if (shouldUseTuitionFeeLabels(student, year)) return false;
       if (isYearScholarshipEligible(year)) return true;
       if (isYearFeeOnlyScholarshipMode(year)) return true;
       return sumPaid(year.paid_transactions || []) > 0;
     }),
-    [years, student]
+    [years, student, maxAccessibleProgramYear]
   );
 
   const showPaidTransactionsSection = !SCHOLARSHIP_HIDE_PAID_TRANSACTIONS_SECTION;
@@ -752,6 +765,7 @@ const StudentScholarshipHistoryTab = ({
 
     const remarkSaves = [];
     years.forEach((year) => {
+      if (!isYearEditable(year.student_year)) return;
       (year.semesters || []).forEach((semester) => {
         const remark = String(semester.remark || '').trim();
         if (!remark) return;
@@ -958,7 +972,9 @@ const StudentScholarshipHistoryTab = ({
   const handleSave = async () => {
     if (!admissionNumber) return;
 
-    for (const year of years) {
+    const editableYears = years.filter((year) => isYearEditable(year.student_year));
+
+    for (const year of editableYears) {
       const appId = normalizeApplicationIdInput(year.application_id);
       if (!appId) continue;
 
@@ -1017,7 +1033,7 @@ const StudentScholarshipHistoryTab = ({
       return true;
     };
 
-    for (const year of years) {
+    for (const year of editableYears) {
       const rtfEligible = isYearScholarshipEligible(year);
       const feeOnly = isYearFeeOnlyScholarshipMode(year);
       if (!rtfEligible && !feeOnly) continue;
@@ -1102,7 +1118,7 @@ const StudentScholarshipHistoryTab = ({
 
     setSaving(true);
     try {
-      const payload = years.map((year) => {
+      const payload = editableYears.map((year) => {
         const rtfEligible = isYearScholarshipEligible(year);
         const feeOnly = isYearFeeOnlyScholarshipMode(year);
         const financial = hasYearScholarshipFinancialTracking(year);
@@ -1120,7 +1136,9 @@ const StudentScholarshipHistoryTab = ({
           student_year: year.student_year,
           application_id: normalizeApplicationIdInput(year.application_id) || '',
           sanctioned_amount: saveSanctioned,
-          semesters: (year.semesters || buildDefaultSemesters(meta?.semestersPerYear || 2)).map((semester) => ({
+          semesters: (year.semesters || buildDefaultSemesters(
+            getScholarshipSemestersForYear(meta, year.student_year)
+          )).map((semester) => ({
             student_semester: semester.student_semester,
             eligible: normalizeScholarshipStatusValue(semester.eligible) || '',
             fee_paid: semester.fee_paid === true ? 1 : 0
@@ -1314,6 +1332,13 @@ const StudentScholarshipHistoryTab = ({
         )}
       </div>
 
+      {hasLockedFutureYears && !isEditingDisabled && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          Scholarship entry is limited to program Year {maxAccessibleProgramYear} and earlier.
+          Future program years unlock when the student advances.
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Year-wise Scholarship Summary</h4>
@@ -1349,19 +1374,33 @@ const StudentScholarshipHistoryTab = ({
               {summaryYears.map((year, yearIndex) => {
                 const semesters = year.semesters?.length
                   ? year.semesters
-                  : buildDefaultSemesters(meta?.semestersPerYear || 2, year.eligible || '');
+                  : buildDefaultSemesters(
+                    getScholarshipSemestersForYear(meta, year.student_year),
+                    year.eligible || ''
+                  );
                 const rowSpan = semesters.length;
+                const yearEditingDisabled = !isYearEditable(year.student_year);
 
                 return semesters.map((semester, semesterIndex) => (
-                  <tr key={`${year.student_year}-sem-${semester.student_semester}`} className="hover:bg-gray-50/60">
+                  <tr
+                    key={`${year.student_year}-sem-${semester.student_semester}`}
+                    className={`hover:bg-gray-50/60 ${yearEditingDisabled && !isEditingDisabled ? 'bg-gray-50/40' : ''}`}
+                  >
                     {semesterIndex === 0 && (
                       <td
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center border-r border-gray-50"
                       >
-                        <span className="font-semibold text-gray-900 whitespace-nowrap text-xs">
-                          Year {year.student_year}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-semibold text-gray-900 whitespace-nowrap text-xs">
+                            Year {year.student_year}
+                          </span>
+                          {yearEditingDisabled && !isEditingDisabled && (
+                            <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">
+                              Locked
+                            </span>
+                          )}
+                        </div>
                       </td>
                     )}
                     {semesterIndex === 0 && (
@@ -1369,7 +1408,7 @@ const StudentScholarshipHistoryTab = ({
                         rowSpan={rowSpan}
                         className="px-2 py-2 align-middle text-center border-r border-gray-50"
                       >
-                        {isEditingDisabled ? (
+                        {yearEditingDisabled ? (
                           <span className="text-gray-700 text-xs">{year.application_id || '—'}</span>
                         ) : (
                           <div className="flex flex-col items-center gap-1 min-w-[120px]">
@@ -1412,7 +1451,7 @@ const StudentScholarshipHistoryTab = ({
                       Sem {semester.student_semester}
                     </td>
                     <td className="px-2 py-2">
-                      {isEditingDisabled ? (
+                      {yearEditingDisabled ? (
                         <span className="text-gray-700 text-xs">
                           {getScholarshipStatusDropdownLabel(semester.eligible)}
                         </span>
@@ -1444,7 +1483,7 @@ const StudentScholarshipHistoryTab = ({
                           return <span className="text-gray-300 text-xs">—</span>;
                         }
 
-                        if (isEditingDisabled) {
+                        if (yearEditingDisabled) {
                           return (
                             <span
                               className={`inline-flex items-center justify-center w-4 h-4 rounded border ${
@@ -1489,7 +1528,7 @@ const StudentScholarshipHistoryTab = ({
                             <span className="font-medium text-gray-800 text-xs">
                               {formatCurrency(0)}
                             </span>
-                          ) : isEditingDisabled ? (
+                          ) : yearEditingDisabled ? (
                             <span className="font-medium text-gray-800 text-xs">
                               {formatCurrency(year.display_sanctioned_amount ?? year.effective_sanctioned_amount ?? year.sanctioned_amount)}
                             </span>
@@ -1586,7 +1625,7 @@ const StudentScholarshipHistoryTab = ({
                       </td>
                     )}
                     <td className="px-2 py-2 min-w-[120px]">
-                      {isEditingDisabled ? (
+                      {yearEditingDisabled ? (
                         <span className="text-gray-700 text-xs">{semester.remark || '—'}</span>
                       ) : (
                         <input
@@ -1858,7 +1897,7 @@ const StudentScholarshipHistoryTab = ({
             const totalPaidAmt = sumPaid(paidTransactions);
             const totalFeeDueAmt = calculateScholarshipFeeDue(sanctionedAmt, totalPaidAmt);
             const isPaidOver = sanctionedAmt > 0 && totalPaidAmt > sanctionedAmt;
-            const yearPaidEditingDisabled = isEditingDisabled;
+            const yearPaidEditingDisabled = !isYearEditable(year.student_year);
             const paidLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'Paid';
             const feeDueLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_DUE_LABEL : SCHOLARSHIP_FEE_DUE_LABEL;
             const paidDateLabel = tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_DATE_LABEL : SCHOLARSHIP_PAID_DATE_LABEL;

@@ -249,7 +249,7 @@ const hasYearScholarshipFinancialTracking = (semesters = []) => (
 );
 
 const validateScholarshipYearsPayload = async (connection, studentId, years = [], options = {}) => {
-  const { isCollege = false } = options;
+  const { isCollege = false, maxAccessibleProgramYear = null } = options;
   const duplicateIds = findDuplicateApplicationIdsInPayload(years);
   if (duplicateIds.length) {
     return {
@@ -261,6 +261,16 @@ const validateScholarshipYearsPayload = async (connection, studentId, years = []
   for (const yearEntry of years) {
     const studentYear = toNumber(yearEntry.student_year);
     if (!studentYear || studentYear < 1) continue;
+
+    if (
+      maxAccessibleProgramYear != null
+      && studentYear > maxAccessibleProgramYear
+    ) {
+      return {
+        valid: false,
+        message: `Year ${studentYear} scholarship cannot be updated until the student reaches program year ${studentYear}.`
+      };
+    }
 
     const appValidation = validateApplicationId(yearEntry.application_id, { yearLabel: studentYear });
     if (!appValidation.valid) return appValidation;

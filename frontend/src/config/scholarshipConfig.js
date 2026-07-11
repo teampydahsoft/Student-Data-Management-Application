@@ -155,6 +155,34 @@ export const resolveRegistrationScholarshipTarget = (currentYear, optionalStages
   return { mode: 'prior_year', checkYear: year - 1, fullyOptional: false };
 };
 
+/** Scholarship tab: current program year and prior years only (Year 3 → Years 1–3). */
+export const isScholarshipProgramYearAccessible = (studentYear, currentProgramYear) => {
+  const year = Math.max(1, Number(studentYear) || 1);
+  const current = Math.max(1, Number(currentProgramYear) || 1);
+  return year <= current;
+};
+
+export const getMaxAccessibleScholarshipProgramYear = (student, scholarshipMeta) => Math.max(
+  1,
+  Number(student?.current_year ?? scholarshipMeta?.currentYear) || 1
+);
+
+/** Semester count for one program year from scholarship API payload (respects per-year course config). */
+export const getScholarshipSemestersForYear = (scholarshipMeta, studentYear) => {
+  const year = Math.max(1, Number(studentYear) || 1);
+  const structure = scholarshipMeta?.academicStructure;
+  if (structure?.years && Array.isArray(structure.years)) {
+    const yearConfig = structure.years.find((entry) => Number(entry.yearNumber) === year);
+    if (yearConfig?.semesters?.length) return yearConfig.semesters.length;
+  }
+  const config = scholarshipMeta?.yearSemesterConfig;
+  if (Array.isArray(config)) {
+    const entry = config.find((item) => Number(item.year) === year);
+    if (entry && Number(entry.semesters) > 0) return Number(entry.semesters);
+  }
+  return Math.max(1, Number(scholarshipMeta?.semestersPerYear) || 2);
+};
+
 const isScholarshipSemesterRegistrationComplete = (eligible, feePaid, studType) => {
   if (!isScholarshipStatusFinal(eligible)) return false;
   const isConv = isConvScholarshipQuota({ stud_type: studType });

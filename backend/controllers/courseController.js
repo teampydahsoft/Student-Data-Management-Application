@@ -2,6 +2,7 @@ const { masterPool } = require('../config/database');
 const { filterCoursesByScope, filterBranchesByScope } = require('../utils/scoping');
 const sectionAssignmentService = require('../services/sectionAssignmentService');
 const { logAudit } = require('../services/auditLogService');
+const { buildCourseAcademicStructure } = require('../utils/courseAcademicStructure');
 
 const DEFAULT_SEMESTERS_PER_YEAR = 2;
 const MAX_YEARS = 10;
@@ -44,57 +45,11 @@ const sanitizeStageConfig = ({ totalYears, semestersPerYear }) => {
 };
 
 const buildStructure = (courseConfig, branchConfig) => {
-  const yearsConfig = sanitizeStageConfig({
-    totalYears: branchConfig?.total_years ?? courseConfig.total_years,
-    semestersPerYear:
-      branchConfig?.semesters_per_year ?? courseConfig.semesters_per_year
-  });
-
-  // Check for per-year semester configuration
-  const yearSemesterConfig = branchConfig?.year_semester_config
-    ? (typeof branchConfig.year_semester_config === 'string'
-      ? JSON.parse(branchConfig.year_semester_config)
-      : branchConfig.year_semester_config)
-    : courseConfig?.year_semester_config
-      ? (typeof courseConfig.year_semester_config === 'string'
-        ? JSON.parse(courseConfig.year_semester_config)
-        : courseConfig.year_semester_config)
-      : null;
-
-  const years = Array.from({ length: yearsConfig.totalYears }, (_, index) => {
-    const yearNumber = index + 1;
-
-    // Get semester count for this year
-    let semesterCount = yearsConfig.semestersPerYear; // Default fallback
-
-    if (Array.isArray(yearSemesterConfig)) {
-      const yearConfig = yearSemesterConfig.find(y => y.year === yearNumber);
-      if (yearConfig && yearConfig.semesters) {
-        semesterCount = yearConfig.semesters;
-      }
-    }
-
-    const semesters = Array.from(
-      { length: semesterCount },
-      (__unused, semIndex) => {
-        const semesterNumber = semIndex + 1;
-        return {
-          semesterNumber,
-          label: `Semester ${semesterNumber}`
-        };
-      }
-    );
-    return {
-      yearNumber,
-      label: `Year ${yearNumber}`,
-      semesters
-    };
-  });
-
+  const structure = buildCourseAcademicStructure(courseConfig, branchConfig);
   return {
-    totalYears: yearsConfig.totalYears,
-    semestersPerYear: yearsConfig.semestersPerYear,
-    years
+    totalYears: structure.totalYears,
+    semestersPerYear: structure.semestersPerYear,
+    years: structure.years
   };
 };
 
