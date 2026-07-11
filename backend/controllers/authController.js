@@ -10,9 +10,9 @@ const { parsePermissions, USER_ROLES } = require('../constants/rbac');
 const { getHRMSConnection } = require('../config/mongoConfig');
 const { getModel: getHRMSUserModel } = require('../models/HRMSUser');
 const { getModel: getHRMSEmployeeModel } = require('../models/HRMSEmployee');
-const { buildRegistrationScholarshipHasStatusSql } = require('../services/studentScholarshipSync');
+const { buildStudentRegistrationStatusComputedSql } = require('../services/registrationReportSql');
 
-const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null, 's');
+const studentRegistrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
 
 const buildAdminResponse = (admin) => ({
   id: admin.id,
@@ -331,18 +331,7 @@ exports.unifiedLogin = async (req, res) => {
           `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
             s.course, s.branch, s.college,
             cb.id as branch_id, col.id as college_id, c.level as course_level,
-            CASE
-              WHEN
-                (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
-                 (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
-                 (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
-                 (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
-                 (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
-                (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
-                (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%')
-              THEN 'Completed'
-              ELSE s.registration_status
-            END AS registration_status_computed,
+            ${studentRegistrationStatusComputedSql} AS registration_status_computed,
             s.registration_status, s.student_data
            FROM students s
            LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
@@ -519,20 +508,7 @@ exports.createSSOSession = async (req, res) => {
         `SELECT s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
           cb.id as branch_id, col.id as college_id, c.level as course_level,
-          CASE
-            WHEN
-              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
-               (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
-               (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
-               (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
-               (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
-              (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
-              (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
-              (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-              (${registrationScholarshipCompleteSql})
-            THEN 'Completed'
-            ELSE 'pending'
-          END AS registration_status_computed,
+          ${studentRegistrationStatusComputedSql} AS registration_status_computed,
           s.registration_status, s.student_data
          FROM students s
          LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
@@ -738,20 +714,7 @@ exports.verifyToken = async (req, res) => {
         `SELECT sc.username, s.admission_number, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
           cb.id as branch_id, col.id as college_id, c.level as course_level,
-          CASE
-            WHEN
-              (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
-               (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
-               (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
-               (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
-               (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
-              (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
-              (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
-              (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-              (${registrationScholarshipCompleteSql})
-            THEN 'Completed'
-            ELSE 'pending'
-          END AS registration_status_computed,
+          ${studentRegistrationStatusComputedSql} AS registration_status_computed,
           s.registration_status, s.student_data
          FROM students s
          LEFT JOIN student_credentials sc ON sc.student_id = s.id

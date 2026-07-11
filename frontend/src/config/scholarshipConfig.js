@@ -131,67 +131,173 @@ export const isScholarshipStatusFinal = (status) => {
  * Determines whether the scholarship registration stage is satisfied for a student.
  *
  * Rules:
- * - Academic year < 2026 (legacy mode): complete if scholar_status column has a valid value.
- * - Academic year >= 2026 (semester-wise mode):
- *     • Ineligible-quota students (MANG/SPOT/LSPOT/MQ): auto-complete — no action needed.
- *     • All others: complete only if the admin has explicitly set an eligible value in the
- *       student_scholarship table for the current year + semester (i.e. a real DB row exists).
- *       The legacy scholar_status column is NOT used as a fallback in this mode.
- *     • CONV quota + not_eligible semester: additionally requires fee_paid = true.
- *       All other final statuses (eligible, rejected, not_applied) do NOT require fee_paid.
+ * - Scholarship optional + Year 1: not required.
+ * - Scholarship optional + Year 2+: prior program-year scholarship must be complete.
+ * - Academic year < 2026 (legacy mode): complete if scholar_status column has a final value.
+ * - Academic year >= 2026 (semester-wise mode): current or prior year rows per target above.
  *
  * @param {object} scholarshipData  - Full payload from /student-scholarship API
  * @param {object} student          - Student object (needs batch, current_year, current_semester, stud_type)
+ * @param {string[]} optionalStages - Registration optional stage keys for this branch+year
  */
-export const isScholarshipRegistrationComplete = (scholarshipData, student) => {
-  const currentYear = Number(student?.current_year) || 1;
-  const batch = student?.batch || scholarshipData?.student?.batch;
-  const studType = student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type;
+export const isScholarshipOptionalForRegistration = (optionalStages) => (
+  Array.isArray(optionalStages) && optionalStages.includes('scholarship')
+);
 
-  const isSemesterWise = usesSemesterWiseScholarshipStatus(batch, currentYear);
-
-  if (!isSemesterWise) {
-    // Legacy path: status must be a final decision (not pending).
-    return isScholarshipStatusFinal(
-      getCurrentScholarshipStatus(scholarshipData, student)
-    );
+export const resolveRegistrationScholarshipTarget = (currentYear, optionalStages) => {
+  const year = Math.max(1, Number(currentYear) || 1);
+  if (!isScholarshipOptionalForRegistration(optionalStages)) {
+    return { mode: 'current', checkYear: year, fullyOptional: false };
   }
+  if (year <= 1) {
+    return { mode: 'fully_optional', checkYear: null, fullyOptional: true };
+  }
+  return { mode: 'prior_year', checkYear: year - 1, fullyOptional: false };
+};
 
-  // Semester-wise path (2026+ academic year):
-  // Ineligible-quota students are always considered complete —
-  // check both the student object and the API's scholarshipQuotaLocked flag.
-  if (isScholarshipIneligibleQuota(studType) || scholarshipData?.scholarshipQuotaLocked) return true;
-
-  // Only complete if the admin explicitly saved a FINAL semester row in student_scholarship
-  const currentSemester = Number(
-    student?.current_semester
-    || scholarshipData?.currentSemester
-    || scholarshipData?.student?.current_semester
-  ) || 1;
-
-  const yearData = scholarshipData?.years?.find(
-    (y) => Number(y.student_year) === currentYear
-  );
-  const semesterRow = yearData?.semesters?.find(
-    (s) => Number(s.student_semester) === currentSemester
-  );
-
-  if (!isScholarshipStatusFinal(semesterRow?.eligible)) return false;
-
-  // Extra fee_paid check applies ONLY to CONV quota students whose current semester
-  // is marked not_eligible (i.e. tuition fee mode — not the RTF/eligible flow).
-  const isConv = isConvScholarshipQuota(student) || isConvScholarshipQuota({ stud_type: studType });
-  const isNotEligible = String(semesterRow?.eligible || '').trim().toLowerCase() === 'not_eligible';
-
+const isScholarshipSemesterRegistrationComplete = (eligible, feePaid, studType) => {
+  if (!isScholarshipStatusFinal(eligible)) return false;
+  const isConv = isConvScholarshipQuota({ stud_type: studType });
+  const isNotEligible = String(eligible || '').trim().toLowerCase() === 'not_eligible';
   if (isConv && isNotEligible) {
-    const semFeePaid = semesterRow?.fee_paid === true || semesterRow?.fee_paid === 1;
-    const apiFeePaid = scholarshipData?.currentSemesterFeePaid === true;
-    // null/undefined means not yet confirmed — treat as NOT paid (require explicit check).
-    return semFeePaid || apiFeePaid;
+    return feePaid === true || feePaid === 1;
   }
-
   return true;
 };
+
+const isPriorYearScholarshipYearComplete = (yearData, studType, semestersPerYear = 2) => {
+  if (!yearData) return false;
+  const semesters = Array.isArray(yearData.semesters) ? yearData.semesters : [];
+  const semCount = Math.max(1, Number(semestersPerYear) || 2);
+
+  if (!semesters.length) {
+    return isScholarshipSemesterRegistrationComplete(yearData.eligible, null, studType);
+  }
+
+  for (let sem = 1; sem <= semCount; sem += 1) {
+    const semesterRow = semesters.find((entry) => Number(entry.student_semester) === sem);
+    if (!semesterRow) return false;
+    const feePaid = semesterRow.fee_paid === true || semesterRow.fee_paid === 1;
+    if (!isScholarshipSemesterRegistrationComplete(semesterRow.eligible, feePaid, studType)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+export const resolveRegistrationScholarshipDisplay = (
+  scholarshipData,
+  student,
+  optionalStages = []
+) => {
+  const currentYear = Math.max(1, Number(student?.current_year) || 1);
+  const target = resolveRegistrationScholarshipTarget(currentYear, optionalStages);
+  const studType = student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type;
+  const semestersPerYear = scholarshipData?.semestersPerYear || 2;
+  const batch = student?.batch || scholarshipData?.student?.batch;
+
+  if (target.fullyOptional) {
+    return {
+      eligible: '',
+      feePaid: null,
+      checkYear: null,
+      fullyOptional: true,
+      satisfied: true,
+      displayLabel: null
+    };
+  }
+
+  if (isScholarshipIneligibleQuota(studType) || scholarshipData?.scholarshipQuotaLocked) {
+    return {
+      eligible: 'not_eligible',
+      feePaid: null,
+      checkYear: target.checkYear,
+      fullyOptional: false,
+      satisfied: true,
+      displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+    };
+  }
+
+  const yearData = scholarshipData?.years?.find(
+    (entry) => Number(entry.student_year) === Number(target.checkYear)
+  );
+
+  if (target.mode === 'prior_year' && usesSemesterWiseScholarshipStatus(batch, target.checkYear)) {
+    const satisfied = isPriorYearScholarshipYearComplete(yearData, studType, semestersPerYear);
+    const lastSemester = Math.max(1, Number(semestersPerYear) || 1);
+    const lastSemesterRow = yearData?.semesters?.find(
+      (entry) => Number(entry.student_semester) === lastSemester
+    );
+    return {
+      eligible: normalizeScholarshipStatusValue(lastSemesterRow?.eligible)
+        || normalizeScholarshipStatusValue(yearData?.eligible)
+        || '',
+      feePaid: lastSemesterRow?.fee_paid === true || lastSemesterRow?.fee_paid === 1 ? true : null,
+      checkYear: target.checkYear,
+      fullyOptional: false,
+      satisfied,
+      displayLabel: `Year ${target.checkYear}`
+    };
+  }
+
+  if (!usesSemesterWiseScholarshipStatus(batch, target.checkYear)) {
+    const eligible = target.mode === 'prior_year'
+      ? getScholarshipStatusForYear(scholarshipData, target.checkYear)
+      : getCurrentScholarshipStatus(scholarshipData, student);
+    const satisfied = isScholarshipStatusFinal(eligible);
+    return {
+      eligible,
+      feePaid: null,
+      checkYear: target.checkYear,
+      fullyOptional: false,
+      satisfied,
+      displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+    };
+  }
+
+  const checkSemester = target.mode === 'prior_year'
+    ? Math.max(1, Number(semestersPerYear) || 1)
+    : Math.max(1, Number(
+      student?.current_semester
+      || scholarshipData?.currentSemester
+      || scholarshipData?.student?.current_semester
+    ) || 1);
+  const semesterRow = yearData?.semesters?.find(
+    (entry) => Number(entry.student_semester) === checkSemester
+  );
+  const eligible = normalizeScholarshipStatusValue(semesterRow?.eligible)
+    || normalizeScholarshipStatusValue(yearData?.eligible)
+    || '';
+  const feePaid = semesterRow?.fee_paid === true || semesterRow?.fee_paid === 1 ? true : null;
+  const satisfied = target.mode === 'prior_year'
+    ? isPriorYearScholarshipYearComplete(yearData, studType, semestersPerYear)
+    : isScholarshipSemesterRegistrationComplete(
+      eligible,
+      feePaid || (scholarshipData?.currentSemesterFeePaid === true),
+      studType
+    );
+
+  return {
+    eligible,
+    feePaid,
+    checkYear: target.checkYear,
+    fullyOptional: false,
+    satisfied,
+    displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+  };
+};
+
+export const isScholarshipRegistrationComplete = (
+  scholarshipData,
+  student,
+  optionalStages = []
+) => resolveRegistrationScholarshipDisplay(scholarshipData, student, optionalStages).satisfied;
+
+export const getRegistrationScholarshipStatus = (
+  scholarshipData,
+  student,
+  optionalStages = []
+) => resolveRegistrationScholarshipDisplay(scholarshipData, student, optionalStages).eligible;
 
 /** True when a semester has any assigned scholarship status (not blank). */
 export const isSemesterScholarshipStatusAssigned = (status) => (

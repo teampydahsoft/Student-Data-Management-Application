@@ -54,7 +54,7 @@ import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../
 import RegistrationPendingModal from '../RegistrationPendingModal';
 import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 import { navigateToCrtApp } from '../../utils/crtAppUrl';
-import { computeRegistrationStageDisplays } from '../../config/registrationStages.jsx';
+import { computeRegistrationStageDisplays, isRegistrationPortalUnlocked } from '../../config/registrationStages.jsx';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -65,6 +65,7 @@ const StudentLayout = ({ children }) => {
     const [showRestrictionModal, setShowRestrictionModal] = useState(false);
     const [fetchedStatus, setFetchedStatus] = useState(null);
     const [fetchedScholarshipData, setFetchedScholarshipData] = useState(null);
+    const [regOptionalStages, setRegOptionalStages] = useState([]);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
     const [hasInternship, setHasInternship] = useState(false);
     const [layoutSettings, setLayoutSettings] = useState(null);
@@ -83,6 +84,26 @@ const StudentLayout = ({ children }) => {
                     ]);
                     if (studentRes.data.success && studentRes.data.data) {
                         setFetchedStatus(studentRes.data.data);
+                        const studentData = studentRes.data.data;
+                        const branchCode = studentData.branch;
+                        const currentYear = studentData.current_year;
+                        if (branchCode && currentYear != null) {
+                            try {
+                                const cfgRes = await api.get(
+                                    `/settings/registration-stage-config/branch/${encodeURIComponent(branchCode)}`
+                                );
+                                if (cfgRes.data?.success) {
+                                    const yearData = cfgRes.data.data || {};
+                                    setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                                } else {
+                                    setRegOptionalStages([]);
+                                }
+                            } catch {
+                                setRegOptionalStages([]);
+                            }
+                        } else {
+                            setRegOptionalStages([]);
+                        }
                     }
                     if (scholarshipRes.data?.success) {
                         setFetchedScholarshipData(scholarshipRes.data.data);
@@ -165,6 +186,24 @@ const StudentLayout = ({ children }) => {
                 ]);
                 if (studentRes.data.success && studentRes.data.data) {
                     setFetchedStatus(studentRes.data.data);
+                    const studentData = studentRes.data.data;
+                    const branchCode = studentData.branch;
+                    const currentYear = studentData.current_year;
+                    if (branchCode && currentYear != null) {
+                        try {
+                            const cfgRes = await api.get(
+                                `/settings/registration-stage-config/branch/${encodeURIComponent(branchCode)}`
+                            );
+                            if (cfgRes.data?.success) {
+                                const yearData = cfgRes.data.data || {};
+                                setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                            } else {
+                                setRegOptionalStages([]);
+                            }
+                        } catch {
+                            setRegOptionalStages([]);
+                        }
+                    }
                 }
                 if (scholarshipRes.data?.success) {
                     setFetchedScholarshipData(scholarshipRes.data.data);
@@ -186,27 +225,28 @@ const StudentLayout = ({ children }) => {
     // Fast-path: if authStore already has 'Completed' AND fetchedStatus also confirms it,
     // skip the stage computation to avoid showing a flash of the restriction modal
     // during the async fetch on first load.
-    const isRegistrationPending = () => {
+    const isRegistrationRestricted = () => {
         // If we haven't received the live student data yet, fall back to authStore
         // so the layout doesn't lock the student out during the initial load.
         if (!fetchedStatus) {
             const authReg = (user?.registration_status || '').toLowerCase();
-            return authReg !== 'completed';
+            const authOverall = authReg === 'completed'
+              ? 'completed'
+              : authReg === 'temporary'
+                ? 'Temporary'
+                : 'pending';
+            return !isRegistrationPortalUnlocked(authOverall);
         }
 
-        // Run the same 5-stage live check used on the SemesterRegistration page.
-        const stages = computeRegistrationStageDisplays(fetchedStatus, fetchedScholarshipData);
-        const allComplete = (
-            stages.verification.completed &&
-            stages.certificates.completed &&
-            stages.fee.completed &&
-            stages.promotion.completed &&
-            stages.scholarship.completed
+        const stages = computeRegistrationStageDisplays(
+            fetchedStatus,
+            fetchedScholarshipData,
+            regOptionalStages
         );
-        return !allComplete;
+        return !isRegistrationPortalUnlocked(stages.overallStatus);
     };
 
-    const isPending = isRegistrationPending();
+    const isPending = isRegistrationRestricted();
     const allowedPaths = ['/student/dashboard', '/student/semester-registration'];
 
     useEffect(() => {

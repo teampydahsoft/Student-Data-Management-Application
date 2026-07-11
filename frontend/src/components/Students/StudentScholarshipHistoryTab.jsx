@@ -47,7 +47,10 @@ import {
   calculateRtfDueAfterRow,
   isYearScholarshipEligible,
   isYearFeeOnlyScholarshipMode,
-  hasYearScholarshipFinancialTracking
+  hasYearScholarshipFinancialTracking,
+  isScholarshipOptionalForRegistration,
+  resolveRegistrationScholarshipTarget,
+  resolveRegistrationScholarshipDisplay
 } from '../../config/scholarshipConfig';
 import { CASTE_OPTIONS } from '../../config/casteConfig';
 
@@ -387,7 +390,12 @@ const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
   );
 };
 
-const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) => {
+const StudentScholarshipHistoryTab = ({
+  student,
+  readOnly = false,
+  registrationOptionalStages = [],
+  onUpdated
+}) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [years, setYears] = useState([]);
@@ -402,6 +410,16 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
   const isEditingDisabled = readOnly || quotaLocked;
+  const programYear = Math.max(1, Number(student?.current_year) || 1);
+  const scholarshipOptionalForRegistration = isScholarshipOptionalForRegistration(registrationOptionalStages);
+  const registrationScholarshipTarget = resolveRegistrationScholarshipTarget(
+    programYear,
+    registrationOptionalStages
+  );
+  const registrationScholarshipCtx = useMemo(
+    () => resolveRegistrationScholarshipDisplay(meta, student, registrationOptionalStages),
+    [meta, student, registrationOptionalStages]
+  );
 
   const casteOptions = useMemo(() => {
     const current = String(selectedCaste || student?.caste || meta?.student?.caste || '').trim();
@@ -1212,6 +1230,32 @@ const StudentScholarshipHistoryTab = ({ student, readOnly = false, onUpdated }) 
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           This student is under Management Quota, Spot Admission, or Lateral Spot. Scholarship is automatically
           marked as <span className="font-semibold">Not eligible</span> for all years and cannot be edited.
+        </div>
+      )}
+      {scholarshipOptionalForRegistration && programYear > 1 && (
+        <div className={`rounded-2xl border px-4 py-3 text-sm ${
+          registrationScholarshipCtx.satisfied
+            ? 'border-green-200 bg-green-50 text-green-900'
+            : 'border-blue-200 bg-blue-50 text-blue-900'
+        }`}>
+          Scholarship is optional for registration in Year {programYear}. Update the prior program year
+          {' '}
+          <span className="font-semibold">
+            (Year {registrationScholarshipTarget.checkYear})
+          </span>
+          {' '}
+          scholarship in this tab — the current year does not block registration.
+          {!registrationScholarshipCtx.satisfied && (
+            <span className="block mt-1 font-medium">
+              Prior year scholarship is still incomplete for registration.
+            </span>
+          )}
+        </div>
+      )}
+      {scholarshipOptionalForRegistration && programYear <= 1 && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          Scholarship is optional for registration in Year 1. Current-year scholarship entry is not required
+          to complete registration.
         </div>
       )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

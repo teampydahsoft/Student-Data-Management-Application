@@ -26,7 +26,8 @@ import {
 } from '../../config/registrationCycle';
 import {
   computeRegistrationStageDisplays,
-  RegistrationStageBadge
+  RegistrationStageBadge,
+  isRegistrationPortalUnlocked
 } from '../../config/registrationStages.jsx';
 import { usesSemesterWiseScholarshipStatus } from '../../config/scholarshipConfig';
 
@@ -227,16 +228,13 @@ const SemesterRegistration = () => {
 
     const autoFinalizedRef = React.useRef(false);
 
-    // Auto-completion effect — fires once when all 5 live stages become complete.
-    // We do NOT short-circuit when the DB registration_status says 'completed', because
-    // the page is now driven by canFinalize() (live stage checks) rather than the DB column.
+    // Auto-sync when registration reaches Completed or Temporary.
     useEffect(() => {
-        // Guard: don't run during loading or before data is ready
         if (initialLoading || loading || !studentData) return;
-        // Guard: don't re-trigger if we already finalized this cycle
         if (autoFinalizedRef.current) return;
-        // All 5 stages must be complete
-        if (!canFinalize()) return;
+
+        const overallStatus = registrationStages.overallStatus;
+        if (overallStatus !== 'completed' && overallStatus !== 'Temporary') return;
 
         autoFinalizedRef.current = true;
         const autoFinalize = async () => {
@@ -245,10 +243,13 @@ const SemesterRegistration = () => {
                 const response = await api.get(`/students/${user.admission_number}`);
                 if (response.data?.success) {
                     setStudentData(response.data.data);
-                    // Immediately sync registration_status into authStore so StudentLayout
-                    // sees 'Completed' right away without waiting for its own re-fetch.
-                    updateUser({ registration_status: 'Completed' });
-                    toast.success('Registration finalized automatically!');
+                    const statusLabel = overallStatus === 'completed' ? 'Completed' : 'Temporary';
+                    updateUser({ registration_status: statusLabel });
+                    toast.success(
+                      overallStatus === 'completed'
+                        ? 'Registration finalized automatically!'
+                        : 'Registration marked as temporary. Portal access is enabled.'
+                    );
                 }
             } catch (e) {
                 console.error('Auto-finalize sync error:', e);
@@ -260,6 +261,23 @@ const SemesterRegistration = () => {
         autoFinalize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialLoading, scholarshipData, verificationState, registrationStages]);
+
+    // Keep auth store in sync with Completed / Temporary (must run before any early return).
+    useEffect(() => {
+        if (initialLoading || !studentData) return;
+        if (registrationStages.overallStatus === 'completed') {
+            const authRegStatus = (user?.registration_status || '').toLowerCase();
+            if (authRegStatus !== 'completed') {
+                updateUser({ registration_status: 'Completed' });
+            }
+        } else if (registrationStages.overallStatus === 'Temporary') {
+            const authRegStatus = (user?.registration_status || '').toLowerCase();
+            if (authRegStatus !== 'temporary') {
+                updateUser({ registration_status: 'Temporary' });
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialLoading, registrationStages.overallStatus, studentData]);
 
     // ------------ DATA & CONFIG ------------
 
@@ -337,18 +355,38 @@ const SemesterRegistration = () => {
         );
     }
 
-    // Already Completed View — show ONLY if all 5 stages are currently verified complete.
-    // We intentionally do NOT trust the DB registration_status column alone here, because
-    // a student may have had their year/semester cycled, scholarship reset, or mobile
-    // verification invalidated AFTER the DB was stamped 'Completed'.
-    // The live stage checks (canFinalize) are the source of truth on the student portal.
-    const isActuallyComplete = !initialLoading && canFinalize();
+    // Already Completed View — show ONLY if all stages qualify as fully completed.
+    const isActuallyComplete = !initialLoading && registrationStages.overallStatus === 'completed';
+    const isTemporaryRegistration = !initialLoading && registrationStages.overallStatus === 'Temporary';
+
+    if (isTemporaryRegistration) {
+        return (
+            <div className="max-w-4xl mx-auto py-10 animate-fade-in">
+                <div className="bg-amber-500 rounded-3xl p-10 text-white shadow-sm relative overflow-hidden">
+                    <div className="relative z-10 text-center">
+                        <div className="mx-auto w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6 backdrop-blur-sm">
+                            <AlertCircle size={40} className="text-white" />
+                        </div>
+                        <h1 className="text-3xl font-bold mb-4">Registration Temporary</h1>
+                        <p className="text-amber-50 text-lg mb-8 max-w-xl mx-auto">
+                            Your semester registration is marked as temporary. You can access the student portal,
+                            but scholarship or certificate updates may still be required to reach completed status.
+                        </p>
+                        <button
+                            onClick={() => navigate('/student/dashboard')}
+                            className="bg-white text-amber-700 px-8 py-3 rounded-xl font-bold hover:bg-amber-50 transition-colors shadow-lg"
+                        >
+                            Go to Dashboard
+                        </button>
+                    </div>
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -ml-16 -mb-16"></div>
+                </div>
+            </div>
+        );
+    }
+
     if (isActuallyComplete) {
-        // Sync authStore so StudentLayout unlocks immediately on navigation
-        const authRegStatus = (user?.registration_status || '').toLowerCase();
-        if (authRegStatus !== 'completed') {
-            updateUser({ registration_status: 'Completed' });
-        }
         return (
             <div className="max-w-4xl mx-auto py-10 animate-fade-in">
                 <div className="bg-green-600 rounded-3xl p-10 text-white shadow-sm relative overflow-hidden">

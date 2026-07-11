@@ -4,9 +4,10 @@ import {
   isPromotionCompleteForCycle
 } from './registrationCycle';
 import {
-  getCurrentScholarshipStatus,
-  isScholarshipRegistrationComplete,
-  formatScholarshipStatusDisplay
+  getRegistrationScholarshipStatus,
+  formatScholarshipStatusDisplay,
+  resolveRegistrationScholarshipDisplay,
+  usesSemesterWiseScholarshipStatus
 } from './scholarshipConfig';
 
 export const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
@@ -27,6 +28,32 @@ export const parseStudentDataField = (student) => {
   }
 };
 
+export const formatRegistrationOverallLabel = (overallStatus) => {
+  if (overallStatus === 'completed') return 'Completed';
+  if (overallStatus === 'Temporary') return 'Temporary';
+  return 'Pending';
+};
+
+export const normalizeRegistrationOverallStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'completed') return 'completed';
+  if (normalized === 'temporary') return 'Temporary';
+  return 'pending';
+};
+
+/** Prefer Temporary/Completed from live stage evaluation or API-computed registration_status. */
+export const resolveRegistrationOverallStatus = (stageStatus, apiStatus) => {
+  const fromStages = stageStatus || 'pending';
+  const fromApi = normalizeRegistrationOverallStatus(apiStatus);
+  if (fromApi === 'Temporary' || fromStages === 'Temporary') return 'Temporary';
+  if (fromApi === 'completed' || fromStages === 'completed') return 'completed';
+  return 'pending';
+};
+
+export const isRegistrationPortalUnlocked = (overallStatus) => (
+  overallStatus === 'completed' || overallStatus === 'Temporary'
+);
+
 /** Registration stage display — aligned with admin student dialog and reports. */
 export const computeRegistrationStageDisplays = (student, scholarshipData, optionalStages = []) => {
   const optSet = new Set(Array.isArray(optionalStages) ? optionalStages : []);
@@ -41,6 +68,8 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
       certStatus: '',
       feeStatus: '',
       scholarStatus: '',
+      overallStatus: 'pending',
+      overallLabel: 'Pending',
       studentData: {}
     };
   }
@@ -59,6 +88,7 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
     student?.certificates_status || studentData.certificates_status || ''
   ).toLowerCase();
   const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
+  const isCertTemporary = certStatus.includes('temporary');
 
   const feeStatus = String(student?.fee_status || studentData.fee_status || '').toLowerCase();
   const isFeeComplete = FEE_COMPLETE_STATUSES.some((s) => feeStatus.includes(s));
@@ -68,8 +98,47 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
     currentYear,
     currentSemester
   );
-  const scholarStatus = getCurrentScholarshipStatus(scholarshipData, { ...student, ...studentData });
-  const isScholarshipComplete = isScholarshipRegistrationComplete(scholarshipData, { ...student, ...studentData });
+  const scholarStatus = getRegistrationScholarshipStatus(
+    scholarshipData,
+    { ...student, ...studentData },
+    optionalStages
+  );
+  const scholarshipCtx = resolveRegistrationScholarshipDisplay(
+    scholarshipData,
+    { ...student, ...studentData },
+    optionalStages
+  );
+  const isScholarshipComplete = scholarshipCtx.satisfied;
+  const programYear = Math.max(1, Number(currentYear) || 1);
+  const isScholarshipOptional = optSet.has('scholarship');
+  const batch = student?.batch || studentData.batch || scholarshipData?.student?.batch || '';
+  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, programYear);
+  const scholarshipFullyOptional = isScholarshipOptional && programYear <= 1;
+  const scholarSatisfiedForCompleted = scholarshipFullyOptional || isScholarshipComplete;
+  const scholarshipIncompleteForTemp = is2026Plus
+    && !scholarshipFullyOptional
+    && !isScholarshipComplete
+    && !isScholarshipOptional;
+
+  const verifSatisfied = isVerificationComplete || optSet.has('verification');
+  const certSatisfied = isCertComplete || optSet.has('certificates');
+  const feeSatisfied = isFeeComplete || optSet.has('fee');
+  const promotionSatisfied = isPromotionComplete || optSet.has('promotion');
+  const certTemporarySatisfied = (isCertTemporary || isCertComplete) || optSet.has('certificates');
+  const scholarTempEligible = scholarSatisfiedForCompleted || scholarshipIncompleteForTemp;
+
+  let overallStatus = 'pending';
+  const baseStagesReady = verifSatisfied && feeSatisfied && promotionSatisfied;
+  if (baseStagesReady && certSatisfied && scholarSatisfiedForCompleted) {
+    overallStatus = 'completed';
+  } else if (
+    baseStagesReady
+    && certTemporarySatisfied
+    && scholarTempEligible
+    && !(certSatisfied && scholarSatisfiedForCompleted)
+  ) {
+    overallStatus = 'Temporary';
+  }
 
   return {
     verification: {
@@ -99,13 +168,21 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
     },
     scholarship: {
       completed: isScholarshipComplete,
-      optional: optSet.has('scholarship'),
-      display: getStageBadgeDisplay(isScholarshipComplete || optSet.has('scholarship'), scholarStatus),
-      rawStatus: scholarStatus
+      optional: isScholarshipOptional && programYear <= 1,
+      optionalPriorYear: isScholarshipOptional && programYear > 1,
+      display: getStageBadgeDisplay(
+        isScholarshipComplete || (isScholarshipOptional && programYear <= 1),
+        scholarStatus
+      ),
+      rawStatus: scholarStatus,
+      checkYear: scholarshipCtx.checkYear,
+      displayLabel: scholarshipCtx.displayLabel
     },
     certStatus,
     feeStatus,
     scholarStatus,
+    overallStatus,
+    overallLabel: formatRegistrationOverallLabel(overallStatus),
     studentData
   };
 };

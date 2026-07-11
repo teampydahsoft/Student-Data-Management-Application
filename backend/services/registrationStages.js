@@ -5,7 +5,8 @@ const {
 } = require('./registrationCycle');
 const {
   normalizeEligible,
-  isScholarshipCompleteForRegistration
+  isScholarshipCompleteForRegistration,
+  usesSemesterWiseScholarshipStatus
 } = require('./studentScholarshipSync');
 
 const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
@@ -75,19 +76,35 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     scholarFeePaid,
     studType
   );
+  const isScholarshipOptional = optSet.has('scholarship');
+  const programYear = Math.max(1, Number(currentYear) || 1);
+  const batch = student.batch || data.batch || '';
+  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, programYear);
+  const scholarshipFullyOptional = isScholarshipOptional && programYear <= 1;
+  const scholarSatisfiedForCompleted = scholarshipFullyOptional || isScholarshipComplete;
+  const scholarshipIncompleteForTemp = is2026Plus
+    && !scholarshipFullyOptional
+    && !isScholarshipComplete
+    && !isScholarshipOptional;
 
   // For overall status: an optional stage counts as satisfied regardless of actual completion
   const verifSatisfied = isVerificationComplete || optSet.has('verification');
   const certSatisfied = isCertComplete || optSet.has('certificates');
   const feeSatisfied = isFeeComplete || optSet.has('fee');
   const promotionSatisfied = isPromotionComplete || optSet.has('promotion');
-  const scholarSatisfied = isScholarshipComplete || optSet.has('scholarship');
   const certTemporarySatisfied = (isCertTemporary || isCertComplete) || optSet.has('certificates');
+  const scholarTempEligible = scholarSatisfiedForCompleted || scholarshipIncompleteForTemp;
 
   let overallStatus = 'pending';
-  if (verifSatisfied && certSatisfied && feeSatisfied && promotionSatisfied && scholarSatisfied) {
+  const baseStagesReady = verifSatisfied && feeSatisfied && promotionSatisfied;
+  if (baseStagesReady && certSatisfied && scholarSatisfiedForCompleted) {
     overallStatus = 'completed';
-  } else if (verifSatisfied && certTemporarySatisfied && feeSatisfied && promotionSatisfied && scholarSatisfied) {
+  } else if (
+    baseStagesReady
+    && certTemporarySatisfied
+    && scholarTempEligible
+    && !(certSatisfied && scholarSatisfiedForCompleted)
+  ) {
     overallStatus = 'Temporary';
   }
 
@@ -121,12 +138,59 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     },
     scholarship: {
       completed: isScholarshipComplete,
-      optional: optSet.has('scholarship'),
-      display: getStageBadgeDisplay(isScholarshipComplete || optSet.has('scholarship'), scholarStatus),
-      status: isScholarshipComplete ? 'completed' : (optSet.has('scholarship') ? 'optional' : 'pending')
+      optional: isScholarshipOptional && programYear <= 1,
+      optionalPriorYear: isScholarshipOptional && programYear > 1,
+      display: getStageBadgeDisplay(
+        isScholarshipComplete || (isScholarshipOptional && programYear <= 1),
+        scholarStatus
+      ),
+      status: isScholarshipComplete
+        ? 'completed'
+        : (isScholarshipOptional && programYear <= 1 ? 'optional' : 'pending')
     },
     overallStatus
   };
+};
+
+/**
+ * Aggregate Completed / Temporary / Pending counts using the same rules as per-row reports.
+ * Used when SQL aggregates cannot represent optional stages or prior-year scholarship rules.
+ */
+const aggregateRegistrationOverallFromStudents = async (
+  pool,
+  students,
+  stageConfig,
+  resolveOptionalStagesFn,
+  resolveRegistrationScholarshipForStudentFn
+) => {
+  const counts = { completed: 0, temporary: 0, pending: 0, total: students.length };
+
+  for (const student of students) {
+    const studentData = parseStudentData(student);
+    const optionalStages = resolveOptionalStagesFn(stageConfig, student.branch, student.current_year);
+    const scholarshipCtx = await resolveRegistrationScholarshipForStudentFn(
+      pool,
+      student,
+      optionalStages
+    );
+    const stages = computeRegistrationStages(
+      student,
+      studentData,
+      scholarshipCtx.eligible,
+      scholarshipCtx.feePaid,
+      optionalStages
+    );
+
+    if (stages.overallStatus === 'completed') {
+      counts.completed += 1;
+    } else if (stages.overallStatus === 'Temporary') {
+      counts.temporary += 1;
+    } else {
+      counts.pending += 1;
+    }
+  }
+
+  return counts;
 };
 
 module.exports = {
@@ -134,5 +198,6 @@ module.exports = {
   formatRegistrationStatusDisplay,
   getStageBadgeDisplay,
   parseStudentData,
-  computeRegistrationStages
+  computeRegistrationStages,
+  aggregateRegistrationOverallFromStudents
 };

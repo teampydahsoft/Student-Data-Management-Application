@@ -17,7 +17,6 @@ const sectionAssignmentService = require('../services/sectionAssignmentService')
 const { writeAuditLog, logAudit } = require('../services/auditLogService');
 const {
   getRegistrationScholarshipFilterClause,
-  buildRegistrationScholarshipHasStatusSql,
   buildRegistrationScholarshipAssignedSumSql,
   buildRegistrationScholarshipPendingSumSql,
   buildRegistrationScholarshipMap,
@@ -28,7 +27,8 @@ const {
   syncIneligibleQuotaScholarshipsForStudents,
   syncIneligibleQuotaScholarshipForStudent,
   resolveRegistrationScholarStatusDisplay,
-  buildRegistrationFeePaidMap
+  buildRegistrationFeePaidMap,
+  resolveRegistrationScholarshipForStudent
 } = require('../services/studentScholarshipSync');
 const {
   isVerificationCompleteForCycle,
@@ -42,7 +42,13 @@ const {
   promotionCompletedSql,
   REGISTRATION_EMPTY_DISPLAY
 } = require('../services/registrationCycle');
-const { buildRegistrationAbstractQuery } = require('../services/registrationReportSql');
+const {
+  buildRegistrationAbstractQuery,
+  buildRegistrationOverallCompletedCaseSql,
+  buildRegistrationOverallTemporaryCaseSql,
+  buildRegistrationStatusComputedCaseSql,
+  buildStudentRegistrationStatusComputedSql
+} = require('../services/registrationReportSql');
 const { computeRegistrationStages, parseStudentData } = require('../services/registrationStages');
 const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
@@ -75,6 +81,33 @@ const resolveOptionalStages = (stageConfig, branchCode, studentYear) => {
   if (!stageConfig || !branchCode) return [];
   const key = `${String(branchCode).trim()}::${String(studentYear != null ? studentYear : '').trim()}`;
   return stageConfig[key]?.optionalStages || [];
+};
+
+const formatRegistrationStatusLabel = (overallStatus) => {
+  if (overallStatus === 'completed') return 'Completed';
+  if (overallStatus === 'Temporary') return 'Temporary';
+  return 'pending';
+};
+
+const resolveRegistrationStatusLabel = (sqlStatus, jsStatus, fallbackStatus = 'pending') => {
+  const normalize = (value) => String(value || '').trim().toLowerCase();
+  const sqlNorm = normalize(sqlStatus);
+  const jsNorm = normalize(jsStatus);
+  if (sqlNorm === 'temporary' || jsNorm === 'temporary') return 'Temporary';
+  if (sqlNorm === 'completed' || jsNorm === 'completed') return 'Completed';
+  if (sqlStatus) return formatRegistrationStatusLabel(sqlStatus);
+  if (jsStatus) return formatRegistrationStatusLabel(jsStatus);
+  return formatRegistrationStatusLabel(fallbackStatus);
+};
+
+const syncRegistrationStatusColumn = async (admissionNumber, statusLabel) => {
+  const hasRegColumn = await columnExists('registration_status');
+  if (!hasRegColumn || !admissionNumber) return;
+  await masterPool.query(
+    'UPDATE students SET registration_status = ? WHERE admission_number = ?',
+    [statusLabel, admissionNumber]
+  );
+  clearStudentsCache();
 };
 
 /**
@@ -2500,7 +2533,7 @@ exports.getAllStudents = async (req, res) => {
       }
     }
 
-    const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null);
+    const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('students', null);
 
     let query = `
       SELECT 
@@ -2510,22 +2543,7 @@ exports.getAllStudents = async (req, res) => {
         certificates_status, student_address, city_village, mandal_name, district, 
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
         previous_college, remarks, college, caste,
-        CASE
-          WHEN certificates_status = 'Temporary' THEN 'Temporary'
-          WHEN
-            ((student_data LIKE '%"is_student_mobile_verified":true%' OR student_data LIKE '%"is_student_mobile_verified": true%') AND 
-             (student_data LIKE '%"is_parent_mobile_verified":true%' OR student_data LIKE '%"is_parent_mobile_verified": true%') AND
-             (student_data LIKE CONCAT('%"mobile_verified_year":', current_year, '%') OR student_data LIKE CONCAT('%"mobile_verified_year": ', current_year, '%')) AND
-             (student_data LIKE CONCAT('%"mobile_verified_semester":', current_semester, '%') OR student_data LIKE CONCAT('%"mobile_verified_semester": ', current_semester, '%')) AND
-             (student_data LIKE CONCAT('%"parent_verified_year":', current_year, '%') OR student_data LIKE CONCAT('%"parent_verified_year": ', current_year, '%')) AND
-             (student_data LIKE CONCAT('%"parent_verified_semester":', current_semester, '%') OR student_data LIKE CONCAT('%"parent_verified_semester": ', current_semester, '%'))) AND
-            (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
-            (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-            (current_year IS NOT NULL AND current_year != '' AND current_semester IS NOT NULL AND current_semester != '') AND
-            (${registrationScholarshipCompleteSql})
-          THEN 'Completed'
-          ELSE 'pending'
-        END AS registration_status_computed
+        ${registrationStatusComputedSql} AS registration_status_computed
       FROM students WHERE 1=1`;
     const params = [];
 
@@ -2617,6 +2635,18 @@ exports.getAllStudents = async (req, res) => {
         // No courses with this level, return empty result
         query += ' AND 1=0';
       }
+    }
+
+    const registrationStatusFilter = normalizedOtherFilters.filter_registration_status;
+    if (registrationStatusFilter && typeof registrationStatusFilter === 'string' && registrationStatusFilter.trim().length > 0) {
+      const normalizedReg = registrationStatusFilter.trim().toLowerCase();
+      const regStatusMatch = normalizedReg === 'completed'
+        ? 'Completed'
+        : normalizedReg === 'temporary'
+          ? 'Temporary'
+          : 'pending';
+      query += ` AND (${registrationStatusComputedSql}) = ?`;
+      params.push(regStatusMatch);
     }
 
     // Student database field filters
@@ -2764,6 +2794,18 @@ exports.getAllStudents = async (req, res) => {
         // No courses with this level, return empty result
         countQuery += ' AND 1=0';
       }
+    }
+
+    const registrationStatusFilterForCount = normalizedOtherFilters.filter_registration_status;
+    if (registrationStatusFilterForCount && typeof registrationStatusFilterForCount === 'string' && registrationStatusFilterForCount.trim().length > 0) {
+      const normalizedReg = registrationStatusFilterForCount.trim().toLowerCase();
+      const regStatusMatch = normalizedReg === 'completed'
+        ? 'Completed'
+        : normalizedReg === 'temporary'
+          ? 'Temporary'
+          : 'pending';
+      countQuery += ` AND (${registrationStatusComputedSql}) = ?`;
+      countParams.push(regStatusMatch);
     }
 
     // Student database field filters for count query
@@ -2939,28 +2981,14 @@ exports.getAllStudents = async (req, res) => {
 exports.getStudentByAdmission = async (req, res) => {
   try {
     const { admissionNumber } = req.params;
-    const registrationScholarshipCompleteSql = buildRegistrationScholarshipHasStatusSql(null, 's');
+    const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
 
     const [students] = await masterPool.query(
       `SELECT s.*,
               srn.roll_number AS roll_number,
               srn.branch_prefix AS roll_branch_prefix,
               srn.serial AS roll_serial,
-        CASE
-          WHEN s.certificates_status = 'Temporary' THEN 'Temporary'
-          WHEN
-            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
-             (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
-             (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
-             (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
-             (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
-            (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
-            (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%') AND
-            (s.current_year IS NOT NULL AND s.current_year != '' AND s.current_semester IS NOT NULL AND s.current_semester != '') AND
-            (${registrationScholarshipCompleteSql})
-          THEN 'Completed'
-          ELSE 'pending'
-        END AS registration_status_computed
+        ${registrationStatusComputedSql} AS registration_status_computed
       FROM students s
       LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
       WHERE s.admission_number = ? OR s.admission_no = ?`,
@@ -5631,17 +5659,20 @@ exports.getStudentByAdmission = async (req, res) => {
   try {
     const { admissionNumber } = req.params;
 
+    const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
+
     const [students] = await masterPool.query(
       `SELECT s.*, 
               sc.username,
               srn.roll_number AS roll_number,
               srn.branch_prefix AS roll_branch_prefix,
-              srn.serial AS roll_serial
+              srn.serial AS roll_serial,
+              ${registrationStatusComputedSql} AS registration_status_computed
        FROM students s
        LEFT JOIN student_credentials sc ON s.id = sc.student_id
        LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
-       WHERE s.admission_number = ?`,
-      [admissionNumber]
+       WHERE s.admission_number = ? OR s.admission_no = ?`,
+      [admissionNumber, admissionNumber]
     );
 
     if (students.length === 0) {
@@ -5728,93 +5759,34 @@ exports.getStudentByAdmission = async (req, res) => {
       }
     }
 
-    const normalizedScholarStatus = resolveRegistrationScholarStatusDisplay(
-      student,
-      await buildRegistrationScholarshipMap(masterPool, [student]),
-      parsedData
+    const stageConfigSingle = await loadRegistrationStageConfig();
+    const optionalStagesSingle = resolveOptionalStages(stageConfigSingle, student.branch, stage.year);
+    const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
+      masterPool,
+      { ...student, current_year: stage.year, current_semester: stage.semester },
+      optionalStagesSingle
+    );
+    const normalizedScholarStatus = normalizeScholarStatusForResponse(scholarshipCtx.eligible || '');
+
+    const stages = computeRegistrationStages(
+      { ...student, current_year: stage.year, current_semester: stage.semester },
+      parsedData,
+      scholarshipCtx.eligible,
+      scholarshipCtx.feePaid,
+      optionalStagesSingle
+    );
+    const jsRegistrationStatus = formatRegistrationStatusLabel(stages.overallStatus);
+    const computedRegistrationStatus = resolveRegistrationStatusLabel(
+      student.registration_status_computed,
+      jsRegistrationStatus,
+      fallbackRegistrationStatus
     );
 
-    // Determine registration_status:
-    // If the DB column already stores 'Completed', trust that value — registration is a
-    // one-time action and should not be reverted by dynamic condition re-evaluation.
-    // Only compute from live conditions when the stored value is still pending/empty,
-    // so that newly-eligible students are detected automatically.
     const storedReg = (student.registration_status || '').trim().toLowerCase();
-    let computedRegistrationStatus;
-
-    if (storedReg === 'completed') {
-      // Already marked complete by the admin or the registration flow — keep it.
-      computedRegistrationStatus = 'Completed';
-    } else {
-      // Not yet completed — evaluate live conditions to see if the student now qualifies.
-      const { getScholarshipEligibleForYear, isScholarshipCompleteForRegistration } = require('../services/studentScholarshipSync');
-
-      const isMobileVerified = isVerificationCompleteForCycle(
-        parsedData,
-        stage.year,
-        stage.semester
-      );
-      const certStatus = student.certificates_status || '';
-      const certificatesCompleted =
-        certStatus &&
-        (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed');
-      const feeForReg = (student.fee_status || '').toLowerCase();
-      const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].some(
-        (s) => feeForReg.includes(s)
-      );
-      const promotionCompleted = isPromotionCompleteForCycle(parsedData, stage.year, stage.semester);
-
-      const currentYearForReg = Math.max(1, Number(stage.year) || 1);
-      const currentSemesterForReg = Math.max(1, Number(stage.semester) || 1);
-      const yearEligible = await getScholarshipEligibleForYear(
-        masterPool,
-        student.id,
-        currentYearForReg,
-        student.stud_type,
-        currentSemesterForReg,
-        student.batch
-      );
-
-      // Also check fee_paid for the current semester (required when eligible)
-      let currentSemFeePaid = null;
-      try {
-        const [feePaidRows] = await masterPool.query(
-          `SELECT fee_paid FROM student_scholarship
-           WHERE student_id = ? AND student_year = ? AND student_semester = ?
-           AND eligible IS NOT NULL AND TRIM(eligible) != ''
-           ORDER BY updated_at DESC, id DESC LIMIT 1`,
-          [student.id, currentYearForReg, currentSemesterForReg]
-        );
-        if (feePaidRows.length > 0) {
-          currentSemFeePaid = feePaidRows[0].fee_paid === 1;
-        }
-      } catch (e) {
-        console.warn('Failed to fetch fee_paid for scholarship check:', e.message);
-      }
-
-      const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible, currentSemFeePaid, student.stud_type);
-
-      // Load optional stages for this branch+year to allow optional stages to count as satisfied
-      const stageConfigSingle = await loadRegistrationStageConfig();
-      const optionalStagesSingle = resolveOptionalStages(stageConfigSingle, student.branch, stage.year);
-      const optSetSingle = new Set(optionalStagesSingle);
-
-      const allConditionsMet =
-        (isMobileVerified || optSetSingle.has('verification')) &&
-        (certificatesCompleted || optSetSingle.has('certificates')) &&
-        (feeCompleted || optSetSingle.has('fee')) &&
-        (promotionCompleted || optSetSingle.has('promotion')) &&
-        (scholarshipCompleted || optSetSingle.has('scholarship'));
-
-      computedRegistrationStatus = allConditionsMet ? 'Completed' : 'pending';
-
-      // If all conditions are now met, persist the completed status to the DB
-      if (computedRegistrationStatus === 'Completed' && storedReg !== 'completed') {
-        masterPool.query(
-          'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-          ['Completed', admissionNumber]
-        ).catch((err) => console.warn('Registration status sync failed:', err.message));
-      }
+    if (storedReg !== computedRegistrationStatus.toLowerCase()) {
+      syncRegistrationStatusColumn(admissionNumber, computedRegistrationStatus).catch((err) => {
+        console.warn('Registration status sync failed:', err.message);
+      });
     }
 
     const responsePayload = {
@@ -6219,11 +6191,11 @@ exports.updateFeeStatus = async (req, res) => {
 // Helper: Check for registration auto-completion (column-first; JSON sync only when needed)
 const checkAndAutoCompleteRegistration = async (admissionNumber) => {
   try {
-    const { getScholarshipEligibleForYear, isScholarshipCompleteForRegistration } = require('../services/studentScholarshipSync');
+    const { resolveRegistrationScholarshipForStudent } = require('../services/studentScholarshipSync');
 
     const [rows] = await masterPool.query(
       `SELECT id, student_data, certificates_status, fee_status, scholar_status,
-              current_year, current_semester, registration_status, batch, stud_type
+              current_year, current_semester, registration_status, batch, stud_type, branch
        FROM students WHERE admission_number = ?`,
       [admissionNumber]
     );
@@ -6232,47 +6204,23 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
 
     const student = rows[0];
     const studentData = parseJSON(student.student_data) || {};
-
-    const isMobileVerified = isVerificationCompleteForCycle(
-      studentData,
-      student.current_year,
-      student.current_semester
-    );
-
-    const certStatus = student.certificates_status || '';
-    const certificatesCompleted =
-      certStatus &&
-      (certStatus.includes('Verified') || certStatus.toLowerCase() === 'completed');
-
-    const feeStatus = (student.fee_status || '').toLowerCase();
-    const feeCompleted = ['no_due', 'no due', 'permitted', 'completed', 'nodue'].includes(feeStatus);
-
-    const promotionCompleted = isPromotionCompleteForCycle(
-      studentData,
-      student.current_year,
-      student.current_semester
-    );
-
-    const currentYear = Math.max(1, Number(student.current_year) || 1);
-    const currentSemester = Math.max(1, Number(student.current_semester) || 1);
-    const yearEligible = await getScholarshipEligibleForYear(
+    const stageConfig = await loadRegistrationStageConfig();
+    const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
+    const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
-      student.id,
-      currentYear,
-      student.stud_type,
-      currentSemester,
-      student.batch
+      student,
+      optionalStages
     );
-    const scholarshipCompleted = isScholarshipCompleteForRegistration(yearEligible);
+    const stages = computeRegistrationStages(
+      student,
+      studentData,
+      scholarshipCtx.eligible,
+      scholarshipCtx.feePaid,
+      optionalStages
+    );
+    const statusLabel = formatRegistrationStatusLabel(stages.overallStatus);
 
     const hasRegColumn = await columnExists('registration_status');
-    const allConditionsMet =
-      isMobileVerified &&
-      certificatesCompleted &&
-      feeCompleted &&
-      promotionCompleted &&
-      scholarshipCompleted;
-
     const columnReg = (student.registration_status || '').trim();
     const jsonReg =
       studentData.registration_status ||
@@ -6294,19 +6242,16 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
       clearStudentsCache();
     };
 
-    if (allConditionsMet) {
-      if (hasRegColumn && columnReg.toLowerCase() !== 'completed') {
+    if (statusLabel === 'Completed' || statusLabel === 'Temporary') {
+      if (hasRegColumn && columnReg.toLowerCase() !== statusLabel.toLowerCase()) {
         await masterPool.query(
           'UPDATE students SET registration_status = ? WHERE admission_number = ?',
-          ['Completed', admissionNumber]
+          [statusLabel, admissionNumber]
         );
         clearStudentsCache();
       }
-      await syncRegistrationJson('Completed');
+      await syncRegistrationJson(statusLabel);
     }
-    // NOTE: We intentionally do NOT demote a 'Completed' registration back to 'pending'.
-    // Registration is a one-time milestone. Once set to 'Completed' (by admin or the
-    // registration flow), it stays completed. Only an explicit admin action should reset it.
   } catch (err) {
     console.error(`Check auto-complete error for ${admissionNumber}:`, err);
   }
@@ -7079,13 +7024,7 @@ exports.getRegistrationReport = async (req, res) => {
       }
     }
 
-    // Get Total Count
-    const countQuery = `SELECT COUNT(id) as total ${baseQuery}`;
-    const [countResult] = await masterPool.query(countQuery, params);
-    const totalRecords = countResult[0].total;
-    const totalPages = Math.ceil(totalRecords / limitNum);
-
-    const registrationScholarshipHasStatusSql = buildRegistrationScholarshipHasStatusSql(academicYearFromYear);
+    // Get Total Count + Statistics in one pass (stats query already returns COUNT(*))
     const registrationScholarshipAssignedSumSql = buildRegistrationScholarshipAssignedSumSql(academicYearFromYear);
     const registrationScholarshipPendingSumSql = buildRegistrationScholarshipPendingSumSql(academicYearFromYear);
 
@@ -7100,59 +7039,56 @@ exports.getRegistrationReport = async (req, res) => {
         ${promotionCompletedSumSql} as promotion_completed,
         ${registrationScholarshipAssignedSumSql} as scholarship_assigned,
         ${registrationScholarshipPendingSumSql} as scholarship_pending,
-        SUM(CASE WHEN 
-             ((${verificationCompletedSql}) AND
-              (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (${promotionCompletedSql}) AND
-              (${registrationScholarshipHasStatusSql}))
-             THEN 1 ELSE 0 END) as overall_completed,
-        SUM(CASE WHEN 
-             ((${verificationCompletedSql}) AND
-              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (${promotionCompletedSql}) AND
-              (${registrationScholarshipHasStatusSql}))
-             THEN 1 ELSE 0 END) as overall_temporary
+        SUM(${buildRegistrationOverallCompletedCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_completed,
+        SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_temporary
       ${baseQuery}
     `;
 
     const [statsResult] = await masterPool.query(statsQuery, params);
     const statsRow = statsResult[0] || {};
-    const totalCount = parseInt(statsRow.total || 0);
+    const totalRecords = parseInt(statsRow.total || 0, 10);
+    const totalPages = Math.ceil(totalRecords / limitNum) || 0;
+    const totalCount = totalRecords;
+    // Prefer SQL overall counts (same Temporary/Completed rules as abstract reports).
+    // Avoids loading every student and issuing N+1 scholarship queries.
+    const overallCompleted = parseInt(statsRow.overall_completed || 0, 10);
+    const overallTemporary = parseInt(statsRow.overall_temporary || 0, 10);
+    const overallPending = Math.max(0, totalCount - overallCompleted - overallTemporary);
 
     const statistics = {
       total: totalCount,
       registration: {
-        completed: parseInt(statsRow.overall_completed || 0),
-        temporary: parseInt(statsRow.overall_temporary || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
+        completed: overallCompleted,
+        temporary: overallTemporary,
+        pending: overallPending
       },
       verification: {
-        completed: parseInt(statsRow.verification_completed || 0),
-        pending: totalCount - parseInt(statsRow.verification_completed || 0)
+        completed: parseInt(statsRow.verification_completed || 0, 10),
+        pending: totalCount - parseInt(statsRow.verification_completed || 0, 10)
       },
       certificates: {
-        verified: parseInt(statsRow.certificates_verified || 0),
-        temporary: parseInt(statsRow.certificates_temporary || 0),
-        pending: totalCount - parseInt(statsRow.certificates_verified || 0) - parseInt(statsRow.certificates_temporary || 0)
+        verified: parseInt(statsRow.certificates_verified || 0, 10),
+        temporary: parseInt(statsRow.certificates_temporary || 0, 10),
+        pending: totalCount
+          - parseInt(statsRow.certificates_verified || 0, 10)
+          - parseInt(statsRow.certificates_temporary || 0, 10)
       },
       fees: {
-        cleared: parseInt(statsRow.fee_cleared || 0),
-        pending: totalCount - parseInt(statsRow.fee_cleared || 0)
+        cleared: parseInt(statsRow.fee_cleared || 0, 10),
+        pending: totalCount - parseInt(statsRow.fee_cleared || 0, 10)
       },
       promotion: {
-        completed: parseInt(statsRow.promotion_completed || 0),
-        pending: totalCount - parseInt(statsRow.promotion_completed || 0)
+        completed: parseInt(statsRow.promotion_completed || 0, 10),
+        pending: totalCount - parseInt(statsRow.promotion_completed || 0, 10)
       },
       scholarship: {
-        assigned: parseInt(statsRow.scholarship_assigned || 0),
-        pending: parseInt(statsRow.scholarship_pending || 0)
+        assigned: parseInt(statsRow.scholarship_assigned || 0, 10),
+        pending: parseInt(statsRow.scholarship_pending || 0, 10)
       },
       overall: {
-        completed: parseInt(statsRow.overall_completed || 0),
-        temporary: parseInt(statsRow.overall_temporary || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
+        completed: overallCompleted,
+        temporary: overallTemporary,
+        pending: overallPending
       }
     };
 
@@ -7168,17 +7104,27 @@ exports.getRegistrationReport = async (req, res) => {
     `;
     const dataParams = [...params, limitNum, offset];
 
-    const [students] = await masterPool.query(dataQuery, dataParams);
-    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear });
-    const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
-    const stageConfig = await loadRegistrationStageConfig();
+    const [[students], stageConfig] = await Promise.all([
+      masterPool.query(dataQuery, dataParams),
+      loadRegistrationStageConfig()
+    ]);
+    const [scholarshipMap, feePaidMap] = await Promise.all([
+      buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear }),
+      buildRegistrationFeePaidMap(masterPool, students)
+    ]);
 
     const reportData = students.map((student) => {
       const studentData = parseStudentData(student);
-      const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
-      const scholarFeePaid = feePaidMap.get(student.id) ?? null;
       const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
-      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid, optionalStages);
+      const scholarStatus = scholarshipMap.get(student.id) || null;
+      const scholarFeePaid = feePaidMap.has(student.id) ? feePaidMap.get(student.id) : null;
+      const stages = computeRegistrationStages(
+        student,
+        studentData,
+        scholarStatus,
+        scholarFeePaid,
+        optionalStages
+      );
 
       return {
         id: student.id,
@@ -7625,8 +7571,6 @@ exports.exportRegistrationReport = async (req, res) => {
       }
     }
 
-    const exportScholarshipHasStatusSql = buildRegistrationScholarshipHasStatusSql(academicYearFromYearExport);
-
     // --- Statistics Query (For Abstract) ---
     const statsQuery = `
       SELECT 
@@ -7634,35 +7578,26 @@ exports.exportRegistrationReport = async (req, res) => {
         ${verificationCompletedSumSql} as verification_completed,
         SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
         SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
-        SUM(CASE WHEN 
-             ((${verificationCompletedSql}) AND
-              (certificates_status LIKE '%Verified%' OR certificates_status = 'completed') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (${promotionCompletedSql}) AND
-              (${exportScholarshipHasStatusSql}))
-             THEN 1 ELSE 0 END) as overall_completed,
-        SUM(CASE WHEN 
-             ((${verificationCompletedSql}) AND
-              (certificates_status = 'Temporary' OR certificates_status = 'temporary') AND
-              (fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%') AND
-              (${promotionCompletedSql}) AND
-              (${exportScholarshipHasStatusSql}))
-             THEN 1 ELSE 0 END) as overall_temporary
+        SUM(${buildRegistrationOverallCompletedCaseSql('students', verificationCompletedSql, academicYearFromYearExport)}) as overall_completed,
+        SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYearExport)}) as overall_temporary
       ${baseQuery}
     `;
     const [statsResult] = await masterPool.query(statsQuery, params);
     const statsRow = statsResult[0] || {};
-    const totalCount = parseInt(statsRow.total || 0);
+    const totalCount = parseInt(statsRow.total || 0, 10);
+    const overallCompletedExport = parseInt(statsRow.overall_completed || 0, 10);
+    const overallTemporaryExport = parseInt(statsRow.overall_temporary || 0, 10);
+    const overallPendingExport = Math.max(0, totalCount - overallCompletedExport - overallTemporaryExport);
 
     const statistics = {
       total: totalCount,
-      verification: { completed: parseInt(statsRow.verification_completed || 0) },
-      certificates: { verified: parseInt(statsRow.certificates_verified || 0) },
-      fees: { cleared: parseInt(statsRow.fee_cleared || 0) },
+      verification: { completed: parseInt(statsRow.verification_completed || 0, 10) },
+      certificates: { verified: parseInt(statsRow.certificates_verified || 0, 10) },
+      fees: { cleared: parseInt(statsRow.fee_cleared || 0, 10) },
       overall: {
-        completed: parseInt(statsRow.overall_completed || 0),
-        temporary: parseInt(statsRow.overall_temporary || 0),
-        pending: totalCount - parseInt(statsRow.overall_completed || 0) - parseInt(statsRow.overall_temporary || 0)
+        completed: overallCompletedExport,
+        temporary: overallTemporaryExport,
+        pending: overallPendingExport
       }
     };
 
@@ -7677,18 +7612,24 @@ exports.exportRegistrationReport = async (req, res) => {
     `;
 
     const [students] = await masterPool.query(dataQuery, params);
-    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students, {
-      academicYearFromYear: academicYearFromYearExport
-    });
-    const feePaidMap = await buildRegistrationFeePaidMap(masterPool, students);
     const stageConfigExport = await loadRegistrationStageConfig();
+    const [scholarshipMapExport, feePaidMapExport] = await Promise.all([
+      buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear: academicYearFromYearExport }),
+      buildRegistrationFeePaidMap(masterPool, students)
+    ]);
 
     const processedData = students.map((student) => {
       const studentData = parseStudentData(student);
-      const scholarStatus = resolveRegistrationScholarStatusDisplay(student, scholarshipMap, studentData);
-      const scholarFeePaid = feePaidMap.get(student.id) ?? null;
       const optionalStages = resolveOptionalStages(stageConfigExport, student.branch, student.current_year);
-      const stages = computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid, optionalStages);
+      const scholarStatus = scholarshipMapExport.get(student.id) || null;
+      const scholarFeePaid = feePaidMapExport.has(student.id) ? feePaidMapExport.get(student.id) : null;
+      const stages = computeRegistrationStages(
+        student,
+        studentData,
+        scholarStatus,
+        scholarFeePaid,
+        optionalStages
+      );
 
       const overallLabel = stages.overallStatus === 'completed'
         ? 'Completed'

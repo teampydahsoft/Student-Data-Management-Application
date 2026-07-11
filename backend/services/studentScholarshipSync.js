@@ -626,6 +626,246 @@ const isScholarshipCompleteForRegistration = (eligible, feePaid = null, studType
   return true;
 };
 
+/**
+ * When scholarship is optional in registration config:
+ * - Year 1: current-year scholarship is not required.
+ * - Year 2+: prior program-year scholarship must be complete; current year is not required.
+ */
+const isScholarshipOptionalForRegistration = (optionalStages) => (
+  Array.isArray(optionalStages) && optionalStages.includes('scholarship')
+);
+
+const resolveRegistrationScholarshipTarget = (currentYear, optionalStages) => {
+  const year = Math.max(1, Number(currentYear) || 1);
+  if (!isScholarshipOptionalForRegistration(optionalStages)) {
+    return { mode: 'current', checkYear: year, fullyOptional: false };
+  }
+  if (year <= 1) {
+    return { mode: 'fully_optional', checkYear: null, fullyOptional: true };
+  }
+  return { mode: 'prior_year', checkYear: year - 1, fullyOptional: false };
+};
+
+const isRegistrationScholarshipSatisfied = (
+  eligible,
+  feePaid,
+  studType,
+  currentYear,
+  optionalStages
+) => {
+  const target = resolveRegistrationScholarshipTarget(currentYear, optionalStages);
+  if (target.fullyOptional) return true;
+  return isScholarshipCompleteForRegistration(eligible, feePaid, studType);
+};
+
+const isPriorYearScholarshipYearComplete = (
+  yearData,
+  studType,
+  semestersPerYear = DEFAULT_SEMESTERS_PER_YEAR
+) => {
+  if (!yearData) return false;
+
+  const semesters = Array.isArray(yearData.semesters) ? yearData.semesters : [];
+  const semCount = Math.max(1, Number(semestersPerYear) || DEFAULT_SEMESTERS_PER_YEAR);
+
+  if (!semesters.length) {
+    return isScholarshipCompleteForRegistration(yearData.eligible, null, studType);
+  }
+
+  for (let sem = 1; sem <= semCount; sem += 1) {
+    const semesterRow = semesters.find((entry) => Number(entry.student_semester) === sem);
+    if (!semesterRow) return false;
+    const feePaid = semesterRow.fee_paid === true || semesterRow.fee_paid === 1;
+    if (!isScholarshipCompleteForRegistration(semesterRow.eligible, feePaid, studType)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const semCountFromYearData = (yearData, semestersPerYear) => {
+  const configured = Math.max(1, Number(semestersPerYear) || DEFAULT_SEMESTERS_PER_YEAR);
+  const fromRows = Array.isArray(yearData?.semesters) ? yearData.semesters.length : 0;
+  return Math.max(configured, fromRows || configured);
+};
+
+const resolveRegistrationScholarshipDisplayFromYearData = (
+  scholarshipData,
+  student,
+  optionalStages = []
+) => {
+  const currentYear = Math.max(1, Number(student?.current_year) || 1);
+  const target = resolveRegistrationScholarshipTarget(currentYear, optionalStages);
+  const studType = student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type;
+  const semestersPerYear = scholarshipData?.semestersPerYear || DEFAULT_SEMESTERS_PER_YEAR;
+
+  if (target.fullyOptional) {
+    return {
+      eligible: '',
+      feePaid: null,
+      checkYear: null,
+      fullyOptional: true,
+      satisfied: true,
+      displayLabel: null
+    };
+  }
+
+  if (isScholarshipIneligibleQuota(studType) || scholarshipData?.scholarshipQuotaLocked) {
+    return {
+      eligible: 'not_eligible',
+      feePaid: null,
+      checkYear: target.checkYear,
+      fullyOptional: false,
+      satisfied: true,
+      displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+    };
+  }
+
+  const yearData = scholarshipData?.years?.find(
+    (entry) => Number(entry.student_year) === Number(target.checkYear)
+  );
+  const batch = student?.batch || scholarshipData?.student?.batch;
+
+  if (target.mode === 'prior_year' && usesSemesterWiseScholarshipStatus(batch, target.checkYear)) {
+    const satisfied = isPriorYearScholarshipYearComplete(yearData, studType, semestersPerYear);
+    const lastSemester = Math.max(1, semCountFromYearData(yearData, semestersPerYear));
+    const lastSemesterRow = yearData?.semesters?.find(
+      (entry) => Number(entry.student_semester) === lastSemester
+    );
+    return {
+      eligible: normalizeEligible(lastSemesterRow?.eligible) || normalizeEligible(yearData?.eligible) || '',
+      feePaid: lastSemesterRow?.fee_paid === true || lastSemesterRow?.fee_paid === 1 ? true : null,
+      checkYear: target.checkYear,
+      fullyOptional: false,
+      satisfied,
+      displayLabel: `Year ${target.checkYear}`
+    };
+  }
+
+  const checkSemester = target.mode === 'prior_year'
+    ? Math.max(1, Number(semestersPerYear) || 1)
+    : Math.max(1, Number(student?.current_semester) || 1);
+  const semesterRow = yearData?.semesters?.find(
+    (entry) => Number(entry.student_semester) === checkSemester
+  );
+  const eligible = normalizeEligible(semesterRow?.eligible)
+    || normalizeEligible(yearData?.eligible)
+    || '';
+  const feePaid = semesterRow?.fee_paid === true || semesterRow?.fee_paid === 1 ? true : null;
+  const satisfied = target.mode === 'prior_year'
+    ? isPriorYearScholarshipYearComplete(yearData, studType, semestersPerYear)
+    : isScholarshipCompleteForRegistration(eligible, feePaid, studType);
+
+  return {
+    eligible,
+    feePaid,
+    checkYear: target.checkYear,
+    fullyOptional: false,
+    satisfied,
+    displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+  };
+};
+
+const resolveRegistrationScholarshipForStudent = async (
+  pool,
+  student,
+  optionalStages = []
+) => {
+  const currentYear = Math.max(1, Number(student?.current_year) || 1);
+  const target = resolveRegistrationScholarshipTarget(currentYear, optionalStages);
+
+  if (target.fullyOptional) {
+    return {
+      eligible: '',
+      feePaid: null,
+      satisfied: true,
+      checkYear: null,
+      displayLabel: null
+    };
+  }
+
+  if (isScholarshipIneligibleQuota(student?.stud_type)) {
+    return {
+      eligible: 'not_eligible',
+      feePaid: null,
+      satisfied: true,
+      checkYear: target.checkYear,
+      displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+    };
+  }
+
+  const semestersPerYear = await resolveSemestersPerYear(pool, student);
+  const checkSemester = target.mode === 'prior_year'
+    ? semestersPerYear
+    : Math.max(1, Number(student?.current_semester) || 1);
+
+  if (target.mode === 'prior_year' && usesSemesterWiseScholarshipStatus(student.batch, target.checkYear)) {
+    const [rows] = await pool.query(
+      `SELECT student_semester, eligible, fee_paid
+       FROM student_scholarship
+       WHERE student_id = ? AND student_year = ? AND student_semester IS NOT NULL
+         AND eligible IS NOT NULL AND TRIM(eligible) != ''
+       ORDER BY student_semester ASC`,
+      [student.id, target.checkYear]
+    );
+    const yearData = {
+      semesters: rows.map((row) => ({
+        student_semester: row.student_semester,
+        eligible: row.eligible,
+        fee_paid: row.fee_paid
+      }))
+    };
+    const satisfied = isPriorYearScholarshipYearComplete(yearData, student.stud_type, semestersPerYear);
+    const lastRow = rows[rows.length - 1] || {};
+    return {
+      eligible: normalizeEligible(lastRow.eligible) || '',
+      feePaid: lastRow.fee_paid === 1 ? true : null,
+      satisfied,
+      checkYear: target.checkYear,
+      displayLabel: `Year ${target.checkYear}`
+    };
+  }
+
+  const eligible = await getScholarshipEligibleForYear(
+    pool,
+    student.id,
+    target.checkYear,
+    student.stud_type,
+    checkSemester,
+    student.batch
+  );
+
+  let feePaid = null;
+  const [feePaidRows] = await pool.query(
+    `SELECT fee_paid FROM student_scholarship
+     WHERE student_id = ? AND student_year = ? AND student_semester = ?
+       AND eligible IS NOT NULL AND TRIM(eligible) != ''
+     ORDER BY updated_at DESC, id DESC LIMIT 1`,
+    [student.id, target.checkYear, checkSemester]
+  );
+  if (feePaidRows.length > 0) {
+    feePaid = feePaidRows[0].fee_paid === 1;
+  }
+
+  const satisfied = target.mode === 'prior_year'
+    ? isScholarshipCompleteForRegistration(eligible, feePaid, student.stud_type)
+    : isRegistrationScholarshipSatisfied(
+      eligible,
+      feePaid,
+      student.stud_type,
+      currentYear,
+      optionalStages
+    );
+
+  return {
+    eligible,
+    feePaid,
+    satisfied,
+    checkYear: target.checkYear,
+    displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+  };
+};
+
 const resolveHistoryActor = (user) => {
   if (!user?.id) return { adminId: null, rbacId: null };
   const adminRoles = new Set(['admin', 'superadmin', 'super_admin']);
@@ -1224,6 +1464,12 @@ module.exports = {
   getScholarStatusColumnFilterClause,
   getScholarshipEligibleForYear,
   isScholarshipCompleteForRegistration,
+  isScholarshipOptionalForRegistration,
+  resolveRegistrationScholarshipTarget,
+  isRegistrationScholarshipSatisfied,
+  isPriorYearScholarshipYearComplete,
+  resolveRegistrationScholarshipDisplayFromYearData,
+  resolveRegistrationScholarshipForStudent,
   archiveScholarshipYear,
   resolveHistoryActor,
   buildYearSnapshotFromRows,
@@ -1250,6 +1496,7 @@ module.exports = {
   enrichYearWithScholarshipMode,
   resolveLegacyYearEligible,
   SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR,
+  studentAcademicYearFromYearSql,
   formatAcademicYearLabel,
   buildAcademicYearContext,
   enrichScholarshipYears,

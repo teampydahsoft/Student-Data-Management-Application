@@ -70,7 +70,9 @@ import {
   SCHOLARSHIP_STATUS_FILTER_OPTIONS,
   getCurrentScholarshipStatus,
   formatScholarshipStatusDisplay,
-  isScholarshipRegistrationComplete
+  isScholarshipRegistrationComplete,
+  getRegistrationScholarshipStatus,
+  resolveRegistrationScholarshipDisplay
 } from '../config/scholarshipConfig';
 import {
   isVerificationCompleteForCycle,
@@ -79,7 +81,25 @@ import {
   isPromotionCompleteForCycle,
   REGISTRATION_EMPTY_DISPLAY
 } from '../config/registrationCycle';
+import {
+  computeRegistrationStageDisplays,
+  resolveRegistrationOverallStatus
+} from '../config/registrationStages.jsx';
 import { CASTE_OPTIONS } from '../config/casteConfig';
+
+const formatRegistrationStatusLabel = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'completed') return 'Completed';
+  if (normalized === 'temporary') return 'Temporary';
+  return 'Pending';
+};
+
+const getRegistrationStatusBadgeClass = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'completed') return 'text-green-700 bg-green-50';
+  if (normalized === 'temporary') return 'text-amber-700 bg-amber-50 font-medium';
+  return 'text-yellow-700 bg-yellow-50';
+};
 
 // Student status options
 const STUDENT_STATUS_OPTIONS = [
@@ -117,6 +137,7 @@ const SCHOLAR_STATUS_OPTIONS = SCHOLARSHIP_STATUS_FILTER_OPTIONS.map((option) =>
 // Registration status options
 const REGISTRATION_STATUS_OPTIONS = [
   'Pending',
+  'Temporary',
   'Completed'
 ];
 
@@ -2947,6 +2968,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   <option value="pending">Pending</option>
+                  <option value="temporary">Temporary</option>
                   <option value="completed">Completed</option>
                 </select>
               </div>
@@ -3336,7 +3358,11 @@ const Students = () => {
                               </td>
                             )}
                             {canViewField('registration_status') && !isCashier && (
-                              <td className="py-1 px-1 text-[10px] text-gray-700">{student.registration_status || '-'}</td>
+                              <td className="py-1 px-1 text-[10px]">
+                                <span className={`inline-flex px-1.5 py-0.5 rounded ${getRegistrationStatusBadgeClass(student.registration_status)}`}>
+                                  {formatRegistrationStatusLabel(student.registration_status)}
+                                </span>
+                              </td>
                             )}
                             {canViewField('remarks') && (
                               <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[120px] truncate" onClick={(e) => {
@@ -3506,7 +3532,9 @@ const Students = () => {
                             {canViewField('registration_status') && (
                               <div>
                                 <p className="text-xs text-gray-500">Registration Status</p>
-                                <p className="text-sm font-medium text-gray-900">{student.registration_status || 'pending'}</p>
+                                <p className={`text-sm font-medium inline-flex px-2 py-0.5 rounded ${getRegistrationStatusBadgeClass(student.registration_status)}`}>
+                                  {formatRegistrationStatusLabel(student.registration_status)}
+                                </p>
                               </div>
                             )}
                           </>
@@ -4091,31 +4119,38 @@ const Students = () => {
                       currentSem
                     );
 
-                    const scholarStatus = getCurrentScholarshipStatus(scholarshipData, {
+                    // Build optional set for this student's branch+year
+                    const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
+                    const programYear = Math.max(1, Number(selectedStudent.current_year || studentData.current_year || 1));
+                    const isScholarshipOptional = optSet.has('scholarship');
+
+                    const scholarStatus = getRegistrationScholarshipStatus(scholarshipData, {
                       ...selectedStudent,
                       ...studentData
-                    });
-                    const isScholarshipComplete = isScholarshipRegistrationComplete(scholarshipData, {
+                    }, regOptionalStages);
+                    const scholarshipCtx = resolveRegistrationScholarshipDisplay(scholarshipData, {
                       ...selectedStudent,
                       ...studentData
-                    });
+                    }, regOptionalStages);
+                    const isScholarshipComplete = scholarshipCtx.satisfied;
+
+                    const registrationStages = computeRegistrationStageDisplays(
+                      { ...selectedStudent, ...studentData },
+                      scholarshipData,
+                      regOptionalStages
+                    );
+                    const resolvedOverallStatus = resolveRegistrationOverallStatus(
+                      registrationStages.overallStatus,
+                      selectedStudent.registration_status
+                    );
+                    const isRegistrationComplete = resolvedOverallStatus === 'completed';
+                    const isRegistrationTemporary = resolvedOverallStatus === 'Temporary';
 
                     const studentMobile = selectedStudent.student_mobile || studentData.student_mobile;
                     const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
                     const canVerifyMobile = canViewField('registration_status');
 
-                    // Build optional set for this student's branch+year
-                    const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
-
                     // A stage is "satisfied" if actually complete OR marked optional
-                    const isRegistrationComplete =
-                      (isVerificationComplete || optSet.has('verification')) &&
-                      (isCertComplete        || optSet.has('certificates')) &&
-                      (isFeeComplete         || optSet.has('fee')) &&
-                      (isPromotionComplete   || optSet.has('promotion')) &&
-                      (isScholarshipComplete || optSet.has('scholarship'));
-
-                    // StatusBadge: green when complete, blue-tinted when optional+pending, gray otherwise
                     const StatusBadge = ({ completed, optional = false, text }) => {
                       const display = completed ? 'Completed' : (text ? formatScholarshipStatusDisplay(text) : '—');
                       return (
@@ -4136,7 +4171,13 @@ const Students = () => {
 
                     return (
                       <div className="space-y-6">
-                        <div className={`rounded-xl p-6 border ${isRegistrationComplete ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        <div className={`rounded-xl p-6 border ${
+                          isRegistrationComplete
+                            ? 'bg-green-50 border-green-200'
+                            : isRegistrationTemporary
+                              ? 'bg-amber-50 border-amber-200'
+                              : 'bg-white border-gray-200 shadow-sm'
+                        }`}>
                           <div className="flex items-center justify-between">
                             <div>
                               <h3 className="text-lg font-bold text-gray-900">Registration Status</h3>
@@ -4144,10 +4185,17 @@ const Students = () => {
                                 Overall registration completion based on all stages
                               </p>
                             </div>
-                            <div className={`px-4 py-2 rounded-lg font-bold text-lg flex items-center gap-2 ${isRegistrationComplete ? 'bg-green-200 text-green-800' : 'bg-yellow-100 text-yellow-700'
-                              }`}>
+                            <div className={`px-4 py-2 rounded-lg font-bold text-lg flex items-center gap-2 ${
+                              isRegistrationComplete
+                                ? 'bg-green-200 text-green-800'
+                                : isRegistrationTemporary
+                                  ? 'bg-amber-200 text-amber-800'
+                                  : 'bg-yellow-100 text-yellow-700'
+                            }`}>
                               {isRegistrationComplete ? (
                                 <><CheckCircle size={24} /> Completed</>
+                              ) : isRegistrationTemporary ? (
+                                <><AlertTriangle size={24} /> Temporary</>
                               ) : (
                                 <><LoadingAnimation width={20} height={20} showMessage={false} variant="inline" /> Pending</>
                               )}
@@ -4275,25 +4323,34 @@ const Students = () => {
                             </div>
                           </div>
 
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isScholarshipComplete ? 'bg-white border-gray-200' : optSet.has('scholarship') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
+                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isScholarshipComplete ? 'bg-white border-gray-200' : isScholarshipOptional ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isScholarshipComplete ? 'bg-purple-100 text-purple-600' : optSet.has('scholarship') ? 'bg-blue-100 text-blue-500' : 'bg-purple-100 text-purple-600'}`}>
+                              <div className={`mt-1 p-2 rounded-full ${isScholarshipComplete ? 'bg-purple-100 text-purple-600' : isScholarshipOptional ? 'bg-blue-100 text-blue-500' : 'bg-purple-100 text-purple-600'}`}>
                                 <Book size={20} />
                               </div>
                               <div>
                                 <h5 className="font-semibold text-gray-900 flex items-center gap-2">
                                   5. Scholarship Status
-                                  {optSet.has('scholarship') && !isScholarshipComplete && (
+                                  {isScholarshipOptional && programYear <= 1 && !isScholarshipComplete && (
                                     <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
+                                  )}
+                                  {isScholarshipOptional && programYear > 1 && !isScholarshipComplete && (
+                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Prior year required</span>
                                   )}
                                 </h5>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  Year {selectedStudent.current_year || studentData.current_year || 1} status from scholarship records
+                                  {scholarshipCtx.displayLabel
+                                    ? `${scholarshipCtx.displayLabel} status from scholarship records (current year optional)`
+                                    : `Year ${programYear} status from scholarship records`}
                                 </p>
                               </div>
                             </div>
                             <div className="ml-auto flex items-center">
-                              <StatusBadge completed={isScholarshipComplete} optional={optSet.has('scholarship')} text={scholarStatus} />
+                              <StatusBadge
+                                completed={isScholarshipComplete}
+                                optional={isScholarshipOptional && programYear <= 1}
+                                text={scholarStatus}
+                              />
                             </div>
                           </div>
 
@@ -4313,6 +4370,7 @@ const Students = () => {
                   {activeStudentTab === 'scholarship' && (
                     <StudentScholarshipHistoryTab
                       student={selectedStudent}
+                      registrationOptionalStages={regOptionalStages}
                       onUpdated={(data) => {
                         setScholarshipData(data);
                         const status = getCurrentScholarshipStatus(data, data?.student || selectedStudent);
