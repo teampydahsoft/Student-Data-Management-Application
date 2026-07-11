@@ -6,6 +6,10 @@
 const { getNonWorkingDaysForRange } = require('./nonWorkingDayService');
 const { parseDateString } = require('../utils/dateUtils');
 const { resolveAttendanceDisplayNumberFromRow } = require('./rollNumberService');
+const {
+  resolveAttendanceStartDate,
+  isAttendanceEligibleOnDate
+} = require('../utils/studentAttendanceEligibility');
 
 /**
  * Get date only string in YYYY-MM-DD format (IST-aware)
@@ -38,7 +42,7 @@ const buildDateSet = (fromDate, toDate) => {
  * @param {Set<string>} holidayDates - Set of holiday dates
  * @returns {Object} Statistics object with workingDays, presentDays, absentDays, holidays, unmarkedDays, attendancePercentage
  */
-const calculateStudentAttendanceStats = (attendanceMap, dateSet, holidayDates) => {
+const calculateStudentAttendanceStats = (attendanceMap, dateSet, holidayDates, attendanceStartDate = null) => {
   let presentDays = 0;
   let absentDays = 0;
   let workingDays = 0;
@@ -46,6 +50,10 @@ const calculateStudentAttendanceStats = (attendanceMap, dateSet, holidayDates) =
   let unmarkedDays = 0;
 
   dateSet.forEach((date) => {
+    if (!isAttendanceEligibleOnDate(date, attendanceStartDate)) {
+      return;
+    }
+
     const status = attendanceMap.get(date) || null;
     // Treat a day as a holiday if:
     // (a) it appears in the calendar's holiday set (Sunday / public / institute), OR
@@ -176,6 +184,7 @@ const processAttendanceData = async (studentRows, attendanceRows, fromDate, toDa
   const studentMap = new Map();
   studentRows.forEach((row) => {
     const studentData = parseStudentData(row.student_data);
+    const attendanceStartDate = resolveAttendanceStartDate(row);
     studentMap.set(row.id, {
       id: row.id,
       admissionNumber: row.admission_number,
@@ -187,6 +196,7 @@ const processAttendanceData = async (studentRows, attendanceRows, fromDate, toDa
       year: row.current_year || studentData['Current Academic Year'] || null,
       semester: row.current_semester || studentData['Current Semester'] || null,
       college: row.college || null,
+      attendanceStartDate,
       attendance: new Map()
     });
   });
@@ -207,7 +217,8 @@ const processAttendanceData = async (studentRows, attendanceRows, fromDate, toDa
     const stats = calculateStudentAttendanceStats(
       student.attendance,
       dateSet,
-      holidayInfo.dates || new Set()
+      holidayInfo.dates || new Set(),
+      student.attendanceStartDate
     );
 
     return {

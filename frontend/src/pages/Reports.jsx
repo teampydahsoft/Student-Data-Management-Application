@@ -2987,11 +2987,15 @@ const Reports = () => {
                                   const status = student.attendance?.[date];
                                   const isHoliday = attendanceReportData.holidayInfo?.dates?.includes(date) ||
                                     new Date(date).getDay() === 0;
+                                  const isBeforeJoinDate = student.attendanceStartDate && date < student.attendanceStartDate;
 
                                   let cellContent = '-';
                                   let cellClass = 'text-gray-300';
 
-                                  if (status === 'present') {
+                                  if (isBeforeJoinDate) {
+                                    cellContent = '—';
+                                    cellClass = 'text-gray-200 bg-gray-50';
+                                  } else if (status === 'present') {
                                     cellContent = 'P';
                                     cellClass = 'bg-green-100 text-green-700 font-bold';
                                   } else if (status === 'absent') {
@@ -3009,26 +3013,7 @@ const Reports = () => {
                                   );
                                 })}
                                 {(() => {
-                                  // Calculate student's personal working days
-                                  // Global working days (excluding global holidays)
-                                  const globalWorkingDays = attendanceReportData.statistics?.totalWorkingDays || 0;
-
-                                  // Count days marked as 'holiday' for THIS student that are otherwise working days
-                                  // (i.e. days in the grid that are NOT global holidays)
-                                  let studentHolidays = 0;
-                                  (attendanceReportData.dates || []).forEach(date => {
-                                    const status = student.attendance?.[date];
-                                    // If student is marked as 'holiday' on a day that is NOT a global holiday/Sunday, it's a personal exemption
-                                    // We need to check if this date is part of the global working days set
-                                    // The global working days are dates in range - global holidays
-                                    const isGlobalHoliday = attendanceReportData.holidayInfo?.dates?.includes(date) || new Date(date).getDay() === 0;
-
-                                    if (!isGlobalHoliday && status === 'holiday') {
-                                      studentHolidays++;
-                                    }
-                                  });
-
-                                  const studentWorkingDays = Math.max(0, globalWorkingDays - studentHolidays);
+                                  const studentWorkingDays = student.statistics?.workingDays || 0;
 
                                   // Calculate percentage based on student's personal working days
                                   const pct = studentWorkingDays > 0
@@ -3254,14 +3239,19 @@ const Reports = () => {
                           dataSource.dates.forEach(date => {
                             const holidayDates = new Set(dataSource.holidayInfo?.dates || []);
                             if (!holidayDates.has(date)) {
-                              // Check if any student has attendance for this date
-                              const hasAttendance = dataSource.students.some(student =>
+                              const eligibleStudents = dataSource.students.filter((student) =>
+                                !student.attendanceStartDate || date >= student.attendanceStartDate
+                              );
+                              if (eligibleStudents.length === 0) {
+                                return;
+                              }
+                              const hasAttendance = eligibleStudents.some(student =>
                                 student.attendance && student.attendance[date]
                               );
                               if (hasAttendance) {
-                                statusMap[date] = 'present'; // Marked day
+                                statusMap[date] = 'present';
                               } else {
-                                statusMap[date] = 'absent'; // Unmarked day (shown as red)
+                                statusMap[date] = 'absent';
                               }
                             }
                           });

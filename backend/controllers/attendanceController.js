@@ -52,6 +52,14 @@ const {
   fetchSectionFilterOptions
 } = require('../services/sectionFilterService');
 const { logAudit } = require('../services/auditLogService');
+const {
+  appendAttendanceJoinDateClause,
+  resolveAttendanceStartDate,
+  countEligibleStudentsOnDate
+} = require('../utils/studentAttendanceEligibility');
+const {
+  calculateStudentAttendanceStats
+} = require('../services/attendancePercentageService');
 
 const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
@@ -166,7 +174,11 @@ const fetchAttendanceConfig = async () => {
 /** Same eligibility rules as the main attendance list (getAttendance). */
 const buildAttendancePageEligibilityClause = (attendanceDate, { excludedCourses = [], excludedStudents = [] } = {}) => {
   const params = [];
-  let sql = `
+  const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+  let sql = joinDateSql;
+  params.push(...joinDateParams);
+
+  sql += `
     AND NOT EXISTS (
       SELECT 1 FROM internship_assignments ia
       WHERE ia.student_id = s.id
@@ -716,6 +728,10 @@ exports.getAttendance = async (req, res) => {
     // Start with indexed columns in order: student_status, course, batch, current_year, current_semester
     query += ` AND s.student_status = 'Regular'`;
 
+    const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+    query += joinDateSql;
+    params.push(...joinDateParams);
+
     // EXCLUDE students with active INTERNSHIP assignments for this specific date (respecting allowed_days)
     query += `
       AND NOT EXISTS (
@@ -871,6 +887,10 @@ exports.getAttendance = async (req, res) => {
 
     // Optimize: Order WHERE conditions to use composite index effectively
     countQuery += ` AND s.student_status = 'Regular'`;
+
+    const { sql: countJoinDateSql, params: countJoinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+    countQuery += countJoinDateSql;
+    countParams.push(...countJoinDateParams);
 
     // EXCLUDE students with active INTERNSHIP assignments for this specific date (respecting allowed_days)
     countQuery += `
@@ -1038,6 +1058,10 @@ exports.getAttendance = async (req, res) => {
     `;
 
     const statsParams = [attendanceDate];
+
+    const { sql: statsJoinDateSql, params: statsJoinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+    statsQuery += statsJoinDateSql;
+    statsParams.push(...statsJoinDateParams);
 
     // Optimize: Order WHERE conditions to use composite index effectively
     // Apply indexed filters first (these use the composite index)
@@ -4071,7 +4095,8 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
           s.course,
           s.branch,
           s.current_year,
-          s.current_semester
+          s.current_semester,
+          s.created_at
         FROM students s
         ORDER BY s.batch, s.course, s.branch, s.current_year, s.current_semester
       `
@@ -4132,12 +4157,14 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
           year,
           semester,
           studentIds: new Set(),
+          students: [],
           attendance: new Map() // date -> { present: count, absent: count }
         });
       }
 
       const group = groupMap.get(key);
       group.studentIds.add(row.id);
+      group.students.push(row);
     });
 
     // Now process attendance records
@@ -4186,8 +4213,8 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
             totalPresent += dayStats.present;
             totalAbsent += dayStats.absent;
             const marked = dayStats.present + dayStats.absent;
-            const totalStudents = group.studentIds.size;
-            totalUnmarked += Math.max(0, totalStudents - marked);
+            const eligibleStudents = countEligibleStudentsOnDate(group.students, date);
+            totalUnmarked += Math.max(0, eligibleStudents - marked);
           }
         });
 
@@ -4512,6 +4539,7 @@ exports.downloadAttendanceReport = async (req, res) => {
         s.current_year,
         s.current_semester,
         s.student_data,
+        s.created_at,
         ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s
       ${STUDENT_ROLL_NUMBERS_JOIN}
@@ -4635,6 +4663,7 @@ exports.downloadAttendanceReport = async (req, res) => {
           branch: row.branch || studentData.Branch || studentData.branch || null,
           year: row.current_year || studentData['Current Academic Year'] || null,
           semester: row.current_semester || studentData['Current Semester'] || null,
+          attendanceStartDate: resolveAttendanceStartDate(row),
           attendance: new Map()
         });
       }
@@ -4657,25 +4686,22 @@ exports.downloadAttendanceReport = async (req, res) => {
     let totalUnmarked = 0;
 
     students.forEach((student) => {
-      dateSet.forEach((date) => {
-        const isHoliday = holidayInfo.dates.has(date);
-        const status = student.attendance.get(date) || null;
-
-        if (isHoliday) {
-          totalHolidays += 1;
-        } else if (status === 'present') {
-          totalPresent += 1;
-        } else if (status === 'absent') {
-          totalAbsent += 1;
-        } else {
-          totalUnmarked += 1;
-        }
-      });
+      const stats = calculateStudentAttendanceStats(
+        student.attendance,
+        dateSet,
+        holidayInfo.dates,
+        student.attendanceStartDate
+      );
+      totalPresent += stats.presentDays;
+      totalAbsent += stats.absentDays;
+      totalHolidays += stats.holidays;
+      totalUnmarked += stats.unmarkedDays;
     });
 
     // Convert students Map to serializable format
     const studentsData = students.map((student) => ({
       ...student,
+      attendanceStartDate: student.attendanceStartDate,
       attendance: Object.fromEntries(student.attendance)
     }));
 
@@ -4922,6 +4948,7 @@ exports.downloadDayEndReport = async (req, res) => {
     }
 
     const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+    const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
 
     // Get grouped summary data (same query as getAttendanceSummary)
     const [groupedRows] = await masterPool.query(
@@ -4943,11 +4970,11 @@ exports.downloadDayEndReport = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
-        WHERE 1=1${countFilter.clause}${exclusionClause}${semesterSql}${scopeCondition}
+        WHERE 1=1${countFilter.clause}${exclusionClause}${joinDateSql}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [attendanceDate, ...countFilter.params, ...exclusionParams, ...semesterParams, ...scopeParams]
+      [attendanceDate, ...countFilter.params, ...exclusionParams, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
 
     // Transform grouped data to match frontend format
@@ -5605,6 +5632,7 @@ exports.getAttendanceReportForStudents = async (req, res) => {
         s.current_semester,
         s.college,
         s.student_data,
+        s.created_at,
         ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s
       ${STUDENT_ROLL_NUMBERS_JOIN}
@@ -5821,6 +5849,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
 
     const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '';
     const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(todayKey);
+    const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(todayKey, 's');
 
     // Apply user scope filtering
     let scopeCondition = '';
@@ -5834,8 +5863,8 @@ exports.getOverallAttendanceSummary = async (req, res) => {
     }
 
     const [studentCountRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${semesterSql}${scopeCondition}`,
-      [...params, ...semesterParams, ...scopeParams]
+      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${joinDateSql}${semesterSql}${scopeCondition}`,
+      [...params, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
     const totalStudents = studentCountRows[0]?.totalStudents || 0;
 
@@ -5860,10 +5889,10 @@ exports.getOverallAttendanceSummary = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON s.id = ar.student_id 
           AND ar.attendance_date = ?
-        WHERE s.student_status = 'Regular'${whereClause}${semesterSql}${scopeCondition}
+        WHERE s.student_status = 'Regular'${whereClause}${joinDateSql}${semesterSql}${scopeCondition}
         GROUP BY status
       `,
-      [todayKey, todayKey, todayKey, todayKey, ...params, ...semesterParams, ...scopeParams]
+      [todayKey, todayKey, todayKey, todayKey, ...params, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
 
     // Fetch overall grouped summary data
@@ -5898,11 +5927,11 @@ exports.getOverallAttendanceSummary = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON s.id = ar.student_id 
           AND ar.attendance_date = ?
-        WHERE s.student_status = 'Regular'${whereClause}${semesterSql}${scopeCondition}
+        WHERE s.student_status = 'Regular'${whereClause}${joinDateSql}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [todayKey, todayKey, todayKey, todayKey, ...params, ...semesterParams, ...scopeParams]
+      [todayKey, todayKey, todayKey, todayKey, ...params, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
 
     let presentCount = 0;
