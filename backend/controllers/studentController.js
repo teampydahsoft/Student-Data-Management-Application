@@ -30,7 +30,8 @@ const {
   resolveRegistrationScholarStatusDisplay,
   buildRegistrationFeePaidMap,
   buildRegistrationScholarshipContextMap,
-  resolveRegistrationScholarshipForStudent
+  resolveRegistrationScholarshipForStudent,
+  registrationUsesScholarshipTableOnly
 } = require('../services/studentScholarshipSync');
 const {
   isVerificationCompleteForCycle,
@@ -51,7 +52,7 @@ const {
   buildRegistrationStatusComputedCaseSql,
   buildStudentRegistrationStatusComputedSql
 } = require('../services/registrationReportSql');
-const { computeRegistrationStages, parseStudentData, aggregateRegistrationOverallFromStudents, computeRegistrationGroupAggregates, enrichRegistrationAbstractRows, hasOptionalRegistrationStages } = require('../services/registrationStages');
+const { computeRegistrationStages, parseStudentData, aggregateRegistrationOverallFromStudents, computeRegistrationGroupAggregates, enrichRegistrationAbstractRows, hasOptionalRegistrationStages, buildRegistrationStatusLabelMap } = require('../services/registrationStages');
 const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
 
@@ -213,15 +214,9 @@ const fetchRegistrationStudentsForAggregation = async (req, tableAlias = 'base')
 
 const loadRegistrationComputedAggregates = async (students, stageConfig, academicYearFromYear = null) => {
   const config = stageConfig || await loadRegistrationStageConfig();
-  const hasAnyOptionalConfig = Object.values(config || {}).some(
-    (entry) => Array.isArray(entry?.optionalStages) && entry.optionalStages.length > 0
-  );
-  if (!hasAnyOptionalConfig) {
-    return null;
-  }
-
   const optionalStudents = students.filter((student) => (
     hasOptionalRegistrationStages(config, student.branch, student.current_year)
+    || registrationUsesScholarshipTableOnly(student)
   ));
 
   if (!optionalStudents.length) {
@@ -324,12 +319,11 @@ const formatRegistrationStatusLabel = (overallStatus) => {
 
 const resolveRegistrationStatusLabel = (sqlStatus, jsStatus, fallbackStatus = 'pending') => {
   const normalize = (value) => String(value || '').trim().toLowerCase();
-  const sqlNorm = normalize(sqlStatus);
   const jsNorm = normalize(jsStatus);
-  if (sqlNorm === 'temporary' || jsNorm === 'temporary') return 'Temporary';
-  if (sqlNorm === 'completed' || jsNorm === 'completed') return 'Completed';
-  if (sqlStatus) return formatRegistrationStatusLabel(sqlStatus);
+  if (jsNorm === 'temporary') return 'Temporary';
+  if (jsNorm === 'completed') return 'Completed';
   if (jsStatus) return formatRegistrationStatusLabel(jsStatus);
+  if (sqlStatus) return formatRegistrationStatusLabel(sqlStatus);
   return formatRegistrationStatusLabel(fallbackStatus);
 };
 
@@ -3086,7 +3080,11 @@ exports.getAllStudents = async (req, res) => {
 
     const [countResult] = await masterPool.query(countQuery, countParams);
 
-    const scholarshipMap = await buildRegistrationScholarshipMap(masterPool, students);
+    const stageConfigForList = await loadRegistrationStageConfig();
+    const [scholarshipMap, registrationStatusLabelMap] = await Promise.all([
+      buildRegistrationScholarshipMap(masterPool, students),
+      buildRegistrationStatusLabelMap(masterPool, students, stageConfigForList)
+    ]);
 
     const admissionNumbers = students.map(s => s.admission_number).filter(Boolean);
     const pinNumbers = students.map(s => s.pin_no).filter(Boolean);
@@ -3153,7 +3151,8 @@ exports.getAllStudents = async (req, res) => {
         ? student.registration_status
         : (parsedData?.registration_status || parsedData?.['Registration Status'] || null);
 
-      const resolvedRegistrationStatus = student.registration_status_computed
+      const resolvedRegistrationStatus = registrationStatusLabelMap.get(student.id)
+        || student.registration_status_computed
         || dbRegistrationStatus
         || 'pending';
 
@@ -6002,7 +6001,8 @@ exports.getStudentByAdmission = async (req, res) => {
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
       { ...student, current_year: stage.year, current_semester: stage.semester },
-      optionalStagesSingle
+      optionalStagesSingle,
+      stageConfigSingle
     );
     const normalizedScholarStatus = normalizeScholarStatusForResponse(scholarshipCtx.eligible || '');
 
@@ -6011,7 +6011,8 @@ exports.getStudentByAdmission = async (req, res) => {
       parsedData,
       scholarshipCtx.eligible,
       scholarshipCtx.feePaid,
-      optionalStagesSingle
+      optionalStagesSingle,
+      scholarshipCtx
     );
     const jsRegistrationStatus = formatRegistrationStatusLabel(stages.overallStatus);
     const computedRegistrationStatus = resolveRegistrationStatusLabel(
@@ -6447,14 +6448,16 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
       student,
-      optionalStages
+      optionalStages,
+      stageConfig
     );
     const stages = computeRegistrationStages(
       student,
       studentData,
       scholarshipCtx.eligible,
       scholarshipCtx.feePaid,
-      optionalStages
+      optionalStages,
+      scholarshipCtx
     );
     const statusLabel = formatRegistrationStatusLabel(stages.overallStatus);
 
@@ -7298,19 +7301,14 @@ exports.getRegistrationReport = async (req, res) => {
     let computedOptional = registrationStatsCache.get(statsCacheKey);
     if (computedOptional === undefined) {
       const stageConfigForStats = await loadRegistrationStageConfig();
-      const hasAnyOptionalConfig = Object.values(stageConfigForStats || {}).some(
-        (entry) => Array.isArray(entry?.optionalStages) && entry.optionalStages.length > 0
+      // Always recompute in JS: table-only (2026+) students need prior-year
+      // scholarship checks even when no optional-stage config exists.
+      const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
+      computedOptional = await loadRegistrationComputedAggregates(
+        aggregationStudents,
+        stageConfigForStats,
+        academicYearFromYear
       );
-      if (!hasAnyOptionalConfig) {
-        computedOptional = null;
-      } else {
-        const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
-        computedOptional = await loadRegistrationComputedAggregates(
-          aggregationStudents,
-          stageConfigForStats,
-          academicYearFromYear
-        );
-      }
       registrationStatsCache.set(statsCacheKey, computedOptional);
     }
 
@@ -7372,22 +7370,27 @@ exports.getRegistrationReport = async (req, res) => {
       masterPool.query(dataQuery, dataParams),
       loadRegistrationStageConfig()
     ]);
-    const [scholarshipMap, feePaidMap] = await Promise.all([
+    const [scholarshipMap, feePaidMap, scholarshipContextMapReport] = await Promise.all([
       buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear }),
-      buildRegistrationFeePaidMap(masterPool, students)
+      buildRegistrationFeePaidMap(masterPool, students),
+      buildRegistrationScholarshipContextMap(masterPool, students, stageConfig, resolveOptionalStages)
     ]);
 
     const reportData = students.map((student) => {
       const studentData = parseStudentData(student);
       const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
-      const scholarStatus = scholarshipMap.get(student.id) || null;
-      const scholarFeePaid = feePaidMap.has(student.id) ? feePaidMap.get(student.id) : null;
+      const scholarshipCtx = scholarshipContextMapReport.get(student.id) || null;
+      const scholarStatus = scholarshipCtx?.eligible || scholarshipMap.get(student.id) || null;
+      const scholarFeePaid = scholarshipCtx?.feePaid != null
+        ? scholarshipCtx.feePaid
+        : (feePaidMap.has(student.id) ? feePaidMap.get(student.id) : null);
       const stages = computeRegistrationStages(
         student,
         studentData,
         scholarStatus,
         scholarFeePaid,
-        optionalStages
+        optionalStages,
+        scholarshipCtx
       );
 
       return {
@@ -7536,13 +7539,6 @@ const fetchRegistrationAbstractRows = async (req) => {
 
   if (!rows.length) return rows;
 
-  const hasAnyOptionalConfig = Object.values(stageConfig || {}).some(
-    (entry) => Array.isArray(entry?.optionalStages) && entry.optionalStages.length > 0
-  );
-  if (!hasAnyOptionalConfig) {
-    return rows;
-  }
-
   const columnList = REGISTRATION_AGGREGATION_STUDENT_COLUMNS
     .split(',')
     .map((column) => `base.${column.trim()}`)
@@ -7562,6 +7558,7 @@ const fetchRegistrationAbstractRows = async (req) => {
 
   const optionalStudents = students.filter((student) => (
     hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)
+    || registrationUsesScholarshipTableOnly(student)
   ));
 
   if (!optionalStudents.length) {
@@ -7868,7 +7865,8 @@ exports.exportRegistrationReport = async (req, res) => {
         studentData,
         scholarshipCtx.eligible,
         scholarshipCtx.feePaid,
-        optionalStages
+        optionalStages,
+        scholarshipCtx
       );
 
       const overallLabel = stages.overallStatus === 'completed'

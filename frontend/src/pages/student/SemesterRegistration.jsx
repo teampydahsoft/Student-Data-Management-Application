@@ -40,6 +40,7 @@ const SemesterRegistration = () => {
     const [studentData, setStudentData] = useState(null);
     const [scholarshipData, setScholarshipData] = useState(null);
     const [optionalStages, setOptionalStages] = useState([]);
+    const [registrationStageConfig, setRegistrationStageConfig] = useState({});
     const [activeStepId, setActiveStepId] = useState(null); // For Modal
 
     // Step 1 State: Verification
@@ -100,11 +101,20 @@ const SemesterRegistration = () => {
                             const yearData = cfgRes.data.data || {};
                             const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
                             setOptionalStages(yearData[String(configYear)]?.optionalStages || []);
+                            setRegistrationStageConfig(
+                              Object.fromEntries(
+                                Object.entries(yearData).map(([year, config]) => [
+                                  `${String(branchCode).trim()}::${year}`,
+                                  config
+                                ])
+                              )
+                            );
                         }
                     }
                 } catch (e) {
                     // Optional — degrade gracefully
                     setOptionalStages([]);
+                    setRegistrationStageConfig({});
                 }
             }
 
@@ -197,8 +207,13 @@ const SemesterRegistration = () => {
     // ------------ STATUS CHECKERS ------------
 
     const registrationStages = useMemo(
-      () => computeRegistrationStageDisplays(studentData, scholarshipData, optionalStages),
-      [studentData, scholarshipData, optionalStages]
+      () => computeRegistrationStageDisplays(
+        studentData,
+        scholarshipData,
+        optionalStages,
+        registrationStageConfig
+      ),
+      [studentData, scholarshipData, optionalStages, registrationStageConfig]
     );
 
     const getStepStatus = (id) => {

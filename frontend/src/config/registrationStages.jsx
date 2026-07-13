@@ -4,15 +4,12 @@ import {
   isPromotionCompleteForCycle
 } from './registrationCycle';
 import {
-  resolveRegistrationBranchYear,
-  resolveOptionalStagesFromConfig
-} from './registrationBranchYear';
-import {
   getRegistrationScholarshipStatus,
   formatScholarshipStatusDisplay,
   resolveRegistrationScholarshipDisplay,
   usesSemesterWiseScholarshipStatus
 } from './scholarshipConfig';
+import { resolveRegistrationBranchYear } from './registrationBranchYear';
 
 export const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
 
@@ -59,7 +56,12 @@ export const isRegistrationPortalUnlocked = (overallStatus) => (
 );
 
 /** Registration stage display — aligned with admin student dialog and reports. */
-export const computeRegistrationStageDisplays = (student, scholarshipData, optionalStages = []) => {
+export const computeRegistrationStageDisplays = (
+  student,
+  scholarshipData,
+  optionalStages = [],
+  stageConfig = null
+) => {
   const optSet = new Set(Array.isArray(optionalStages) ? optionalStages : []);
 
   if (!student) {
@@ -105,23 +107,35 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
   const scholarStatus = getRegistrationScholarshipStatus(
     scholarshipData,
     { ...student, ...studentData },
-    optionalStages
+    optionalStages,
+    stageConfig
   );
   const scholarshipCtx = resolveRegistrationScholarshipDisplay(
     scholarshipData,
     { ...student, ...studentData },
-    optionalStages
+    optionalStages,
+    stageConfig
   );
   const isScholarshipComplete = scholarshipCtx.satisfied;
-  const branchName = student?.branch || studentData.batch || scholarshipData?.student?.batch || '';
-  const branchProgramYear = resolveRegistrationBranchYear(branchName, currentYear);
   const isScholarshipOptional = optSet.has('scholarship');
-  const batch = student?.batch || studentData.batch || scholarshipData?.student?.batch || '';
-  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, branchProgramYear);
   const scholarSatisfiedForCompleted = isScholarshipOptional || isScholarshipComplete;
+
+  // 2026+ (table-only mode): if all previous years are complete and only the current
+  // semester's scholarship is missing, the student still qualifies for Temporary.
+  // If a previous year is incomplete (pendingPriorYear), registration stays pending.
+  const branchProgramYearForTemp = resolveRegistrationBranchYear(
+    student?.branch,
+    currentYear
+  );
+  const is2026Plus = usesSemesterWiseScholarshipStatus(
+    student?.batch || studentData.batch || studentData.Batch,
+    branchProgramYearForTemp
+  );
+  const pendingPriorYear = scholarshipCtx?.pendingPriorYear === true;
   const scholarshipIncompleteForTemp = is2026Plus
     && !isScholarshipOptional
-    && !isScholarshipComplete;
+    && !isScholarshipComplete
+    && !pendingPriorYear;
 
   const verifSatisfied = isVerificationComplete || optSet.has('verification');
   const certSatisfied = isCertComplete || optSet.has('certificates');
@@ -175,7 +189,10 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
       optionalPriorYear: false,
       display: isScholarshipOptional && !isScholarshipComplete
         ? REGISTRATION_EMPTY_DISPLAY
-        : getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
+        : getStageBadgeDisplay(
+            isScholarshipComplete,
+            isScholarshipComplete ? scholarStatus : (scholarStatus || 'pending')
+          ),
       rawStatus: scholarStatus,
       checkYear: scholarshipCtx.checkYear,
       displayLabel: scholarshipCtx.displayLabel

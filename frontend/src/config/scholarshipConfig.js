@@ -136,7 +136,9 @@ export const isScholarshipStatusFinal = (status) => {
  * Rules:
  * - Scholarship optional (branch config): never blocks registration.
  * - Academic year < 2026 (legacy mode): complete if scholar_status column has a final value.
- * - Academic year >= 2026 (semester-wise mode): current-year semester row must be final.
+ * - Academic year >= 2026 (semester-wise mode): all years are read from student_scholarship
+ *   only (year + semester rows). The legacy scholar_status column is ignored.
+ * - CONV quota: fee_paid is required for every final status except eligible.
  *
  * @param {object} scholarshipData  - Full payload from /student-scholarship API
  * @param {object} student          - Student object (needs batch, current_year, current_semester, stud_type)
@@ -185,8 +187,8 @@ export const getScholarshipSemestersForYear = (scholarshipMeta, studentYear) => 
 const isScholarshipSemesterRegistrationComplete = (eligible, feePaid, studType) => {
   if (!isScholarshipStatusFinal(eligible)) return false;
   const isConv = isConvScholarshipQuota({ stud_type: studType });
-  const isNotEligible = String(eligible || '').trim().toLowerCase() === 'not_eligible';
-  if (isConv && isNotEligible) {
+  const normalized = String(eligible || '').trim().toLowerCase();
+  if (isConv && normalized !== 'eligible') {
     return feePaid === true || feePaid === 1;
   }
   return true;
@@ -212,10 +214,67 @@ const isPriorYearScholarshipYearComplete = (yearData, studType, semestersPerYear
   return true;
 };
 
+const isPriorScholarshipYearCompleteForRegistration = (
+  yearData,
+  student,
+  studentYear,
+  semestersPerYear = 2
+) => {
+  const year = Math.max(1, Number(studentYear) || 1);
+  const batch = student?.batch || student?.Batch;
+  const studType = student?.stud_type || student?.StudType;
+  const currentProgramYear = resolveRegistrationBranchYear(
+    student?.branch,
+    student?.current_year
+  );
+  const tableOnlyRegistration = usesSemesterWiseScholarshipStatus(batch, currentProgramYear);
+
+  if (usesSemesterWiseScholarshipStatus(batch, year) || tableOnlyRegistration) {
+    return isPriorYearScholarshipYearComplete(yearData, studType, semestersPerYear);
+  }
+
+  const eligible = normalizeScholarshipStatusValue(yearData?.eligible)
+    || (year === 1 ? normalizeScholarshipStatusValue(student?.scholar_status) : '');
+  const feePaid = yearData?.fee_paid === true || yearData?.fee_paid === 1 ? true : null;
+  return isScholarshipSemesterRegistrationComplete(eligible, feePaid, studType);
+};
+
+const findFirstIncompletePriorScholarshipYear = (
+  scholarshipData,
+  student,
+  stageConfig = null
+) => {
+  const branchProgramYear = resolveRegistrationBranchYear(
+    student?.branch || scholarshipData?.student?.branch,
+    student?.current_year
+  );
+  const batch = student?.batch || scholarshipData?.student?.batch;
+  if (!usesSemesterWiseScholarshipStatus(batch, branchProgramYear)) return null;
+  if (branchProgramYear <= 1) return null;
+
+  const years = scholarshipData?.years || [];
+  for (let year = 1; year < branchProgramYear; year += 1) {
+    const optionalStages = resolveOptionalStagesFromConfig(
+      stageConfig,
+      student?.branch || scholarshipData?.student?.branch,
+      year
+    );
+    if (isScholarshipOptionalForRegistration(optionalStages)) continue;
+
+    const yearData = years.find((entry) => Number(entry.student_year) === year);
+    const semestersForYear = getScholarshipSemestersForYear(scholarshipData, year);
+    if (!isPriorScholarshipYearCompleteForRegistration(yearData, student, year, semestersForYear)) {
+      return year;
+    }
+  }
+  return null;
+};
+
 export const resolveRegistrationScholarshipDisplay = (
   scholarshipData,
   student,
-  optionalStages = []
+  optionalStages = [],
+  stageConfig = null
 ) => {
   const branchProgramYear = resolveRegistrationBranchYear(
     student?.branch || scholarshipData?.student?.branch,
@@ -245,6 +304,23 @@ export const resolveRegistrationScholarshipDisplay = (
       fullyOptional: false,
       satisfied: true,
       displayLabel: target.mode === 'prior_year' ? `Year ${target.checkYear}` : null
+    };
+  }
+
+  const incompletePriorYear = findFirstIncompletePriorScholarshipYear(
+    scholarshipData,
+    student,
+    stageConfig
+  );
+  if (incompletePriorYear != null) {
+    return {
+      eligible: 'pending',
+      feePaid: null,
+      checkYear: incompletePriorYear,
+      fullyOptional: false,
+      satisfied: false,
+      displayLabel: `Year ${incompletePriorYear}`,
+      pendingPriorYear: true
     };
   }
 
@@ -320,14 +396,26 @@ export const resolveRegistrationScholarshipDisplay = (
 export const isScholarshipRegistrationComplete = (
   scholarshipData,
   student,
-  optionalStages = []
-) => resolveRegistrationScholarshipDisplay(scholarshipData, student, optionalStages).satisfied;
+  optionalStages = [],
+  stageConfig = null
+) => resolveRegistrationScholarshipDisplay(
+  scholarshipData,
+  student,
+  optionalStages,
+  stageConfig
+).satisfied;
 
 export const getRegistrationScholarshipStatus = (
   scholarshipData,
   student,
-  optionalStages = []
-) => resolveRegistrationScholarshipDisplay(scholarshipData, student, optionalStages).eligible;
+  optionalStages = [],
+  stageConfig = null
+) => resolveRegistrationScholarshipDisplay(
+  scholarshipData,
+  student,
+  optionalStages,
+  stageConfig
+).eligible;
 
 /** True when a semester has any assigned scholarship status (not blank). */
 export const isSemesterScholarshipStatusAssigned = (status) => (
@@ -402,7 +490,10 @@ export const extractBatchStartYear = (batch) => {
   return null;
 };
 
-import { resolveRegistrationBranchYear } from './registrationBranchYear';
+import {
+  resolveRegistrationBranchYear,
+  resolveOptionalStagesFromConfig
+} from './registrationBranchYear';
 
 export const getAcademicYearStartYear = (batch, studentYear) => {
   const batchStart = extractBatchStartYear(batch);

@@ -342,6 +342,7 @@ const Students = () => {
   const [scholarshipData, setScholarshipData] = useState(null);
   const [scholarshipLoading, setScholarshipLoading] = useState(false);
   const [regOptionalStages, setRegOptionalStages] = useState([]); // optional stages for selected student's branch+year
+  const [registrationStageConfig, setRegistrationStageConfig] = useState({});
   const [showModal, setShowModal] = useState(false);
   const [activeStudentTab, setActiveStudentTab] = useState('details');
   const [historySubTab, setHistorySubTab] = useState('remarks');
@@ -759,6 +760,7 @@ const Students = () => {
     setShowIdCardPreview(false);
     setScholarshipData(null);
     setRegOptionalStages([]);
+    setRegistrationStageConfig({});
   }, [selectedStudent?.admission_number]);
 
   const fetchScholarshipForStudent = useCallback(async (admissionNumber) => {
@@ -822,14 +824,25 @@ const Students = () => {
                   const yearData = cfgRes.data.data || {};
                   const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
                   setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
+                  setRegistrationStageConfig(
+                    Object.fromEntries(
+                      Object.entries(yearData).map(([year, config]) => [
+                        `${String(branchCode).trim()}::${year}`,
+                        config
+                      ])
+                    )
+                  );
                 } else {
                   setRegOptionalStages([]);
+                  setRegistrationStageConfig({});
                 }
               } catch {
                 setRegOptionalStages([]);
+                setRegistrationStageConfig({});
               }
             } else {
               setRegOptionalStages([]);
+              setRegistrationStageConfig({});
             }
           }
         } catch (error) {
@@ -4136,17 +4149,18 @@ const Students = () => {
                     const scholarStatus = getRegistrationScholarshipStatus(scholarshipData, {
                       ...selectedStudent,
                       ...studentData
-                    }, regOptionalStages);
+                    }, regOptionalStages, registrationStageConfig);
                     const scholarshipCtx = resolveRegistrationScholarshipDisplay(scholarshipData, {
                       ...selectedStudent,
                       ...studentData
-                    }, regOptionalStages);
+                    }, regOptionalStages, registrationStageConfig);
                     const isScholarshipComplete = scholarshipCtx.satisfied;
 
                     const registrationStages = computeRegistrationStageDisplays(
                       { ...selectedStudent, ...studentData },
                       scholarshipData,
-                      regOptionalStages
+                      regOptionalStages,
+                      registrationStageConfig
                     );
                     const resolvedOverallStatus = resolveRegistrationOverallStatus(
                       registrationStages.overallStatus,

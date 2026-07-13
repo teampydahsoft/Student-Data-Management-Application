@@ -4327,8 +4327,13 @@ const Attendance = () => {
                                   {(() => {
                                     const raw = (student.registration_status || '').toLowerCase();
                                     const isCompleted = raw === 'completed' || raw === 'registered' || raw === 'done';
-                                    const label = isCompleted ? 'Completed' : 'Pending';
-                                    const cls = isCompleted ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800';
+                                    const isTemporary = raw === 'temporary';
+                                    const label = isCompleted ? 'Completed' : isTemporary ? 'Temporary' : 'Pending';
+                                    const cls = isCompleted
+                                      ? 'bg-green-100 text-green-800'
+                                      : isTemporary
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-yellow-100 text-yellow-800';
                                     return (
                                       <span
                                         title="Registration status is updated when student completes registration on student portal"

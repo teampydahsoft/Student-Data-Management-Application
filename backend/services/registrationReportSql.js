@@ -5,9 +5,7 @@ const {
 } = require('./registrationCycle');
 const {
   buildRegistrationScholarshipHasStatusSql,
-  getRegistrationScholarshipFilterClause,
-  studentAcademicYearFromYearSql,
-  SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR
+  getRegistrationScholarshipFilterClause
 } = require('./studentScholarshipSync');
 
 const SCHOLARSHIP_JOIN_ALIAS = 'ss_reg';
@@ -70,16 +68,6 @@ const certificatesTemporarySql = (alias = 's') => `(
 
 const promotionCompleteSql = () => '1=1';
 
-const is2026PlusAcademicYearSql = (alias = 's', academicYearFromYear = null) => {
-  if (academicYearFromYear != null && Number(academicYearFromYear) >= SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR) {
-    return '1=1';
-  }
-  if (academicYearFromYear != null && Number(academicYearFromYear) < SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR) {
-    return '1=0';
-  }
-  return `${studentAcademicYearFromYearSql(alias)} >= ${SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR}`;
-};
-
 const buildRegistrationOverallCompletedSql = (
   alias = 's',
   verificationSql,
@@ -94,8 +82,8 @@ const buildRegistrationOverallCompletedSql = (
 
 /**
  * Temporary registration:
- * 1) Temporary certificates + final scholarship (base stages ready, not Completed)
- * 2) 2026+ academic year + scholarship not final (null/pending) + verified or temp certs
+ * Temporary certificates + final scholarship (base stages ready, not Completed).
+ * Incomplete scholarship alone does not qualify for Temporary.
  */
 const buildRegistrationOverallTemporarySql = (
   alias = 's',
@@ -113,20 +101,8 @@ const buildRegistrationOverallTemporarySql = (
   return `(
     NOT ${completedSql}
     AND ${baseReadySql}
-    AND (
-      (
-        ${certificatesTemporarySql(alias)}
-        AND ${hasScholarshipSql}
-      )
-      OR (
-        ${is2026PlusAcademicYearSql(alias, academicYearFromYear)}
-        AND NOT (${hasScholarshipSql})
-        AND (
-          ${certificatesVerifiedSql(alias)}
-          OR ${certificatesTemporarySql(alias)}
-        )
-      )
-    )
+    AND ${certificatesTemporarySql(alias)}
+    AND ${hasScholarshipSql}
   )`;
 };
 
@@ -184,20 +160,8 @@ const buildRegistrationOverallTemporaryFromFlagsSql = (
   return `(
     NOT ${completedFromFlags}
     AND ${baseReadyFromFlags}
-    AND (
-      (
-        ${alias}.is_cert_temporary = 1
-        AND ${alias}.has_scholarship = 1
-      )
-      OR (
-        ${is2026PlusAcademicYearSql(alias, academicYearFromYear)}
-        AND ${alias}.has_scholarship = 0
-        AND (
-          ${alias}.is_cert_verified = 1
-          OR ${alias}.is_cert_temporary = 1
-        )
-      )
-    )
+    AND ${alias}.is_cert_temporary = 1
+    AND ${alias}.has_scholarship = 1
   )`;
 };
 

@@ -60,6 +60,7 @@ const {
 const {
   calculateStudentAttendanceStats
 } = require('../services/attendancePercentageService');
+const { buildRegistrationStatusLabelMap } = require('../services/registrationStages');
 
 const applySemesterCalendarFilter = appendSemesterCalendarFilter;
 
@@ -690,18 +691,9 @@ exports.getAttendance = async (req, res) => {
         s.parent_mobile2,
         s.current_year,
         s.current_semester,
-        CASE
-          WHEN
-            (s.student_data LIKE '%"is_student_mobile_verified":true%' AND s.student_data LIKE '%"is_parent_mobile_verified":true%' AND
-             (s.student_data LIKE CONCAT('%"mobile_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_year": ', s.current_year, '%')) AND
-             (s.student_data LIKE CONCAT('%"mobile_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"mobile_verified_semester": ', s.current_semester, '%')) AND
-             (s.student_data LIKE CONCAT('%"parent_verified_year":', s.current_year, '%') OR s.student_data LIKE CONCAT('%"parent_verified_year": ', s.current_year, '%')) AND
-             (s.student_data LIKE CONCAT('%"parent_verified_semester":', s.current_semester, '%') OR s.student_data LIKE CONCAT('%"parent_verified_semester": ', s.current_semester, '%'))) AND
-            (s.certificates_status LIKE '%Verified%' OR s.certificates_status = 'completed') AND
-            (s.fee_status LIKE '%no_due%' OR s.fee_status LIKE '%no due%' OR s.fee_status LIKE '%permitted%' OR s.fee_status LIKE '%completed%' OR s.fee_status LIKE '%nodue%')
-          THEN 'Completed'
-          ELSE s.registration_status
-        END AS registration_status,
+        s.certificates_status,
+        s.stud_type,
+        s.registration_status,
         s.fee_status,
         s.student_data,
         s.batch,
@@ -1233,6 +1225,7 @@ exports.getAttendance = async (req, res) => {
     }
 
     const [rows] = await masterPool.query(query, params);
+    const registrationStatusLabelMap = await buildRegistrationStatusLabelMap(masterPool, rows);
 
     const students = rows.map((row) => {
       const studentData = parseStudentData(row.student_data);
@@ -1264,9 +1257,10 @@ exports.getAttendance = async (req, res) => {
       const pinNumberValue = resolveAttendanceDisplayNumberFromRow(row, parseStudentData);
 
       const resolvedRegistrationStatus =
-        (row.registration_status && String(row.registration_status).trim().length > 0)
+        registrationStatusLabelMap.get(row.id)
+        || ((row.registration_status && String(row.registration_status).trim().length > 0)
           ? row.registration_status
-          : (studentData.registration_status || studentData['Registration Status'] || null);
+          : (studentData.registration_status || studentData['Registration Status'] || null));
 
       const resolvedFeeStatus =
         (row.fee_status && String(row.fee_status).trim().length > 0)

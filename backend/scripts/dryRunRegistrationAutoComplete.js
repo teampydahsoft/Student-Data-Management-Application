@@ -211,14 +211,16 @@ async function dryRunRegistrationAutoComplete() {
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
       student,
-      optionalStages
+      optionalStages,
+      stageConfig
     );
     const stages = computeRegistrationStages(
       student,
       studentData,
       scholarshipCtx.eligible,
       scholarshipCtx.feePaid,
-      optionalStages
+      optionalStages,
+      scholarshipCtx
     );
 
     const computedLabel = formatRegistrationStatusLabel(stages.overallStatus);

@@ -4,12 +4,14 @@ const {
   isPromotionCompleteForCycle
 } = require('./registrationCycle');
 const {
-  resolveRegistrationBranchYear
+  resolveRegistrationBranchYear,
+  resolveOptionalStagesFromConfig
 } = require('../utils/registrationBranchYear');
 const {
   normalizeEligible,
   isScholarshipCompleteForRegistration,
-  usesSemesterWiseScholarshipStatus
+  registrationUsesScholarshipTableOnly,
+  buildRegistrationScholarshipContextMap
 } = require('./studentScholarshipSync');
 
 const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
@@ -52,8 +54,11 @@ const parseStudentData = (student) => {
  * optionalStages: string[] — stage keys that are optional for this branch+year
  *   (e.g. ['verification', 'scholarship']). When a stage is optional, it is treated as
  *   complete for the overall status even if not actually completed.
+ * scholarshipCtx: optional context from resolveRegistrationScholarshipForStudent /
+ *   buildRegistrationScholarshipContextMap — pendingPriorYear=true means a previous
+ *   program year's scholarship is incomplete (blocks Temporary; overall stays pending).
  */
-const computeRegistrationStages = (student, studentData, scholarStatus, scholarFeePaid = null, optionalStages = []) => {
+const computeRegistrationStages = (student, studentData, scholarStatus, scholarFeePaid = null, optionalStages = [], scholarshipCtx = null) => {
   const data = studentData || {};
   const currentYear = student.current_year || data.current_year;
   const currentSemester = student.current_semester || data.current_semester;
@@ -80,15 +85,18 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     studType
   );
   const isScholarshipOptional = optSet.has('scholarship');
-  const branchName = student.branch || data.branch || '';
-  const branchProgramYear = resolveRegistrationBranchYear(branchName, currentYear);
-  const batch = student.batch || data.batch || '';
-  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, branchProgramYear);
   const scholarSatisfiedForCompleted = isScholarshipOptional || isScholarshipComplete;
   const scholarshipSatisfiedForOverall = scholarSatisfiedForCompleted;
+
+  // 2026+ (table-only mode): if every previous year is complete and only the current
+  // semester's scholarship is missing, the student qualifies for Temporary. If a previous
+  // year is incomplete (pendingPriorYear), registration stays pending.
+  const is2026Plus = registrationUsesScholarshipTableOnly(student);
+  const pendingPriorYear = scholarshipCtx?.pendingPriorYear === true;
   const scholarshipIncompleteForTemp = is2026Plus
     && !isScholarshipOptional
-    && !isScholarshipComplete;
+    && !isScholarshipComplete
+    && !pendingPriorYear;
 
   // For overall status: an optional stage counts as satisfied regardless of actual completion
   const verifSatisfied = isVerificationComplete || optSet.has('verification');
@@ -145,7 +153,7 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
       optionalPriorYear: false,
       display: isScholarshipOptional && !isScholarshipComplete
         ? REGISTRATION_EMPTY_DISPLAY
-        : getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
+        : getStageBadgeDisplay(isScholarshipComplete, isScholarshipComplete ? scholarStatus : (scholarStatus || 'pending')),
       status: isScholarshipComplete
         ? 'completed'
         : (isScholarshipOptional ? 'optional' : 'pending')
@@ -194,7 +202,8 @@ const accumulateRegistrationStudentStats = (
     studentData,
     scholarshipCtx.eligible,
     scholarshipCtx.feePaid,
-    optionalStages
+    optionalStages,
+    scholarshipCtx
   );
 
   bucket.total += 1;
@@ -259,7 +268,10 @@ const computeRegistrationGroupAggregates = (
   const groups = new Map();
 
   for (const student of students) {
-    if (!hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)) {
+    if (
+      !hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)
+      && !registrationUsesScholarshipTableOnly(student)
+    ) {
       continue;
     }
     const key = buildRegistrationGroupKey(student);
@@ -280,7 +292,10 @@ const computeRegistrationGroupAggregates = (
 
 const enrichRegistrationAbstractRows = (sqlRows, groupAggregates, stageConfig) => (
   sqlRows.map((row) => {
-    if (!hasOptionalRegistrationStages(stageConfig, row.branch, row.current_year)) {
+    if (
+      !hasOptionalRegistrationStages(stageConfig, row.branch, row.current_year)
+      && !registrationUsesScholarshipTableOnly(row)
+    ) {
       return row;
     }
 
@@ -300,9 +315,65 @@ const enrichRegistrationAbstractRows = (sqlRows, groupAggregates, stageConfig) =
   })
 );
 
+const formatRegistrationOverallStatusLabel = (overallStatus) => {
+  if (overallStatus === 'completed') return 'Completed';
+  if (overallStatus === 'Temporary') return 'Temporary';
+  return 'pending';
+};
+
+const loadRegistrationStageConfig = async (pool) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT value FROM settings WHERE `key` = 'registration_stage_config' LIMIT 1"
+    );
+    return rows.length ? JSON.parse(rows[0].value || '{}') : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * JS registration status for 2026+ table-only students (prior-year + Temporary rules).
+ * Returns Map<studentId, 'Completed' | 'Temporary' | 'pending'>.
+ */
+const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = null) => {
+  const targets = (students || []).filter((student) => registrationUsesScholarshipTableOnly(student));
+  const map = new Map();
+  if (!targets.length) return map;
+
+  const config = stageConfig || await loadRegistrationStageConfig(pool);
+  const scholarshipContextMap = await buildRegistrationScholarshipContextMap(
+    pool,
+    targets,
+    config,
+    resolveOptionalStagesFromConfig
+  );
+
+  for (const student of targets) {
+    const optionalStages = resolveOptionalStagesFromConfig(
+      config,
+      student.branch,
+      student.current_year
+    );
+    const scholarshipCtx = scholarshipContextMap.get(student.id) || { eligible: '', feePaid: null };
+    const stages = computeRegistrationStages(
+      student,
+      parseStudentData(student),
+      scholarshipCtx.eligible,
+      scholarshipCtx.feePaid,
+      optionalStages,
+      scholarshipCtx
+    );
+    map.set(student.id, formatRegistrationOverallStatusLabel(stages.overallStatus));
+  }
+
+  return map;
+};
+
 module.exports = {
   FEE_COMPLETE_STATUSES,
   formatRegistrationStatusDisplay,
+  formatRegistrationOverallStatusLabel,
   getStageBadgeDisplay,
   parseStudentData,
   computeRegistrationStages,
@@ -310,5 +381,6 @@ module.exports = {
   hasOptionalRegistrationStages,
   aggregateRegistrationOverallFromStudents,
   computeRegistrationGroupAggregates,
-  enrichRegistrationAbstractRows
+  enrichRegistrationAbstractRows,
+  buildRegistrationStatusLabelMap
 };

@@ -67,6 +67,7 @@ const StudentLayout = ({ children }) => {
     const [fetchedStatus, setFetchedStatus] = useState(null);
     const [fetchedScholarshipData, setFetchedScholarshipData] = useState(null);
     const [regOptionalStages, setRegOptionalStages] = useState([]);
+    const [registrationStageConfig, setRegistrationStageConfig] = useState({});
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
     const [hasInternship, setHasInternship] = useState(false);
     const [layoutSettings, setLayoutSettings] = useState(null);
@@ -97,14 +98,25 @@ const StudentLayout = ({ children }) => {
                                     const yearData = cfgRes.data.data || {};
                                     const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
                                     setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
+                                    setRegistrationStageConfig(
+                                        Object.fromEntries(
+                                            Object.entries(yearData).map(([year, config]) => [
+                                                `${String(branchCode).trim()}::${year}`,
+                                                config
+                                            ])
+                                        )
+                                    );
                                 } else {
                                     setRegOptionalStages([]);
+                                    setRegistrationStageConfig({});
                                 }
                             } catch {
                                 setRegOptionalStages([]);
+                                setRegistrationStageConfig({});
                             }
                         } else {
                             setRegOptionalStages([]);
+                            setRegistrationStageConfig({});
                         }
                     }
                     if (scholarshipRes.data?.success) {
@@ -200,11 +212,21 @@ const StudentLayout = ({ children }) => {
                                 const yearData = cfgRes.data.data || {};
                                 const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
                                 setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
+                                setRegistrationStageConfig(
+                                    Object.fromEntries(
+                                        Object.entries(yearData).map(([year, config]) => [
+                                            `${String(branchCode).trim()}::${year}`,
+                                            config
+                                        ])
+                                    )
+                                );
                             } else {
                                 setRegOptionalStages([]);
+                                setRegistrationStageConfig({});
                             }
                         } catch {
                             setRegOptionalStages([]);
+                            setRegistrationStageConfig({});
                         }
                     }
                 }
@@ -244,7 +266,8 @@ const StudentLayout = ({ children }) => {
         const stages = computeRegistrationStageDisplays(
             fetchedStatus,
             fetchedScholarshipData,
-            regOptionalStages
+            regOptionalStages,
+            registrationStageConfig
         );
         return !isRegistrationPortalUnlocked(stages.overallStatus);
     };
