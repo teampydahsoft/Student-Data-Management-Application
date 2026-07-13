@@ -1,7 +1,9 @@
 const {
   REGISTRATION_EMPTY_DISPLAY,
   isVerificationCompleteForCycle,
-  isPromotionCompleteForCycle
+  isPromotionCompleteForCycle,
+  isCertificatesStatusComplete,
+  isCertificatesStatusTemporary
 } = require('./registrationCycle');
 const {
   resolveRegistrationBranchYear,
@@ -13,6 +15,7 @@ const {
   registrationUsesScholarshipTableOnly,
   buildRegistrationScholarshipContextMap
 } = require('./studentScholarshipSync');
+const { buildFeeStatusMapForStudents } = require('./registrationFeeStatus');
 
 const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
 
@@ -70,8 +73,8 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
   const certStatus = String(
     student.certificates_status || data.certificates_status || ''
   ).toLowerCase();
-  const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
-  const isCertTemporary = certStatus.includes('temporary');
+  const isCertComplete = isCertificatesStatusComplete(certStatus);
+  const isCertTemporary = isCertificatesStatusTemporary(certStatus);
 
   const feeStatus = String(student.fee_status || data.fee_status || '').toLowerCase();
   const isFeeComplete = FEE_COMPLETE_STATUSES.some((s) => feeStatus.includes(s));
@@ -333,21 +336,28 @@ const loadRegistrationStageConfig = async (pool) => {
 };
 
 /**
- * JS registration status for 2026+ table-only students (prior-year + Temporary rules).
+ * JS registration status for students where SQL cannot apply branch optional-stage
+ * rules (Pharm D PB, etc.) or 2026+ prior-year scholarship logic.
  * Returns Map<studentId, 'Completed' | 'Temporary' | 'pending'>.
  */
 const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = null) => {
-  const targets = (students || []).filter((student) => registrationUsesScholarshipTableOnly(student));
+  const config = stageConfig || await loadRegistrationStageConfig(pool);
+  const targets = (students || []).filter((student) => (
+    registrationUsesScholarshipTableOnly(student)
+    || hasOptionalRegistrationStages(config, student.branch, student.current_year)
+  ));
   const map = new Map();
   if (!targets.length) return map;
 
-  const config = stageConfig || await loadRegistrationStageConfig(pool);
-  const scholarshipContextMap = await buildRegistrationScholarshipContextMap(
-    pool,
-    targets,
-    config,
-    resolveOptionalStagesFromConfig
-  );
+  const [scholarshipContextMap, feeStatusMap] = await Promise.all([
+    buildRegistrationScholarshipContextMap(
+      pool,
+      targets,
+      config,
+      resolveOptionalStagesFromConfig
+    ),
+    buildFeeStatusMapForStudents(pool, targets)
+  ]);
 
   for (const student of targets) {
     const optionalStages = resolveOptionalStagesFromConfig(
@@ -356,8 +366,12 @@ const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = nul
       student.current_year
     );
     const scholarshipCtx = scholarshipContextMap.get(student.id) || { eligible: '', feePaid: null };
+    const derivedFeeStatus = feeStatusMap.get(student.id) || student.fee_status || null;
+    const studentForStages = derivedFeeStatus != null
+      ? { ...student, fee_status: derivedFeeStatus }
+      : student;
     const stages = computeRegistrationStages(
-      student,
+      studentForStages,
       parseStudentData(student),
       scholarshipCtx.eligible,
       scholarshipCtx.feePaid,

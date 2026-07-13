@@ -32,6 +32,44 @@ const isVerificationCompleteForCycle = (studentData, currentYear, currentSemeste
 // Step 4 (Promotion): always completed — students are already in their current year/semester.
 const isPromotionCompleteForCycle = () => true;
 
+const normalizeCertificatesStatus = (status) => String(status || '').trim().toLowerCase();
+
+/** True only for Verified/completed — excludes "Not Verified" / "Unverified". */
+const isCertificatesStatusComplete = (status) => {
+  const normalized = normalizeCertificatesStatus(status);
+  if (!normalized) return false;
+  if (normalized === 'completed') return true;
+  if (
+    normalized.includes('not verified')
+    || normalized === 'unverified'
+    || normalized.includes('unverified')
+  ) {
+    return false;
+  }
+  return normalized.includes('verified');
+};
+
+const isCertificatesStatusTemporary = (status) => {
+  const normalized = normalizeCertificatesStatus(status);
+  return normalized.includes('temporary');
+};
+
+const certificatesVerifiedSql = (alias = 's') => `(
+  ${alias}.certificates_status = 'completed'
+  OR (
+    ${alias}.certificates_status LIKE '%Verified%'
+    AND ${alias}.certificates_status NOT LIKE '%Not Verified%'
+    AND ${alias}.certificates_status NOT LIKE '%not verified%'
+    AND ${alias}.certificates_status NOT LIKE '%Unverified%'
+    AND ${alias}.certificates_status NOT LIKE '%unverified%'
+  )
+)`;
+
+const certificatesTemporarySql = (alias = 's') => `(
+  ${alias}.certificates_status = 'Temporary'
+  OR ${alias}.certificates_status = 'temporary'
+)`;
+
 const stampVerificationForCycle = (studentData, type, currentYear, currentSemester) => {
   const year = toStageNumber(currentYear);
   const sem = toStageNumber(currentSemester);
@@ -132,6 +170,11 @@ module.exports = {
   REGISTRATION_EMPTY_DISPLAY,
   isVerificationCompleteForCycle,
   isPromotionCompleteForCycle,
+  normalizeCertificatesStatus,
+  isCertificatesStatusComplete,
+  isCertificatesStatusTemporary,
+  certificatesVerifiedSql,
+  certificatesTemporarySql,
   stampVerificationForCycle,
   stampPromotionForCycle,
   resetRegistrationCycle,

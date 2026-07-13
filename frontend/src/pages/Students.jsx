@@ -79,6 +79,7 @@ import {
   isStudentMobileVerifiedForCycle,
   isParentMobileVerifiedForCycle,
   isPromotionCompleteForCycle,
+  isCertificatesStatusComplete,
   REGISTRATION_EMPTY_DISPLAY
 } from '../config/registrationCycle';
 import {
@@ -4127,7 +4128,7 @@ const Students = () => {
                     );
 
                     const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
-                    const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
+                    const isCertComplete = isCertificatesStatusComplete(certStatus);
 
                     const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
                     const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));

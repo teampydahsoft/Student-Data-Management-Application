@@ -70,3 +70,22 @@ export const isParentMobileVerifiedForCycle = (studentData, currentYear, current
 };
 
 export const isPromotionCompleteForCycle = () => true;
+
+export const isCertificatesStatusComplete = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === 'completed') return true;
+  if (
+    normalized.includes('not verified')
+    || normalized === 'unverified'
+    || normalized.includes('unverified')
+  ) {
+    return false;
+  }
+  return normalized.includes('verified');
+};
+
+export const isCertificatesStatusTemporary = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return normalized.includes('temporary');
+};

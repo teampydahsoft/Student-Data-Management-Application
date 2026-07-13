@@ -1,7 +1,9 @@
 const {
   verificationCompletedJsonSql,
   verificationCompletedLikeSql,
-  verificationCompletedSql
+  verificationCompletedSql,
+  certificatesVerifiedSql,
+  certificatesTemporarySql
 } = require('./registrationCycle');
 const {
   buildRegistrationScholarshipHasStatusSql,
@@ -54,16 +56,6 @@ const feeClearedSql = (alias = 's') => `(
   OR ${alias}.fee_status LIKE '%permitted%'
   OR ${alias}.fee_status LIKE '%completed%'
   OR ${alias}.fee_status LIKE '%nodue%'
-)`;
-
-const certificatesVerifiedSql = (alias = 's') => `(
-  ${alias}.certificates_status LIKE '%Verified%'
-  OR ${alias}.certificates_status = 'completed'
-)`;
-
-const certificatesTemporarySql = (alias = 's') => `(
-  ${alias}.certificates_status = 'Temporary'
-  OR ${alias}.certificates_status = 'temporary'
 )`;
 
 const promotionCompleteSql = () => '1=1';

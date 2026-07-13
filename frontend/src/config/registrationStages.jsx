@@ -1,7 +1,9 @@
 import {
   REGISTRATION_EMPTY_DISPLAY,
   isVerificationCompleteForCycle,
-  isPromotionCompleteForCycle
+  isPromotionCompleteForCycle,
+  isCertificatesStatusComplete,
+  isCertificatesStatusTemporary
 } from './registrationCycle';
 import {
   getRegistrationScholarshipStatus,
@@ -93,8 +95,8 @@ export const computeRegistrationStageDisplays = (
   const certStatus = String(
     student?.certificates_status || studentData.certificates_status || ''
   ).toLowerCase();
-  const isCertComplete = certStatus.includes('verified') || certStatus === 'completed';
-  const isCertTemporary = certStatus.includes('temporary');
+  const isCertComplete = isCertificatesStatusComplete(certStatus);
+  const isCertTemporary = isCertificatesStatusTemporary(certStatus);
 
   const feeStatus = String(student?.fee_status || studentData.fee_status || '').toLowerCase();
   const isFeeComplete = FEE_COMPLETE_STATUSES.some((s) => feeStatus.includes(s));
