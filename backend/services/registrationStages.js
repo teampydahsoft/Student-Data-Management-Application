@@ -4,6 +4,9 @@ const {
   isPromotionCompleteForCycle
 } = require('./registrationCycle');
 const {
+  resolveRegistrationBranchYear
+} = require('../utils/registrationBranchYear');
+const {
   normalizeEligible,
   isScholarshipCompleteForRegistration,
   usesSemesterWiseScholarshipStatus
@@ -77,15 +80,15 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     studType
   );
   const isScholarshipOptional = optSet.has('scholarship');
-  const programYear = Math.max(1, Number(currentYear) || 1);
+  const branchName = student.branch || data.branch || '';
+  const branchProgramYear = resolveRegistrationBranchYear(branchName, currentYear);
   const batch = student.batch || data.batch || '';
-  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, programYear);
-  const scholarshipFullyOptional = isScholarshipOptional && programYear <= 1;
-  const scholarSatisfiedForCompleted = scholarshipFullyOptional || isScholarshipComplete;
+  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, branchProgramYear);
+  const scholarSatisfiedForCompleted = isScholarshipOptional || isScholarshipComplete;
+  const scholarshipSatisfiedForOverall = scholarSatisfiedForCompleted;
   const scholarshipIncompleteForTemp = is2026Plus
-    && !scholarshipFullyOptional
-    && !isScholarshipComplete
-    && !isScholarshipOptional;
+    && !isScholarshipOptional
+    && !isScholarshipComplete;
 
   // For overall status: an optional stage counts as satisfied regardless of actual completion
   const verifSatisfied = isVerificationComplete || optSet.has('verification');
@@ -138,60 +141,164 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     },
     scholarship: {
       completed: isScholarshipComplete,
-      optional: isScholarshipOptional && programYear <= 1,
-      optionalPriorYear: isScholarshipOptional && programYear > 1,
-      display: getStageBadgeDisplay(
-        isScholarshipComplete || (isScholarshipOptional && programYear <= 1),
-        scholarStatus
-      ),
+      optional: isScholarshipOptional,
+      optionalPriorYear: false,
+      display: isScholarshipOptional && !isScholarshipComplete
+        ? REGISTRATION_EMPTY_DISPLAY
+        : getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
       status: isScholarshipComplete
         ? 'completed'
-        : (isScholarshipOptional && programYear <= 1 ? 'optional' : 'pending')
+        : (isScholarshipOptional ? 'optional' : 'pending')
     },
-    overallStatus
+    overallStatus,
+    scholarshipSatisfiedForOverall,
+    scholarshipAssignedForReport: isScholarshipComplete
   };
+};
+
+const buildRegistrationGroupKey = (fields) => [
+  fields.batch ?? '',
+  fields.college ?? '',
+  fields.course ?? '',
+  fields.branch ?? '',
+  String(fields.current_year ?? ''),
+  String(fields.current_semester ?? '')
+].join('\0');
+
+const createEmptyRegistrationGroupBucket = () => ({
+  overall_completed: 0,
+  overall_temporary: 0,
+  scholarship_assigned: 0,
+  total: 0
+});
+
+const hasOptionalRegistrationStages = (stageConfig, branch, currentYear) => {
+  if (!stageConfig || !branch) return false;
+  const configYear = resolveRegistrationBranchYear(branch, currentYear);
+  const key = `${String(branch).trim()}::${String(configYear)}`;
+  return (stageConfig[key]?.optionalStages || []).length > 0;
+};
+
+const accumulateRegistrationStudentStats = (
+  student,
+  stageConfig,
+  resolveOptionalStagesFn,
+  scholarshipContextMap,
+  bucket
+) => {
+  const studentData = parseStudentData(student);
+  const optionalStages = resolveOptionalStagesFn(stageConfig, student.branch, student.current_year);
+  const scholarshipCtx = scholarshipContextMap.get(student.id) || { eligible: '', feePaid: null };
+  const stages = computeRegistrationStages(
+    student,
+    studentData,
+    scholarshipCtx.eligible,
+    scholarshipCtx.feePaid,
+    optionalStages
+  );
+
+  bucket.total += 1;
+  if (stages.overallStatus === 'completed') {
+    bucket.overall_completed += 1;
+  } else if (stages.overallStatus === 'Temporary') {
+    bucket.overall_temporary += 1;
+  }
+  if (stages.scholarshipAssignedForReport) {
+    bucket.scholarship_assigned += 1;
+  }
+
+  return stages;
 };
 
 /**
  * Aggregate Completed / Temporary / Pending counts using the same rules as per-row reports.
- * Used when SQL aggregates cannot represent optional stages or prior-year scholarship rules.
  */
-const aggregateRegistrationOverallFromStudents = async (
-  pool,
+const aggregateRegistrationOverallFromStudents = (
   students,
   stageConfig,
   resolveOptionalStagesFn,
-  resolveRegistrationScholarshipForStudentFn
+  scholarshipContextMap
 ) => {
-  const counts = { completed: 0, temporary: 0, pending: 0, total: students.length };
+  const counts = {
+    completed: 0,
+    temporary: 0,
+    pending: 0,
+    total: students.length,
+    scholarshipAssigned: 0
+  };
 
   for (const student of students) {
-    const studentData = parseStudentData(student);
-    const optionalStages = resolveOptionalStagesFn(stageConfig, student.branch, student.current_year);
-    const scholarshipCtx = await resolveRegistrationScholarshipForStudentFn(
-      pool,
+    const bucket = createEmptyRegistrationGroupBucket();
+    accumulateRegistrationStudentStats(
       student,
-      optionalStages
+      stageConfig,
+      resolveOptionalStagesFn,
+      scholarshipContextMap,
+      bucket
     );
-    const stages = computeRegistrationStages(
-      student,
-      studentData,
-      scholarshipCtx.eligible,
-      scholarshipCtx.feePaid,
-      optionalStages
-    );
-
-    if (stages.overallStatus === 'completed') {
-      counts.completed += 1;
-    } else if (stages.overallStatus === 'Temporary') {
-      counts.temporary += 1;
-    } else {
-      counts.pending += 1;
-    }
+    counts.completed += bucket.overall_completed;
+    counts.temporary += bucket.overall_temporary;
+    counts.scholarshipAssigned += bucket.scholarship_assigned;
   }
 
+  counts.pending = Math.max(0, counts.total - counts.completed - counts.temporary);
+  counts.scholarshipPending = Math.max(0, counts.total - counts.scholarshipAssigned);
   return counts;
 };
+
+/**
+ * Group-level aggregates for registration abstract rows (batch/college/course/branch/year/sem).
+ * Only students on branches with optional registration stages need recomputation.
+ */
+const computeRegistrationGroupAggregates = (
+  students,
+  stageConfig,
+  resolveOptionalStagesFn,
+  scholarshipContextMap
+) => {
+  const groups = new Map();
+
+  for (const student of students) {
+    if (!hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)) {
+      continue;
+    }
+    const key = buildRegistrationGroupKey(student);
+    if (!groups.has(key)) {
+      groups.set(key, createEmptyRegistrationGroupBucket());
+    }
+    accumulateRegistrationStudentStats(
+      student,
+      stageConfig,
+      resolveOptionalStagesFn,
+      scholarshipContextMap,
+      groups.get(key)
+    );
+  }
+
+  return groups;
+};
+
+const enrichRegistrationAbstractRows = (sqlRows, groupAggregates, stageConfig) => (
+  sqlRows.map((row) => {
+    if (!hasOptionalRegistrationStages(stageConfig, row.branch, row.current_year)) {
+      return row;
+    }
+
+    const key = buildRegistrationGroupKey(row);
+    const bucket = groupAggregates.get(key);
+    if (!bucket) return row;
+
+    const total = parseInt(row.total || 0, 10);
+    const scholarshipAssigned = bucket.scholarship_assigned;
+    return {
+      ...row,
+      overall_completed: bucket.overall_completed,
+      overall_temporary: bucket.overall_temporary,
+      scholarship_assigned: scholarshipAssigned,
+      scholarship_pending: Math.max(0, total - scholarshipAssigned)
+    };
+  })
+);
 
 module.exports = {
   FEE_COMPLETE_STATUSES,
@@ -199,5 +306,9 @@ module.exports = {
   getStageBadgeDisplay,
   parseStudentData,
   computeRegistrationStages,
-  aggregateRegistrationOverallFromStudents
+  buildRegistrationGroupKey,
+  hasOptionalRegistrationStages,
+  aggregateRegistrationOverallFromStudents,
+  computeRegistrationGroupAggregates,
+  enrichRegistrationAbstractRows
 };

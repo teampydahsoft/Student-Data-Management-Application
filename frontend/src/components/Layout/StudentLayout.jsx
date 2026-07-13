@@ -54,6 +54,7 @@ import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../
 import RegistrationPendingModal from '../RegistrationPendingModal';
 import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 import { navigateToCrtApp } from '../../utils/crtAppUrl';
+import { resolveRegistrationBranchYear } from '../../config/registrationBranchYear';
 import { computeRegistrationStageDisplays, isRegistrationPortalUnlocked } from '../../config/registrationStages.jsx';
 
 const StudentLayout = ({ children }) => {
@@ -94,7 +95,8 @@ const StudentLayout = ({ children }) => {
                                 );
                                 if (cfgRes.data?.success) {
                                     const yearData = cfgRes.data.data || {};
-                                    setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                                    const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
+                                    setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
                                 } else {
                                     setRegOptionalStages([]);
                                 }
@@ -196,7 +198,8 @@ const StudentLayout = ({ children }) => {
                             );
                             if (cfgRes.data?.success) {
                                 const yearData = cfgRes.data.data || {};
-                                setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                                const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
+                                setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
                             } else {
                                 setRegOptionalStages([]);
                             }

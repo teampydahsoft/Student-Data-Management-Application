@@ -16,7 +16,8 @@
     "verify-db": "node scripts/verifyDatabase.js",
     "run-migrations": "node -e \"const { runMigrations } = require('./scripts/runMigrations'); runMigrations().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });\"",
     "run-migrations-fresh": "node scripts/run_all_migrations_fresh.js",
-    "seed-semester-skeletons": "node scripts/seed_semester_skeletons.js"
+    "seed-semester-skeletons": "node scripts/seed_semester_skeletons.js",
+    "dry-run-registration": "node scripts/dryRunRegistrationAutoComplete.js"
   },
   "keywords": [
     "student",

@@ -131,10 +131,9 @@ export const isScholarshipStatusFinal = (status) => {
  * Determines whether the scholarship registration stage is satisfied for a student.
  *
  * Rules:
- * - Scholarship optional + Year 1: not required.
- * - Scholarship optional + Year 2+: prior program-year scholarship must be complete.
+ * - Scholarship optional (branch config): never blocks registration.
  * - Academic year < 2026 (legacy mode): complete if scholar_status column has a final value.
- * - Academic year >= 2026 (semester-wise mode): current or prior year rows per target above.
+ * - Academic year >= 2026 (semester-wise mode): current-year semester row must be final.
  *
  * @param {object} scholarshipData  - Full payload from /student-scholarship API
  * @param {object} student          - Student object (needs batch, current_year, current_semester, stud_type)
@@ -149,10 +148,7 @@ export const resolveRegistrationScholarshipTarget = (currentYear, optionalStages
   if (!isScholarshipOptionalForRegistration(optionalStages)) {
     return { mode: 'current', checkYear: year, fullyOptional: false };
   }
-  if (year <= 1) {
-    return { mode: 'fully_optional', checkYear: null, fullyOptional: true };
-  }
-  return { mode: 'prior_year', checkYear: year - 1, fullyOptional: false };
+  return { mode: 'fully_optional', checkYear: null, fullyOptional: true };
 };
 
 /** Scholarship tab: current program year and prior years only (Year 3 → Years 1–3). */
@@ -218,8 +214,11 @@ export const resolveRegistrationScholarshipDisplay = (
   student,
   optionalStages = []
 ) => {
-  const currentYear = Math.max(1, Number(student?.current_year) || 1);
-  const target = resolveRegistrationScholarshipTarget(currentYear, optionalStages);
+  const branchProgramYear = resolveRegistrationBranchYear(
+    student?.branch || scholarshipData?.student?.branch,
+    student?.current_year
+  );
+  const target = resolveRegistrationScholarshipTarget(branchProgramYear, optionalStages);
   const studType = student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type;
   const semestersPerYear = scholarshipData?.semestersPerYear || 2;
   const batch = student?.batch || scholarshipData?.student?.batch;
@@ -400,7 +399,7 @@ export const extractBatchStartYear = (batch) => {
   return null;
 };
 
-export const SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR = 2026;
+import { resolveRegistrationBranchYear } from './registrationBranchYear';
 
 export const getAcademicYearStartYear = (batch, studentYear) => {
   const batchStart = extractBatchStartYear(batch);

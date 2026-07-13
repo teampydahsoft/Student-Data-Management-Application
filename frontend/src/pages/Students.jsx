@@ -85,6 +85,7 @@ import {
   computeRegistrationStageDisplays,
   resolveRegistrationOverallStatus
 } from '../config/registrationStages.jsx';
+import { resolveRegistrationBranchYear } from '../config/registrationBranchYear';
 import { CASTE_OPTIONS } from '../config/casteConfig';
 
 const formatRegistrationStatusLabel = (status) => {
@@ -819,7 +820,8 @@ const Students = () => {
                 );
                 if (cfgRes.data?.success) {
                   const yearData = cfgRes.data.data || {};
-                  setRegOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                  const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
+                  setRegOptionalStages(yearData[String(configYear)]?.optionalStages || []);
                 } else {
                   setRegOptionalStages([]);
                 }
@@ -4125,7 +4127,10 @@ const Students = () => {
 
                     // Build optional set for this student's branch+year
                     const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
-                    const programYear = Math.max(1, Number(selectedStudent.current_year || studentData.current_year || 1));
+                    const programYear = resolveRegistrationBranchYear(
+                      selectedStudent.branch || studentData.branch,
+                      selectedStudent.current_year || studentData.current_year
+                    );
                     const isScholarshipOptional = optSet.has('scholarship');
 
                     const scholarStatus = getRegistrationScholarshipStatus(scholarshipData, {

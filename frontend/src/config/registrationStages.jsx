@@ -4,6 +4,10 @@ import {
   isPromotionCompleteForCycle
 } from './registrationCycle';
 import {
+  resolveRegistrationBranchYear,
+  resolveOptionalStagesFromConfig
+} from './registrationBranchYear';
+import {
   getRegistrationScholarshipStatus,
   formatScholarshipStatusDisplay,
   resolveRegistrationScholarshipDisplay,
@@ -109,16 +113,15 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
     optionalStages
   );
   const isScholarshipComplete = scholarshipCtx.satisfied;
-  const programYear = Math.max(1, Number(currentYear) || 1);
+  const branchName = student?.branch || studentData.batch || scholarshipData?.student?.batch || '';
+  const branchProgramYear = resolveRegistrationBranchYear(branchName, currentYear);
   const isScholarshipOptional = optSet.has('scholarship');
   const batch = student?.batch || studentData.batch || scholarshipData?.student?.batch || '';
-  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, programYear);
-  const scholarshipFullyOptional = isScholarshipOptional && programYear <= 1;
-  const scholarSatisfiedForCompleted = scholarshipFullyOptional || isScholarshipComplete;
+  const is2026Plus = usesSemesterWiseScholarshipStatus(batch, branchProgramYear);
+  const scholarSatisfiedForCompleted = isScholarshipOptional || isScholarshipComplete;
   const scholarshipIncompleteForTemp = is2026Plus
-    && !scholarshipFullyOptional
-    && !isScholarshipComplete
-    && !isScholarshipOptional;
+    && !isScholarshipOptional
+    && !isScholarshipComplete;
 
   const verifSatisfied = isVerificationComplete || optSet.has('verification');
   const certSatisfied = isCertComplete || optSet.has('certificates');
@@ -168,12 +171,11 @@ export const computeRegistrationStageDisplays = (student, scholarshipData, optio
     },
     scholarship: {
       completed: isScholarshipComplete,
-      optional: isScholarshipOptional && programYear <= 1,
-      optionalPriorYear: isScholarshipOptional && programYear > 1,
-      display: getStageBadgeDisplay(
-        isScholarshipComplete || (isScholarshipOptional && programYear <= 1),
-        scholarStatus
-      ),
+      optional: isScholarshipOptional,
+      optionalPriorYear: false,
+      display: isScholarshipOptional && !isScholarshipComplete
+        ? REGISTRATION_EMPTY_DISPLAY
+        : getStageBadgeDisplay(isScholarshipComplete, scholarStatus),
       rawStatus: scholarStatus,
       checkYear: scholarshipCtx.checkYear,
       displayLabel: scholarshipCtx.displayLabel

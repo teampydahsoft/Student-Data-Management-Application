@@ -29,6 +29,7 @@ import {
   RegistrationStageBadge,
   isRegistrationPortalUnlocked
 } from '../../config/registrationStages.jsx';
+import { resolveRegistrationBranchYear } from '../../config/registrationBranchYear';
 import { usesSemesterWiseScholarshipStatus } from '../../config/scholarshipConfig';
 
 const SemesterRegistration = () => {
@@ -97,7 +98,8 @@ const SemesterRegistration = () => {
                         );
                         if (cfgRes.data?.success) {
                             const yearData = cfgRes.data.data || {};
-                            setOptionalStages(yearData[String(currentYear)]?.optionalStages || []);
+                            const configYear = resolveRegistrationBranchYear(branchCode, currentYear);
+                            setOptionalStages(yearData[String(configYear)]?.optionalStages || []);
                         }
                     }
                 } catch (e) {
