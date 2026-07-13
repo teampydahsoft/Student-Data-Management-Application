@@ -25,6 +25,9 @@ export const SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS = [
 
 export const SCHOLARSHIP_INELIGIBLE_QUOTA_CODES = ['MANG', 'MQ', 'SPOT', 'LSPOT'];
 
+/** Academic years from this start year use semester-wise scholarship rows (matches backend). */
+export const SCHOLARSHIP_SEMESTER_WISE_CUTOFF_START_YEAR = 2026;
+
 export const normalizeStudTypeCode = (value) => {
   const code = String(value || '').trim().toUpperCase();
   if (code === 'MQ') return 'MANG';

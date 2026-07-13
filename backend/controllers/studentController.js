@@ -19,6 +19,7 @@ const {
   getRegistrationScholarshipFilterClause,
   buildRegistrationScholarshipAssignedSumSql,
   buildRegistrationScholarshipPendingSumSql,
+  buildRegistrationScholarshipHasStatusSql,
   buildRegistrationScholarshipMap,
   resolveRegistrationScholarshipStage,
   isScholarshipDisplayUnassigned,
@@ -141,7 +142,7 @@ const loadRegistrationAbstractFilters = async (req, tableAlias = 'base') => {
   const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
 
   if (normalizedFilterBatch) { whereParts.push(`${tableAlias}.batch = ?`); params.push(normalizedFilterBatch); }
-  if (normalizedFilterCollege) { whereParts.push(`${tableAlias}.college = ?`); params.push(normalizedFilterCollege); }
+  if (normalizedFilterCollege) { appendCollegeNameFilter(whereParts, params, normalizedFilterCollege, tableAlias); }
   if (normalizedFilterCourse) { whereParts.push(`${tableAlias}.course = ?`); params.push(normalizedFilterCourse); }
   if (normalizedFilterBranch) { whereParts.push(`${tableAlias}.branch = ?`); params.push(normalizedFilterBranch); }
   if (parsedFilterYear) { whereParts.push(`${tableAlias}.current_year = ?`); params.push(parsedFilterYear); }
@@ -246,7 +247,7 @@ const loadRegistrationComputedAggregates = async (students, stageConfig, academi
     `SELECT
       SUM(${buildRegistrationOverallCompletedCaseSql('students', verificationCompletedSql, academicYearFromYear)}) AS completed,
       SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYear)}) AS temporary,
-      SUM(${buildRegistrationScholarshipAssignedSumSql(academicYearFromYear)}) AS scholarship_assigned
+      SUM(CASE WHEN ${buildRegistrationScholarshipHasStatusSql(academicYearFromYear, 'students')} THEN 1 ELSE 0 END) AS scholarship_assigned
      FROM students
      WHERE id IN (?)`,
     [optionalIds]
@@ -415,6 +416,7 @@ const {
 } = require('../services/sectionFilterService');
 const { buildStudentSearchCondition } = require('../services/rollNumberService');
 const { getScopeConditionString } = require('../utils/scoping');
+const { buildCollegeNameFilter, appendCollegeNameFilter, getCanonicalCollegeName } = require('../utils/collegeAliases');
 const { otpCache } = require('../services/cache'); // Import otpCache
 const smsService = require('../services/smsService'); // Import smsService
 const {
@@ -2831,8 +2833,9 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (normalizedFilterCollege) {
-      query += ' AND college = ?';
-      params.push(normalizedFilterCollege);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      query += ` AND ${clause}`;
+      params.push(...collegeParams);
     }
 
     if (normalizedFilterCourse) {
@@ -2997,8 +3000,9 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (normalizedFilterCollege) {
-      countQuery += ' AND college = ?';
-      countParams.push(normalizedFilterCollege);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      countQuery += ` AND ${clause}`;
+      countParams.push(...collegeParams);
     }
 
     if (normalizedFilterCourse) {
@@ -5330,8 +5334,9 @@ exports.getQuickFilterOptions = async (req, res) => {
     }
 
     if (college) {
-      whereClause += ' AND college = ?';
-      params.push(college);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(college);
+      whereClause += ` AND ${clause}`;
+      params.push(...collegeParams);
     }
     if (course) {
       whereClause += ' AND course = ?';
@@ -5402,8 +5407,9 @@ exports.getQuickFilterOptions = async (req, res) => {
     }
 
     if (college) {
-      yearWhereClause += ' AND college = ?';
-      yearParams.push(college);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(college, 's');
+      yearWhereClause += ` AND ${clause}`;
+      yearParams.push(...collegeParams);
     }
     if (level) {
       // Filter by level - get courses with that level
@@ -7193,8 +7199,9 @@ exports.getRegistrationReport = async (req, res) => {
       params.push(normalizedFilterBatch);
     }
     if (normalizedFilterCollege) {
-      baseQuery += ' AND college = ?';
-      params.push(normalizedFilterCollege);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      baseQuery += ` AND ${clause}`;
+      params.push(...collegeParams);
     }
     if (normalizedFilterCourse) {
       baseQuery += ' AND course = ?';
@@ -7442,8 +7449,9 @@ exports.getRegistrationAcademicYears = async (req, res) => {
     }
 
     if (filter_college) {
-      whereClause += ' AND college = ?';
-      params.push(filter_college.trim());
+      const { clause, params: collegeParams } = buildCollegeNameFilter(filter_college.trim());
+      whereClause += ` AND ${clause}`;
+      params.push(...collegeParams);
     }
     if (filter_course) {
       whereClause += ' AND course = ?';
@@ -7741,7 +7749,11 @@ exports.exportRegistrationReport = async (req, res) => {
     }
 
     if (normalizedFilterBatch) { baseQuery += ' AND batch = ?'; params.push(normalizedFilterBatch); }
-    if (normalizedFilterCollege) { baseQuery += ' AND college = ?'; params.push(normalizedFilterCollege); }
+    if (normalizedFilterCollege) {
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      baseQuery += ` AND ${clause}`;
+      params.push(...collegeParams);
+    }
     if (normalizedFilterCourse) { baseQuery += ' AND course = ?'; params.push(normalizedFilterCourse); }
     if (normalizedFilterBranch) { baseQuery += ' AND branch = ?'; params.push(normalizedFilterBranch); }
     if (parsedFilterYear) { baseQuery += ' AND current_year = ?'; params.push(parsedFilterYear); }
@@ -8273,7 +8285,7 @@ const performTransfer = async ({ connection, admissionNumber, targetCollege, tar
 
   if (targetCollege) {
     updateQuery += `, college = ?`;
-    updateParams.push(targetCollege);
+    updateParams.push(getCanonicalCollegeName(targetCollege));
   }
   if (targetBatch) {
     updateQuery += `, batch = ?`;
@@ -8481,8 +8493,9 @@ exports.getSectionPartitionStudents = async (req, res) => {
       scopeParams = scope.params;
     }
 
-    let whereClause = "WHERE s.college = ? AND s.course = ? AND s.branch = ? AND s.batch = ? AND s.student_status = 'Regular'";
-    const params = [normalizedCollege, normalizedCourse, normalizedBranch, normalizedBatch];
+    const { clause: collegeClause, params: collegeParams } = buildCollegeNameFilter(normalizedCollege, 's');
+    let whereClause = `WHERE ${collegeClause} AND s.course = ? AND s.branch = ? AND s.batch = ? AND s.student_status = 'Regular'`;
+    const params = [...collegeParams, normalizedCourse, normalizedBranch, normalizedBatch];
 
     if (scopeCondition) {
       whereClause += ` AND ${scopeCondition}`;
