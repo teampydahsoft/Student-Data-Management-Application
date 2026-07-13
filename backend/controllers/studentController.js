@@ -5407,7 +5407,7 @@ exports.getQuickFilterOptions = async (req, res) => {
     }
 
     if (college) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(college, 's');
+      const { clause, params: collegeParams } = buildCollegeNameFilter(college, 'students');
       yearWhereClause += ` AND ${clause}`;
       yearParams.push(...collegeParams);
     }
