@@ -618,7 +618,7 @@ exports.saveScholarshipHistory = async (req, res) => {
 
       const incomingSnapshot = buildIncomingYearSnapshot(yearEntry, { isCollege });
       const existingSnapshot = existingRows.length > 0
-        ? buildYearSnapshotFromRows(existingRows, semestersPerYear)
+        ? buildYearSnapshotFromRows(existingRows, semestersForYear)
         : null;
 
       if (existingSnapshot && !snapshotsEqual(existingSnapshot, incomingSnapshot)) {
@@ -639,7 +639,7 @@ exports.saveScholarshipHistory = async (req, res) => {
       );
 
       if (semesterRowsToSave.length > 0 || hasYearSummaryData(yearEntry)) {
-        for (const semester of buildDefaultSemesters(semestersPerYear)) {
+        for (const semester of buildDefaultSemesters(semestersForYear)) {
           const semesterEntry = semesters.find(
             (entry) => toNumber(entry.student_semester) === semester.student_semester
           ) || semester;
