@@ -47,12 +47,17 @@ const {
 } = require('../services/registrationCycle');
 const {
   buildRegistrationAbstractQuery,
+  buildRegistrationOverallCompletedSql,
+  buildRegistrationOverallTemporarySql,
   buildRegistrationOverallCompletedCaseSql,
   buildRegistrationOverallTemporaryCaseSql,
   buildRegistrationStatusComputedCaseSql,
-  buildStudentRegistrationStatusComputedSql
+  buildStudentRegistrationStatusComputedSql,
+  feeClearedSql,
+  certificatesVerifiedSql,
+  certificatesTemporarySql
 } = require('../services/registrationReportSql');
-const { computeRegistrationStages, parseStudentData, aggregateRegistrationOverallFromStudents, computeRegistrationGroupAggregates, enrichRegistrationAbstractRows, hasOptionalRegistrationStages, buildRegistrationStatusLabelMap } = require('../services/registrationStages');
+const { computeRegistrationStages, parseStudentData, aggregateRegistrationOverallFromStudents, computeRegistrationGroupAggregates, enrichRegistrationAbstractRows, hasOptionalRegistrationStages, buildRegistrationStatusLabelMap, resolveOptionalStagesForStudent } = require('../services/registrationStages');
 const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
 
@@ -78,8 +83,14 @@ const loadRegistrationStageConfig = async () => {
 
 const { resolveOptionalStagesFromConfig } = require('../utils/registrationBranchYear');
 
-const resolveOptionalStages = (stageConfig, branchCode, studentYear) =>
-  resolveOptionalStagesFromConfig(stageConfig, branchCode, studentYear);
+const resolveOptionalStages = (stageConfig, branchCodeOrStudent, studentYear = null) => {
+  // Student-aware call: resolveOptionalStages(config, student)
+  if (branchCodeOrStudent && typeof branchCodeOrStudent === 'object') {
+    return resolveOptionalStagesForStudent(stageConfig, branchCodeOrStudent, studentYear);
+  }
+  // Legacy (branch, year) — no batch available, keep config lookup (used only where student is passed separately)
+  return resolveOptionalStagesFromConfig(stageConfig, branchCodeOrStudent, studentYear);
+};
 
 const REGISTRATION_AGGREGATION_STUDENT_COLUMNS = `
   id, batch, college, course, branch, current_year, current_semester,
@@ -215,7 +226,7 @@ const fetchRegistrationStudentsForAggregation = async (req, tableAlias = 'base')
 const loadRegistrationComputedAggregates = async (students, stageConfig, academicYearFromYear = null) => {
   const config = stageConfig || await loadRegistrationStageConfig();
   const optionalStudents = students.filter((student) => (
-    hasOptionalRegistrationStages(config, student.branch, student.current_year)
+    hasOptionalRegistrationStages(config, student)
     || registrationUsesScholarshipTableOnly(student)
   ));
 
@@ -259,6 +270,43 @@ const loadRegistrationComputedAggregates = async (students, stageConfig, academi
   };
 };
 
+/**
+ * Filter registration report rows to students pending a given stage.
+ * Matches the pending definitions used in registration report statistics.
+ */
+const buildRegistrationStagePendingFilterClause = (stage, academicYearFromYear = null) => {
+  const normalized = String(stage || '').trim().toLowerCase();
+  const alias = 'students';
+
+  switch (normalized) {
+    case 'registration':
+    case 'overall': {
+      const completedSql = buildRegistrationOverallCompletedSql(
+        alias,
+        verificationCompletedSql,
+        academicYearFromYear
+      );
+      const temporarySql = buildRegistrationOverallTemporarySql(
+        alias,
+        verificationCompletedSql,
+        academicYearFromYear
+      );
+      return ` AND NOT (${completedSql}) AND NOT (${temporarySql})`;
+    }
+    case 'verification':
+      return ` AND NOT (${verificationCompletedSql})`;
+    case 'certificates':
+      return ` AND NOT (${certificatesVerifiedSql(alias)}) AND NOT (${certificatesTemporarySql(alias)})`;
+    case 'fees':
+    case 'fee':
+      return ` AND NOT (${feeClearedSql(alias)})`;
+    case 'promotion':
+      return ` AND NOT (${promotionCompletedSql})`;
+    default:
+      return '';
+  }
+};
+
 const buildRegistrationStatsCacheKey = (req) => crypto.createHash('md5').update(JSON.stringify({
   scope: req.userScope || null,
   userId: req.user?.id || null,
@@ -270,6 +318,7 @@ const buildRegistrationStatsCacheKey = (req) => crypto.createHash('md5').update(
   filter_college: req.query.filter_college,
   filter_level: req.query.filter_level,
   filter_scholarship_status: req.query.filter_scholarship_status || req.query.filter_scholarshipStatus,
+  filter_stage_pending: req.query.filter_stage_pending || '',
   filter_academic_year: req.query.filter_academic_year,
   search: req.query.search
 })).digest('hex');
@@ -5997,7 +6046,10 @@ exports.getStudentByAdmission = async (req, res) => {
     }
 
     const stageConfigSingle = await loadRegistrationStageConfig();
-    const optionalStagesSingle = resolveOptionalStages(stageConfigSingle, student.branch, stage.year);
+    const optionalStagesSingle = resolveOptionalStages(
+      stageConfigSingle,
+      { ...student, current_year: stage.year, current_semester: stage.semester }
+    );
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
       { ...student, current_year: stage.year, current_semester: stage.semester },
@@ -6444,7 +6496,7 @@ const checkAndAutoCompleteRegistration = async (admissionNumber) => {
     const student = rows[0];
     const studentData = parseJSON(student.student_data) || {};
     const stageConfig = await loadRegistrationStageConfig();
-    const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
+    const optionalStages = resolveOptionalStages(stageConfig, student);
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(
       masterPool,
       student,
@@ -7135,6 +7187,7 @@ exports.getRegistrationReport = async (req, res) => {
       filter_college,
       filter_level,
       filter_scholarship_status,
+      filter_stage_pending,
       search,
       page = 1,
       limit = 50
@@ -7257,6 +7310,10 @@ exports.getRegistrationReport = async (req, res) => {
     const academicYearFromYear = parseAcademicYearFromYear(academicYearFilter);
     baseQuery += getRegistrationScholarshipFilterClause(scholarshipFilter, academicYearFromYear);
 
+    // Stage pending drill-down (mirrors stats card pending counts)
+    const stagePendingFilter = (filter_stage_pending || '').trim().toLowerCase();
+    baseQuery += buildRegistrationStagePendingFilterClause(stagePendingFilter, academicYearFromYear);
+
     // Academic year filter — derived from batch + current_year
     if (academicYearFilter) {
       const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(academicYearFilter);
@@ -7298,11 +7355,15 @@ exports.getRegistrationReport = async (req, res) => {
     `;
 
     const statsCacheKey = buildRegistrationStatsCacheKey(req);
-    let computedOptional = registrationStatsCache.get(statsCacheKey);
-    if (computedOptional === undefined) {
+    let computedOptional;
+    if (registrationStatsCache.has(statsCacheKey)) {
+      computedOptional = registrationStatsCache.get(statsCacheKey);
+    } else {
       const stageConfigForStats = await loadRegistrationStageConfig();
       // Always recompute in JS: table-only (2026+) students need prior-year
       // scholarship checks even when no optional-stage config exists.
+      // SQL Temporary counts Temporary-certificate rows only; 2026+ Temporary
+      // (verified certs + incomplete current scholarship) must come from JS.
       const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
       computedOptional = await loadRegistrationComputedAggregates(
         aggregationStudents,
@@ -7378,7 +7439,7 @@ exports.getRegistrationReport = async (req, res) => {
 
     const reportData = students.map((student) => {
       const studentData = parseStudentData(student);
-      const optionalStages = resolveOptionalStages(stageConfig, student.branch, student.current_year);
+      const optionalStages = resolveOptionalStages(stageConfig, student);
       const scholarshipCtx = scholarshipContextMapReport.get(student.id) || null;
       const scholarStatus = scholarshipCtx?.eligible || scholarshipMap.get(student.id) || null;
       const scholarFeePaid = scholarshipCtx?.feePaid != null
@@ -7557,7 +7618,7 @@ const fetchRegistrationAbstractRows = async (req) => {
   );
 
   const optionalStudents = students.filter((student) => (
-    hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)
+    hasOptionalRegistrationStages(stageConfig, student)
     || registrationUsesScholarshipTableOnly(student)
   ));
 
@@ -7858,7 +7919,7 @@ exports.exportRegistrationReport = async (req, res) => {
 
     const processedData = students.map((student) => {
       const studentData = parseStudentData(student);
-      const optionalStages = resolveOptionalStages(stageConfigExport, student.branch, student.current_year);
+      const optionalStages = resolveOptionalStages(stageConfigExport, student);
       const scholarshipCtx = scholarshipContextMapExport.get(student.id) || { eligible: '', feePaid: null };
       const stages = computeRegistrationStages(
         student,

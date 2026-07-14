@@ -998,7 +998,7 @@ const buildRegistrationScholarshipContextMap = async (
   const needsLookup = [];
 
   for (const student of students) {
-    const optionalStages = resolveOptionalStagesFn(stageConfig, student.branch, student.current_year);
+    const optionalStages = resolveOptionalStagesFn(stageConfig, student);
     const branchProgramYear = resolveRegistrationBranchYear(student.branch, student.current_year);
     const target = resolveRegistrationScholarshipTarget(branchProgramYear, optionalStages);
 

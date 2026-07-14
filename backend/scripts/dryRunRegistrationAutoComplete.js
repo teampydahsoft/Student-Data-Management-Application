@@ -19,7 +19,8 @@ require('dotenv').config();
 const { masterPool } = require('../config/database');
 const {
   computeRegistrationStages,
-  parseStudentData
+  parseStudentData,
+  resolveOptionalStagesForStudent
 } = require('../services/registrationStages');
 const { resolveRegistrationScholarshipForStudent } = require('../services/studentScholarshipSync');
 
@@ -67,8 +68,6 @@ const loadRegistrationStageConfig = async () => {
     return {};
   }
 };
-
-const { resolveOptionalStagesFromConfig } = require('../utils/registrationBranchYear');
 
 const normalizeStatus = (value) => {
   const s = String(value || '').trim().toLowerCase();
@@ -157,10 +156,9 @@ async function dryRunRegistrationAutoComplete() {
   );
 
   const students = allAyStudents.filter((student) => {
-    const optionalStages = resolveOptionalStagesFromConfig(
+    const optionalStages = resolveOptionalStagesForStudent(
       stageConfig,
-      student.branch,
-      student.current_year
+      student
     );
     return optionalStages.length > 0;
   });
@@ -202,10 +200,9 @@ async function dryRunRegistrationAutoComplete() {
 
   for (const student of students) {
     const studentData = parseStudentData(student);
-    const optionalStages = resolveOptionalStagesFromConfig(
+    const optionalStages = resolveOptionalStagesForStudent(
       stageConfig,
-      student.branch,
-      student.current_year
+      student
     );
 
     const scholarshipCtx = await resolveRegistrationScholarshipForStudent(

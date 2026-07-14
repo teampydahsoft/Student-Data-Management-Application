@@ -36,12 +36,55 @@ const {
   getHolidayInfoForRange
 } = require('../services/attendancePercentageService');
 const {
+  deriveAcademicYearLabel,
   resolveSemesterCalendarForFilters,
   getSemesterCalendarVisibilityClause,
   getSemesterCalendarRangeVisibilityClause,
   appendSemesterCalendarFilter,
   validateStudentAttendanceDate
 } = require('../services/semesterCalendarService');
+
+/**
+ * Attach current academic year (batch + year of study) and semester calendar
+ * start/end dates to overall attendance grouped rows.
+ */
+const enrichGroupedRowsWithAcademicCalendar = async (rows, attendanceDate) => {
+  const calendarCache = new Map();
+  const enriched = [];
+
+  for (const row of rows) {
+    const academicYear = deriveAcademicYearLabel(row.batch, row.year) || '—';
+    const cacheKey = [
+      row.college || '',
+      row.course || '',
+      row.batch || '',
+      row.year ?? '',
+      row.semester ?? ''
+    ].join('|');
+
+    let calendar = calendarCache.get(cacheKey);
+    if (!calendar) {
+      calendar = await resolveSemesterCalendarForFilters({
+        college: row.college && row.college !== '—' ? row.college : null,
+        course: row.course && row.course !== '—' ? row.course : null,
+        batch: row.batch && row.batch !== '—' ? row.batch : null,
+        currentYear: row.year != null && row.year !== '—' ? row.year : null,
+        currentSemester: row.semester != null && row.semester !== '—' ? row.semester : null,
+        attendanceDate
+      });
+      calendarCache.set(cacheKey, calendar);
+    }
+
+    enriched.push({
+      ...row,
+      academicYear,
+      startDate: calendar.startDate || '—',
+      endDate: calendar.endDate || '—'
+    });
+  }
+
+  return enriched;
+};
 const {
   resolveAttendanceDisplayNumberFromRow,
   STUDENT_ROLL_NUMBERS_JOIN,
@@ -5945,7 +5988,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
     const denominator = totalStudents || markedCount || 1;
     const percentage = Math.round((presentCount / denominator) * 100);
 
-    const groupedSummary = groupedRows.map((row) => {
+    const groupedSummaryBase = groupedRows.map((row) => {
       const dailyPresent = Number(row.daily_present) || 0;
       const dailyAbsent = Number(row.daily_absent) || 0;
       const internshipPresent = Number(row.internship_present) || 0;
@@ -5981,6 +6024,8 @@ exports.getOverallAttendanceSummary = async (req, res) => {
         remarks: [row.holiday_reasons, row.attendance_remarks].filter(Boolean).join('; ') || null
       };
     });
+
+    const groupedSummary = await enrichGroupedRowsWithAcademicCalendar(groupedSummaryBase, todayKey);
 
     res.json({
       success: true,
@@ -6150,7 +6195,7 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
       [attendanceDate, attendanceDate, attendanceDate, attendanceDate, ...countFilter.params, ...exclusionParams, ...semesterParams, ...scopeParams]
     );
 
-    const allGroupedData = groupedRows.map((row) => {
+    const allGroupedDataBase = groupedRows.map((row) => {
       const dailyPresent = Number(row.daily_present) || 0;
       const dailyAbsent = Number(row.daily_absent) || 0;
       const internshipPresent = Number(row.internship_present) || 0;
@@ -6186,6 +6231,8 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         remarks: [row.holiday_reasons, row.attendance_remarks].filter(Boolean).join('; ') || null
       };
     });
+
+    const allGroupedData = await enrichGroupedRowsWithAcademicCalendar(allGroupedDataBase, attendanceDate);
 
     const groupedData = allGroupedData.filter((row) => {
       if (previewFilter === 'marked') return (row.markedToday || 0) > 0;
@@ -6296,12 +6343,15 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
       XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
-      // Grouped data sheet
+      // Grouped data sheet — includes academic year and semester calendar dates
       const tableData = [
-        ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Students', 'Class Present', 'Class Absent', 'Internship Present', 'Internship Absent', 'Marked', 'Pending', 'No Class Work', 'Remarks', 'Time Stamp'],
+        ['College', 'Batch', 'Course', 'Branch', 'Year', 'Semester', 'Academic Year', 'Start Date', 'End Date', 'Students', 'Class Present', 'Class Absent', 'Internship Present', 'Internship Absent', 'Marked', 'Pending', 'No Class Work', 'Remarks', 'Time Stamp'],
         ...groupedData.map(row => [
           row.college, row.batch, row.course, row.branch,
           row.year, row.semester,
+          row.academicYear || '—',
+          row.startDate || '—',
+          row.endDate || '—',
           previewFilter === 'unmarked' ? row.pendingToday : row.totalStudents,
           previewFilter === 'unmarked' ? 0 : row.dailyPresent,
           previewFilter === 'unmarked' ? 0 : row.dailyAbsent,
@@ -6323,6 +6373,9 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         { wch: 15 }, // Branch
         { wch: 8 },  // Year
         { wch: 8 },  // Semester
+        { wch: 14 }, // Academic Year
+        { wch: 12 }, // Start Date
+        { wch: 12 }, // End Date
         { wch: 10 }, // Students
         { wch: 12 }, // Class Present
         { wch: 12 }, // Class Absent

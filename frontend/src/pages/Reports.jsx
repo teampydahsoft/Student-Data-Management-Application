@@ -128,6 +128,7 @@ const Reports = () => {
     semester: '',
     academicYear: '',
     scholarshipStatus: '',
+    stagePending: '',
     search: ''
   });
   const [filterOptions, setFilterOptions] = useState({
@@ -226,6 +227,7 @@ const Reports = () => {
           if (filters.semester) params.append('filter_semester', filters.semester);
           if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
           if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
+          if (filters.stagePending) params.append('filter_stage_pending', filters.stagePending);
           if (filters.search) params.append('search', filters.search);
 
           const response = await api.get(`/students/reports/registration/abstract?${params.toString()}`);
@@ -269,6 +271,7 @@ const Reports = () => {
         if (activeFilters.semester) params.append('filter_semester', activeFilters.semester);
         if (activeFilters.academicYear) params.append('filter_academic_year', activeFilters.academicYear);
         if (activeFilters.scholarshipStatus) params.append('filter_scholarship_status', activeFilters.scholarshipStatus);
+        if (activeFilters.stagePending) params.append('filter_stage_pending', activeFilters.stagePending);
         if (activeFilters.search) params.append('search', activeFilters.search);
         if (activeFilters.page) params.append('page', activeFilters.page);
         if (activeFilters.limit) params.append('limit', activeFilters.limit);
@@ -1372,6 +1375,9 @@ const Reports = () => {
         delete newFilters.batch;
         delete newFilters.year;
         delete newFilters.semester;
+      } else if (field === 'scholarshipStatus') {
+        // Scholarship filter and stage-pending drill-down are mutually exclusive
+        delete newFilters.stagePending;
       }
 
       return newFilters;
@@ -1383,14 +1389,40 @@ const Reports = () => {
       college: '',
       batch: '',
       course: '',
+      level: '',
       branch: '',
       year: '',
       semester: '',
       academicYear: '',
       scholarshipStatus: '',
+      stagePending: '',
       search: ''
     });
     setSearchTerm('');
+  };
+
+  const STAGE_PENDING_LABELS = {
+    registration: 'Registration pending',
+    verification: 'Verification pending',
+    certificates: 'Certificates pending',
+    fees: 'Fees pending',
+    promotion: 'Promotion pending'
+  };
+
+  const viewStagePendingStudents = (stage) => {
+    const nextFilters = {
+      ...filters,
+      scholarshipStatus: '',
+      stagePending: stage,
+      page: 1
+    };
+    setFilters(prev => ({
+      ...prev,
+      scholarshipStatus: '',
+      stagePending: stage
+    }));
+    setActiveTab('sheet');
+    setTimeout(() => loadReport(nextFilters), 0);
   };
 
   const activeFilterEntries = useMemo(() => {
@@ -1403,6 +1435,7 @@ const Reports = () => {
     if (filters.semester) entries.push({ key: 'semester', label: `Semester: ${filters.semester}` });
     if (filters.academicYear) entries.push({ key: 'academicYear', label: `AY: ${filters.academicYear}` });
     if (filters.scholarshipStatus) entries.push({ key: 'scholarshipStatus', label: `Scholarship: ${filters.scholarshipStatus === 'pending' ? 'Not assigned' : filters.scholarshipStatus === 'eligible' ? 'Eligible' : 'Rejected'}` });
+    if (filters.stagePending) entries.push({ key: 'stagePending', label: STAGE_PENDING_LABELS[filters.stagePending] || `Pending: ${filters.stagePending}` });
     return entries;
   }, [filters]);
 
@@ -1537,7 +1570,25 @@ const Reports = () => {
     );
   };
 
-  const StatsGrid = () => (
+  const StatsGrid = () => {
+    const renderPendingCount = (count, stage, title) => {
+      const pendingCount = count || 0;
+      if (pendingCount > 0) {
+        return (
+          <button
+            type="button"
+            onClick={() => viewStagePendingStudents(stage)}
+            className="text-sm font-bold text-red-500 hover:text-red-700 hover:underline focus:outline-none focus:underline"
+            title={title}
+          >
+            {pendingCount}
+          </button>
+        );
+      }
+      return <span className="text-sm font-bold text-red-500">{pendingCount}</span>;
+    };
+
+    return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0">
       <div className="bg-blue-50 p-2 md:p-3 rounded-lg border border-blue-100">
         <div className="text-[10px] md:text-xs text-blue-600 uppercase font-semibold">Total</div>
@@ -1550,16 +1601,30 @@ const Reports = () => {
           <span className="text-xs text-gray-400">/</span>
           <span className="text-sm font-bold text-amber-500">{stats?.registration?.temporary || 0}</span>
           <span className="text-xs text-gray-400">/</span>
-          <span className="text-sm font-bold text-red-500">{stats?.registration?.pending || 0}</span>
+          {renderPendingCount(
+            stats?.registration?.pending,
+            'registration',
+            'Show only students with registration pending'
+          )}
         </div>
+        {(stats?.registration?.pending || 0) > 0 && (
+          <div className="text-[10px] text-gray-500 mt-0.5">Click number to view pending</div>
+        )}
       </div>
       <div className="bg-yellow-50 p-2 md:p-3 rounded-lg border border-yellow-100">
         <div className="text-[10px] md:text-xs text-yellow-600 uppercase font-semibold">Verification</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm font-bold text-green-600">{stats?.verification?.completed || 0}</span>
           <span className="text-xs text-gray-400">/</span>
-          <span className="text-sm font-bold text-red-500">{stats?.verification?.pending || 0}</span>
+          {renderPendingCount(
+            stats?.verification?.pending,
+            'verification',
+            'Show only students with verification pending'
+          )}
         </div>
+        {(stats?.verification?.pending || 0) > 0 && (
+          <div className="text-[10px] text-yellow-700 mt-0.5">Click number to view pending</div>
+        )}
       </div>
       <div className="bg-purple-50 p-2 md:p-3 rounded-lg border border-purple-100">
         <div className="text-[10px] md:text-xs text-purple-600 uppercase font-semibold">Certificates</div>
@@ -1568,24 +1633,45 @@ const Reports = () => {
           <span className="text-xs text-gray-400">/</span>
           <span className="text-sm font-bold text-amber-500">{stats?.certificates?.temporary || 0}</span>
           <span className="text-xs text-gray-400">/</span>
-          <span className="text-sm font-bold text-red-500">{stats?.certificates?.pending || 0}</span>
+          {renderPendingCount(
+            stats?.certificates?.pending,
+            'certificates',
+            'Show only students with certificates pending'
+          )}
         </div>
+        {(stats?.certificates?.pending || 0) > 0 && (
+          <div className="text-[10px] text-purple-600 mt-0.5">Click number to view pending</div>
+        )}
       </div>
       <div className="bg-green-50 p-2 md:p-3 rounded-lg border border-green-100">
         <div className="text-[10px] md:text-xs text-green-600 uppercase font-semibold">Fees</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm font-bold text-green-600">{stats?.fees?.cleared || 0}</span>
           <span className="text-xs text-gray-400">/</span>
-          <span className="text-sm font-bold text-red-500">{stats?.fees?.pending || 0}</span>
+          {renderPendingCount(
+            stats?.fees?.pending,
+            'fees',
+            'Show only students with fees pending'
+          )}
         </div>
+        {(stats?.fees?.pending || 0) > 0 && (
+          <div className="text-[10px] text-green-700 mt-0.5">Click number to view pending</div>
+        )}
       </div>
       <div className="bg-indigo-50 p-2 md:p-3 rounded-lg border border-indigo-100">
         <div className="text-[10px] md:text-xs text-indigo-600 uppercase font-semibold">Promotion</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm font-bold text-green-600">{stats?.promotion?.completed || 0}</span>
           <span className="text-xs text-gray-400">/</span>
-          <span className="text-sm font-bold text-red-500">{stats?.promotion?.pending || 0}</span>
+          {renderPendingCount(
+            stats?.promotion?.pending,
+            'promotion',
+            'Show only students with promotion pending'
+          )}
         </div>
+        {(stats?.promotion?.pending || 0) > 0 && (
+          <div className="text-[10px] text-indigo-600 mt-0.5">Click number to view pending</div>
+        )}
       </div>
       <div className="bg-pink-50 p-2 md:p-3 rounded-lg border border-pink-100">
         <div className="text-[10px] md:text-xs text-pink-600 uppercase font-semibold">Scholarship</div>
@@ -1596,9 +1682,9 @@ const Reports = () => {
             <button
               type="button"
               onClick={() => {
-                setFilters(prev => ({ ...prev, scholarshipStatus: 'pending' }));
+                setFilters(prev => ({ ...prev, scholarshipStatus: 'pending', stagePending: '' }));
                 setActiveTab('sheet');
-                setTimeout(() => loadReport({ ...filters, scholarshipStatus: 'pending', page: 1 }), 0);
+                setTimeout(() => loadReport({ ...filters, scholarshipStatus: 'pending', stagePending: '', page: 1 }), 0);
               }}
               className="text-sm font-bold text-red-500 hover:text-red-700 hover:underline focus:outline-none focus:underline"
               title="Show only students with scholarship pending (empty)"
@@ -1614,7 +1700,8 @@ const Reports = () => {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6 w-full h-full overflow-hidden">
@@ -1998,7 +2085,8 @@ const Reports = () => {
                     {abstractData.map((row, idx) => {
                       const total = parseInt(row.total || 0);
                       const completed = parseInt(row.overall_completed || 0);
-                      const pending = total - completed;
+                      const temporary = parseInt(row.overall_temporary || 0);
+                      const pending = Math.max(0, total - completed - temporary);
 
                       // Compute academic year label from batch + current_year
                       const batchStart = row.batch ? parseInt(String(row.batch).match(/\d{4}/)?.[0] || '0', 10) : 0;
@@ -2032,8 +2120,8 @@ const Reports = () => {
                           </td>
                           <td className="px-4 py-3 text-center font-semibold">{total}</td>
                           <td className="px-4 py-3 text-center text-green-600 font-medium">{completed}</td>
-                          <td className="px-4 py-3 text-center text-amber-600 font-medium">{parseInt(row.overall_temporary || 0)}</td>
-                          <td className="px-4 py-3 text-center text-red-500 font-medium">{pending - parseInt(row.overall_temporary || 0)}</td>
+                          <td className="px-4 py-3 text-center text-amber-600 font-medium">{temporary}</td>
+                          <td className="px-4 py-3 text-center text-red-500 font-medium">{pending}</td>
                           {/* Removed Completion % Cell */}
 
                           {/* Breakdown Columns - Matches Header */}

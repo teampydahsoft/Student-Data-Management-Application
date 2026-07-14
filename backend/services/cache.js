@@ -35,8 +35,18 @@ class SimpleCache {
     this.store.clear();
   }
 
+  /**
+   * True when a non-expired entry exists for key (including stored null/false/0).
+   * Prefer this over `get(key) != null` when null is a valid cached value.
+   */
   has(key) {
-    return this.get(key) !== null;
+    if (!this.store.has(key)) return false;
+    const entry = this.store.get(key);
+    if (!entry || entry.expiresAt <= Date.now()) {
+      this.store.delete(key);
+      return false;
+    }
+    return true;
   }
 
   size() {

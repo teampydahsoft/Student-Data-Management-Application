@@ -19,6 +19,23 @@ const { buildFeeStatusMapForStudents } = require('./registrationFeeStatus');
 
 const FEE_COMPLETE_STATUSES = ['no due', 'no_due', 'permitted', 'completed', 'nodue'];
 
+/**
+ * Optional stages from registration_stage_config apply only from academic year 2026-2027.
+ * Pre-2026 years use legacy scholarship (students.scholar_status) and ignore optional config.
+ */
+const shouldApplyOptionalRegistrationStages = (student, yearOverride = null) => {
+  if (!student) return false;
+  const year = yearOverride != null ? yearOverride : student.current_year;
+  const programYear = resolveRegistrationBranchYear(student.branch, year);
+  return registrationUsesScholarshipTableOnly(student, programYear);
+};
+
+const resolveOptionalStagesForStudent = (stageConfig, student, yearOverride = null) => {
+  if (!shouldApplyOptionalRegistrationStages(student, yearOverride)) return [];
+  const year = yearOverride != null ? yearOverride : student.current_year;
+  return resolveOptionalStagesFromConfig(stageConfig, student.branch, year);
+};
+
 const formatRegistrationStatusDisplay = (status) => {
   const normalized = normalizeEligible(status);
   if (normalized === 'not_eligible') return 'Not eligible';
@@ -183,7 +200,18 @@ const createEmptyRegistrationGroupBucket = () => ({
   total: 0
 });
 
-const hasOptionalRegistrationStages = (stageConfig, branch, currentYear) => {
+const hasOptionalRegistrationStages = (stageConfig, branchOrStudent, currentYear = null) => {
+  // Student-aware: pre-2026 academic years never use optional stage config
+  if (branchOrStudent && typeof branchOrStudent === 'object') {
+    const student = branchOrStudent;
+    if (!shouldApplyOptionalRegistrationStages(student)) return false;
+    if (!stageConfig || !student.branch) return false;
+    const configYear = resolveRegistrationBranchYear(student.branch, student.current_year);
+    const key = `${String(student.branch).trim()}::${String(configYear)}`;
+    return (stageConfig[key]?.optionalStages || []).length > 0;
+  }
+
+  const branch = branchOrStudent;
   if (!stageConfig || !branch) return false;
   const configYear = resolveRegistrationBranchYear(branch, currentYear);
   const key = `${String(branch).trim()}::${String(configYear)}`;
@@ -198,7 +226,7 @@ const accumulateRegistrationStudentStats = (
   bucket
 ) => {
   const studentData = parseStudentData(student);
-  const optionalStages = resolveOptionalStagesFn(stageConfig, student.branch, student.current_year);
+  const optionalStages = resolveOptionalStagesFn(stageConfig, student);
   const scholarshipCtx = scholarshipContextMap.get(student.id) || { eligible: '', feePaid: null };
   const stages = computeRegistrationStages(
     student,
@@ -272,7 +300,7 @@ const computeRegistrationGroupAggregates = (
 
   for (const student of students) {
     if (
-      !hasOptionalRegistrationStages(stageConfig, student.branch, student.current_year)
+      !hasOptionalRegistrationStages(stageConfig, student)
       && !registrationUsesScholarshipTableOnly(student)
     ) {
       continue;
@@ -296,7 +324,7 @@ const computeRegistrationGroupAggregates = (
 const enrichRegistrationAbstractRows = (sqlRows, groupAggregates, stageConfig) => (
   sqlRows.map((row) => {
     if (
-      !hasOptionalRegistrationStages(stageConfig, row.branch, row.current_year)
+      !hasOptionalRegistrationStages(stageConfig, row)
       && !registrationUsesScholarshipTableOnly(row)
     ) {
       return row;
@@ -344,7 +372,7 @@ const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = nul
   const config = stageConfig || await loadRegistrationStageConfig(pool);
   const targets = (students || []).filter((student) => (
     registrationUsesScholarshipTableOnly(student)
-    || hasOptionalRegistrationStages(config, student.branch, student.current_year)
+    || hasOptionalRegistrationStages(config, student)
   ));
   const map = new Map();
   if (!targets.length) return map;
@@ -354,16 +382,15 @@ const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = nul
       pool,
       targets,
       config,
-      resolveOptionalStagesFromConfig
+      resolveOptionalStagesForStudent
     ),
     buildFeeStatusMapForStudents(pool, targets)
   ]);
 
   for (const student of targets) {
-    const optionalStages = resolveOptionalStagesFromConfig(
+    const optionalStages = resolveOptionalStagesForStudent(
       config,
-      student.branch,
-      student.current_year
+      student
     );
     const scholarshipCtx = scholarshipContextMap.get(student.id) || { eligible: '', feePaid: null };
     const derivedFeeStatus = feeStatusMap.get(student.id) || student.fee_status || null;
@@ -387,14 +414,18 @@ const buildRegistrationStatusLabelMap = async (pool, students, stageConfig = nul
 module.exports = {
   FEE_COMPLETE_STATUSES,
   formatRegistrationStatusDisplay,
-  formatRegistrationOverallStatusLabel,
   getStageBadgeDisplay,
   parseStudentData,
   computeRegistrationStages,
-  buildRegistrationGroupKey,
+  shouldApplyOptionalRegistrationStages,
+  resolveOptionalStagesForStudent,
   hasOptionalRegistrationStages,
   aggregateRegistrationOverallFromStudents,
   computeRegistrationGroupAggregates,
   enrichRegistrationAbstractRows,
-  buildRegistrationStatusLabelMap
+  buildRegistrationStatusLabelMap,
+  formatRegistrationOverallStatusLabel,
+  loadRegistrationStageConfig,
+  buildRegistrationGroupKey,
+  createEmptyRegistrationGroupBucket
 };

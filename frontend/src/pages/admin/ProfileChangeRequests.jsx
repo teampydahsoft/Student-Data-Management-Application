@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Eye, Check, X, Clock, User, Filter, AlertCircle, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Eye, Check, X, Clock, User, AlertCircle, ChevronRight } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 
@@ -7,19 +7,95 @@ export const ProfileChangeRequests = () => {
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('pending');
+    const [courseFilter, setCourseFilter] = useState('');
+    const [branchFilter, setBranchFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [reviewComments, setReviewComments] = useState('');
     const [studentOriginalData, setStudentOriginalData] = useState({});
+    const [filterOptions, setFilterOptions] = useState({ courses: [], branches: [] });
+    const [coursesWithBranches, setCoursesWithBranches] = useState([]);
+
+    useEffect(() => {
+        const loadFilterMeta = async () => {
+            try {
+                const [quickRes, coursesRes] = await Promise.all([
+                    api.get('/students/quick-filters?applyExclusions=true'),
+                    api.get('/courses?includeInactive=false')
+                ]);
+                if (quickRes.data?.success) {
+                    const d = quickRes.data.data || {};
+                    setFilterOptions({
+                        courses: d.courses || [],
+                        branches: d.branches || []
+                    });
+                }
+                if (coursesRes.data?.success) {
+                    setCoursesWithBranches(coursesRes.data.data || []);
+                }
+            } catch (err) {
+                console.warn('Failed to load course/branch filter options:', err);
+            }
+        };
+        loadFilterMeta();
+    }, []);
+
+    // Cascade branch options when course changes
+    useEffect(() => {
+        const updateBranches = async () => {
+            try {
+                const params = new URLSearchParams({ applyExclusions: 'true' });
+                if (courseFilter) params.append('course', courseFilter);
+                const res = await api.get(`/students/quick-filters?${params.toString()}`);
+                if (res.data?.success) {
+                    const d = res.data.data || {};
+                    setFilterOptions((prev) => ({
+                        ...prev,
+                        courses: d.courses?.length ? d.courses : prev.courses,
+                        branches: d.branches || []
+                    }));
+                }
+            } catch (err) {
+                console.warn('Failed to update branch options:', err);
+            }
+        };
+        updateBranches();
+    }, [courseFilter]);
+
+    const availableCourses = useMemo(() => {
+        if (coursesWithBranches?.length) {
+            return [...new Set(coursesWithBranches.map((c) => c.name).filter(Boolean))].sort();
+        }
+        return [...new Set(filterOptions.courses || [])].sort();
+    }, [coursesWithBranches, filterOptions.courses]);
+
+    const availableBranches = useMemo(() => {
+        if (courseFilter && coursesWithBranches?.length) {
+            const course = coursesWithBranches.find(
+                (c) => c.name?.toLowerCase() === courseFilter.toLowerCase()
+            );
+            const fromCourse = (course?.branches || [])
+                .map((b) => (typeof b === 'string' ? b : b?.name))
+                .filter(Boolean);
+            if (fromCourse.length) {
+                return [...new Set(fromCourse)].sort();
+            }
+        }
+        return [...new Set(filterOptions.branches || [])].sort();
+    }, [courseFilter, coursesWithBranches, filterOptions.branches]);
 
     useEffect(() => {
         fetchRequests();
-    }, [statusFilter]);
+    }, [statusFilter, courseFilter, branchFilter]);
 
     const fetchRequests = async () => {
         try {
             setLoading(true);
-            const query = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
+            const params = new URLSearchParams();
+            if (statusFilter !== 'all') params.append('status', statusFilter);
+            if (courseFilter) params.append('course', courseFilter);
+            if (branchFilter) params.append('branch', branchFilter);
+            const query = params.toString() ? `?${params.toString()}` : '';
             const res = await api.get(`/profile-changes/all${query}`);
             if (res.data?.success) {
                 setRequests(res.data.data);
@@ -32,6 +108,11 @@ export const ProfileChangeRequests = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleCourseChange = (value) => {
+        setCourseFilter(value);
+        setBranchFilter('');
     };
 
     const handleReview = async (status) => {
@@ -67,6 +148,7 @@ export const ProfileChangeRequests = () => {
 
     const filteredRequests = requests.filter(req => {
         const term = searchTerm.toLowerCase();
+        if (!term) return true;
         return (
             req.student_name?.toLowerCase().includes(term) ||
             req.admission_number?.toLowerCase().includes(term) ||
@@ -90,30 +172,75 @@ export const ProfileChangeRequests = () => {
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
                 {/* Filters */}
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Search by student name or admission number..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-                        />
+                <div className="flex flex-col gap-4 mb-6">
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1 relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Search by student name or admission number..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                            />
+                        </div>
+                        <div className="flex gap-2 shrink-0 overflow-x-auto pb-2 md:pb-0">
+                            {['pending', 'approved', 'rejected', 'all'].map(status => (
+                                <button
+                                    key={status}
+                                    onClick={() => setStatusFilter(status)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap capitalize ${statusFilter === status
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {status}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    <div className="flex gap-2 shrink-0 overflow-x-auto pb-2 md:pb-0">
-                        {['pending', 'approved', 'rejected', 'all'].map(status => (
-                            <button
-                                key={status}
-                                onClick={() => setStatusFilter(status)}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap capitalize ${statusFilter === status
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Course / Program</label>
+                            <select
+                                value={courseFilter}
+                                onChange={(e) => handleCourseChange(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
                             >
-                                {status}
-                            </button>
-                        ))}
+                                <option value="">All Courses</option>
+                                {availableCourses.map((course) => (
+                                    <option key={course} value={course}>{course}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Branch</label>
+                            <select
+                                value={branchFilter}
+                                onChange={(e) => setBranchFilter(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+                            >
+                                <option value="">All Branches</option>
+                                {availableBranches.map((branch) => (
+                                    <option key={branch} value={branch}>{branch}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {(courseFilter || branchFilter) && (
+                            <div className="flex items-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCourseFilter('');
+                                        setBranchFilter('');
+                                    }}
+                                    className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-1 py-2"
+                                >
+                                    Clear course / branch
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -330,7 +457,7 @@ export const ProfileChangeRequests = () => {
                                     onClick={() => handleReview('rejected')}
                                     className="px-5 py-2.5 text-sm font-semibold rounded-lg text-red-700 bg-red-100 hover:bg-red-200 flex items-center gap-2 transition-colors shadow-sm"
                                 >
-                                    <X size={16} /> Reject Space
+                                    <X size={16} /> Reject
                                 </button>
                                 <button
                                     onClick={() => handleReview('approved')}

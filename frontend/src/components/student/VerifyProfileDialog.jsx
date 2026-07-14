@@ -416,7 +416,6 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
         try {
             setIsSubmitting(true);
             const res = await api.post('/profile-changes/request', {
-                admission_number: originalData.admission_number || studentData?.admission_number,
                 requested_changes: changedFields
             });
 
@@ -436,9 +435,7 @@ export const VerifyProfileDialog = ({ isOpen, onClose, studentData }) => {
     const handleMarkVerified = async () => {
         try {
             setIsVerifying(true);
-            const res = await api.post('/profile-changes/mark-verified', {
-                admission_number: originalData.admission_number || studentData?.admission_number
-            });
+            const res = await api.post('/profile-changes/mark-verified', {});
             if (res.data?.success) {
                 toast.success('Profile marked as verified!');
 
