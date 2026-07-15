@@ -252,8 +252,13 @@ const findFirstIncompletePriorScholarshipYear = (
   if (!usesSemesterWiseScholarshipStatus(batch, branchProgramYear)) return null;
   if (branchProgramYear <= 1) return null;
 
+  // Lateral-entry students (LATER / LSPOT) have no Year 1 — start prior-year checks at Year 2.
+  const startYear = resolveScholarshipStartYear(
+    student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type
+  );
+
   const years = scholarshipData?.years || [];
-  for (let year = 1; year < branchProgramYear; year += 1) {
+  for (let year = startYear; year < branchProgramYear; year += 1) {
     const optionalStages = resolveOptionalStagesFromConfig(
       stageConfig,
       student?.branch || scholarshipData?.student?.branch,
@@ -492,8 +497,11 @@ export const extractBatchStartYear = (batch) => {
 
 import {
   resolveRegistrationBranchYear,
-  resolveOptionalStagesFromConfig
+  resolveOptionalStagesFromConfig,
+  resolveScholarshipStartYear
 } from './registrationBranchYear';
+
+export { isLateralEntryQuota, resolveScholarshipStartYear } from './registrationBranchYear';
 
 export const getAcademicYearStartYear = (batch, studentYear) => {
   const batchStart = extractBatchStartYear(batch);

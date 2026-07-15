@@ -53,7 +53,8 @@ import {
   resolveRegistrationScholarshipDisplay,
   isScholarshipProgramYearAccessible,
   getMaxAccessibleScholarshipProgramYear,
-  getScholarshipSemestersForYear
+  getScholarshipSemestersForYear,
+  resolveScholarshipStartYear
 } from '../../config/scholarshipConfig';
 import { CASTE_OPTIONS } from '../../config/casteConfig';
 
@@ -487,11 +488,17 @@ const StudentScholarshipHistoryTab = ({
         } else if (student?.caste) {
           setSelectedCaste(student.caste);
         }
+        // Lateral-entry students (LATER / LSPOT) join in Year 2 — hide the non-existent Year 1.
+        const scholarshipStartYear = resolveScholarshipStartYear(
+          student?.stud_type || payload.student?.stud_type
+        );
         setYears(
-          (payload.years || []).map((year) => syncCollegePaidTransactionsFromRtf(
-            normalizeYearFromApi(year, payload, student, remarkData.map),
-            isCollege
-          ))
+          (payload.years || [])
+            .filter((year) => Number(year.student_year) >= scholarshipStartYear)
+            .map((year) => syncCollegePaidTransactionsFromRtf(
+              normalizeYearFromApi(year, payload, student, remarkData.map),
+              isCollege
+            ))
         );
       } else {
         toast.error(scholarshipResponse.data.message || 'Failed to load scholarship history');

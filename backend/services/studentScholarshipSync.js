@@ -385,15 +385,17 @@ const scholarshipRowHasExtraData = (row) => (
   || (row.proceeding && String(row.proceeding).trim())
 );
 
-const buildIneligibleQuotaYears = (totalYears, getSemestersForYear) => (
-  Array.from({ length: totalYears }, (_, index) => {
-    const studentYear = index + 1;
+const buildIneligibleQuotaYears = (totalYears, getSemestersForYear, startYear = 1) => {
+  const firstYear = Math.max(1, Number(startYear) || 1);
+  const count = Math.max(0, Number(totalYears) - firstYear + 1);
+  return Array.from({ length: count }, (_, index) => {
+    const studentYear = firstYear + index;
     const semestersPerYear = typeof getSemestersForYear === 'function'
       ? getSemestersForYear(studentYear)
       : (getSemestersForYear || DEFAULT_SEMESTERS_PER_YEAR);
     return buildIneligibleQuotaYearEntry(studentYear, semestersPerYear);
-  })
-);
+  });
+};
 
 const upsertScholarshipEligible = async (pool, studentId, studentYear, eligible) => {
   const year = Math.max(1, Number(studentYear) || 1);
@@ -430,6 +432,9 @@ const syncScholarStatusColumn = async (pool, studentId, eligible) => {
 const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
   if (!isScholarshipIneligibleQuota(student.stud_type)) return false;
 
+  // Lateral-entry ineligible quotas (LSPOT) join in Year 2 — never create a Year 1 row.
+  const startYear = resolveScholarshipStartYear(student.stud_type);
+
   const [rows] = await pool.query(
     `SELECT student_year, eligible, application_id, sanctioned_amount, released_amount,
             from_date, to_date, proceeding
@@ -444,8 +449,10 @@ const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
       .map((row) => row.student_year)
   );
 
-  let needsSync = rows.some(scholarshipRowHasExtraData);
-  for (let year = 1; year <= totalYears; year += 1) {
+  // Any row before the lateral start year (a stale Year 1) forces a resync to clean it up.
+  let needsSync = rows.some(scholarshipRowHasExtraData)
+    || rows.some((row) => Number(row.student_year) < startYear);
+  for (let year = startYear; year <= totalYears; year += 1) {
     if (!cleanRejectedYears.has(year)) {
       needsSync = true;
       break;
@@ -456,7 +463,7 @@ const ensureIneligibleQuotaScholarship = async (pool, student, totalYears) => {
 
   await pool.query('DELETE FROM student_scholarship WHERE student_id = ?', [student.id]);
   const structure = await resolveCourseAcademicStructure(pool, student);
-  for (let year = 1; year <= totalYears; year += 1) {
+  for (let year = startYear; year <= totalYears; year += 1) {
     const semestersForYear = structure.getSemestersForYear(year);
     for (let semester = 1; semester <= semestersForYear; semester += 1) {
       await pool.query(
@@ -633,7 +640,9 @@ const isScholarshipOptionalForRegistration = (optionalStages) => (
 const {
   resolveRegistrationBranchYear,
   resolveScholarshipLookupYears,
-  resolveOptionalStagesFromConfig
+  resolveOptionalStagesFromConfig,
+  isLateralEntryQuota,
+  resolveScholarshipStartYear
 } = require('../utils/registrationBranchYear');
 
 const resolveRegistrationScholarshipTarget = (currentYear, optionalStages) => {
@@ -754,8 +763,13 @@ const findFirstIncompletePriorScholarshipYear = (
   if (!usesSemesterWiseScholarshipStatus(batch, branchProgramYear)) return null;
   if (branchProgramYear <= 1) return null;
 
+  // Lateral-entry students (LATER / LSPOT) have no Year 1 — start prior-year checks at Year 2.
+  const startYear = resolveScholarshipStartYear(
+    student?.stud_type || student?.StudType || scholarshipData?.student?.stud_type
+  );
+
   const years = scholarshipData?.years || [];
-  for (let year = 1; year < branchProgramYear; year += 1) {
+  for (let year = startYear; year < branchProgramYear; year += 1) {
     if (isScholarshipOptionalForBranchYear(stageConfig, student, year)) continue;
     const yearData = years.find((entry) => Number(entry.student_year) === year);
     const semestersForYear = getScholarshipSemestersForYearData(
@@ -954,7 +968,10 @@ const findFirstIncompletePriorScholarshipYearFromRows = (
   if (!usesSemesterWiseScholarshipStatus(student.batch, branchProgramYear)) return null;
   if (branchProgramYear <= 1) return null;
 
-  for (let year = 1; year < branchProgramYear; year += 1) {
+  // Lateral-entry students (LATER / LSPOT) have no Year 1 — start prior-year checks at Year 2.
+  const startYear = resolveScholarshipStartYear(student.stud_type || student.StudType);
+
+  for (let year = startYear; year < branchProgramYear; year += 1) {
     if (isScholarshipOptionalForBranchYear(stageConfig, student, year)) continue;
     const yearData = buildPriorScholarshipYearDataFromRows(rows, student, year);
     const semestersForYear = Math.max(
@@ -1826,6 +1843,8 @@ module.exports = {
   REGISTRATION_SCHOLARSHIP_EMPTY_DISPLAY,
   normalizeStudTypeCode,
   isScholarshipIneligibleQuota,
+  isLateralEntryQuota,
+  resolveScholarshipStartYear,
   normalizeEligible,
   upsertScholarshipEligible,
   syncScholarStatusColumn,

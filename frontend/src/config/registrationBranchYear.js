@@ -5,6 +5,30 @@ export const PARTIAL_COURSE_BRANCHES = {
   'Pharm D PB': { branchTotalYears: 3, courseTotalYears: 6 }
 };
 
+/**
+ * Lateral-entry quota codes. These students are admitted directly into program Year 2
+ * (e.g. B.Tech / B.Pharm lateral entrants and diploma holders), so program Year 1
+ * never exists for them and must not be shown or validated.
+ */
+export const LATERAL_ENTRY_QUOTA_CODES = ['LATER', 'LSPOT'];
+
+const normalizeLateralQuotaCode = (value) => {
+  const code = String(value || '').trim().toUpperCase();
+  return code === 'MQ' ? 'MANG' : code;
+};
+
+export const isLateralEntryQuota = (studType) => (
+  LATERAL_ENTRY_QUOTA_CODES.includes(normalizeLateralQuotaCode(studType))
+);
+
+/**
+ * First scholarship program year that applies to a student. Lateral-entry students
+ * (LATER / LSPOT) start at program Year 2 — Year 1 does not exist for them.
+ */
+export const resolveScholarshipStartYear = (studType) => (
+  isLateralEntryQuota(studType) ? 2 : 1
+);
+
 export const resolveRegistrationBranchYear = (branchName, currentYear) => {
   const meta = PARTIAL_COURSE_BRANCHES[branchName];
   const year = Math.max(1, Number(currentYear) || 1);

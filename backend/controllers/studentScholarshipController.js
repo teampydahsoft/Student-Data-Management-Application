@@ -8,6 +8,7 @@ const {
   isScholarshipIneligibleQuota,
   syncIneligibleQuotaScholarshipForStudent,
   buildIneligibleQuotaYears,
+  resolveScholarshipStartYear,
   buildAcademicYearContext,
   enrichScholarshipYears,
   fetchBatchSanctionedAmountsByYear,
@@ -256,6 +257,8 @@ const fetchScholarshipPayload = async (student) => {
   const academicStructure = await resolveAcademicStructureForStudent(student);
   const totalYears = await resolveTotalYears(student);
   const semestersPerYear = await resolveSemestersPerYearForStudent(student);
+  // Lateral-entry students (LATER / LSPOT) join in Year 2 — Year 1 does not exist for them.
+  const startYear = resolveScholarshipStartYear(student.stud_type);
 
   if (quotaLocked) {
     await syncIneligibleQuotaScholarshipForStudent(masterPool, student);
@@ -265,7 +268,7 @@ const fetchScholarshipPayload = async (student) => {
     return buildScholarshipResponse(
       student,
       totalYears,
-      buildIneligibleQuotaYears(totalYears, academicStructure.getSemestersForYear),
+      buildIneligibleQuotaYears(totalYears, academicStructure.getSemestersForYear, startYear),
       archivedHistory,
       {
         currentYearEligible: 'not_eligible',
@@ -306,8 +309,9 @@ const fetchScholarshipPayload = async (student) => {
 
   const batchSanctionedByYear = await fetchBatchSanctionedAmountsByYear(masterPool, student);
 
-  const years = await Promise.all(Array.from({ length: totalYears }, async (_, index) => {
-    const studentYear = index + 1;
+  const yearCount = Math.max(0, totalYears - startYear + 1);
+  const years = await Promise.all(Array.from({ length: yearCount }, async (_, index) => {
+    const studentYear = startYear + index;
     const semestersForYear = academicStructure.getSemestersForYear(studentYear);
     const yearRows = yearMap[studentYear] || [];
     const baseYear = !yearRows.length
