@@ -2812,10 +2812,20 @@ exports.getAllStudents = async (req, res) => {
 
     const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('students', null);
 
+    const hasPermitEndingDateColumn = await columnExists('permit_ending_date');
+    const hasPermitRemarksColumn = await columnExists('permit_remarks');
+    const permitSelectColumns = [
+      hasPermitEndingDateColumn ? 'permit_ending_date' : null,
+      hasPermitRemarksColumn ? 'permit_remarks' : null
+    ].filter(Boolean);
+    const permitSelectSql = permitSelectColumns.length
+      ? `${permitSelectColumns.join(', ')},`
+      : '';
+
     let query = `
       SELECT 
         id, admission_number, admission_no, pin_no, student_name, student_data, 
-        fee_status, registration_status, permit_ending_date, permit_remarks,
+        fee_status, registration_status, ${permitSelectSql}
         student_mobile, parent_mobile1, parent_mobile2, created_at, 
         student_status, course, branch, section, current_year, current_semester, batch,
         certificates_status, student_address, city_village, mandal_name, district, 
