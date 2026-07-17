@@ -2815,7 +2815,8 @@ exports.getAllStudents = async (req, res) => {
     let query = `
       SELECT 
         id, admission_number, admission_no, pin_no, student_name, student_data, 
-        fee_status, registration_status, student_mobile, parent_mobile1, parent_mobile2, created_at, 
+        fee_status, registration_status, permit_ending_date, permit_remarks,
+        student_mobile, parent_mobile1, parent_mobile2, created_at, 
         student_status, course, branch, section, current_year, current_semester, batch,
         certificates_status, student_address, city_village, mandal_name, district, 
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 

@@ -53,7 +53,7 @@ import ManualRollNumberModal from '../components/ManualRollNumberModal';
 import RejoinModal from '../components/RejoinModal';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { SkeletonTable, SkeletonStudentsTable } from '../components/SkeletonLoader';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, formatDateToLocalISO } from '../utils/dateUtils';
 import {
   buildPartialStudentUpdatePayload,
   cloneStudentFormSnapshot,
@@ -2077,7 +2077,7 @@ const Students = () => {
     setEditBaseline(cloneStudentFormSnapshot(stageSyncedFields));
     setEditRegistrationStatus(student.registration_status || 'pending');
     setEditFeeStatus(student.fee_status || 'pending');
-    setPermitEndingDate(student.permit_ending_date || '');
+    setPermitEndingDate(formatDateToLocalISO(student.permit_ending_date) || '');
     setPermitRemarks(student.permit_remarks || '');
     setShowModal(true);
   };
@@ -2145,8 +2145,25 @@ const Students = () => {
         synchronizedData.fee_status = editFeeStatus;
       }
 
-      // If fee status is 'permitted', validate and update via fee-status endpoint to include permit data
-      if (editFeeStatus === 'permitted') {
+      // Only hit the fee-status endpoint when fee status is newly set to permitted,
+      // or when permit fields themselves change. Skip for other edits (e.g. mobile)
+      // while the student is already permitted — otherwise empty permit fields block save.
+      const originalFeeStatus = String(selectedStudent?.fee_status || '').toLowerCase();
+      const isEditingPermitted = editFeeStatus === 'permitted';
+      const feeStatusChangedToPermitted =
+        isEditingPermitted && originalFeeStatus !== 'permitted';
+      const originalPermitDate = formatDateToLocalISO(selectedStudent?.permit_ending_date) || '';
+      const currentPermitDate = formatDateToLocalISO(permitEndingDate) || String(permitEndingDate || '');
+      const permitDataChanged =
+        isEditingPermitted &&
+        originalFeeStatus === 'permitted' &&
+        (
+          currentPermitDate !== originalPermitDate ||
+          String(permitRemarks || '').trim() !== String(selectedStudent?.permit_remarks || '').trim()
+        );
+      const shouldUpdateFeeStatus = feeStatusChangedToPermitted || permitDataChanged;
+
+      if (shouldUpdateFeeStatus) {
         if (!permitEndingDate) {
           toast.error('Permit ending date is required when fee status is "permitted"');
           return;
@@ -2178,7 +2195,7 @@ const Students = () => {
         }
       );
 
-      if (Object.keys(partialStudentData).length === 0 && editFeeStatus !== 'permitted') {
+      if (Object.keys(partialStudentData).length === 0 && !shouldUpdateFeeStatus) {
         toast.success('No changes to save');
         setSavingEdit(false);
         return;
