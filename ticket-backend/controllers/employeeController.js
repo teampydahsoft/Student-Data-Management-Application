@@ -31,7 +31,7 @@ exports.getEmployees = async (req, res) => {
                     SELECT COUNT(DISTINCT ta.ticket_id)
                     FROM ticket_assignments ta
                     JOIN tickets t ON ta.ticket_id = t.id
-                    WHERE (ta.assigned_to = ru.id OR ta.assigned_to = te.id) 
+                    WHERE ta.assigned_to = te.rbac_user_id
                     AND ta.is_active = TRUE
                     AND t.status NOT IN ('closed', 'completed')
                 ) as active_tickets_count
@@ -227,12 +227,33 @@ exports.createEmployee = async (req, res) => {
             const hashedPassword = await bcrypt.hash(password, 10);
             const permissionsJson = permissions ? JSON.stringify(permissions) : null;
 
-            // Insert standalone employee
+            // Create a login-less rbac_users row so ticket_assignments (FK to rbac_users)
+            // can reference this worker. Login still goes through ticket_employees.
+            let rbacEmail = email || null;
+            if (rbacEmail) {
+                const [emailTaken] = await masterPool.query(
+                    'SELECT id FROM rbac_users WHERE email = ?',
+                    [rbacEmail]
+                );
+                if (emailTaken.length > 0) rbacEmail = null;
+            }
+            if (!rbacEmail) {
+                rbacEmail = `${username}@ticket-workers.local`;
+            }
+
+            const [rbacResult] = await masterPool.query(
+                `INSERT INTO rbac_users
+                (name, email, phone, username, password, role, permissions, college_ids, course_ids, branch_ids, is_active)
+                VALUES (?, ?, ?, ?, NULL, 'worker', '{}', '[]', '[]', '[]', 1)`,
+                [name, rbacEmail, phone || null, username]
+            );
+
+            // Insert standalone employee linked to the new rbac user
             await masterPool.query(
                 `INSERT INTO ticket_employees 
-                (role, custom_role_id, role_name, name, email, username, password_hash, phone, permissions) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                ['worker', custom_role_id || null, roleName, name, email || null, username, hashedPassword, phone, permissionsJson]
+                (rbac_user_id, role, custom_role_id, role_name, name, email, username, password_hash, phone, permissions) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [rbacResult.insertId, 'worker', custom_role_id || null, roleName, name, email || null, username, hashedPassword, phone, permissionsJson]
             );
         }
 

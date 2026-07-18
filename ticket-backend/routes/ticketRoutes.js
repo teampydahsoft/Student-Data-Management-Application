@@ -58,6 +58,12 @@ router.post(
     ticketController.assignTicket
 );
 
+router.delete(
+    '/:id/assign/:assignmentId',
+    verifyPermission(MODULES.TICKET_MANAGEMENT, PERMISSIONS.WRITE),
+    ticketController.removeAssignment
+);
+
 router.put(
     '/:id/status',
     // Students can close their own tickets, Admins can update any status

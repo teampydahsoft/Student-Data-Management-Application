@@ -166,6 +166,20 @@ const TaskManagement = () => {
         onError: (err) => toast.error(err.response?.data?.message || 'Failed to assign ticket')
     });
 
+    const removeAssignmentMutation = useMutation({
+        mutationFn: async ({ ticketId, assignmentId }) => {
+            const response = await api.delete(`/tickets/${ticketId}/assign/${assignmentId}`);
+            return response.data;
+        },
+        onSuccess: () => {
+            toast.success('Assignee removed');
+            queryClient.invalidateQueries(['tickets']);
+            queryClient.invalidateQueries(['ticket-audience-counts']);
+            if (selectedTicket) queryClient.invalidateQueries(['ticket', selectedTicket.id]);
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Failed to remove assignee')
+    });
+
     const statusMutation = useMutation({
         mutationFn: async ({ ticketId, data }) => {
             const response = await api.put(`/tickets/${ticketId}/status`, data);
@@ -223,7 +237,7 @@ const TaskManagement = () => {
 
     // Handlers
     const handleAssign = () => {
-        if (assignForm.assigned_to.length === 0) return toast.error('Select at least one user');
+        // An empty selection is allowed: it unassigns everyone from the ticket
         assignMutation.mutate({ ticketId: selectedTicket.id, data: assignForm });
     };
 
@@ -418,6 +432,9 @@ const TaskManagement = () => {
                     isLoading={ticketDetailsLoading && !ticketDetails}
                     onClose={() => setSelectedTicket(null)}
                     onAssign={() => openAssignModal(selectedTicket)}
+                    onRemoveAssignment={(assignmentId) =>
+                        removeAssignmentMutation.mutate({ ticketId: selectedTicket.id, assignmentId })
+                    }
                     onStatusUpdate={() => openStatusModal(selectedTicket)}
                     onAddComment={() => {
                         setSelectedTicket(selectedTicket);
@@ -597,7 +614,11 @@ const TaskManagement = () => {
                         <div className="modal-footer p-5 border-t border-gray-100 bg-white rounded-b-2xl flex items-center justify-end gap-3">
                             <button onClick={() => setShowAssignModal(false)} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 transition-colors">Cancel</button>
                             <button onClick={handleAssign} disabled={assignMutation.isPending} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/30 disabled:opacity-70 disabled:shadow-none transition-all transform hover:scale-[1.02] active:scale-[0.98]">
-                                {assignMutation.isPending ? 'Assigning...' : 'Assign Selected'}
+                                {assignMutation.isPending
+                                    ? 'Saving...'
+                                    : assignForm.assigned_to.length === 0
+                                        ? 'Unassign All'
+                                        : 'Assign Selected'}
                             </button>
                         </div>
                     </div>

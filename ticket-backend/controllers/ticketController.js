@@ -807,7 +807,56 @@ exports.getStudentTickets = async (req, res) => {
 };
 
 /**
- * Assign ticket to RBAC user(s)
+ * Resolve a list of incoming assignee ids to rbac_users ids.
+ * Ids may be rbac_users ids directly, or ticket_employees ids sent by
+ * older clients for standalone workers — those are mapped through
+ * ticket_employees.rbac_user_id.
+ * Returns { resolved: number[], missing: number[] }.
+ */
+const resolveAssigneeIds = async (ids) => {
+    const uniqueIds = [...new Set(ids.map(Number))];
+    const placeholders = uniqueIds.map(() => '?').join(',');
+
+    const [rbacRows] = await masterPool.query(
+        `SELECT id FROM rbac_users WHERE id IN (${placeholders})`,
+        uniqueIds
+    );
+    const rbacIds = new Set(rbacRows.map(r => r.id));
+
+    const resolved = new Set();
+    const unresolvedIds = [];
+    for (const id of uniqueIds) {
+        if (rbacIds.has(id)) {
+            resolved.add(id);
+        } else {
+            unresolvedIds.push(id);
+        }
+    }
+
+    const missing = [];
+    if (unresolvedIds.length > 0) {
+        const empPlaceholders = unresolvedIds.map(() => '?').join(',');
+        const [empRows] = await masterPool.query(
+            `SELECT id, rbac_user_id FROM ticket_employees WHERE id IN (${empPlaceholders}) AND is_active = 1`,
+            unresolvedIds
+        );
+        const empMap = new Map(empRows.map(r => [r.id, r.rbac_user_id]));
+
+        for (const id of unresolvedIds) {
+            const mapped = empMap.get(id);
+            if (mapped) {
+                resolved.add(mapped);
+            } else {
+                missing.push(id);
+            }
+        }
+    }
+
+    return { resolved: [...resolved], missing };
+};
+
+/**
+ * Assign ticket to user(s). An empty assigned_to array unassigns everyone.
  */
 exports.assignTicket = async (req, res) => {
     try {
@@ -815,10 +864,10 @@ exports.assignTicket = async (req, res) => {
         const { assigned_to, notes } = req.body;
         const user = req.user || req.admin;
 
-        if (!assigned_to || !Array.isArray(assigned_to) || assigned_to.length === 0) {
+        if (!Array.isArray(assigned_to)) {
             return res.status(400).json({
                 success: false,
-                message: 'At least one user must be assigned'
+                message: 'assigned_to must be an array of user ids'
             });
         }
 
@@ -831,17 +880,30 @@ exports.assignTicket = async (req, res) => {
             });
         }
 
-        // Verify all assigned users exist
-        const placeholders = assigned_to.map(() => '?').join(',');
-        const [users] = await masterPool.query(
-            `SELECT id FROM rbac_users WHERE id IN (${placeholders})`,
-            assigned_to
-        );
+        // Unassign everyone when the list is empty
+        if (assigned_to.length === 0) {
+            await masterPool.query(
+                'UPDATE ticket_assignments SET is_active = FALSE WHERE ticket_id = ?',
+                [id]
+            );
 
-        if (users.length !== assigned_to.length) {
+            if (tickets[0].status === 'approaching') {
+                await updateTicketStatus(id, 'pending', user.id, 'All assignees removed');
+            }
+
+            return res.json({
+                success: true,
+                message: 'All assignees removed',
+                data: { assignment_ids: [] }
+            });
+        }
+
+        const { resolved, missing } = await resolveAssigneeIds(assigned_to);
+
+        if (missing.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: 'One or more assigned users not found'
+                message: `Assigned user(s) not found: ${missing.join(', ')}`
             });
         }
 
@@ -853,7 +915,7 @@ exports.assignTicket = async (req, res) => {
 
         // Create new assignments
         const assignments = [];
-        for (const userId of assigned_to) {
+        for (const userId of resolved) {
             const [result] = await masterPool.query(
                 `INSERT INTO ticket_assignments (ticket_id, assigned_to, assigned_by, notes)
          VALUES (?, ?, ?, ?)`,
@@ -877,6 +939,58 @@ exports.assignTicket = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error assigning ticket',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Remove a single assignee from a ticket (soft delete of the assignment row)
+ */
+exports.removeAssignment = async (req, res) => {
+    try {
+        const { id, assignmentId } = req.params;
+        const user = req.user || req.admin;
+
+        const [assignments] = await masterPool.query(
+            'SELECT id FROM ticket_assignments WHERE id = ? AND ticket_id = ? AND is_active = TRUE',
+            [assignmentId, id]
+        );
+
+        if (assignments.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Assignment not found'
+            });
+        }
+
+        await masterPool.query(
+            'UPDATE ticket_assignments SET is_active = FALSE WHERE id = ?',
+            [assignmentId]
+        );
+
+        // If nobody is left on the ticket, move it back to pending
+        const [remaining] = await masterPool.query(
+            'SELECT COUNT(*) as count FROM ticket_assignments WHERE ticket_id = ? AND is_active = TRUE',
+            [id]
+        );
+
+        if (remaining[0].count === 0) {
+            const [tickets] = await masterPool.query('SELECT status FROM tickets WHERE id = ?', [id]);
+            if (tickets.length > 0 && tickets[0].status === 'approaching') {
+                await updateTicketStatus(id, 'pending', user.id, 'All assignees removed');
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'Assignee removed successfully'
+        });
+    } catch (error) {
+        console.error('Error removing assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error removing assignment',
             error: error.message
         });
     }

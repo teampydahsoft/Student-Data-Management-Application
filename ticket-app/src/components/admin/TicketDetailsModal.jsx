@@ -30,8 +30,15 @@ const STATUS_LABELS = {
     closed: 'Closed'
 };
 
-const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onStatusUpdate, onAddComment }) => {
+const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onRemoveAssignment, onStatusUpdate, onAddComment }) => {
     if (!ticket) return null;
+
+    const handleRemoveAssignment = (assignment) => {
+        if (!onRemoveAssignment) return;
+        if (window.confirm(`Remove ${assignment.assigned_to_name || 'this person'} from the ticket?`)) {
+            onRemoveAssignment(assignment.id);
+        }
+    };
 
     const requesterName =
         ticket.requester_name ||
@@ -205,11 +212,11 @@ const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onSt
                                             {ticket.assignments.filter(a => (a.assigned_to_role?.toLowerCase() !== 'worker')).length > 0 ? (
                                                 ticket.assignments.filter(a => (a.assigned_to_role?.toLowerCase() !== 'worker')).map((assignment) => (
                                                     <div key={assignment.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', backgroundColor: '#f3e8ff', borderRadius: '0.75rem', border: '1px solid #e9d5ff' }}>
-                                                        <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', backgroundColor: 'white', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.75rem', border: '1px solid #d8b4fe' }}>
-                                                            {assignment.assigned_to_name.charAt(0)}
+                                                        <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', backgroundColor: 'white', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.75rem', border: '1px solid #d8b4fe', flexShrink: 0 }}>
+                                                            {(assignment.assigned_to_name || '?').charAt(0)}
                                                         </div>
-                                                        <div>
-                                                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1f2937' }}>{assignment.assigned_to_name}</p>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1f2937' }}>{assignment.assigned_to_name || 'Unknown user'}</p>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                                 <p style={{ fontSize: '0.625rem', fontWeight: 600, color: '#7e22ce', textTransform: 'uppercase' }}>
                                                                     {assignment.assigned_to_role === 'staff' ? 'Manager' : assignment.assigned_to_role}
@@ -219,6 +226,16 @@ const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onSt
                                                                 </span>
                                                             </div>
                                                         </div>
+                                                        {onRemoveAssignment && (
+                                                            <button
+                                                                onClick={() => handleRemoveAssignment(assignment)}
+                                                                title="Remove assignee"
+                                                                style={{ padding: '0.375rem', backgroundColor: 'white', color: '#dc2626', borderRadius: '50%', border: '1px solid #fecaca', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                                                                className="hover:bg-red-50"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ))
                                             ) : (
@@ -232,11 +249,11 @@ const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onSt
                                             {ticket.assignments.filter(a => (a.assigned_to_role?.toLowerCase() === 'worker')).length > 0 ? (
                                                 ticket.assignments.filter(a => (a.assigned_to_role?.toLowerCase() === 'worker')).map((assignment) => (
                                                     <div key={assignment.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', backgroundColor: '#eff6ff', borderRadius: '0.75rem', border: '1px solid #dbeafe' }}>
-                                                        <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', backgroundColor: 'white', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.75rem', border: '1px solid #bfdbfe' }}>
-                                                            {assignment.assigned_to_name.charAt(0)}
+                                                        <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', backgroundColor: 'white', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.75rem', border: '1px solid #bfdbfe', flexShrink: 0 }}>
+                                                            {(assignment.assigned_to_name || '?').charAt(0)}
                                                         </div>
-                                                        <div>
-                                                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1f2937' }}>{assignment.assigned_to_name}</p>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1f2937' }}>{assignment.assigned_to_name || 'Unknown user'}</p>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                                 <p style={{ fontSize: '0.625rem', fontWeight: 600, color: '#2563eb', textTransform: 'uppercase' }}>Worker</p>
                                                                 <span style={{ fontSize: '0.625rem', color: '#9ca3af' }}>
@@ -244,6 +261,16 @@ const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onSt
                                                                 </span>
                                                             </div>
                                                         </div>
+                                                        {onRemoveAssignment && (
+                                                            <button
+                                                                onClick={() => handleRemoveAssignment(assignment)}
+                                                                title="Remove assignee"
+                                                                style={{ padding: '0.375rem', backgroundColor: 'white', color: '#dc2626', borderRadius: '50%', border: '1px solid #fecaca', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                                                                className="hover:bg-red-50"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ))
                                             ) : (
