@@ -85,6 +85,51 @@ const getSemestersPerYearForCourse = (course, yearOfStudy) => {
   return course.semestersPerYear || 2;
 };
 
+const normalizeName = (value) => String(value || '').trim().toLowerCase();
+
+// Collects optional ("additional") year config from branch metadata.
+// When branchName is provided, only that branch is considered; otherwise all
+// active branches of the course contribute (max additional year wins).
+const getBranchOptionalYearInfo = (course, branchName = null) => {
+  const branches = Array.isArray(course?.branches) ? course.branches : [];
+  const target = branchName && branchName !== BRANCH_ALL ? normalizeName(branchName) : null;
+  const info = { maxAdditionalYear: 0, semestersByYear: {}, branchNamesByYear: {} };
+  branches.forEach((branch) => {
+    if (branch?.isActive === false) return;
+    if (target && normalizeName(branch?.name) !== target) return;
+    const meta = branch?.metadata;
+    if (!meta?.hasAdditionalYear) return;
+    const additionalYear = parseInt(meta.additionalYear, 10);
+    if (!additionalYear || additionalYear < 1) return;
+    info.maxAdditionalYear = Math.max(info.maxAdditionalYear, additionalYear);
+    const semesters = parseInt(meta.additionalYearSemesters, 10) || 2;
+    info.semestersByYear[additionalYear] = Math.max(info.semestersByYear[additionalYear] || 0, semesters);
+    if (!info.branchNamesByYear[additionalYear]) info.branchNamesByYear[additionalYear] = [];
+    if (branch?.name) info.branchNamesByYear[additionalYear].push(branch.name);
+  });
+  return info;
+};
+
+// Returns one entry per year of study, extending past course.totalYears when a
+// branch has an optional year configured.
+const getEffectiveYearRows = (course, branchName = null) => {
+  const baseYears = course?.totalYears || 4;
+  const info = getBranchOptionalYearInfo(course, branchName);
+  const totalYears = Math.max(baseYears, info.maxAdditionalYear);
+  return Array.from({ length: totalYears }, (_, i) => {
+    const year = i + 1;
+    const isOptional = year > baseYears;
+    return {
+      year,
+      isOptional,
+      semesters: isOptional
+        ? (info.semestersByYear[year] || 2)
+        : getSemestersPerYearForCourse(course, year),
+      optionalBranches: isOptional ? (info.branchNamesByYear[year] || []) : []
+    };
+  });
+};
+
 const matchesAcademicYearLabel = (candidateLabel, selectedLabel) => {
   const candidate = String(candidateLabel || '').trim();
   const selected = String(selectedLabel || '').trim();
@@ -185,13 +230,13 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
       const collegeName = college?.name || 'All Colleges';
       const collegeId = course.collegeId || null;
 
-      allBatches.forEach((batch) => {
-        const totalYears = course.totalYears || 4;
-        for (let yearOfStudy = 1; yearOfStudy <= totalYears; yearOfStudy += 1) {
-          const session = deriveAcademicYearLabel(batch, yearOfStudy);
-          if (!matchesAcademicYearLabel(session, selectedAcademicYear)) continue;
+      const yearRows = getEffectiveYearRows(course);
 
-          const semesterCount = getSemestersPerYearForCourse(course, yearOfStudy);
+      allBatches.forEach((batch) => {
+        yearRows.forEach(({ year: yearOfStudy, isOptional, semesters: semesterCount, optionalBranches }) => {
+          const session = deriveAcademicYearLabel(batch, yearOfStudy);
+          if (!matchesAcademicYearLabel(session, selectedAcademicYear)) return;
+
           for (let semesterNumber = 1; semesterNumber <= semesterCount; semesterNumber += 1) {
             const existing = semesters.find((semester) => {
               const semesterBatch = semester.batch || semester.batchLabel || getBatchLabel(semester);
@@ -222,12 +267,14 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
               yearSemLabel: `${yearOfStudy}-${semesterNumber}`,
               yearOfStudy,
               semesterNumber,
+              isOptionalYear: isOptional,
+              optionalBranches,
               startDate: existing?.startDate || null,
               endDate: existing?.endDate || null,
               status: isConfigured ? 'Configured' : 'Pending'
             });
           }
-        }
+        });
       });
     });
 
@@ -301,11 +348,10 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
     semesters.forEach((s) => addOption(s.academicYearId, s.academicYearLabel));
     allBatches.forEach((batch) => {
       courses.forEach((course) => {
-        const totalYears = course.totalYears || 4;
-        for (let yearOfStudy = 1; yearOfStudy <= totalYears; yearOfStudy += 1) {
+        getEffectiveYearRows(course).forEach(({ year: yearOfStudy }) => {
           const session = deriveAcademicYearLabel(batch, yearOfStudy);
           if (session) addOption(null, session);
-        }
+        });
       });
     });
     return options.sort((a, b) => b.label.localeCompare(a.label));
@@ -399,20 +445,14 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
     [courses, selectedCourseId]
   );
 
-  const getSemestersPerYear = useCallback(
-    (course, yearOfStudy) => getSemestersPerYearForCourse(course, yearOfStudy),
-    []
-  );
-
   const flatSemesterRows = useMemo(() => {
     if (!selectedCourse || !selectedBatch) return [];
 
     const collegeId = selectedCollegeId ? parseInt(selectedCollegeId, 10) : null;
-    const years = Array.from({ length: selectedCourse.totalYears || 4 }, (_, i) => i + 1);
+    const yearRows = getEffectiveYearRows(selectedCourse, selectedBranch);
     const rows = [];
 
-    years.forEach((yearOfStudy) => {
-      const semesterCount = getSemestersPerYear(selectedCourse, yearOfStudy);
+    yearRows.forEach(({ year: yearOfStudy, isOptional, semesters: semesterCount, optionalBranches }) => {
       Array.from({ length: semesterCount }, (_, i) => i + 1).forEach((semesterNumber) => {
         const existing = semesters.find((s) => {
           const batch = getBatchLabel(s);
@@ -436,6 +476,8 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
           semesterNumber,
           label: `${yearOfStudy}-${semesterNumber}`,
           academicYearLabel: deriveAcademicYearLabel(selectedBatch, yearOfStudy),
+          isOptionalYear: isOptional,
+          optionalBranches,
           existing,
           startDate: draft?.startDate ?? toDateInput(existing?.startDate) ?? '',
           endDate: draft?.endDate ?? toDateInput(existing?.endDate) ?? '',
@@ -451,8 +493,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
     selectedCollegeId,
     selectedBranch,
     semesters,
-    semesterDrafts,
-    getSemestersPerYear
+    semesterDrafts
   ]);
 
   const resetConfigureSelections = () => {
@@ -596,7 +637,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
         row.batch,
         row.collegeName,
         row.courseName,
-        row.yearSemLabel,
+        row.isOptionalYear ? `${row.yearSemLabel} (Optional)` : row.yearSemLabel,
         row.startDate ? formatDate(row.startDate) : '',
         row.endDate ? formatDate(row.endDate) : '',
         row.status
@@ -916,9 +957,23 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
                         className={row.existing ? 'bg-emerald-50/30' : 'bg-white hover:bg-gray-50'}
                       >
                         <td className="px-3 py-2">
-                          <span className="inline-flex min-w-[40px] items-center justify-center rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                            {row.label}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex min-w-[40px] items-center justify-center rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                              {row.label}
+                            </span>
+                            {row.isOptionalYear && (
+                              <span
+                                title={
+                                  row.optionalBranches?.length
+                                    ? `Optional year for: ${row.optionalBranches.join(', ')}`
+                                    : 'Optional year'
+                                }
+                                className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700"
+                              >
+                                Optional Year
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">
                           {row.academicYearLabel}
@@ -1165,9 +1220,23 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
                               <td className="px-3 py-2 text-xs text-gray-700">{row.collegeName || '-'}</td>
                               <td className="px-3 py-2 text-xs text-gray-700">{row.courseName}</td>
                               <td className="px-3 py-2">
-                                <span className="inline-flex rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                                  {row.yearSemLabel}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-flex rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                                    {row.yearSemLabel}
+                                  </span>
+                                  {row.isOptionalYear && (
+                                    <span
+                                      title={
+                                        row.optionalBranches?.length
+                                          ? `Optional year for: ${row.optionalBranches.join(', ')}`
+                                          : 'Optional year'
+                                      }
+                                      className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700"
+                                    >
+                                      Optional
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2">
                                 {isEditing ? (
