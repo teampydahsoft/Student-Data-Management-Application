@@ -175,6 +175,94 @@ function filterCoursesByScope(courses, userScope) {
 }
 
 /**
+ * Build SQL scope clause for semester rows (uses college_id / course_id / year_of_study).
+ * Returns { sql, params } where sql starts with " AND ..." or is empty.
+ */
+function buildSemesterScopeSql(userScope, alias = 's') {
+  if (!userScope || userScope.unrestricted) {
+    return { sql: '', params: [] };
+  }
+
+  const conditions = [];
+  const params = [];
+
+  const collegeIds = (userScope.collegeIds || [])
+    .map((id) => Number(id))
+    .filter((id) => !Number.isNaN(id));
+
+  if (collegeIds.length === 0) {
+    conditions.push('1=0');
+  } else {
+    const placeholders = collegeIds.map(() => '?').join(',');
+    // Include college-null rows only when they also match course scope below
+    conditions.push(`(${alias}.college_id IS NULL OR ${alias}.college_id IN (${placeholders}))`);
+    params.push(...collegeIds);
+  }
+
+  if (!userScope.allCourses) {
+    const courseIds = (userScope.courseIds || [])
+      .map((id) => Number(id))
+      .filter((id) => !Number.isNaN(id));
+    if (courseIds.length === 0) {
+      conditions.push('1=0');
+    } else {
+      const placeholders = courseIds.map(() => '?').join(',');
+      conditions.push(`${alias}.course_id IN (${placeholders})`);
+      params.push(...courseIds);
+    }
+  }
+
+  if (userScope.hodYears && userScope.hodYears.length > 0) {
+    const years = userScope.hodYears
+      .map((y) => Number(y))
+      .filter((y) => !Number.isNaN(y));
+    if (years.length > 0) {
+      const placeholders = years.map(() => '?').join(',');
+      conditions.push(`${alias}.year_of_study IN (${placeholders})`);
+      params.push(...years);
+    }
+  }
+
+  return {
+    sql: conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '',
+    params
+  };
+}
+
+/**
+ * Whether the user may access a semester college/course/year combination by IDs.
+ * collegeId null (all colleges) is only allowed for unrestricted users.
+ */
+function canAccessSemesterScope(userScope, { collegeId, courseId, yearOfStudy } = {}) {
+  if (!userScope || userScope.unrestricted) return true;
+
+  if (collegeId == null || collegeId === '' || collegeId === 'null') {
+    return false;
+  }
+
+  const collegeIds = (userScope.collegeIds || []).map(Number);
+  if (!collegeIds.includes(Number(collegeId))) {
+    return false;
+  }
+
+  if (!userScope.allCourses) {
+    const courseIds = (userScope.courseIds || []).map(Number);
+    if (!courseIds.includes(Number(courseId))) {
+      return false;
+    }
+  }
+
+  if (userScope.hodYears && userScope.hodYears.length > 0 && yearOfStudy != null) {
+    const years = userScope.hodYears.map(Number);
+    if (!years.includes(Number(yearOfStudy))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Filter branches list based on user scope
  * Matches branches by both ID and name to handle branches created for different academic years
  * If a user has access to a branch by name, they should see all instances of that branch
@@ -220,6 +308,8 @@ module.exports = {
   canAccessCollege,
   canAccessCourse,
   canAccessBranch,
+  canAccessSemesterScope,
+  buildSemesterScopeSql,
   filterCollegesByScope,
   filterCoursesByScope,
   filterBranchesByScope

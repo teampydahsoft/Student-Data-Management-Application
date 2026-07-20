@@ -1831,6 +1831,40 @@ const Settings = () => {
     return hasPermission(user?.permissions, BACKEND_MODULES.SETTINGS, `edit_${section}`);
   };
 
+  // Prefer the first settings section the user is allowed to view (RBAC)
+  useEffect(() => {
+    const sectionPermissionMap = [
+      { section: 'courses', permission: 'courses' },
+      { section: 'calendar', permission: 'calendar' },
+      { section: 'academic-calendar', permission: 'academic_calendar' },
+      { section: 'forms', permission: 'forms' },
+      { section: 'quotas', permission: 'quotas' },
+      { section: 'notifications', permission: 'notifications' },
+      { section: 'college-transfer', permission: 'college_transfer' },
+      { section: 'student-layout', permission: 'student_layout' },
+      { section: 'qr-config', permission: 'qr_config' },
+      { section: 'rtf-amount', permission: 'rtf_amount' },
+      { section: 'freeze-database', permission: 'freeze_database' },
+      { section: 'campus', permission: null, adminOnly: true }
+    ];
+
+    const isSectionAllowed = ({ permission, adminOnly }) => {
+      if (adminOnly) return isAdmin;
+      if (permission === 'rtf_amount' || permission === 'freeze_database') {
+        return isAdmin || canView(permission);
+      }
+      return canView(permission);
+    };
+
+    const currentEntry = sectionPermissionMap.find(({ section }) => section === activeSection);
+    if (currentEntry && isSectionAllowed(currentEntry)) return;
+
+    const firstAllowed = sectionPermissionMap.find(isSectionAllowed);
+    if (firstAllowed) {
+      setActiveSection(firstAllowed.section);
+    }
+  }, [user, isAdmin, activeSection]);
+
   // Fetch colleges from API
   const fetchColleges = async ({ silent = false } = {}) => {
     try {
@@ -4607,7 +4641,7 @@ const Settings = () => {
         )}
 
         {/* Academic Calendar Section */}
-        {activeSection === 'academic-calendar' && (
+        {activeSection === 'academic-calendar' && canView('academic_calendar') && (
           <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
             <AcademicCalendar
               colleges={colleges}

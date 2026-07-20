@@ -300,6 +300,7 @@ const Attendance = () => {
   const [dayEndReportMode, setDayEndReportMode] = useState('day-end'); // day-end | previous-pending
   const [dayEndReportLoading, setDayEndReportLoading] = useState(false);
   const [overallAttendanceLoading, setOverallAttendanceLoading] = useState(false);
+  const [dayEndDownloading, setDayEndDownloading] = useState(false);
   const [dayEndReportData, setDayEndReportData] = useState(null);
   const [dayEndGrouped, setDayEndGrouped] = useState([]);
   const [dayEndPreviewFilter, setDayEndPreviewFilter] = useState('all'); // all | marked | unmarked
@@ -1374,6 +1375,17 @@ const Attendance = () => {
   };
 
   const handleDayEndDownload = async (format = 'xlsx') => {
+    // Only allow download after the abstract/report rows have fully loaded
+    if (dayEndReportLoading || overallAttendanceLoading || dayEndDownloading) {
+      toast.error('Please wait for the report data to finish loading');
+      return;
+    }
+    if (!Array.isArray(dayEndGrouped) || dayEndGrouped.length === 0) {
+      toast.error('Report data is not loaded yet. Please open the report again.');
+      return;
+    }
+
+    setDayEndDownloading(true);
     try {
       const reportDate = dayEndReportData?.date || attendanceDate;
       const params = new URLSearchParams();
@@ -1417,6 +1429,8 @@ const Attendance = () => {
     } catch (error) {
       console.error('Download report error:', error);
       toast.error(error.response?.data?.message || 'Unable to download report');
+    } finally {
+      setDayEndDownloading(false);
     }
   };
 
@@ -3816,16 +3830,20 @@ const Attendance = () => {
               <div className="flex items-center gap-4 w-full sm:w-auto">
                 <button
                   onClick={() => handleDayEndDownload('xlsx')}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95"
+                  disabled={dayEndDownloading || dayEndReportLoading || overallAttendanceLoading || !dayEndGrouped.length}
+                  title={!dayEndGrouped.length ? 'Wait for report data to load' : dayEndDownloading ? 'Download in progress' : 'Download Excel'}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
-                  <Download size={18} />
+                  {dayEndDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
                   Excel
                 </button>
                 <button
                   onClick={() => handleDayEndDownload('pdf')}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95"
+                  disabled={dayEndDownloading || dayEndReportLoading || overallAttendanceLoading || !dayEndGrouped.length}
+                  title={!dayEndGrouped.length ? 'Wait for report data to load' : dayEndDownloading ? 'Download in progress' : 'Download PDF'}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold transition-all text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
-                  <FileText size={18} />
+                  {dayEndDownloading ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
                   PDF
                 </button>
               </div>

@@ -223,7 +223,18 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
     if (!selectedAcademicYear) return [];
 
     const rows = [];
-    const activeCourses = courses.filter((course) => course.isActive !== false);
+    // RBAC: only include programs whose college is in the scoped colleges list from Settings
+    const scopedCollegeIds = new Set(
+      (colleges || [])
+        .map((college) => Number(college.id))
+        .filter((id) => !Number.isNaN(id))
+    );
+    const activeCourses = (courses || []).filter((course) => {
+      if (course.isActive === false) return false;
+      if (scopedCollegeIds.size === 0) return false;
+      if (course.collegeId == null) return false;
+      return scopedCollegeIds.has(Number(course.collegeId));
+    });
 
     activeCourses.forEach((course) => {
       const college = colleges.find((c) => c.id === course.collegeId);

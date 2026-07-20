@@ -1,9 +1,10 @@
 const { masterPool } = require('../config/database');
 const { logAudit } = require('../services/auditLogService');
+const { buildSemesterScopeSql, canAccessSemesterScope } = require('../utils/scoping');
 
 /**
  * GET /api/semesters
- * Get all semesters with optional filters
+ * Get all semesters with optional filters (scoped by user college/course access)
  */
 exports.getSemesters = async (req, res) => {
   try {
@@ -60,6 +61,10 @@ exports.getSemesters = async (req, res) => {
       query += ' AND s.batch = ?';
       params.push(String(batch).trim());
     }
+
+    const { sql: scopeSql, params: scopeParams } = buildSemesterScopeSql(req.userScope, 's');
+    query += scopeSql;
+    params.push(...scopeParams);
     
     query += ' ORDER BY s.start_date DESC, s.course_id, s.year_of_study, s.semester_number';
     
@@ -163,6 +168,18 @@ exports.getSemester = async (req, res) => {
     }
     
     const row = rows[0];
+
+    if (!canAccessSemesterScope(req.userScope, {
+      collegeId: row.college_id,
+      courseId: row.course_id,
+      yearOfStudy: row.year_of_study
+    })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Semester is outside your college/program scope.'
+      });
+    }
+
     res.json({
       success: true,
       data: {
@@ -257,6 +274,17 @@ exports.createSemester = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'End date must be after start date'
+      });
+    }
+
+    if (!canAccessSemesterScope(req.userScope, {
+      collegeId: collegeId || null,
+      courseId,
+      yearOfStudy
+    })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only configure academic calendar within your assigned college/program scope.'
       });
     }
     
@@ -393,7 +421,7 @@ exports.updateSemester = async (req, res) => {
 
     // Check if semester exists
     const [existing] = await masterPool.query(
-      'SELECT id FROM semesters WHERE id = ?',
+      'SELECT id, college_id, course_id, year_of_study FROM semesters WHERE id = ?',
       [semesterId]
     );
     
@@ -401,6 +429,26 @@ exports.updateSemester = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Semester not found'
+      });
+    }
+
+    const existingRow = existing[0];
+    const targetCollegeId = collegeId !== undefined ? (collegeId || null) : existingRow.college_id;
+    const targetCourseId = courseId !== undefined ? courseId : existingRow.course_id;
+    const targetYearOfStudy = yearOfStudy !== undefined ? yearOfStudy : existingRow.year_of_study;
+
+    if (!canAccessSemesterScope(req.userScope, {
+      collegeId: existingRow.college_id,
+      courseId: existingRow.course_id,
+      yearOfStudy: existingRow.year_of_study
+    }) || !canAccessSemesterScope(req.userScope, {
+      collegeId: targetCollegeId,
+      courseId: targetCourseId,
+      yearOfStudy: targetYearOfStudy
+    })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update academic calendar within your assigned college/program scope.'
       });
     }
     
@@ -561,7 +609,7 @@ exports.deleteSemester = async (req, res) => {
     
     // Check if semester exists
     const [existing] = await masterPool.query(
-      'SELECT id FROM semesters WHERE id = ?',
+      'SELECT id, college_id, course_id, year_of_study FROM semesters WHERE id = ?',
       [semesterId]
     );
     
@@ -569,6 +617,18 @@ exports.deleteSemester = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Semester not found'
+      });
+    }
+
+    const existingRow = existing[0];
+    if (!canAccessSemesterScope(req.userScope, {
+      collegeId: existingRow.college_id,
+      courseId: existingRow.course_id,
+      yearOfStudy: existingRow.year_of_study
+    })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only delete academic calendar rows within your assigned college/program scope.'
       });
     }
     

@@ -6155,6 +6155,7 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
     }
 
     const { sql: semesterSql, params: semesterParams } = getSemesterCalendarVisibilityClause(attendanceDate);
+    const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
 
     // Get grouped summary data (aggregated daily + internship)
     const [groupedRows] = await masterPool.query(
@@ -6188,11 +6189,11 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
         LEFT JOIN attendance_records ar 
           ON s.id = ar.student_id 
           AND ar.attendance_date = ?
-        WHERE 1=1${countFilter.clause}${exclusionClause}${semesterSql}${scopeCondition}
+        WHERE 1=1${countFilter.clause}${exclusionClause}${joinDateSql}${semesterSql}${scopeCondition}
         GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
         ORDER BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester
       `,
-      [attendanceDate, attendanceDate, attendanceDate, attendanceDate, ...countFilter.params, ...exclusionParams, ...semesterParams, ...scopeParams]
+      [attendanceDate, attendanceDate, attendanceDate, attendanceDate, ...countFilter.params, ...exclusionParams, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
 
     const allGroupedDataBase = groupedRows.map((row) => {

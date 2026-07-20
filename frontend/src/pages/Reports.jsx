@@ -207,6 +207,8 @@ const Reports = () => {
   const [coursesWithLevels, setCoursesWithLevels] = useState([]); // Store courses with level info
   const [collegesList, setCollegesList] = useState([]); // Store colleges with IDs for matching
   const [sendingReports, setSendingReports] = useState(false);
+  const [dayEndDownloading, setDayEndDownloading] = useState(false);
+  const [attendanceDownloading, setAttendanceDownloading] = useState(false);
   const dayEndStatsRef = useRef(null);
   const [statsSectionHeight, setStatsSectionHeight] = useState(180);
   const [dayEndDate, setDayEndDate] = useState(formatDateToLocalISO(new Date()));
@@ -904,6 +906,16 @@ const Reports = () => {
   };
 
   const handleDayEndDownload = async (format = 'xlsx') => {
+    if (dayEndReportLoading || dayEndDownloading) {
+      toast.error('Please wait for the report data to finish loading');
+      return;
+    }
+    if (!Array.isArray(dayEndGrouped) || dayEndGrouped.length === 0) {
+      toast.error('Report data is not loaded yet. Please refresh the report first.');
+      return;
+    }
+
+    setDayEndDownloading(true);
     try {
       const params = new URLSearchParams();
       params.append('date', dayEndDate);
@@ -939,6 +951,8 @@ const Reports = () => {
     } catch (error) {
       console.error('Download report error:', error);
       toast.error(error.response?.data?.message || 'Unable to download report');
+    } finally {
+      setDayEndDownloading(false);
     }
   };
 
@@ -1000,11 +1014,16 @@ const Reports = () => {
 
   // Download attendance report as PDF
   const downloadAttendancePDF = async () => {
+    if (attendanceLoading || attendanceDownloading) {
+      toast.error('Please wait for the report data to finish loading');
+      return;
+    }
     if (!attendanceReportData) {
       toast.error('Please generate the report first');
       return;
     }
 
+    setAttendanceDownloading(true);
     try {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF('landscape', 'mm', 'a4');
@@ -1064,16 +1083,23 @@ const Reports = () => {
     } catch (error) {
       console.error('Failed to generate PDF:', error);
       toast.error('Failed to generate PDF');
+    } finally {
+      setAttendanceDownloading(false);
     }
   };
 
   // Download attendance report as Excel
   const downloadAttendanceExcel = async () => {
+    if (attendanceLoading || attendanceDownloading) {
+      toast.error('Please wait for the report data to finish loading');
+      return;
+    }
     if (!attendanceReportData) {
       toast.error('Please generate the report first');
       return;
     }
 
+    setAttendanceDownloading(true);
     try {
       const params = new URLSearchParams();
       params.append('fromDate', attendanceReportData.fromDate);
@@ -1104,11 +1130,17 @@ const Reports = () => {
     } catch (error) {
       console.error('Failed to download Excel:', error);
       toast.error(error.response?.data?.message || 'Failed to download Excel file');
+    } finally {
+      setAttendanceDownloading(false);
     }
   };
 
   // Download attendance abstract as Excel
   const downloadAbstractExcel = async () => {
+    if (attendanceAbstractLoading || attendanceDownloading) {
+      toast.error('Please wait for the abstract data to finish loading');
+      return;
+    }
     if (!attendanceAbstractData || attendanceAbstractData.length === 0) {
       toast.error('Please generate the abstract report first');
       return;
@@ -1119,6 +1151,7 @@ const Reports = () => {
       return;
     }
 
+    setAttendanceDownloading(true);
     try {
       const params = new URLSearchParams();
       params.append('fromDate', attendanceDateRange.fromDate);
@@ -1150,11 +1183,17 @@ const Reports = () => {
     } catch (error) {
       console.error('Failed to download Excel:', error);
       toast.error(error.response?.data?.message || 'Failed to download Excel file');
+    } finally {
+      setAttendanceDownloading(false);
     }
   };
 
   // Download attendance abstract as PDF
   const downloadAbstractPDF = async () => {
+    if (attendanceAbstractLoading || attendanceDownloading) {
+      toast.error('Please wait for the abstract data to finish loading');
+      return;
+    }
     if (!attendanceAbstractData || attendanceAbstractData.length === 0) {
       toast.error('Please generate the abstract report first');
       return;
@@ -1165,6 +1204,7 @@ const Reports = () => {
       return;
     }
 
+    setAttendanceDownloading(true);
     try {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF('landscape', 'mm', 'a4');
@@ -1315,6 +1355,8 @@ const Reports = () => {
     } catch (error) {
       console.error('Failed to generate PDF:', error);
       toast.error('Failed to generate PDF');
+    } finally {
+      setAttendanceDownloading(false);
     }
   };
 
@@ -1822,9 +1864,21 @@ const Reports = () => {
               </button>
               <button
                 onClick={() => setDownloadModalOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors"
+                disabled={abstractLoading || (activeTab === 'abstract' && abstractData.length === 0)}
+                title={
+                  abstractLoading
+                    ? 'Wait for abstract data to finish loading'
+                    : activeTab === 'abstract' && abstractData.length === 0
+                      ? 'No abstract data available to download'
+                      : 'Download report'
+                }
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
-                <Download size={16} />
+                {abstractLoading ? (
+                  <span className="h-4 w-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Download size={16} />
+                )}
                 Download
               </button>
             </>
@@ -2641,7 +2695,9 @@ const Reports = () => {
                       <label className="block text-xs font-medium text-gray-700 mb-1">&nbsp;</label>
                       <button
                         onClick={downloadAttendancePDF}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-red-500 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors"
+                        disabled={attendanceLoading || attendanceDownloading}
+                        title={attendanceLoading ? 'Wait for report data to finish loading' : 'Download PDF'}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-red-500 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Download size={16} />
                         PDF
@@ -2651,7 +2707,9 @@ const Reports = () => {
                       <label className="block text-xs font-medium text-gray-700 mb-1">&nbsp;</label>
                       <button
                         onClick={downloadAttendanceExcel}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors"
+                        disabled={attendanceLoading || attendanceDownloading}
+                        title={attendanceLoading ? 'Wait for report data to finish loading' : 'Download Excel'}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Download size={16} />
                         Excel
@@ -2666,7 +2724,9 @@ const Reports = () => {
                       <label className="block text-xs font-medium text-gray-700 mb-1">&nbsp;</label>
                       <button
                         onClick={downloadAbstractPDF}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-red-500 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors"
+                        disabled={attendanceAbstractLoading || attendanceDownloading}
+                        title={attendanceAbstractLoading ? 'Wait for abstract data to finish loading' : 'Download PDF'}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-red-500 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Download size={16} />
                         PDF
@@ -2676,7 +2736,9 @@ const Reports = () => {
                       <label className="block text-xs font-medium text-gray-700 mb-1">&nbsp;</label>
                       <button
                         onClick={downloadAbstractExcel}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors"
+                        disabled={attendanceAbstractLoading || attendanceDownloading}
+                        title={attendanceAbstractLoading ? 'Wait for abstract data to finish loading' : 'Download Excel'}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-green-500 text-green-600 hover:bg-green-50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Download size={16} />
                         Excel
@@ -3679,16 +3741,20 @@ const Reports = () => {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleDayEndDownload('pdf')}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
+                        disabled={dayEndReportLoading || dayEndDownloading || !dayEndGrouped.length}
+                        title={!dayEndGrouped.length ? 'Wait for report data to load' : 'Download PDF'}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Download size={14} />
+                        {dayEndDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                         PDF
                       </button>
                       <button
                         onClick={() => handleDayEndDownload('xlsx')}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold"
+                        disabled={dayEndReportLoading || dayEndDownloading || !dayEndGrouped.length}
+                        title={!dayEndGrouped.length ? 'Wait for report data to load' : 'Download Excel'}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Download size={14} />
+                        {dayEndDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                         Excel
                       </button>
                     </div>

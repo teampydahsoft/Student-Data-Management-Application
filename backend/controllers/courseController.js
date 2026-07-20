@@ -412,9 +412,18 @@ exports.getCourses = async (req, res) => {
       collegeId: Number.isNaN(collegeId) ? null : collegeId
     });
 
-    // Apply user scope filtering for courses
-    if (req.userScope && !req.userScope.unrestricted && !req.userScope.allCourses) {
-      courses = filterCoursesByScope(courses, req.userScope);
+    // Apply user scope filtering for colleges first, then courses
+    if (req.userScope && !req.userScope.unrestricted) {
+      if (req.userScope.collegeIds && req.userScope.collegeIds.length > 0) {
+        const scopedCollegeIds = new Set(req.userScope.collegeIds.map(Number));
+        courses = courses.filter((course) => scopedCollegeIds.has(Number(course.collegeId)));
+      } else {
+        courses = [];
+      }
+
+      if (!req.userScope.allCourses) {
+        courses = filterCoursesByScope(courses, req.userScope);
+      }
     }
 
     // Apply user scope filtering for branches within each course

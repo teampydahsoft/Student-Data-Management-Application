@@ -8,28 +8,15 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
     const [previewData, setPreviewData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const [previewReady, setPreviewReady] = useState(false);
 
-    useEffect(() => {
-        if (isOpen) {
-            setLocalFilters(initialFilters);
-            setPreviewData([]);
-        }
-    }, [isOpen, initialFilters]);
-
-    // Handle local filter changes
-    const handleFilterChange = (field, value) => {
-        setLocalFilters(prev => ({
-            ...prev,
-            [field]: value
-        }));
-    };
-
-    const handlePreview = async () => {
+    const loadPreview = async (filtersToUse, { silent = false } = {}) => {
         setLoading(true);
+        setPreviewReady(false);
         try {
             const params = new URLSearchParams();
             // Add all active filters (backend expects filter_scholarship_status for scholarship)
-            Object.entries(localFilters).forEach(([key, value]) => {
+            Object.entries(filtersToUse || {}).forEach(([key, value]) => {
                 if (value) {
                     if (key === 'scholarshipStatus') params.append('filter_scholarship_status', value);
                     else if (key === 'academicYear') params.append('filter_academic_year', value);
@@ -42,19 +29,59 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
             const response = await api.get(`/students/reports/registration/abstract?${params.toString()}`);
             if (response.data?.success) {
                 setPreviewData(response.data.data || []);
-                toast.success('Preview loaded successfully');
+                setPreviewReady(true);
+                if (!silent) {
+                    toast.success('Preview loaded successfully');
+                }
             } else {
                 throw new Error(response.data?.message || 'Failed to load preview');
             }
         } catch (error) {
             console.error('Preview error:', error);
+            setPreviewData([]);
+            setPreviewReady(false);
             toast.error('Failed to load preview data');
         } finally {
             setLoading(false);
         }
     };
 
+    useEffect(() => {
+        if (isOpen) {
+            setLocalFilters(initialFilters);
+            setPreviewData([]);
+            setPreviewReady(false);
+            // Auto-load abstract so download stays disabled until data is ready
+            loadPreview(initialFilters, { silent: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when modal opens with current filters
+    }, [isOpen, initialFilters]);
+
+    // Handle local filter changes
+    const handleFilterChange = (field, value) => {
+        setLocalFilters(prev => ({
+            ...prev,
+            [field]: value
+        }));
+        // Invalidate previous preview so download cannot use stale abstract data
+        setPreviewReady(false);
+        setPreviewData([]);
+    };
+
+    const handlePreview = async () => {
+        await loadPreview(localFilters);
+    };
+
     const handleDownload = async (format) => {
+        if (loading || !previewReady) {
+            toast.error('Please wait for the abstract data to finish loading');
+            return;
+        }
+        if (previewData.length === 0) {
+            toast.error('No abstract data available to download');
+            return;
+        }
+
         setDownloading(true);
         try {
             const params = new URLSearchParams();
@@ -99,6 +126,8 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
 
     if (!isOpen) return null;
 
+    const canDownload = previewReady && previewData.length > 0 && !loading && !downloading;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -106,7 +135,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                     <div>
                         <h2 className="text-lg font-bold text-gray-900">Download Registration Report</h2>
-                        <p className="text-sm text-gray-500">Select filters and format to download (Abstract Summary)</p>
+                        <p className="text-sm text-gray-500">Download enables only after abstract data has loaded completely</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600">
                         <X size={20} />
@@ -212,16 +241,22 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                             <button
                                 onClick={handlePreview}
                                 disabled={loading}
-                                className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors border border-blue-200"
+                                className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors border border-blue-200 disabled:opacity-60"
                             >
                                 {loading ? <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Search size={16} />}
-                                Generate Preview (Abstract)
+                                {loading ? 'Loading abstract...' : 'Generate Preview (Abstract)'}
                             </button>
                         </div>
                     </div>
 
                     {/* Preview Table */}
-                    {previewData.length > 0 ? (
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                            <div className="animate-spin h-8 w-8 border-2 border-blue-600 border-t-transparent rounded-full mb-3" />
+                            <p className="text-gray-600 font-medium">Loading abstract data...</p>
+                            <p className="text-gray-400 text-sm mt-1">Download unlocks once all branch data is ready</p>
+                        </div>
+                    ) : previewData.length > 0 ? (
                         <div className="border border-gray-200 rounded-xl overflow-hidden">
                             <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
                                 <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">Preview (First 5 records)</h3>
@@ -287,8 +322,14 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                             <div className="bg-white p-3 rounded-full border border-gray-100 shadow-sm mb-3">
                                 <Search className="text-gray-400" size={24} />
                             </div>
-                            <p className="text-gray-500 font-medium">No preview data generated</p>
-                            <p className="text-gray-400 text-sm mt-1">Select filters and click "Generate Preview" to see data</p>
+                            <p className="text-gray-500 font-medium">
+                                {previewReady ? 'No summary data found matching current filters' : 'No preview data generated'}
+                            </p>
+                            <p className="text-gray-400 text-sm mt-1">
+                                {previewReady
+                                    ? 'Adjust filters and generate preview again'
+                                    : 'Select filters and click "Generate Preview" to load abstract data'}
+                            </p>
                         </div>
                     )}
                 </div>
@@ -297,12 +338,16 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                 <div className="p-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-4">
                     <div className="text-xs text-gray-500 flex items-center gap-2">
                         <AlertCircle size={14} className="text-blue-500" />
-                        <span>Export will include all records matching selected filters</span>
+                        <span>
+                            {loading
+                                ? 'Waiting for abstract data to load completely...'
+                                : 'Export will include all records matching selected filters'}
+                        </span>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => handleDownload('excel')}
-                            disabled={downloading || previewData.length === 0}
+                            disabled={!canDownload}
                             className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm font-medium"
                         >
                             <FileSpreadsheet size={18} />
@@ -310,7 +355,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                         </button>
                         <button
                             onClick={() => handleDownload('pdf')}
-                            disabled={downloading || previewData.length === 0}
+                            disabled={!canDownload}
                             className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm font-medium"
                         >
                             <FileText size={18} />
