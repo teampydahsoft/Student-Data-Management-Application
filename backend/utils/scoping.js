@@ -231,17 +231,25 @@ function buildSemesterScopeSql(userScope, alias = 's') {
 
 /**
  * Whether the user may access a semester college/course/year combination by IDs.
- * collegeId null (all colleges) is only allowed for unrestricted users.
+ * Aligns with buildSemesterScopeSql: college_id NULL (shared / all-colleges rows)
+ * is allowed for scoped users who have at least one college, as long as course/year match.
  */
 function canAccessSemesterScope(userScope, { collegeId, courseId, yearOfStudy } = {}) {
   if (!userScope || userScope.unrestricted) return true;
 
-  if (collegeId == null || collegeId === '' || collegeId === 'null') {
+  const collegeIds = (userScope.collegeIds || [])
+    .map(Number)
+    .filter((id) => !Number.isNaN(id));
+
+  if (collegeIds.length === 0) {
     return false;
   }
 
-  const collegeIds = (userScope.collegeIds || []).map(Number);
-  if (!collegeIds.includes(Number(collegeId))) {
+  const isNullCollege =
+    collegeId == null || collegeId === '' || collegeId === 'null';
+
+  // Shared null-college rows are visible in list scope; allow the same on write.
+  if (!isNullCollege && !collegeIds.includes(Number(collegeId))) {
     return false;
   }
 
