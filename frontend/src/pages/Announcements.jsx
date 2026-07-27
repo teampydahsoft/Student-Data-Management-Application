@@ -127,21 +127,43 @@ const Announcements = () => {
         setIsCreateModalOpen(true);
     };
 
+    // Keep variable_mappings length in sync with {#var#} placeholders in content
+    const syncVariableMappings = (content, existingMappings = []) => {
+        const varCount = (content.match(/\{#var#\}/g) || []).length;
+        const mappings = Array.isArray(existingMappings) ? [...existingMappings] : [];
+        while (mappings.length < varCount) {
+            mappings.push({ type: 'static', value: '' });
+        }
+        return mappings.slice(0, varCount);
+    };
+
     const openTemplateModal = (template = null) => {
         if (template) {
             setEditId(template.id);
+            const existingMappings = typeof template.variable_mappings === 'string'
+                ? JSON.parse(template.variable_mappings)
+                : (template.variable_mappings || []);
+            const content = template.content || '';
             setFormData({
                 ...initialFormState,
                 template_name: template.name,
                 template_id: template.template_id,
-                template_content: template.content,
-                variable_mappings: typeof template.variable_mappings === 'string' ? JSON.parse(template.variable_mappings) : (template.variable_mappings || [])
+                template_content: content,
+                variable_mappings: syncVariableMappings(content, existingMappings)
             });
         } else {
             setEditId(null);
             setFormData(initialFormState);
         }
         setIsTemplateModalOpen(true);
+    };
+
+    const handleTemplateContentChange = (content) => {
+        setFormData(prev => ({
+            ...prev,
+            template_content: content,
+            variable_mappings: syncVariableMappings(content, prev.variable_mappings)
+        }));
     };
 
     const openEditModal = (item, type) => {
@@ -193,9 +215,10 @@ const Announcements = () => {
         setFormData(initialFormState);
     };
 
-    // Fetch audience count when targets change
+    // Fetch audience count when targets change (create/poll modal OR SMS broadcast)
     useEffect(() => {
-        if (!isCreateModalOpen && !isTemplateModalOpen) return;
+        const onSmsBroadcast = activeTab === 'sms' && smsMode === 'broadcast';
+        if (!isCreateModalOpen && !isTemplateModalOpen && !onSmsBroadcast) return;
 
         const timer = setTimeout(async () => {
             setFetchingCount(true);
@@ -213,10 +236,11 @@ const Announcements = () => {
                 }
             } catch (error) {
                 console.error('Failed to fetch audience count');
+                setAudienceCount(null);
             } finally {
                 setFetchingCount(false);
             }
-        }, 500); // Debounce
+        }, 400); // Debounce target changes
 
         return () => clearTimeout(timer);
     }, [
@@ -227,22 +251,27 @@ const Announcements = () => {
         formData.target_year,
         formData.target_semester,
         isCreateModalOpen,
-        isTemplateModalOpen
+        isTemplateModalOpen,
+        activeTab,
+        smsMode
     ]);
 
-    // SMS Variable Logic for Template Creation
-
-    // Handle Template Selection for Broadcast
+    // Handle Template Selection for Broadcast — load template defaults, allow override before send
     const handleTemplateSelect = (e) => {
         const tId = e.target.value;
         const template = smsTemplates.find(t => t.id.toString() === tId);
-        setSelectedTemplate(template);
+        setSelectedTemplate(template || null);
         if (template) {
+            const existingMappings = typeof template.variable_mappings === 'string'
+                ? JSON.parse(template.variable_mappings)
+                : (template.variable_mappings || []);
+            const content = template.content || '';
             setFormData(prev => ({
                 ...prev,
                 template_id: template.template_id,
-                template_content: template.content,
-                variable_mappings: typeof template.variable_mappings === 'string' ? JSON.parse(template.variable_mappings) : (template.variable_mappings || [])
+                template_content: content,
+                // Defaults from template; user can edit these at send time
+                variable_mappings: syncVariableMappings(content, existingMappings)
             }));
         } else {
             setFormData(prev => ({ ...prev, template_id: '', template_content: '', variable_mappings: [] }));
@@ -250,17 +279,28 @@ const Announcements = () => {
     };
 
     const handleMappingChange = (index, key, value) => {
-        // Only allow mapping changes during broadcast if we want to override default template mapping?
-        // Or if we are creating a template.
-        // For now let's assume mapping is set in template, but can be overridden in broadcast if needed?
-        // User request says "on sending we will select audience and configured template and send".
-        // It implies variables are PRE-CONFIGURED in the template or re-entered?
-        // "on the new sms communication we needed to enter the name and dlt template id and content and variables and we will save them"
-        // So variables are saved with template.
-
         const newMappings = [...formData.variable_mappings];
-        newMappings[index] = { ...newMappings[index], [key]: value };
+        if (key === 'type') {
+            // Switching Static <-> Field clears the value so user re-enters / re-selects
+            newMappings[index] = { type: value, value: '' };
+        } else {
+            newMappings[index] = { ...newMappings[index], [key]: value };
+        }
         setFormData({ ...formData, variable_mappings: newMappings });
+    };
+
+    /** Preview message with static values filled; field placeholders show [Field Label] */
+    const getSendTimePreview = () => {
+        let varIndex = 0;
+        return (formData.template_content || '').replace(/\{#var#\}/g, () => {
+            const mapping = formData.variable_mappings[varIndex++];
+            if (!mapping || !mapping.value) return '{#var#}';
+            if (mapping.type === 'field') {
+                const field = studentFields.find(f => f.value === mapping.value);
+                return `[${field?.label || mapping.value}]`;
+            }
+            return mapping.value;
+        });
     };
 
     const handleSubmitAnnouncement = async (e) => {
@@ -329,13 +369,16 @@ const Announcements = () => {
         e.preventDefault();
         if (!formData.template_name || !formData.template_id || !formData.template_content) return toast.error('All fields required');
 
+        // Defaults are optional here — final values are set/confirmed at send time
+        const syncedMappings = syncVariableMappings(formData.template_content, formData.variable_mappings);
+
         setLoading(true);
         try {
             const payload = {
                 name: formData.template_name,
                 template_id: formData.template_id,
                 content: formData.template_content,
-                variable_mappings: formData.variable_mappings
+                variable_mappings: syncedMappings
             };
 
             if (editId) {
@@ -368,15 +411,20 @@ const Announcements = () => {
         e.preventDefault();
         if (!selectedTemplate) return toast.error('Please select a template');
 
-        const hasEmptyMapping = formData.variable_mappings.some(m => !m.value);
-        if (hasEmptyMapping) return toast.error('Please fill all variable mappings');
+        const sendMappings = syncVariableMappings(formData.template_content, formData.variable_mappings);
+        if (sendMappings.length === 0 && /\{#var#\}/.test(formData.template_content || '')) {
+            return toast.error('Could not detect variables — check template content');
+        }
+        if (sendMappings.some(m => !m.value || !String(m.value).trim())) {
+            return toast.error('Please enter or select a value for every variable before sending');
+        }
 
         setLoading(true);
         try {
             const payload = {
                 template_id: formData.template_id,
                 template_content: formData.template_content,
-                variable_mappings: formData.variable_mappings,
+                variable_mappings: sendMappings,
                 target_college: formData.target_college,
                 target_batch: formData.target_batch,
                 target_course: formData.target_course,
@@ -636,6 +684,58 @@ const Announcements = () => {
 
                                                     {selectedTemplate && (
                                                         <div className="animate-fade-in space-y-4">
+                                                            {/* Send-time variable values (editable; defaults from template) */}
+                                                            {formData.variable_mappings.length > 0 ? (
+                                                                <div className="bg-amber-50 p-5 rounded-xl border border-amber-200">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <Settings size={14} className="text-amber-700" />
+                                                                        <label className="text-xs font-bold text-amber-800 uppercase">Set Variable Values Before Sending</label>
+                                                                    </div>
+                                                                    <p className="text-xs text-amber-700/80 mb-3">
+                                                                        Defaults from the template are pre-filled. Change them here for this broadcast only — enter a static value or pick a student field.
+                                                                    </p>
+                                                                    <div className="space-y-3">
+                                                                        {formData.variable_mappings.map((mapping, idx) => (
+                                                                            <div key={idx} className="flex flex-wrap gap-2 items-center bg-white p-2.5 rounded-lg border border-amber-100 shadow-sm">
+                                                                                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold font-mono shrink-0">var#{idx + 1}</span>
+                                                                                <select
+                                                                                    className="p-1.5 border rounded-lg text-xs bg-white min-w-[90px]"
+                                                                                    value={mapping.type || 'static'}
+                                                                                    onChange={(e) => handleMappingChange(idx, 'type', e.target.value)}
+                                                                                >
+                                                                                    <option value="static">Static (enter now)</option>
+                                                                                    <option value="field">Student field</option>
+                                                                                </select>
+                                                                                {mapping.type === 'field' ? (
+                                                                                    <select
+                                                                                        className="flex-1 min-w-[140px] p-1.5 border rounded-lg text-xs bg-white"
+                                                                                        value={mapping.value || ''}
+                                                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
+                                                                                    >
+                                                                                        <option value="">Select field...</option>
+                                                                                        {studentFields.map(f => (
+                                                                                            <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                ) : (
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        className="flex-1 min-w-[140px] p-1.5 border rounded-lg text-xs"
+                                                                                        placeholder="Enter value for this SMS..."
+                                                                                        value={mapping.value || ''}
+                                                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg p-3">
+                                                                    This template has no {'{#var#}'} placeholders — message will send as-is.
+                                                                </p>
+                                                            )}
+
                                                             {/* Message Preview */}
                                                             <div>
                                                                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Message Preview</label>
@@ -644,40 +744,13 @@ const Announcements = () => {
                                                                         <MessageSquare size={12} />
                                                                     </div>
                                                                     <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-medium">
-                                                                        {formData.template_content}
+                                                                        {getSendTimePreview()}
                                                                     </p>
                                                                     <div className="mt-2 flex justify-end">
                                                                         <span className="text-[10px] text-gray-400 font-medium uppercase">SMS Preview</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
-
-                                                            {/* Variable Mapping Config */}
-                                                            {formData.variable_mappings.length > 0 && (
-                                                                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-inner">
-                                                                    <div className="flex items-center gap-2 mb-3">
-                                                                        <Settings size={14} className="text-gray-500" />
-                                                                        <label className="text-xs font-bold text-gray-600 uppercase">Variable Configuration</label>
-                                                                    </div>
-                                                                    <div className="space-y-3">
-                                                                        {formData.variable_mappings.map((mapping, idx) => (
-                                                                            <div key={idx} className="flex items-center justify-between text-sm bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm">
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold font-mono">#{idx + 1}</span>
-                                                                                    <span className="text-gray-500 text-xs">maps to</span>
-                                                                                </div>
-                                                                                <span className="font-semibold text-gray-800 truncate max-w-[150px]" title={mapping.type === 'static' ? mapping.value : mapping.value}>
-                                                                                    {mapping.type === 'static'
-                                                                                        ? `"${mapping.value}"`
-                                                                                        : (studentFields.find(f => f.value === mapping.value)?.label || mapping.value)
-                                                                                    }
-                                                                                </span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                    <p className="text-[10px] text-gray-400 mt-3 text-center">To edit mappings, go to 'Manage Templates'</p>
-                                                                </div>
-                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -695,7 +768,13 @@ const Announcements = () => {
                                                     <div className="flex items-center justify-between gap-4">
                                                         <div className="text-sm text-gray-500">
                                                             <p className="font-medium text-gray-700">Ready to broadcast?</p>
-                                                            <p className="text-xs">Estimate: {selectedTemplate ? 'Calculating...' : 'Select template first'}</p>
+                                                            <p className="text-xs">
+                                                                {!selectedTemplate
+                                                                    ? 'Select a template first'
+                                                                    : fetchingCount
+                                                                        ? 'Estimate: counting…'
+                                                                        : `Estimate: ${audienceCount ?? 0} students`}
+                                                            </p>
                                                         </div>
                                                         <button
                                                             type="submit"
@@ -994,6 +1073,7 @@ const Announcements = () => {
                                     <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
                                         <h4 className="font-bold flex items-center gap-1 mb-1"><MessageSquare size={14} /> Guide</h4>
                                         <p>Use <code>{'{#var#}'}</code> as placeholder for variables in content.</p>
+                                        <p className="mt-1">Optional defaults below are pre-filled when sending. Final values can still be entered or changed on the <strong>Send Broadcast</strong> screen.</p>
                                     </div>
 
                                     <div>
@@ -1025,13 +1105,14 @@ const Announcements = () => {
                                             className="w-full p-2 border rounded bg-white h-24"
                                             placeholder="Content with {#var#}..."
                                             value={formData.template_content}
-                                            onChange={e => setFormData({ ...formData, template_content: e.target.value })}
+                                            onChange={e => handleTemplateContentChange(e.target.value)}
                                         />
                                     </div>
 
-                                    {formData.variable_mappings.length > 0 && (
+                                    {formData.variable_mappings.length > 0 ? (
                                         <div className="space-y-3 bg-gray-50 p-3 rounded border">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">Map Variables</label>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Default Variable Mappings (optional)</label>
+                                            <p className="text-xs text-gray-500">Detected {formData.variable_mappings.length} placeholder(s). These defaults appear on Send Broadcast — you can override them before sending.</p>
                                             {formData.variable_mappings.map((mapping, idx) => (
                                                 <div key={idx} className="flex gap-2 items-center">
                                                     <span className="text-xs font-mono text-gray-500 w-12">var#{idx + 1}</span>
@@ -1059,13 +1140,19 @@ const Announcements = () => {
                                                         >
                                                             <option value="">Select Field...</option>
                                                             {studentFields.map(f => (
-                                                                <option key={f.value} value={f.value}>{f.label}</option>
+                                                                <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
                                                             ))}
                                                         </select>
                                                     )}
                                                 </div>
                                             ))}
                                         </div>
+                                    ) : (
+                                        formData.template_content && (
+                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
+                                                No {'{#var#}'} placeholders found yet. Add them in content to configure variable mapping.
+                                            </p>
+                                        )
                                     )}
 
                                     <div className="flex justify-end gap-3 pt-4">
