@@ -9,6 +9,27 @@ const serializeTarget = (target) => {
     return null;
 };
 
+const resolveLegacyAdminId = async (user) => {
+    if (!user) {
+        return null;
+    }
+
+    if (user.role === 'admin') {
+        return user.id || null;
+    }
+
+    if (!user.username) {
+        return null;
+    }
+
+    const [admins] = await masterPool.query(
+        'SELECT id FROM admins WHERE username = ? LIMIT 1',
+        [user.username]
+    );
+
+    return admins.length > 0 ? admins[0].id : null;
+};
+
 exports.createEvent = async (req, res) => {
     try {
         const {
@@ -26,7 +47,10 @@ exports.createEvent = async (req, res) => {
             target_semester
         } = req.body;
 
-        const createdBy = req.user?.id || 1;
+        // `events.created_by` still references the legacy `admins` table.
+        // RBAC/HRMS users may not have a matching admin row, so store NULL
+        // instead of failing the insert with a foreign key error.
+        const createdBy = await resolveLegacyAdminId(req.user || req.admin);
 
         const [result] = await masterPool.query(
             `INSERT INTO events 
