@@ -3567,6 +3567,20 @@ const Attendance = () => {
 
                       {dayEndReportMode === 'overall' ? (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 bg-gray-50 rounded-2xl p-4 text-xs font-bold text-gray-700">
+                          <div className="col-span-2 sm:col-span-4 grid grid-cols-2 sm:grid-cols-3 gap-3 border-b border-gray-200 pb-3 mb-1">
+                            <div>
+                              <div className="text-[9px] font-black text-indigo-500 uppercase mb-0.5">Academic Year</div>
+                              <div className="text-indigo-700">{row.academicYear || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-black text-indigo-500 uppercase mb-0.5">Start Date</div>
+                              <div className="text-indigo-700">{row.startDate && row.startDate !== '—' ? formatFriendlyDate(row.startDate) : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-black text-indigo-500 uppercase mb-0.5">End Date</div>
+                              <div className="text-indigo-700">{row.endDate && row.endDate !== '—' ? formatFriendlyDate(row.endDate) : '—'}</div>
+                            </div>
+                          </div>
                           <div>
                             <div className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Total</div>
                             <div className="text-gray-900">{row.totalStudents || 0}</div>
@@ -3645,7 +3659,7 @@ const Attendance = () => {
                 {/* Desktop View: Table */}
                 <div className="hidden md:block bg-white rounded-[2.5rem] border border-gray-200 shadow-2xl overflow-hidden">
                   <div className="overflow-x-auto min-h-[400px]">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1500px]">
+                    <table className={`w-full text-left border-collapse table-fixed ${dayEndReportMode === 'overall' ? 'min-w-[1850px]' : 'min-w-[1500px]'}`}>
                       <thead>
                         <tr className="bg-gray-900 text-white">
                           <th className="px-6 py-5 w-[240px] text-[10px] font-bold uppercase tracking-widest">
@@ -3698,6 +3712,13 @@ const Attendance = () => {
                               {filteredDayEndSemesters.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
                             </select>
                           </th>
+                          {dayEndReportMode === 'overall' && (
+                            <>
+                              <th className="px-4 py-5 w-[110px] text-[10px] font-bold uppercase tracking-widest text-center text-indigo-300">Acad Year</th>
+                              <th className="px-4 py-5 w-[110px] text-[10px] font-bold uppercase tracking-widest text-center text-indigo-300">Start Date</th>
+                              <th className="px-4 py-5 w-[110px] text-[10px] font-bold uppercase tracking-widest text-center text-indigo-300">End Date</th>
+                            </>
+                          )}
                           <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-right">Students</th>
                           {dayEndReportMode === 'overall' ? (
                             <>
@@ -3729,6 +3750,17 @@ const Attendance = () => {
                             <td className="px-6 py-4 text-[11px] font-bold text-gray-800 uppercase truncate" title={row.branch}>{row.branch || '—'}</td>
                             <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.year || '—'}</td>
                             <td className="px-6 py-4 text-center text-[11px] font-bold text-gray-600">{row.semester || '—'}</td>
+                            {dayEndReportMode === 'overall' && (
+                              <>
+                                <td className="px-4 py-4 text-center text-[11px] font-bold text-indigo-700">{row.academicYear || '—'}</td>
+                                <td className="px-4 py-4 text-center text-[11px] font-medium text-indigo-700 whitespace-nowrap">
+                                  {row.startDate && row.startDate !== '—' ? formatFriendlyDate(row.startDate) : '—'}
+                                </td>
+                                <td className="px-4 py-4 text-center text-[11px] font-medium text-indigo-700 whitespace-nowrap">
+                                  {row.endDate && row.endDate !== '—' ? formatFriendlyDate(row.endDate) : '—'}
+                                </td>
+                              </>
+                            )}
                             <td className="px-6 py-4 text-right text-xs font-bold text-gray-900">{row.totalStudents ?? 0}</td>
                             {dayEndReportMode === 'overall' ? (
                               <>

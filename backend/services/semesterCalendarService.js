@@ -1,5 +1,5 @@
 const { masterPool } = require('../config/database');
-const { getISTDateString } = require('../utils/dateUtils');
+const { getISTDateString, parseDateString } = require('../utils/dateUtils');
 
 const deriveBatchLabel = (academicYearLabel, yearOfStudy) => {
   const label = academicYearLabel != null ? String(academicYearLabel).trim().replace(/\s/g, '') : '';
@@ -25,8 +25,27 @@ const deriveAcademicYearLabel = (batch, yearOfStudy) => {
   return `${startYear}-${startYear + 1}`;
 };
 
-const resolveCourseId = async (courseName) => {
+const formatSemesterDate = (value) => {
+  if (value == null) return null;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  return parseDateString(value);
+};
+
+/**
+ * Resolve course id by name, scoped to college when available.
+ * Course names are unique per college, so college-scoped lookup is required.
+ */
+const resolveCourseId = async (courseName, collegeId = null) => {
   if (!courseName) return null;
+  if (collegeId != null) {
+    const [scopedRows] = await masterPool.query(
+      'SELECT id FROM courses WHERE name = ? AND college_id = ? AND is_active = 1 LIMIT 1',
+      [courseName, collegeId]
+    );
+    if (scopedRows.length > 0) return scopedRows[0].id;
+  }
   const [rows] = await masterPool.query(
     'SELECT id FROM courses WHERE name = ? AND is_active = 1 LIMIT 1',
     [courseName]
@@ -59,12 +78,12 @@ const resolveSemesterCalendarForFilters = async ({
     return { configured: false, startDate: null, endDate: null };
   }
 
-  const courseId = await resolveCourseId(course);
+  const collegeId = await resolveCollegeId(college);
+  const courseId = await resolveCourseId(course, collegeId);
   if (!courseId) {
     return { configured: false, startDate: null, endDate: null };
   }
 
-  const collegeId = await resolveCollegeId(college);
   const yearOfStudy = parseInt(currentYear, 10);
   const semesterNumber = parseInt(currentSemester, 10);
   const batchLabel = String(batch).trim();
@@ -85,7 +104,9 @@ const resolveSemesterCalendarForFilters = async ({
   const dateKey = attendanceDate || getISTDateString();
   const activeParams = [...baseParams, dateKey, dateKey];
   const [activeRows] = await masterPool.query(
-    `SELECT start_date, end_date, batch
+    `SELECT DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+            DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date,
+            batch
      FROM semesters
      WHERE ${whereClause}
        AND start_date IS NOT NULL
@@ -101,7 +122,9 @@ const resolveSemesterCalendarForFilters = async ({
 
   if (!row) {
     const [recentRows] = await masterPool.query(
-      `SELECT start_date, end_date, batch
+      `SELECT DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+              DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date,
+              batch
        FROM semesters
        WHERE ${whereClause}
          AND start_date IS NOT NULL
@@ -117,12 +140,8 @@ const resolveSemesterCalendarForFilters = async ({
     return { configured: false, startDate: null, endDate: null };
   }
 
-  const startDate = row.start_date instanceof Date
-    ? row.start_date.toISOString().slice(0, 10)
-    : String(row.start_date).slice(0, 10);
-  const endDate = row.end_date instanceof Date
-    ? row.end_date.toISOString().slice(0, 10)
-    : String(row.end_date).slice(0, 10);
+  const startDate = formatSemesterDate(row.start_date);
+  const endDate = formatSemesterDate(row.end_date);
 
   return {
     configured: true,
@@ -219,12 +238,12 @@ const resolveSemesterCalendarForStudent = async (student) => {
     return { configured: false, startDate: null, endDate: null };
   }
 
-  const courseId = await resolveCourseId(student.course);
+  const collegeId = await resolveCollegeId(student.college);
+  const courseId = await resolveCourseId(student.course, collegeId);
   if (!courseId) {
     return { configured: false, startDate: null, endDate: null };
   }
 
-  const collegeId = await resolveCollegeId(student.college);
   const params = [courseId, String(student.batch).trim(), student.current_year, student.current_semester];
   let whereClause = `
     course_id = ?
@@ -239,7 +258,8 @@ const resolveSemesterCalendarForStudent = async (student) => {
   }
 
   const [rows] = await masterPool.query(
-    `SELECT start_date, end_date
+    `SELECT DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+            DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
      FROM semesters
      WHERE ${whereClause}
        AND start_date IS NOT NULL
@@ -254,14 +274,11 @@ const resolveSemesterCalendarForStudent = async (student) => {
   }
 
   const row = rows[0];
-  const startDate = row.start_date instanceof Date
-    ? row.start_date.toISOString().slice(0, 10)
-    : String(row.start_date).slice(0, 10);
-  const endDate = row.end_date instanceof Date
-    ? row.end_date.toISOString().slice(0, 10)
-    : String(row.end_date).slice(0, 10);
-
-  return { configured: true, startDate, endDate };
+  return {
+    configured: true,
+    startDate: formatSemesterDate(row.start_date),
+    endDate: formatSemesterDate(row.end_date)
+  };
 };
 
 /**
