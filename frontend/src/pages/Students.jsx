@@ -5126,6 +5126,35 @@ const Students = () => {
                           </h4>
                           <div className="space-y-3">
 
+                            {canViewField('stud_type') && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Quota
+                                </label>
+                                {editMode ? (
+                                  <select
+                                    value={editData.stud_type || selectedStudent?.stud_type || ''}
+                                    onChange={(e) => updateEditField('stud_type', e.target.value)}
+                                    disabled={isFieldFrozen(selectedStudent, 'stud_type')}
+                                    className="w-full px-3 py-2.5 sm:py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-base sm:text-sm touch-manipulation min-h-[44px] bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                  >
+                                    <option value="">Select Quota</option>
+                                    {studentQuotas.map((quota) => (
+                                      <option key={quota.id} value={quota.code}>{quota.name}</option>
+                                    ))}
+                                    {editData.stud_type && !studentQuotas.some((quota) => quota.code === (editData.stud_type || selectedStudent?.stud_type)) && (
+                                      <option value={editData.stud_type || selectedStudent?.stud_type}>
+                                        {editData.stud_type || selectedStudent?.stud_type}
+                                      </option>
+                                    )}
+                                  </select>
+                                ) : (
+                                  <p className="text-sm text-gray-900 font-medium">
+                                    {editData.stud_type || selectedStudent?.stud_type || '-'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             {canViewField('student_status') && (
                               <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
