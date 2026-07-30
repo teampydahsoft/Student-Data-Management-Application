@@ -56,7 +56,8 @@ import {
   getScholarshipSemestersForYear,
   resolveScholarshipStartYear
 } from '../../config/scholarshipConfig';
-import { CASTE_OPTIONS } from '../../config/casteConfig';
+import { buildCasteSelectOptions } from '../../config/casteConfig';
+import useCasteCategories from '../../hooks/useCasteCategories';
 
 const ELIGIBLE_OPTIONS = SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS;
 
@@ -409,6 +410,11 @@ const StudentScholarshipHistoryTab = ({
   const [remoteAppIdStatus, setRemoteAppIdStatus] = useState({});
   const [casteAccountTypes, setCasteAccountTypes] = useState({}); // caste → 'mother' | 'college'
   const [selectedCaste, setSelectedCaste] = useState('');
+  const { casteOptions: dynamicCasteOptions } = useCasteCategories();
+  const casteOptions = useMemo(
+    () => buildCasteSelectOptions(dynamicCasteOptions, selectedCaste || student?.caste || meta?.student?.caste),
+    [dynamicCasteOptions, selectedCaste, student?.caste, meta?.student?.caste]
+  );
   const remoteAppIdTimersRef = useRef({});
 
   const admissionNumber = student?.admission_number || student?.admissionNumber;
@@ -430,14 +436,6 @@ const StudentScholarshipHistoryTab = ({
     () => resolveRegistrationScholarshipDisplay(meta, student, registrationOptionalStages),
     [meta, student, registrationOptionalStages]
   );
-
-  const casteOptions = useMemo(() => {
-    const current = String(selectedCaste || student?.caste || meta?.student?.caste || '').trim();
-    if (current && !CASTE_OPTIONS.includes(current)) {
-      return [current, ...CASTE_OPTIONS];
-    }
-    return CASTE_OPTIONS;
-  }, [selectedCaste, student?.caste, meta?.student?.caste]);
 
   useEffect(() => {
     const fromStudent = String(student?.caste || meta?.student?.caste || '').trim();

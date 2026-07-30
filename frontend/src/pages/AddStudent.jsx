@@ -9,6 +9,8 @@ import ManagePreviousCollegesModal from '../components/ManagePreviousCollegesMod
 import { addressData } from '../data/addressData';
 import { getCourseType, getCertificatesForCourse as getCertificatesForCourseShared } from '../config/certificateConfig';
 import useStudentQuotas from '../hooks/useStudentQuotas';
+import useCasteCategories from '../hooks/useCasteCategories';
+import { buildCasteSelectOptions } from '../config/casteConfig';
 const STUDENT_STATUS_OPTIONS = [
   'Regular',
   'Discontinued from the second year',
@@ -22,12 +24,17 @@ const STUDENT_STATUS_OPTIONS = [
 const SCHOLAR_STATUS_OPTIONS = ['Eligible', 'Not Eligible'];
 const FEE_STATUS_OPTIONS = ['no due', 'due', 'permitted'];
 const REGISTRATION_STATUS_OPTIONS = ['Pending', 'Completed'];
-import { CASTE_OPTIONS } from '../config/casteConfig';
 const CERTIFICATES_STATUS_OPTIONS = ['Verified', 'Unverified', 'Submitted', 'Pending', 'Partial', 'Originals Returned', 'Not Required'];
 
 const AddStudent = () => {
   const navigate = useNavigate();
   const { quotas: studentQuotas, loading: studentQuotasLoading } = useStudentQuotas({ publicOnly: true });
+  const {
+    categories: casteCategories,
+    casteOptions: dynamicCasteOptions,
+    getCastesForCategory
+  } = useCasteCategories({ publicOnly: true });
+  const [selectedCasteCategoryId, setSelectedCasteCategoryId] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [colleges, setColleges] = useState([]);
@@ -1512,6 +1519,32 @@ const AddStudent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category
+                </label>
+                <select
+                  value={selectedCasteCategoryId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedCasteCategoryId(nextId);
+                    const allowed = getCastesForCategory(nextId);
+                    if (studentData.caste && !allowed.includes(studentData.caste)) {
+                      setStudentData((prev) => ({ ...prev, caste: '' }));
+                    }
+                  }}
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
+                >
+                  <option value="">Select Category</option>
+                  {casteCategories
+                    .filter((cat) => cat.isActive !== false)
+                    .map((cat) => (
+                      <option key={cat.id} value={String(cat.id)}>
+                        {cat.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Caste <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -1522,7 +1555,12 @@ const AddStudent = () => {
                   className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
                 >
                   <option value="">Select Caste</option>
-                  {CASTE_OPTIONS.map((caste) => (
+                  {buildCasteSelectOptions(
+                    selectedCasteCategoryId
+                      ? getCastesForCategory(selectedCasteCategoryId)
+                      : dynamicCasteOptions,
+                    studentData.caste
+                  ).map((caste) => (
                     <option key={caste} value={caste}>
                       {caste}
                     </option>

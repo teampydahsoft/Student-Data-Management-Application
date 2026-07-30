@@ -87,7 +87,8 @@ import {
   resolveRegistrationOverallStatus
 } from '../config/registrationStages.jsx';
 import { resolveRegistrationBranchYear } from '../config/registrationBranchYear';
-import { CASTE_OPTIONS } from '../config/casteConfig';
+import { buildCasteSelectOptions } from '../config/casteConfig';
+import useCasteCategories from '../hooks/useCasteCategories';
 
 const formatRegistrationStatusLabel = (status) => {
   const normalized = String(status || '').trim().toLowerCase();
@@ -280,6 +281,15 @@ const Students = () => {
   const location = useLocation();
   const { user } = useAuthStore();
   const { quotas: studentQuotas } = useStudentQuotas();
+  const {
+    categories: casteCategories,
+    casteOptions: dynamicCasteOptions,
+    getCategoryForCaste,
+    getCastesForCategory,
+    resolveStudentCaste,
+    getByCasteId
+  } = useCasteCategories();
+  const [dialogCasteCategoryId, setDialogCasteCategoryId] = useState('');
   const [bulkPasswordState, setBulkPasswordState] = useState({
     isOpen: false,
     processing: false,
@@ -1085,6 +1095,20 @@ const Students = () => {
     }
   }, [editData, showModal, selectedStudent, calculateProfileCompletion]);
 
+  // Sync dialog category from linked caste_id only (do not use unlinked caste text)
+  useEffect(() => {
+    if (!showModal) {
+      setDialogCasteCategoryId('');
+      return;
+    }
+    const byId = getByCasteId(selectedStudent?.caste_id);
+    if (byId?.category) {
+      setDialogCasteCategoryId(String(byId.category.id));
+      return;
+    }
+    setDialogCasteCategoryId('');
+  }, [showModal, selectedStudent?.admission_number, selectedStudent?.caste_id, getByCasteId]);
+
   // Fetch secure QR token for selected student
   const [activeQrToken, setActiveQrToken] = useState(null);
   useEffect(() => {
@@ -1885,13 +1909,17 @@ const Students = () => {
     const hasPermissionToEdit = ((canEditStudents && canEditField(field)) || (isCashier && field === 'fee_status')) && !isBatchFrozen;
 
     const isEditing = hasPermissionToEdit && isEditsAllowedForField && editingCell?.studentId === studentKey && editingCell?.field === field;
-    const currentValue = student[field] || '';
+    // Unlinked caste: never fall back to legacy students.caste text for display/options
+    const currentValue =
+      field === 'caste' && !resolveStudentCaste(student).linked
+        ? ''
+        : (student[field] || '');
 
     if (isEditing) {
       if (fieldType === 'select') {
-        // Ensure current value is in options, add it if not present
-        const allOptions = [...new Set([...options, currentValue].filter(Boolean))];
-        const displayValue = cellEditValue !== '' ? cellEditValue : (currentValue || '');
+        // While editing, cellEditValue is source of truth (allow empty — don't fall back to old DB value)
+        const displayValue = cellEditValue ?? '';
+        const allOptions = [...new Set([...options, displayValue, currentValue].filter(Boolean))];
 
         return (
           <select
@@ -1917,7 +1945,7 @@ const Students = () => {
             autoFocus
             className="w-full px-1 py-0.5 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
           >
-            {!displayValue && <option value="">Select...</option>}
+            <option value="">Select...</option>
             {allOptions.map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
@@ -2043,11 +2071,17 @@ const Students = () => {
     console.log('Student data:', student);
     console.log('All fields being set:', allFields);
 
-    const stageSyncedFields = syncStageFields(
+    const stageSyncedFieldsRaw = syncStageFields(
       cleanedAllFields,
       student.current_year,
       student.current_semester
     );
+
+    // Prefill caste in form only when linked via caste_id; keep legacy name out of edit form otherwise
+    const isCasteLinked = student?.caste_id != null && student?.caste_id !== '';
+    const stageSyncedFields = isCasteLinked
+      ? stageSyncedFieldsRaw
+      : { ...stageSyncedFieldsRaw, caste: '', Caste: '' };
 
     const stageSyncedStudent = {
       ...student,
@@ -2089,6 +2123,30 @@ const Students = () => {
 
   const handleEdit = () => {
     // No need to check permission here since button is only shown if user has edit permission
+    const linked = resolveStudentCaste(selectedStudent);
+    if (linked.linked) {
+      const byId = getByCasteId(selectedStudent?.caste_id);
+      setDialogCasteCategoryId(byId?.category ? String(byId.category.id) : '');
+      setEditData((prev) => ({
+        ...prev,
+        caste: linked.casteName || '',
+        Caste: linked.casteName || ''
+      }));
+    } else {
+      // Unlinked: do not prefill old caste text — start empty from Settings options.
+      // Align baseline too so saving other fields won't wipe the old caste string.
+      setDialogCasteCategoryId('');
+      setEditData((prev) => ({
+        ...prev,
+        caste: '',
+        Caste: ''
+      }));
+      setEditBaseline((prev) => (
+        prev
+          ? { ...prev, caste: '', Caste: '' }
+          : prev
+      ));
+    }
     setEditMode(true);
   };
 
@@ -2216,15 +2274,25 @@ const Students = () => {
 
       setEditMode(false);
       setEditData(synchronizedData);
+      const linkedCasteName = synchronizedData.caste || synchronizedData.Caste || '';
+      const linkedCategory = getCategoryForCaste(linkedCasteName);
+      const linkedCasteRow = (linkedCategory?.castes || []).find(
+        (c) => String(c.name).trim() === String(linkedCasteName).trim()
+      );
       setSelectedStudent((prev) =>
         prev
           ? {
             ...prev,
+            ...synchronizedData,
             current_year:
               synchronizedData.current_year ?? prev.current_year,
             current_semester:
               synchronizedData.current_semester ?? prev.current_semester,
-            student_data: synchronizedData
+            student_data: synchronizedData,
+            caste: linkedCasteName || prev.caste,
+            caste_id: linkedCasteName
+              ? (linkedCasteRow?.id ?? null)
+              : null
           }
           : prev
       );
@@ -2964,7 +3032,7 @@ const Students = () => {
                   className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 >
                   <option value="">All</option>
-                  {CASTE_OPTIONS.map((caste) => (
+                  {(dropdownFilterOptions.caste || []).map((caste) => (
                     <option key={caste} value={caste}>{caste}</option>
                   ))}
                 </select>
@@ -3187,9 +3255,14 @@ const Students = () => {
                           </th>
                         )}
                         {canViewField('caste') && (
-                          <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
-                            <div className="font-semibold">Caste</div>
-                          </th>
+                          <>
+                            <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
+                              <div className="font-semibold">Category</div>
+                            </th>
+                            <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
+                              <div className="font-semibold">Caste</div>
+                            </th>
+                          </>
                         )}
                         {canViewField('gender') && (
                           <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
@@ -3344,9 +3417,59 @@ const Students = () => {
                               <td className="py-1 px-1 text-[10px] text-gray-700">{student.stud_type || '-'}</td>
                             )}
                             {canViewField('caste') && (
-                              <td className="py-1 px-1 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
-                                <div className="max-w-[80px]">{renderEditableCell(student, 'caste', 'select', CASTE_OPTIONS)}</div>
-                              </td>
+                              <>
+                                <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[70px]">
+                                  <div className="truncate" title={resolveStudentCaste(student).categoryName || ''}>
+                                    {resolveStudentCaste(student).linked
+                                      ? (resolveStudentCaste(student).categoryName || '-')
+                                      : '-'}
+                                  </div>
+                                </td>
+                                <td className="py-1 px-1 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
+                                  <div className="max-w-[80px]">
+                                    {(() => {
+                                      const display = resolveStudentCaste(student);
+                                      const studentKey = student.id || student.admission_number || student.admissionNumber;
+                                      const isEditing =
+                                        canEditStudents &&
+                                        canEditField('caste') &&
+                                        !isFieldFrozen(student, 'caste') &&
+                                        editingCell?.studentId === studentKey &&
+                                        editingCell?.field === 'caste';
+
+                                      if (isEditing) {
+                                        return renderEditableCell(
+                                          student,
+                                          'caste',
+                                          'select',
+                                          buildCasteSelectOptions(
+                                            dynamicCasteOptions,
+                                            display.linked ? display.casteName : ''
+                                          )
+                                        );
+                                      }
+
+                                      // Not linked yet: click still opens editor; display stays blank until caste_id is set
+                                      return (
+                                        <div
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (canEditStudents && canEditField('caste') && !isFieldFrozen(student, 'caste')) {
+                                              // Only prefill when already linked via caste_id
+                                              const startValue = display.linked ? (display.casteName || '') : '';
+                                              handleCellClick(student, 'caste', startValue, 'select');
+                                            }
+                                          }}
+                                          className={`${canEditStudents && canEditField('caste') && !isFieldFrozen(student, 'caste') ? 'cursor-pointer hover:bg-blue-50' : ''} px-1 py-0.5 rounded truncate`}
+                                          title={display.linked ? (display.casteName || '') : 'Set caste to link'}
+                                        >
+                                          {display.linked ? (display.casteName || '-') : '-'}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                </td>
+                              </>
                             )}
                             {canViewField('gender') && (
                               <td className="py-1 px-1 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3504,8 +3627,17 @@ const Students = () => {
                           <>
                             {canViewField('caste') && (
                               <div>
-                                <p className="text-xs text-gray-500">Caste</p>
-                                <p className="text-sm font-medium text-gray-900 truncate" title={student.caste || ''}>{student.caste || '-'}</p>
+                                <p className="text-xs text-gray-500">Category / Caste</p>
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {(() => {
+                                    const display = resolveStudentCaste(student);
+                                    if (!display.linked) return '-';
+                                    if (display.categoryName && display.casteName) {
+                                      return `${display.categoryName} / ${display.casteName}`;
+                                    }
+                                    return display.casteName || display.categoryName || '-';
+                                  })()}
+                                </p>
                               </div>
                             )}
                             {canViewField('gender') && (
@@ -4921,28 +5053,78 @@ const Students = () => {
                                 </div>
                               )}
                               {canViewField('caste') && (
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                    Caste
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editData.caste ?? editData.Caste ?? ''}
-                                      onChange={(e) => updateEditField('caste', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'caste')}
-                                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                      <option value="">Select caste</option>
-                                      {CASTE_OPTIONS.map((caste) => (
-                                        <option key={caste} value={caste}>{caste}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-medium">
-                                      {editData.caste || editData.Caste || selectedStudent?.caste || '-'}
-                                    </p>
-                                  )}
-                                </div>
+                                <>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                      Category
+                                    </label>
+                                    {editMode ? (
+                                      <select
+                                        value={dialogCasteCategoryId}
+                                        onChange={(e) => {
+                                          const nextCategoryId = e.target.value;
+                                          setDialogCasteCategoryId(nextCategoryId);
+                                          const allowed = nextCategoryId
+                                            ? getCastesForCategory(nextCategoryId)
+                                            : dynamicCasteOptions;
+                                          const currentCaste = editData.caste ?? editData.Caste ?? '';
+                                          if (currentCaste && nextCategoryId && !allowed.includes(currentCaste)) {
+                                            updateEditField('caste', '');
+                                          }
+                                        }}
+                                        disabled={isFieldFrozen(selectedStudent, 'caste')}
+                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                      >
+                                        <option value="">Select category</option>
+                                        {casteCategories.map((cat) => (
+                                          <option key={cat.id} value={String(cat.id)}>
+                                            {cat.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <p className="text-sm text-gray-900 font-medium">
+                                        {resolveStudentCaste(selectedStudent).linked
+                                          ? (resolveStudentCaste(selectedStudent).categoryName || '-')
+                                          : '-'}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                      Caste
+                                    </label>
+                                    {editMode ? (
+                                      <select
+                                        value={editData.caste ?? editData.Caste ?? ''}
+                                        onChange={(e) => {
+                                          const nextCaste = e.target.value;
+                                          updateEditField('caste', nextCaste);
+                                          const cat = getCategoryForCaste(nextCaste);
+                                          if (cat) setDialogCasteCategoryId(String(cat.id));
+                                        }}
+                                        disabled={isFieldFrozen(selectedStudent, 'caste')}
+                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                      >
+                                        <option value="">Select caste</option>
+                                        {buildCasteSelectOptions(
+                                          dialogCasteCategoryId
+                                            ? getCastesForCategory(dialogCasteCategoryId)
+                                            : dynamicCasteOptions,
+                                          editData.caste ?? editData.Caste
+                                        ).map((caste) => (
+                                          <option key={caste} value={caste}>{caste}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <p className="text-sm text-gray-900 font-medium">
+                                        {resolveStudentCaste(selectedStudent).linked
+                                          ? (resolveStudentCaste(selectedStudent).casteName || '-')
+                                          : '-'}
+                                      </p>
+                                    )}
+                                  </div>
+                                </>
                               )}
                               {canViewField('gender') && (
                                 <div>

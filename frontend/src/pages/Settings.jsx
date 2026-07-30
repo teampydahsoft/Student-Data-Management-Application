@@ -43,6 +43,7 @@ import AcademicCalendar from '../components/AcademicCalendar';
 import NotificationSettings from '../components/NotificationSettings';
 import CollegeTransfer from './CollegeTransfer';
 import StudentPortalLayoutSettings from '../components/StudentPortalLayoutSettings';
+import CasteCategorySettings from '../components/CasteCategorySettings';
 import { isFullAccessRole, hasPermission, BACKEND_MODULES } from '../constants/rbac';
 import { formatDateToLocalISO } from '../utils/dateUtils';
 import TargetSelector from '../components/TargetSelector';
@@ -1839,6 +1840,7 @@ const Settings = () => {
       { section: 'academic-calendar', permission: 'academic_calendar' },
       { section: 'forms', permission: 'forms' },
       { section: 'quotas', permission: 'quotas' },
+      { section: 'caste-categories', permission: 'caste_categories' },
       { section: 'notifications', permission: 'notifications' },
       { section: 'college-transfer', permission: 'college_transfer' },
       { section: 'student-layout', permission: 'student_layout' },
@@ -3716,6 +3718,27 @@ const Settings = () => {
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Student Quotas</h2>
                 <p className="text-xs text-gray-500">{canEdit('quotas') ? 'Quota names & codes' : 'View quota names & codes'}</p>
+              </div>
+            </div>
+          </button>
+          )}
+
+          {canView('caste_categories') && (
+          <button
+            onClick={() => setActiveSection('caste-categories')}
+            className={`rounded-lg border-2 p-3 text-left transition-all ${activeSection === 'caste-categories'
+              ? 'border-amber-500 bg-amber-50 shadow-md'
+              : 'border-gray-200 bg-white hover:border-amber-300 hover:shadow-sm'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-full p-2 ${activeSection === 'caste-categories' ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'
+                }`}>
+                <Users size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Caste Categories</h2>
+                <p className="text-xs text-gray-500">{canEdit('caste_categories') ? 'Categories & castes' : 'View categories & castes'}</p>
               </div>
             </div>
           </button>
@@ -5661,6 +5684,11 @@ const Settings = () => {
               </table>
             </div>
           </div>
+        )}
+
+        {/* Caste Categories Section */}
+        {activeSection === 'caste-categories' && (
+          <CasteCategorySettings readOnly={!canEdit('caste_categories')} />
         )}
 
         {/* College Transfer Section */}

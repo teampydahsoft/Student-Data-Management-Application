@@ -1,5 +1,6 @@
 const { masterPool, stagingPool } = require('../config/database');
 const { fetchActiveQuotaCodes } = require('./quotaController');
+const { resolveCasteIdByName } = require('./casteCategoryController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { studentsCache, registrationAbstractCache, registrationStatsCache } = require('../services/cache');
@@ -2565,6 +2566,22 @@ exports.commitBulkUploadStudents = async (req, res) => {
         updatedColumns.add(columnName);
       });
 
+      // Link caste_id for this bulk-imported student only
+      if (updatedColumns.has('caste') && !updatedColumns.has('caste_id')) {
+        try {
+          if (await columnExists('caste_id')) {
+            const casteValue = sanitized.caste || sanitized.Caste || '';
+            const resolvedCasteId = await resolveCasteIdByName(casteValue);
+            insertColumns.push('caste_id');
+            insertPlaceholders.push('?');
+            insertValues.push(resolvedCasteId);
+            updatedColumns.add('caste_id');
+          }
+        } catch (casteLinkError) {
+          console.warn('Failed to set caste_id on bulk student create:', casteLinkError.message);
+        }
+      }
+
       const insertQuery = `INSERT INTO students (${insertColumns.join(
         ', '
       )}) VALUES (${insertPlaceholders.join(', ')})`;
@@ -2814,6 +2831,7 @@ exports.getAllStudents = async (req, res) => {
 
     const hasPermitEndingDateColumn = await columnExists('permit_ending_date');
     const hasPermitRemarksColumn = await columnExists('permit_remarks');
+    const hasCasteIdColumn = await columnExists('caste_id');
     const permitSelectColumns = [
       hasPermitEndingDateColumn ? 'permit_ending_date' : null,
       hasPermitRemarksColumn ? 'permit_remarks' : null
@@ -2821,6 +2839,7 @@ exports.getAllStudents = async (req, res) => {
     const permitSelectSql = permitSelectColumns.length
       ? `${permitSelectColumns.join(', ')},`
       : '';
+    const casteIdSelectSql = hasCasteIdColumn ? 'caste_id,' : '';
 
     let query = `
       SELECT 
@@ -2830,7 +2849,7 @@ exports.getAllStudents = async (req, res) => {
         student_status, course, branch, section, current_year, current_semester, batch,
         certificates_status, student_address, city_village, mandal_name, district, 
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
-        previous_college, remarks, college, caste,
+        previous_college, remarks, college, ${casteIdSelectSql} caste,
         ${registrationStatusComputedSql} AS registration_status_computed
       FROM students WHERE 1=1`;
     const params = [];
@@ -3771,6 +3790,23 @@ exports.updateStudent = async (req, res) => {
         updateFields.push(`${columnName} = ?`);
         updateValues.push(convertedValue);
         updatedColumns.add(columnName);
+
+        // Link this student only: set caste_id from castes table when caste name is saved
+        if (columnName === 'caste') {
+          try {
+            const hasCasteId = await columnExists('caste_id');
+            if (hasCasteId && !updatedColumns.has('caste_id')) {
+              const resolvedCasteId = convertedValue
+                ? await resolveCasteIdByName(convertedValue)
+                : null;
+              updateFields.push('caste_id = ?');
+              updateValues.push(resolvedCasteId);
+              updatedColumns.add('caste_id');
+            }
+          } catch (casteLinkError) {
+            console.warn('Failed to set caste_id on student update:', casteLinkError.message);
+          }
+        }
       }
     }
 
@@ -4624,6 +4660,22 @@ exports.createStudent = async (req, res) => {
         updatedColumns.add(columnName);
       }
     });
+
+    // Link caste_id for this student only when caste name is present
+    if (updatedColumns.has('caste') && !updatedColumns.has('caste_id')) {
+      try {
+        if (await columnExists('caste_id')) {
+          const casteValue = incomingData.caste || incomingData.Caste || '';
+          const resolvedCasteId = await resolveCasteIdByName(casteValue);
+          insertColumns.push('caste_id');
+          insertPlaceholders.push('?');
+          insertValues.push(resolvedCasteId);
+          updatedColumns.add('caste_id');
+        }
+      } catch (casteLinkError) {
+        console.warn('Failed to set caste_id on student create:', casteLinkError.message);
+      }
+    }
 
     const insertQuery = `INSERT INTO students (${insertColumns.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`;
 
@@ -6299,7 +6351,8 @@ const STUDENT_UPDATE_FETCH_OPTIONAL = [
   'fee_status',
   'registration_status',
   'permit_ending_date',
-  'permit_remarks'
+  'permit_remarks',
+  'caste_id'
 ];
 
 const getStudentUpdateFetchColumns = async (includePhoto = false) => {
