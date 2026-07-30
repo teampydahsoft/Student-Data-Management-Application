@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../config/api';
-import { flattenCasteNames, findCategoryForCaste, findByCasteId, getStudentCasteDisplay } from '../config/casteConfig';
+import { flattenCasteNames, findCategoryForCaste, findByCasteId, findCategoryById, getStudentCasteDisplay } from '../config/casteConfig';
 
 /**
  * Load castes with nested subcastes from settings API.
@@ -77,6 +77,11 @@ export function useCasteCategories({ includeInactive = false, publicOnly = false
     [categories]
   );
 
+  const getByCategoryId = useCallback(
+    (categoryId) => findCategoryById(categories, categoryId),
+    [categories]
+  );
+
   return {
     categories: activeCategories,
     allCategories: categories,
@@ -86,7 +91,8 @@ export function useCasteCategories({ includeInactive = false, publicOnly = false
     getCategoryForCaste,
     getCastesForCategory,
     resolveStudentCaste,
-    getByCasteId
+    getByCasteId,
+    getByCategoryId
   };
 }
 

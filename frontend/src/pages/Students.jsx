@@ -287,7 +287,8 @@ const Students = () => {
     getCategoryForCaste,
     getCastesForCategory,
     resolveStudentCaste,
-    getByCasteId
+    getByCasteId,
+    getByCategoryId
   } = useCasteCategories();
   const [dialogCasteCategoryId, setDialogCasteCategoryId] = useState('');
   const [bulkPasswordState, setBulkPasswordState] = useState({
@@ -1095,10 +1096,15 @@ const Students = () => {
     }
   }, [editData, showModal, selectedStudent, calculateProfileCompletion]);
 
-  // Sync dialog category from students.caste (category) or linked nested caste_id
+  // Sync dialog category from category_id, nested caste_id, or students.caste text
   useEffect(() => {
     if (!showModal) {
       setDialogCasteCategoryId('');
+      return;
+    }
+    const byCategoryId = getByCategoryId(selectedStudent?.category_id);
+    if (byCategoryId) {
+      setDialogCasteCategoryId(String(byCategoryId.id));
       return;
     }
     const byId = getByCasteId(selectedStudent?.caste_id);
@@ -1112,7 +1118,7 @@ const Students = () => {
         String(selectedStudent?.caste || '').trim().toLowerCase()
     );
     setDialogCasteCategoryId(byName ? String(byName.id) : '');
-  }, [showModal, selectedStudent?.admission_number, selectedStudent?.caste_id, selectedStudent?.caste, getByCasteId, casteCategories]);
+  }, [showModal, selectedStudent?.admission_number, selectedStudent?.category_id, selectedStudent?.caste_id, selectedStudent?.caste, getByCategoryId, getByCasteId, casteCategories]);
 
   // Fetch secure QR token for selected student
   const [activeQrToken, setActiveQrToken] = useState(null);
@@ -2112,11 +2118,13 @@ const Students = () => {
     setEditData({
       ...stageSyncedFields,
       caste_id: student.caste_id ?? null,
+      category_id: student.category_id ?? null,
       nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : ''
     });
     setEditBaseline(cloneStudentFormSnapshot({
       ...stageSyncedFields,
       caste_id: student.caste_id ?? null,
+      category_id: student.category_id ?? null,
       nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : ''
     }));
     setEditRegistrationStatus(student.registration_status || 'pending');
@@ -2134,6 +2142,7 @@ const Students = () => {
   const handleEdit = () => {
     // No need to check permission here since button is only shown if user has edit permission
     const linked = resolveStudentCaste(selectedStudent);
+    const byCategoryId = getByCategoryId(selectedStudent?.category_id);
     const categoryFromStudent = casteCategories.find(
       (cat) =>
         String(cat.name || '').trim().toLowerCase() ===
@@ -2141,15 +2150,18 @@ const Students = () => {
     );
     const byId = getByCasteId(selectedStudent?.caste_id);
     setDialogCasteCategoryId(
-      byId?.category
-        ? String(byId.category.id)
-        : (categoryFromStudent ? String(categoryFromStudent.id) : '')
+      byCategoryId
+        ? String(byCategoryId.id)
+        : byId?.category
+          ? String(byId.category.id)
+          : (categoryFromStudent ? String(categoryFromStudent.id) : '')
     );
     // students.caste is the CATEGORY value (BC-A, OC…) — keep it; nested caste is optional via caste_id
     setEditData((prev) => ({
       ...prev,
       caste: selectedStudent?.caste || linked.categoryName || '',
       Caste: selectedStudent?.caste || linked.categoryName || '',
+      category_id: selectedStudent?.category_id ?? byCategoryId?.id ?? null,
       nested_caste: linked.linked ? (linked.casteName || '') : ''
     }));
     setEditMode(true);
@@ -2208,9 +2220,21 @@ const Students = () => {
         synchronizedData.fee_status = editFeeStatus;
       }
 
-      // Category stays in students.caste; optional nested caste → caste_id
+      // Category stays in students.caste; category_id + optional nested caste → caste_id
       const nestedName = String(synchronizedData.nested_caste || '').trim();
       delete synchronizedData.nested_caste;
+      if (dialogCasteCategoryId) {
+        const parent = casteCategories.find(
+          (c) => String(c.id) === String(dialogCasteCategoryId)
+        );
+        if (parent?.name) {
+          synchronizedData.caste = parent.name;
+          synchronizedData.Caste = parent.name;
+          synchronizedData.category_id = parent.id;
+        }
+      } else {
+        synchronizedData.category_id = null;
+      }
       if (nestedName) {
         const parent =
           (dialogCasteCategoryId
@@ -2307,8 +2331,9 @@ const Students = () => {
               synchronizedData.current_semester ?? prev.current_semester,
             student_data: synchronizedData,
             caste: linkedCasteName || prev.caste,
-            // caste_id is resolved on the server; prefer response value when present
-            caste_id: synchronizedData.caste_id ?? prev.caste_id ?? null
+            // ids resolved on client/server; keep latest from save payload
+            caste_id: synchronizedData.caste_id ?? prev.caste_id ?? null,
+            category_id: synchronizedData.category_id ?? prev.category_id ?? null
           }
           : prev
       );

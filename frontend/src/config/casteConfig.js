@@ -61,18 +61,25 @@ export function findByCasteId(categories = [], casteId) {
 /**
  * Display helpers for students table/dialog.
  *
- * Model:
- * - Category (Settings parent) = BC-A, BC-B, OC, SC…
- * - Caste (Settings child) = Agnikulakshatriya, Chakali… (optional)
- * - students.caste stores the CATEGORY name
- * - students.caste_id points at nested caste only when set
+ * Model (shared RDS contract for other apps):
+ * - students.caste       = category text ("BC-A", "OC", …) — do not rename
+ * - students.category_id = caste_categories.id (preferred link)
+ * - students.caste_id    = castes.id for nested caste only, else NULL
  */
+export function findCategoryById(categories = [], categoryId) {
+  if (categoryId == null || categoryId === '') return null;
+  const id = Number(categoryId);
+  if (!Number.isFinite(id)) return null;
+  return categories.find((cat) => Number(cat.id) === id) || null;
+}
+
 export function getStudentCasteDisplay(categories = [], student = {}) {
   const legacyCaste =
     student?.caste != null && String(student.caste).trim() !== ''
       ? String(student.caste).trim()
       : null;
 
+  const byCategoryId = findCategoryById(categories, student?.category_id);
   const byId = findByCasteId(categories, student?.caste_id);
   const categoryFromText = findCategoryByName(categories, legacyCaste);
 
@@ -85,6 +92,7 @@ export function getStudentCasteDisplay(categories = [], student = {}) {
       String(byId.category.name).trim().toLowerCase();
 
   const categoryName =
+    byCategoryId?.name ||
     (byId && !isMirrorChild ? byId.category?.name : null) ||
     categoryFromText?.name ||
     (byId ? byId.category?.name : null) ||

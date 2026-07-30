@@ -124,6 +124,25 @@ const ensureStudentCasteIdColumn = async () => {
   return hasColumn;
 };
 
+/**
+ * Resolve students.category_id from category text (students.caste = "BC-A", "OC"…).
+ * Returns null when empty or no matching caste_categories.name.
+ */
+const resolveCategoryIdByName = async (categoryName) => {
+  const trimmed = categoryName == null ? '' : String(categoryName).trim();
+  if (!trimmed) return null;
+
+  await ensureCasteTables();
+
+  const [rows] = await masterPool.query(
+    `SELECT id FROM caste_categories
+     WHERE LOWER(TRIM(name)) = LOWER(?)
+     LIMIT 1`,
+    [trimmed]
+  );
+  return rows[0]?.id || null;
+};
+
 const resolveCasteIdByName = async (casteName) => {
   const trimmed = casteName == null ? '' : String(casteName).trim();
   if (!trimmed) return null;
@@ -725,4 +744,5 @@ exports.fetchActiveCasteNames = async () => {
 };
 
 exports.ensureStudentCasteIdColumn = ensureStudentCasteIdColumn;
+exports.resolveCategoryIdByName = resolveCategoryIdByName;
 exports.resolveCasteIdByName = resolveCasteIdByName;

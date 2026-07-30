@@ -1,6 +1,6 @@
 const { masterPool, stagingPool } = require('../config/database');
 const { fetchActiveQuotaCodes } = require('./quotaController');
-const { resolveCasteIdByName } = require('./casteCategoryController');
+const { resolveCasteIdByName, resolveCategoryIdByName } = require('./casteCategoryController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { studentsCache, registrationAbstractCache, registrationStatsCache } = require('../services/cache');
@@ -817,7 +817,9 @@ const createComprehensiveFieldMapping = () => {
     admission_date: ['admissiondate', 'admission_date', 'admitdate', 'admit_date', 'enrollmentdate', 'enrollment_date', 'admissiondate', 'admission_date', 'admitdate', 'admit_date', 'enrollmentdate', 'enrollment_date', 'dateofadmission', 'date_of_admission'],
     branch_code: ['branchcode', 'branch_code', 'deptcode', 'dept_code', 'departmentcode', 'department_code', 'branchcode', 'branch_code', 'deptcode', 'dept_code', 'departmentcode', 'department_code'],
     course_code: ['coursecode', 'course_code', 'programcode', 'program_code', 'coursecode', 'course_code', 'programcode', 'program_code'],
-    scholar_status: ['scholarstatus', 'scholar_status', 'scholarshipstatus', 'scholarship_status', 'scholarship', 'scholarstatus', 'scholar_status', 'scholarshipstatus', 'scholarship_status', 'scholarship', 'scholarshipstatus', 'scholarship_status']
+    scholar_status: ['scholarstatus', 'scholar_status', 'scholarshipstatus', 'scholarship_status', 'scholarship', 'scholarstatus', 'scholar_status', 'scholarshipstatus', 'scholarship_status', 'scholarship', 'scholarshipstatus', 'scholarship_status'],
+    caste_id: ['casteid', 'caste_id', 'nestedcasteid', 'nested_caste_id'],
+    category_id: ['categoryid', 'category_id', 'castecategoryid', 'caste_category_id']
   };
 
   // Build mapping from variations to database fields
@@ -2566,19 +2568,34 @@ exports.commitBulkUploadStudents = async (req, res) => {
         updatedColumns.add(columnName);
       });
 
-      // Link caste_id for this bulk-imported student only
-      if (updatedColumns.has('caste') && !updatedColumns.has('caste_id')) {
-        try {
-          if (await columnExists('caste_id')) {
-            const casteValue = sanitized.caste || sanitized.Caste || '';
-            const resolvedCasteId = await resolveCasteIdByName(casteValue);
-            insertColumns.push('caste_id');
-            insertPlaceholders.push('?');
-            insertValues.push(resolvedCasteId);
-            updatedColumns.add('caste_id');
+      // Link caste_id / category_id for this bulk-imported student only
+      if (updatedColumns.has('caste')) {
+        const casteValue = sanitized.caste || sanitized.Caste || '';
+        if (!updatedColumns.has('caste_id')) {
+          try {
+            if (await columnExists('caste_id')) {
+              const resolvedCasteId = await resolveCasteIdByName(casteValue);
+              insertColumns.push('caste_id');
+              insertPlaceholders.push('?');
+              insertValues.push(resolvedCasteId);
+              updatedColumns.add('caste_id');
+            }
+          } catch (casteLinkError) {
+            console.warn('Failed to set caste_id on bulk student create:', casteLinkError.message);
           }
-        } catch (casteLinkError) {
-          console.warn('Failed to set caste_id on bulk student create:', casteLinkError.message);
+        }
+        if (!updatedColumns.has('category_id')) {
+          try {
+            if (await columnExists('category_id')) {
+              const resolvedCategoryId = await resolveCategoryIdByName(casteValue);
+              insertColumns.push('category_id');
+              insertPlaceholders.push('?');
+              insertValues.push(resolvedCategoryId);
+              updatedColumns.add('category_id');
+            }
+          } catch (categoryLinkError) {
+            console.warn('Failed to set category_id on bulk student create:', categoryLinkError.message);
+          }
         }
       }
 
@@ -2832,6 +2849,7 @@ exports.getAllStudents = async (req, res) => {
     const hasPermitEndingDateColumn = await columnExists('permit_ending_date');
     const hasPermitRemarksColumn = await columnExists('permit_remarks');
     const hasCasteIdColumn = await columnExists('caste_id');
+    const hasCategoryIdColumn = await columnExists('category_id');
     const permitSelectColumns = [
       hasPermitEndingDateColumn ? 'permit_ending_date' : null,
       hasPermitRemarksColumn ? 'permit_remarks' : null
@@ -2840,6 +2858,7 @@ exports.getAllStudents = async (req, res) => {
       ? `${permitSelectColumns.join(', ')},`
       : '';
     const casteIdSelectSql = hasCasteIdColumn ? 'caste_id,' : '';
+    const categoryIdSelectSql = hasCategoryIdColumn ? 'category_id,' : '';
 
     let query = `
       SELECT 
@@ -2849,7 +2868,7 @@ exports.getAllStudents = async (req, res) => {
         student_status, course, branch, section, current_year, current_semester, batch,
         certificates_status, student_address, city_village, mandal_name, district, 
         stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
-        previous_college, remarks, college, ${casteIdSelectSql} caste,
+        previous_college, remarks, college, ${casteIdSelectSql} ${categoryIdSelectSql} caste,
         ${registrationStatusComputedSql} AS registration_status_computed
       FROM students WHERE 1=1`;
     const params = [];
@@ -3791,20 +3810,62 @@ exports.updateStudent = async (req, res) => {
         updateValues.push(convertedValue);
         updatedColumns.add(columnName);
 
-        // Link this student only: set caste_id from castes table when caste name is saved
+        // Link this student only: set caste_id / category_id when caste (category text) is saved
         if (columnName === 'caste') {
           try {
             const hasCasteId = await columnExists('caste_id');
             if (hasCasteId && !updatedColumns.has('caste_id')) {
-              const resolvedCasteId = convertedValue
-                ? await resolveCasteIdByName(convertedValue)
-                : null;
+              // Prefer explicit nested caste_id from client (category text must not clear it)
+              const hasExplicitCasteId = Object.prototype.hasOwnProperty.call(
+                incomingStudentData,
+                'caste_id'
+              );
+              let resolvedCasteId = null;
+              if (hasExplicitCasteId) {
+                const raw = incomingStudentData.caste_id;
+                resolvedCasteId =
+                  raw === null || raw === '' || raw === undefined
+                    ? null
+                    : Number(raw);
+                if (resolvedCasteId != null && !Number.isFinite(resolvedCasteId)) {
+                  resolvedCasteId = null;
+                }
+              } else if (convertedValue) {
+                resolvedCasteId = await resolveCasteIdByName(convertedValue);
+              }
               updateFields.push('caste_id = ?');
               updateValues.push(resolvedCasteId);
               updatedColumns.add('caste_id');
             }
           } catch (casteLinkError) {
             console.warn('Failed to set caste_id on student update:', casteLinkError.message);
+          }
+          try {
+            const hasCategoryId = await columnExists('category_id');
+            if (hasCategoryId && !updatedColumns.has('category_id')) {
+              const hasExplicitCategoryId = Object.prototype.hasOwnProperty.call(
+                incomingStudentData,
+                'category_id'
+              );
+              let resolvedCategoryId = null;
+              if (hasExplicitCategoryId) {
+                const raw = incomingStudentData.category_id;
+                resolvedCategoryId =
+                  raw === null || raw === '' || raw === undefined
+                    ? null
+                    : Number(raw);
+                if (resolvedCategoryId != null && !Number.isFinite(resolvedCategoryId)) {
+                  resolvedCategoryId = null;
+                }
+              } else if (convertedValue) {
+                resolvedCategoryId = await resolveCategoryIdByName(convertedValue);
+              }
+              updateFields.push('category_id = ?');
+              updateValues.push(resolvedCategoryId);
+              updatedColumns.add('category_id');
+            }
+          } catch (categoryLinkError) {
+            console.warn('Failed to set category_id on student update:', categoryLinkError.message);
           }
         }
       }
@@ -4661,19 +4722,34 @@ exports.createStudent = async (req, res) => {
       }
     });
 
-    // Link caste_id for this student only when caste name is present
-    if (updatedColumns.has('caste') && !updatedColumns.has('caste_id')) {
-      try {
-        if (await columnExists('caste_id')) {
-          const casteValue = incomingData.caste || incomingData.Caste || '';
-          const resolvedCasteId = await resolveCasteIdByName(casteValue);
-          insertColumns.push('caste_id');
-          insertPlaceholders.push('?');
-          insertValues.push(resolvedCasteId);
-          updatedColumns.add('caste_id');
+    // Link caste_id / category_id for this student only when caste (category text) is present
+    if (updatedColumns.has('caste')) {
+      const casteValue = incomingData.caste || incomingData.Caste || '';
+      if (!updatedColumns.has('caste_id')) {
+        try {
+          if (await columnExists('caste_id')) {
+            const resolvedCasteId = await resolveCasteIdByName(casteValue);
+            insertColumns.push('caste_id');
+            insertPlaceholders.push('?');
+            insertValues.push(resolvedCasteId);
+            updatedColumns.add('caste_id');
+          }
+        } catch (casteLinkError) {
+          console.warn('Failed to set caste_id on student create:', casteLinkError.message);
         }
-      } catch (casteLinkError) {
-        console.warn('Failed to set caste_id on student create:', casteLinkError.message);
+      }
+      if (!updatedColumns.has('category_id')) {
+        try {
+          if (await columnExists('category_id')) {
+            const resolvedCategoryId = await resolveCategoryIdByName(casteValue);
+            insertColumns.push('category_id');
+            insertPlaceholders.push('?');
+            insertValues.push(resolvedCategoryId);
+            updatedColumns.add('category_id');
+          }
+        } catch (categoryLinkError) {
+          console.warn('Failed to set category_id on student create:', categoryLinkError.message);
+        }
       }
     }
 
@@ -6352,7 +6428,8 @@ const STUDENT_UPDATE_FETCH_OPTIONAL = [
   'registration_status',
   'permit_ending_date',
   'permit_remarks',
-  'caste_id'
+  'caste_id',
+  'category_id'
 ];
 
 const getStudentUpdateFetchColumns = async (includePhoto = false) => {
