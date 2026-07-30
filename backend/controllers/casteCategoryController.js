@@ -129,10 +129,26 @@ const resolveCasteIdByName = async (casteName) => {
   if (!trimmed) return null;
 
   await ensureCasteTables();
-  const [rows] = await masterPool.query(
-    `SELECT id FROM castes
+
+  // students.caste holds CATEGORY values (BC-A, OC…). Do not link those to castes.id.
+  const [categoryRows] = await masterPool.query(
+    `SELECT id FROM caste_categories
      WHERE LOWER(TRIM(name)) = LOWER(?)
-     ORDER BY id ASC
+     LIMIT 1`,
+    [trimmed]
+  );
+  if (categoryRows.length > 0) {
+    return null;
+  }
+
+  // Nested caste only (Agnikulakshatriya, …) — skip mirror rows named same as their parent
+  const [rows] = await masterPool.query(
+    `SELECT c.id
+     FROM castes c
+     JOIN caste_categories cat ON cat.id = c.category_id
+     WHERE LOWER(TRIM(c.name)) = LOWER(?)
+       AND LOWER(TRIM(c.name)) <> LOWER(TRIM(cat.name))
+     ORDER BY c.id ASC
      LIMIT 1`,
     [trimmed]
   );
@@ -266,9 +282,6 @@ exports.getExistingStudentCastes = async (req, res) => {
     const configuredNames = new Set();
     configured.forEach((parent) => {
       if (parent.name) configuredNames.add(String(parent.name).trim().toLowerCase());
-      (parent.castes || []).forEach((child) => {
-        if (child.name) configuredNames.add(String(child.name).trim().toLowerCase());
-      });
     });
 
     const data = rows.map((row) => {
@@ -297,8 +310,8 @@ exports.getExistingStudentCastes = async (req, res) => {
 };
 
 /**
- * Import distinct students.caste values into Settings as Caste + matching Subcaste.
- * Skips names already present as a caste or subcaste.
+ * Import distinct students.caste values into Settings as CATEGORIES only.
+ * Nested castes (Agnikulakshatriya, …) are added manually under each category.
  */
 exports.importExistingStudentCastes = async (req, res) => {
   try {
@@ -315,9 +328,6 @@ exports.importExistingStudentCastes = async (req, res) => {
     const configuredNames = new Set();
     configured.forEach((parent) => {
       if (parent.name) configuredNames.add(String(parent.name).trim().toLowerCase());
-      (parent.castes || []).forEach((child) => {
-        if (child.name) configuredNames.add(String(child.name).trim().toLowerCase());
-      });
     });
 
     let created = 0;
@@ -333,16 +343,10 @@ exports.importExistingStudentCastes = async (req, res) => {
         continue;
       }
 
-      const [result] = await masterPool.query(
+      await masterPool.query(
         `INSERT INTO caste_categories (name, is_active, sort_order)
          VALUES (?, 1, ?)`,
         [name, created + 1]
-      );
-      const categoryId = result.insertId;
-      await masterPool.query(
-        `INSERT INTO castes (category_id, name, is_active, sort_order)
-         VALUES (?, ?, 1, 1)`,
-        [categoryId, name]
       );
 
       configuredNames.add(key);
@@ -355,8 +359,8 @@ exports.importExistingStudentCastes = async (req, res) => {
       success: true,
       message:
         created > 0
-          ? `Imported ${created} caste(s) from student records`
-          : 'All existing student castes are already in Settings',
+          ? `Imported ${created} categor${created === 1 ? 'y' : 'ies'} from student caste values`
+          : 'All existing student caste values already have categories in Settings',
       created,
       skipped,
       createdNames,
@@ -367,7 +371,7 @@ exports.importExistingStudentCastes = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({
         success: false,
-        message: 'A caste with that name already exists'
+        message: 'A category with that name already exists'
       });
     }
     res.status(500).json({ success: false, message: 'Failed to import existing student castes' });
@@ -507,27 +511,26 @@ exports.deleteCasteCategory = async (req, res) => {
       'SELECT id, name FROM castes WHERE category_id = ?',
       [categoryId]
     );
-    const casteNames = casteRows.map((row) => row.name);
     const casteIds = casteRows.map((row) => row.id);
+    const categoryName = existingRows[0].name;
 
-    if (casteNames.length > 0 || casteIds.length > 0) {
-      const { students, totalCount } = await fetchStudentsByCasteIdsOrNames({
-        casteIds,
-        casteNames
+    // Block if students use this CATEGORY name, or are linked to nested castes under it
+    const { students, totalCount } = await fetchStudentsByCasteIdsOrNames({
+      casteIds,
+      casteNames: [categoryName]
+    });
+    if (totalCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot delete category "${categoryName}" because ${totalCount} student(s) use it`,
+        students,
+        totalCount,
+        hasMore: totalCount > students.length
       });
-      if (totalCount > 0) {
-        return res.status(409).json({
-          success: false,
-          message: `Cannot delete caste "${existingRows[0].name}" because ${totalCount} student(s) use its subcastes`,
-          students,
-          totalCount,
-          hasMore: totalCount > students.length
-        });
-      }
     }
 
     await masterPool.query('DELETE FROM caste_categories WHERE id = ?', [categoryId]);
-    res.json({ success: true, message: 'Caste deleted successfully' });
+    res.json({ success: true, message: 'Category deleted successfully' });
   } catch (error) {
     console.error('deleteCasteCategory error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete caste' });
@@ -682,14 +685,15 @@ exports.deleteCaste = async (req, res) => {
     }
 
     const casteName = existingRows[0].name;
+    // Nested caste delete: only students linked via caste_id (not students.caste category text)
     const { students, totalCount } = await fetchStudentsByCasteIdsOrNames({
       casteIds: [casteId],
-      casteNames: [casteName]
+      casteNames: []
     });
     if (totalCount > 0) {
       return res.status(409).json({
         success: false,
-        message: `Cannot delete subcaste "${casteName}" because ${totalCount} student(s) are assigned to it`,
+        message: `Cannot delete caste "${casteName}" because ${totalCount} student(s) are assigned to it`,
         students,
         totalCount,
         hasMore: totalCount > students.length
@@ -697,10 +701,10 @@ exports.deleteCaste = async (req, res) => {
     }
 
     await masterPool.query('DELETE FROM castes WHERE id = ?', [casteId]);
-    res.json({ success: true, message: 'Subcaste deleted successfully' });
+    res.json({ success: true, message: 'Caste deleted successfully' });
   } catch (error) {
     console.error('deleteCaste error:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete subcaste' });
+    res.status(500).json({ success: false, message: 'Failed to delete caste' });
   }
 };
 

@@ -1519,21 +1519,20 @@ const AddStudent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Caste
+                  Category <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={selectedCasteCategoryId}
                   onChange={(e) => {
                     const nextId = e.target.value;
                     setSelectedCasteCategoryId(nextId);
-                    const allowed = getCastesForCategory(nextId);
-                    if (studentData.caste && !allowed.includes(studentData.caste)) {
-                      setStudentData((prev) => ({ ...prev, caste: '' }));
-                    }
+                    const cat = casteCategories.find((c) => String(c.id) === String(nextId));
+                    setStudentData((prev) => ({ ...prev, caste: cat?.name || '' }));
                   }}
+                  required
                   className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
                 >
-                  <option value="">Select Caste</option>
+                  <option value="">Select Category</option>
                   {casteCategories
                     .filter((cat) => cat.isActive !== false)
                     .map((cat) => (
@@ -1542,30 +1541,9 @@ const AddStudent = () => {
                       </option>
                     ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Subcaste <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="caste"
-                  value={studentData.caste}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none touch-manipulation min-h-[44px]"
-                >
-                  <option value="">Select Subcaste</option>
-                  {buildCasteSelectOptions(
-                    selectedCasteCategoryId
-                      ? getCastesForCategory(selectedCasteCategoryId)
-                      : dynamicCasteOptions,
-                    studentData.caste
-                  ).map((caste) => (
-                    <option key={caste} value={caste}>
-                      {caste}
-                    </option>
-                  ))}
-                </select>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Nested castes under a category can be set later on the student edit dialog.
+                </p>
               </div>
             </div>
           </div>

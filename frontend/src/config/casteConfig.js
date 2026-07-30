@@ -1,9 +1,9 @@
-/** No static defaults — caste/subcaste options come only from Settings (API). */
+/** No static defaults — category/caste options come only from Settings (API). */
 export const CASTE_OPTIONS = [];
 
 /**
- * Flatten nested caste → subcastes into a unique subcaste name list.
- * API still returns parent as "category" with nested "castes" (subcastes).
+ * Flatten nested category → castes into a unique caste name list.
+ * API returns parent categories with nested `castes`.
  */
 export function flattenCasteNames(categories = [], { includeInactive = false } = {}) {
   const names = [];
@@ -19,7 +19,7 @@ export function flattenCasteNames(categories = [], { includeInactive = false } =
   return names;
 }
 
-/** Find the parent caste object for a given subcaste name. */
+/** Find parent category for a nested caste name (or category name itself). */
 export function findCategoryForCaste(categories = [], casteName) {
   if (!casteName) return null;
   const needle = String(casteName).trim();
@@ -29,11 +29,19 @@ export function findCategoryForCaste(categories = [], casteName) {
     );
     if (match) return category;
   }
-  // Fallback: parent caste name matches value
-  return categories.find((cat) => cat.name === needle) || null;
+  return categories.find((cat) => String(cat.name).trim() === needle) || null;
 }
 
-/** Find parent caste + subcaste objects by subcaste id (castes.id). */
+/** Find category by exact name (BC-A, OC, …). */
+export function findCategoryByName(categories = [], name) {
+  if (!name) return null;
+  const needle = String(name).trim().toLowerCase();
+  return (
+    categories.find((cat) => String(cat.name || '').trim().toLowerCase() === needle) || null
+  );
+}
+
+/** Find parent category + nested caste by castes.id. */
 export function findByCasteId(categories = [], casteId) {
   if (casteId == null || casteId === '') return null;
   const id = Number(casteId);
@@ -52,55 +60,50 @@ export function findByCasteId(categories = [], casteId) {
 
 /**
  * Display helpers for students table/dialog.
- * Linked when student.caste_id is set (Settings caste → subcaste).
- * When not linked, still expose the existing students.caste text so it is not hidden.
  *
- * - casteName: parent caste when linked; else legacy students.caste
- * - subcasteName: Settings subcaste when linked; else null
- * - legacyCaste: raw students.caste text
+ * Model:
+ * - Category (Settings parent) = BC-A, BC-B, OC, SC…
+ * - Caste (Settings child) = Agnikulakshatriya, Chakali… (optional)
+ * - students.caste stores the CATEGORY name
+ * - students.caste_id points at nested caste only when set
  */
 export function getStudentCasteDisplay(categories = [], student = {}) {
   const legacyCaste =
     student?.caste != null && String(student.caste).trim() !== ''
       ? String(student.caste).trim()
       : null;
-  const linked = student?.caste_id != null && student?.caste_id !== '';
 
-  if (!linked) {
-    return {
-      linked: false,
-      casteName: legacyCaste,
-      subcasteName: null,
-      categoryName: null,
-      legacyCaste
-    };
-  }
+  const byId = findByCasteId(categories, student?.caste_id);
+  const categoryFromText = findCategoryByName(categories, legacyCaste);
 
-  const found = findByCasteId(categories, student.caste_id);
-  if (found) {
-    const parentName = found.category?.name || null;
-    const childName = found.caste?.name || null;
-    return {
-      linked: true,
-      casteName: parentName || legacyCaste,
-      subcasteName: childName || legacyCaste,
-      categoryName: parentName,
-      legacyCaste
-    };
-  }
+  // Mirror child (subcaste named same as parent) is not a real nested caste
+  const isMirrorChild =
+    byId &&
+    byId.category &&
+    byId.caste &&
+    String(byId.caste.name).trim().toLowerCase() ===
+      String(byId.category.name).trim().toLowerCase();
 
-  // caste_id set but not in settings list — fall back to stored name
+  const categoryName =
+    (byId && !isMirrorChild ? byId.category?.name : null) ||
+    categoryFromText?.name ||
+    (byId ? byId.category?.name : null) ||
+    legacyCaste;
+
+  const nestedCasteName =
+    byId && !isMirrorChild ? byId.caste?.name || null : null;
+
   return {
-    linked: true,
-    casteName: legacyCaste,
-    subcasteName: legacyCaste,
-    categoryName: null,
+    linked: Boolean(byId && !isMirrorChild),
+    categoryName: categoryName || null,
+    casteName: nestedCasteName,
+    subcasteName: nestedCasteName,
     legacyCaste
   };
 }
 
 /**
- * Build select options for a student subcaste field.
+ * Build select options for a student nested-caste field.
  * Ensures the student's current value remains selectable even if removed from config.
  */
 export function buildCasteSelectOptions(casteOptions = CASTE_OPTIONS, currentValue) {

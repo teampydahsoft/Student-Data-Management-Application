@@ -16,9 +16,9 @@ import api from '../config/api';
 import { SkeletonList } from './SkeletonLoader';
 
 /**
- * Compact two-panel manager: pick a caste, manage its subcastes.
+ * Compact two-panel manager: pick a category, manage its castes.
  * Also shows castes already present on student records for import.
- * API still uses /caste-categories + nested castes (subcastes).
+ * API still uses /caste-categories + nested castes.
  */
 export default function CasteCategorySettings({ readOnly = false }) {
   const [categories, setCategories] = useState([]);
@@ -140,8 +140,8 @@ export default function CasteCategorySettings({ readOnly = false }) {
     }
     if (
       !window.confirm(
-        `Add ${missingExistingCastes.length} caste(s) from student records to Settings?\n` +
-          'Each value becomes a Caste with a matching Subcaste so students can be linked.'
+        `Add ${missingExistingCastes.length} categor${missingExistingCastes.length === 1 ? 'y' : 'ies'} from student caste values to Settings?\n` +
+          'Each value becomes a Category only. Add nested castes under it afterward.'
       )
     ) {
       return;
@@ -220,7 +220,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
   };
 
   const deleteCategory = async (category) => {
-    if (!window.confirm(`Delete caste "${category.name}" and all its subcastes?`)) return;
+    if (!window.confirm(`Delete category "${category.name}" and all its castes?`)) return;
     try {
       setSavingKey(`cat-${category.id}`);
       await api.delete(`/caste-categories/${category.id}`);
@@ -228,7 +228,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
       setEditingCategoryId(null);
       await fetchCategories({ silent: true });
     } catch (error) {
-      handleDeleteBlockedError(error, `Cannot delete caste "${category.name}"`);
+      handleDeleteBlockedError(error, `Cannot delete category "${category.name}"`);
     } finally {
       setSavingKey(null);
     }
@@ -239,17 +239,17 @@ export default function CasteCategorySettings({ readOnly = false }) {
     if (!selectedCategory) return;
     const name = newCasteName.trim();
     if (!name) {
-      toast.error('Subcaste name is required');
+      toast.error('Caste name is required');
       return;
     }
     try {
       setCreatingCaste(true);
       await api.post(`/caste-categories/${selectedCategory.id}/castes`, { name, isActive: true });
-      toast.success('Subcaste created');
+      toast.success('Caste created');
       setNewCasteName('');
       await fetchCategories({ silent: true, preferCategoryId: selectedCategory.id });
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create subcaste');
+      toast.error(error.response?.data?.message || 'Failed to create caste');
     } finally {
       setCreatingCaste(false);
     }
@@ -264,17 +264,17 @@ export default function CasteCategorySettings({ readOnly = false }) {
     if (!selectedCategory) return;
     const name = casteDraft.trim();
     if (!name) {
-      toast.error('Subcaste name is required');
+      toast.error('Caste name is required');
       return;
     }
     try {
       setSavingKey(`caste-${casteId}`);
       await api.put(`/caste-categories/${selectedCategory.id}/castes/${casteId}`, { name });
-      toast.success('Subcaste updated');
+      toast.success('Caste updated');
       setEditingCasteId(null);
       await fetchCategories({ silent: true, preferCategoryId: selectedCategory.id });
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update subcaste');
+      toast.error(error.response?.data?.message || 'Failed to update caste');
     } finally {
       setSavingKey(null);
     }
@@ -287,10 +287,10 @@ export default function CasteCategorySettings({ readOnly = false }) {
       await api.put(`/caste-categories/${selectedCategory.id}/castes/${caste.id}`, {
         isActive: !caste.isActive
       });
-      toast.success(`Subcaste ${!caste.isActive ? 'activated' : 'deactivated'}`);
+      toast.success(`Caste ${!caste.isActive ? 'activated' : 'deactivated'}`);
       await fetchCategories({ silent: true, preferCategoryId: selectedCategory.id });
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update subcaste');
+      toast.error(error.response?.data?.message || 'Failed to update caste');
     } finally {
       setSavingKey(null);
     }
@@ -298,15 +298,15 @@ export default function CasteCategorySettings({ readOnly = false }) {
 
   const deleteCaste = async (caste) => {
     if (!selectedCategory) return;
-    if (!window.confirm(`Delete subcaste "${caste.name}"?`)) return;
+    if (!window.confirm(`Delete caste "${caste.name}"?`)) return;
     try {
       setSavingKey(`caste-${caste.id}`);
       await api.delete(`/caste-categories/${selectedCategory.id}/castes/${caste.id}`);
-      toast.success('Subcaste deleted');
+      toast.success('Caste deleted');
       setEditingCasteId(null);
       await fetchCategories({ silent: true, preferCategoryId: selectedCategory.id });
     } catch (error) {
-      handleDeleteBlockedError(error, `Cannot delete subcaste "${caste.name}"`);
+      handleDeleteBlockedError(error, `Cannot delete caste "${caste.name}"`);
     } finally {
       setSavingKey(null);
     }
@@ -321,10 +321,10 @@ export default function CasteCategorySettings({ readOnly = false }) {
         <div>
           <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
             <Tags size={18} className="text-amber-600" />
-            Castes & Subcastes
+            Categories & Castes
           </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Manage castes and subcastes here. Existing student caste values are listed below so you can add them.
+              Categories (BC-A, OC…) come from student caste values. Add nested castes under each category.
             </p>
         </div>
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">
@@ -337,7 +337,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-amber-900">
-                Castes already on students ({existingSummary.total})
+                Categories from student caste values ({existingSummary.total})
               </p>
               <p className="text-[11px] text-amber-800/80 mt-0.5">
                 {existingSummary.inSettings} already in Settings
@@ -391,7 +391,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                   type="text"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="New caste"
+                  placeholder="New category"
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
                 <button
@@ -400,7 +400,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                   className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
                 >
                   <Plus size={14} />
-                  Add Caste
+                  Add Category
                 </button>
               </form>
             )}
@@ -408,11 +408,11 @@ export default function CasteCategorySettings({ readOnly = false }) {
             <div className="flex-1 overflow-y-auto max-h-[280px] md:max-h-[420px] p-2 space-y-1">
               {categories.length === 0 ? (
                 <div className="px-3 py-8 text-center">
-                  <p className="text-sm font-medium text-gray-600">No castes yet</p>
+                  <p className="text-sm font-medium text-gray-600">No categories yet</p>
                   <p className="mt-1 text-xs text-gray-400">
                     {readOnly
-                      ? 'Ask an admin to add castes in Settings.'
-                      : 'Add a caste above, then add subcastes under it.'}
+                      ? 'Ask an admin to add categories in Settings.'
+                      : 'Add a category above, then add castes under it.'}
                   </p>
                 </div>
               ) : (
@@ -455,17 +455,17 @@ export default function CasteCategorySettings({ readOnly = false }) {
             </div>
           </div>
 
-          {/* Subcastes panel */}
+          {/* Castes panel */}
           <div className="flex flex-col min-w-0">
             {!selectedCategory ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-1">
                 <p className="text-sm font-medium text-gray-600">
-                  {categories.length === 0 ? 'Start by adding a caste' : 'Select a caste'}
+                  {categories.length === 0 ? 'Start by adding a category' : 'Select a category'}
                 </p>
                 <p className="text-xs text-gray-400">
                   {categories.length === 0
-                    ? 'Then add subcastes under that caste — nothing is preloaded.'
-                    : 'Manage subcastes for the selected caste.'}
+                    ? 'Then add castes under that category — nothing is preloaded.'
+                    : 'Manage castes for the selected category.'}
                 </p>
               </div>
             ) : (
@@ -501,7 +501,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                         <h3 className="text-sm font-semibold text-gray-900">
                           {selectedCategory.name}
                           <span className="ml-2 text-xs font-normal text-gray-400">
-                            {selectedCastes.length} subcaste{selectedCastes.length === 1 ? '' : 's'}
+                            {selectedCastes.length} caste{selectedCastes.length === 1 ? '' : 's'}
                           </span>
                         </h3>
                       </div>
@@ -514,7 +514,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                         type="button"
                         onClick={() => startEditCategory(selectedCategory)}
                         className="p-1.5 text-gray-400 hover:text-amber-600"
-                        title="Edit caste"
+                        title="Edit category"
                       >
                         <Pencil size={15} />
                       </button>
@@ -536,7 +536,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                         onClick={() => deleteCategory(selectedCategory)}
                         disabled={savingKey === `cat-${selectedCategory.id}`}
                         className="p-1.5 text-gray-400 hover:text-red-500 disabled:opacity-50"
-                        title="Delete caste"
+                        title="Delete category"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -550,7 +550,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                       type="text"
                       value={newCasteName}
                       onChange={(e) => setNewCasteName(e.target.value)}
-                      placeholder={`Add subcaste under ${selectedCategory.name}`}
+                      placeholder={`Add caste under ${selectedCategory.name}`}
                       className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                     <button
@@ -567,13 +567,13 @@ export default function CasteCategorySettings({ readOnly = false }) {
                 <div className="flex-1 overflow-y-auto max-h-[280px] md:max-h-[340px]">
                   {selectedCastes.length === 0 ? (
                     <p className="px-4 py-10 text-center text-sm text-gray-400">
-                      No subcastes under this caste yet
+                      No castes under this category yet
                     </p>
                   ) : (
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                          <th className="px-4 py-2">Subcaste</th>
+                          <th className="px-4 py-2">Caste</th>
                           <th className="px-4 py-2">Status</th>
                           {!readOnly && <th className="px-4 py-2 text-right">Actions</th>}
                         </tr>
@@ -633,7 +633,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                                           type="button"
                                           onClick={() => startEditCaste(caste)}
                                           className="p-1 text-gray-400 hover:text-amber-600"
-                                          title="Edit subcaste"
+                                          title="Edit caste"
                                         >
                                           <Pencil size={14} />
                                         </button>
@@ -655,7 +655,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                                           onClick={() => deleteCaste(caste)}
                                           disabled={savingKey === `caste-${caste.id}`}
                                           className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
-                                          title="Delete subcaste"
+                                          title="Delete caste"
                                         >
                                           <Trash2 size={14} />
                                         </button>
@@ -721,7 +721,7 @@ export default function CasteCategorySettings({ readOnly = false }) {
                     <th className="px-3 py-2">College</th>
                     <th className="px-3 py-2">Course</th>
                     <th className="px-3 py-2">Branch</th>
-                    <th className="px-3 py-2">Subcaste</th>
+                    <th className="px-3 py-2">Caste</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
