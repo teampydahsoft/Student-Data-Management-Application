@@ -8,6 +8,8 @@ router.get('/public', casteCategoryController.getPublicCasteCategories);
 router.use(authMiddleware);
 
 router.get('/', casteCategoryController.getCasteCategories);
+router.get('/existing-from-students', casteCategoryController.getExistingStudentCastes);
+router.post('/import-from-students', casteCategoryController.importExistingStudentCastes);
 router.post('/', casteCategoryController.createCasteCategory);
 router.put('/:id', casteCategoryController.updateCasteCategory);
 router.delete('/:id', casteCategoryController.deleteCasteCategory);

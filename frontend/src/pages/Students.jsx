@@ -2129,8 +2129,8 @@ const Students = () => {
       setDialogCasteCategoryId(byId?.category ? String(byId.category.id) : '');
       setEditData((prev) => ({
         ...prev,
-        caste: linked.casteName || '',
-        Caste: linked.casteName || ''
+        caste: linked.subcasteName || '',
+        Caste: linked.subcasteName || ''
       }));
     } else {
       // Unlinked: do not prefill old caste text — start empty from Settings options.
@@ -3257,10 +3257,10 @@ const Students = () => {
                         {canViewField('caste') && (
                           <>
                             <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
-                              <div className="font-semibold">Category</div>
+                              <div className="font-semibold">Caste</div>
                             </th>
                             <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
-                              <div className="font-semibold">Caste</div>
+                              <div className="font-semibold">Subcaste</div>
                             </th>
                           </>
                         )}
@@ -3419,10 +3419,8 @@ const Students = () => {
                             {canViewField('caste') && (
                               <>
                                 <td className="py-1 px-1 text-[10px] text-gray-700 max-w-[70px]">
-                                  <div className="truncate" title={resolveStudentCaste(student).categoryName || ''}>
-                                    {resolveStudentCaste(student).linked
-                                      ? (resolveStudentCaste(student).categoryName || '-')
-                                      : '-'}
+                                  <div className="truncate" title={resolveStudentCaste(student).casteName || ''}>
+                                    {resolveStudentCaste(student).casteName || '-'}
                                   </div>
                                 </td>
                                 <td className="py-1 px-1 text-[10px] text-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3444,26 +3442,31 @@ const Students = () => {
                                           'select',
                                           buildCasteSelectOptions(
                                             dynamicCasteOptions,
-                                            display.linked ? display.casteName : ''
+                                            display.linked ? display.subcasteName : ''
                                           )
                                         );
                                       }
 
-                                      // Not linked yet: click still opens editor; display stays blank until caste_id is set
+                                      // Show linked subcaste, or existing students.caste until Settings link is set
                                       return (
                                         <div
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             if (canEditStudents && canEditField('caste') && !isFieldFrozen(student, 'caste')) {
-                                              // Only prefill when already linked via caste_id
-                                              const startValue = display.linked ? (display.casteName || '') : '';
+                                              const startValue = display.linked
+                                                ? (display.subcasteName || '')
+                                                : '';
                                               handleCellClick(student, 'caste', startValue, 'select');
                                             }
                                           }}
                                           className={`${canEditStudents && canEditField('caste') && !isFieldFrozen(student, 'caste') ? 'cursor-pointer hover:bg-blue-50' : ''} px-1 py-0.5 rounded truncate`}
-                                          title={display.linked ? (display.casteName || '') : 'Set caste to link'}
+                                          title={
+                                            display.linked
+                                              ? (display.subcasteName || '')
+                                              : 'Pick a Settings subcaste to link'
+                                          }
                                         >
-                                          {display.linked ? (display.casteName || '-') : '-'}
+                                          {display.linked ? (display.subcasteName || '-') : '-'}
                                         </div>
                                       );
                                     })()}
@@ -3627,15 +3630,18 @@ const Students = () => {
                           <>
                             {canViewField('caste') && (
                               <div>
-                                <p className="text-xs text-gray-500">Category / Caste</p>
+                                <p className="text-xs text-gray-500">Caste / Subcaste</p>
                                 <p className="text-sm font-medium text-gray-900 truncate">
                                   {(() => {
                                     const display = resolveStudentCaste(student);
-                                    if (!display.linked) return '-';
-                                    if (display.categoryName && display.casteName) {
-                                      return `${display.categoryName} / ${display.casteName}`;
+                                    if (display.linked) {
+                                      if (display.casteName && display.subcasteName) {
+                                        return `${display.casteName} / ${display.subcasteName}`;
+                                      }
+                                      return display.subcasteName || display.casteName || '-';
                                     }
-                                    return display.casteName || display.categoryName || '-';
+                                    // Not linked yet — still show existing students.caste
+                                    return display.legacyCaste || display.casteName || '-';
                                   })()}
                                 </p>
                               </div>
@@ -5056,7 +5062,7 @@ const Students = () => {
                                 <>
                                   <div>
                                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                      Category
+                                      Caste
                                     </label>
                                     {editMode ? (
                                       <select
@@ -5075,7 +5081,7 @@ const Students = () => {
                                         disabled={isFieldFrozen(selectedStudent, 'caste')}
                                         className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                       >
-                                        <option value="">Select category</option>
+                                        <option value="">Select caste</option>
                                         {casteCategories.map((cat) => (
                                           <option key={cat.id} value={String(cat.id)}>
                                             {cat.name}
@@ -5084,15 +5090,15 @@ const Students = () => {
                                       </select>
                                     ) : (
                                       <p className="text-sm text-gray-900 font-medium">
-                                        {resolveStudentCaste(selectedStudent).linked
-                                          ? (resolveStudentCaste(selectedStudent).categoryName || '-')
-                                          : '-'}
+                                        {resolveStudentCaste(selectedStudent).casteName
+                                          || resolveStudentCaste(selectedStudent).legacyCaste
+                                          || '-'}
                                       </p>
                                     )}
                                   </div>
                                   <div>
                                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                      Caste
+                                      Subcaste
                                     </label>
                                     {editMode ? (
                                       <select
@@ -5106,7 +5112,7 @@ const Students = () => {
                                         disabled={isFieldFrozen(selectedStudent, 'caste')}
                                         className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                       >
-                                        <option value="">Select caste</option>
+                                        <option value="">Select subcaste</option>
                                         {buildCasteSelectOptions(
                                           dialogCasteCategoryId
                                             ? getCastesForCategory(dialogCasteCategoryId)
@@ -5119,7 +5125,7 @@ const Students = () => {
                                     ) : (
                                       <p className="text-sm text-gray-900 font-medium">
                                         {resolveStudentCaste(selectedStudent).linked
-                                          ? (resolveStudentCaste(selectedStudent).casteName || '-')
+                                          ? (resolveStudentCaste(selectedStudent).subcasteName || '-')
                                           : '-'}
                                       </p>
                                     )}

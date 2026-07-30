@@ -3,8 +3,9 @@ import api from '../config/api';
 import { flattenCasteNames, findCategoryForCaste, findByCasteId, getStudentCasteDisplay } from '../config/casteConfig';
 
 /**
- * Load dynamic caste categories (with nested castes) from settings API.
- * Empty until categories/castes are created in Settings (no static defaults).
+ * Load castes with nested subcastes from settings API.
+ * Empty until castes/subcastes are created in Settings (no static defaults).
+ * API path remains /caste-categories for compatibility.
  */
 export function useCasteCategories({ includeInactive = false, publicOnly = false, enabled = true } = {}) {
   const [categories, setCategories] = useState([]);

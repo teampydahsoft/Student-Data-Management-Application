@@ -1046,7 +1046,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Category
+                        Caste
                       </label>
                       <select
                         value={selectedCasteCategoryId}
@@ -1060,7 +1060,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                       >
-                        <option value="">Select Category</option>
+                        <option value="">Select Caste</option>
                         {casteCategories
                           .filter((cat) => cat.isActive !== false)
                           .map((cat) => (
@@ -1072,7 +1072,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Caste
+                        Subcaste
                       </label>
                       <select
                         name="caste"
@@ -1080,7 +1080,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                         onChange={handleChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                       >
-                        <option value="">Select Caste</option>
+                        <option value="">Select Subcaste</option>
                         {buildCasteSelectOptions(
                           selectedCasteCategoryId
                             ? getCastesForCategory(selectedCasteCategoryId)

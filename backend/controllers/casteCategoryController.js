@@ -39,15 +39,20 @@ const serializeCaste = (row) => ({
   updatedAt: row.updated_at
 });
 
-const serializeCategory = (row, castes = []) => ({
-  id: row.id,
-  name: row.name,
-  isActive: row.is_active === 1 || row.is_active === true,
-  sortOrder: row.sort_order ?? 0,
-  castes: castes.map(serializeCaste),
-  createdAt: row.created_at,
-  updatedAt: row.updated_at
-});
+const serializeCategory = (row, castes = []) => {
+  const nested = castes.map(serializeCaste);
+  return {
+    id: row.id,
+    name: row.name,
+    isActive: row.is_active === 1 || row.is_active === true,
+    sortOrder: row.sort_order ?? 0,
+    // Nested items are subcastes; keep `castes` key for API compatibility
+    castes: nested,
+    subcastes: nested,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+};
 
 const ensureCasteTables = async () => {
   if (!tablesEnsured) {
@@ -225,7 +230,7 @@ exports.getPublicCasteCategories = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('getPublicCasteCategories error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch caste categories' });
+    res.status(500).json({ success: false, message: 'Failed to fetch castes' });
   }
 };
 
@@ -237,7 +242,135 @@ exports.getCasteCategories = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('getCasteCategories error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch caste categories' });
+    res.status(500).json({ success: false, message: 'Failed to fetch castes' });
+  }
+};
+
+/**
+ * Distinct students.caste values already present in student records.
+ * Used by Settings so admins can see / import existing castes.
+ */
+exports.getExistingStudentCastes = async (req, res) => {
+  try {
+    await ensureCasteTables();
+
+    const [rows] = await masterPool.query(
+      `SELECT TRIM(caste) AS name, COUNT(*) AS studentCount
+       FROM students
+       WHERE caste IS NOT NULL AND TRIM(caste) <> ''
+       GROUP BY TRIM(caste)
+       ORDER BY TRIM(caste) ASC`
+    );
+
+    const configured = await fetchCategoriesWithCastes({ includeInactive: true });
+    const configuredNames = new Set();
+    configured.forEach((parent) => {
+      if (parent.name) configuredNames.add(String(parent.name).trim().toLowerCase());
+      (parent.castes || []).forEach((child) => {
+        if (child.name) configuredNames.add(String(child.name).trim().toLowerCase());
+      });
+    });
+
+    const data = rows.map((row) => {
+      const name = row.name;
+      const key = String(name).trim().toLowerCase();
+      return {
+        name,
+        studentCount: Number(row.studentCount) || 0,
+        inSettings: configuredNames.has(key)
+      };
+    });
+
+    res.json({
+      success: true,
+      data,
+      summary: {
+        total: data.length,
+        inSettings: data.filter((item) => item.inSettings).length,
+        missing: data.filter((item) => !item.inSettings).length
+      }
+    });
+  } catch (error) {
+    console.error('getExistingStudentCastes error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch existing student castes' });
+  }
+};
+
+/**
+ * Import distinct students.caste values into Settings as Caste + matching Subcaste.
+ * Skips names already present as a caste or subcaste.
+ */
+exports.importExistingStudentCastes = async (req, res) => {
+  try {
+    await ensureCasteTables();
+
+    const [rows] = await masterPool.query(
+      `SELECT DISTINCT TRIM(caste) AS name
+       FROM students
+       WHERE caste IS NOT NULL AND TRIM(caste) <> ''
+       ORDER BY TRIM(caste) ASC`
+    );
+
+    const configured = await fetchCategoriesWithCastes({ includeInactive: true });
+    const configuredNames = new Set();
+    configured.forEach((parent) => {
+      if (parent.name) configuredNames.add(String(parent.name).trim().toLowerCase());
+      (parent.castes || []).forEach((child) => {
+        if (child.name) configuredNames.add(String(child.name).trim().toLowerCase());
+      });
+    });
+
+    let created = 0;
+    let skipped = 0;
+    const createdNames = [];
+
+    for (const row of rows) {
+      const name = String(row.name || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (configuredNames.has(key)) {
+        skipped += 1;
+        continue;
+      }
+
+      const [result] = await masterPool.query(
+        `INSERT INTO caste_categories (name, is_active, sort_order)
+         VALUES (?, 1, ?)`,
+        [name, created + 1]
+      );
+      const categoryId = result.insertId;
+      await masterPool.query(
+        `INSERT INTO castes (category_id, name, is_active, sort_order)
+         VALUES (?, ?, 1, 1)`,
+        [categoryId, name]
+      );
+
+      configuredNames.add(key);
+      created += 1;
+      createdNames.push(name);
+    }
+
+    const data = await fetchCategoriesWithCastes({ includeInactive: true });
+    res.json({
+      success: true,
+      message:
+        created > 0
+          ? `Imported ${created} caste(s) from student records`
+          : 'All existing student castes are already in Settings',
+      created,
+      skipped,
+      createdNames,
+      data
+    });
+  } catch (error) {
+    console.error('importExistingStudentCastes error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        success: false,
+        message: 'A caste with that name already exists'
+      });
+    }
+    res.status(500).json({ success: false, message: 'Failed to import existing student castes' });
   }
 };
 
@@ -248,7 +381,7 @@ exports.createCasteCategory = async (req, res) => {
     const { name, isActive, sortOrder } = req.body;
     const trimmedName = name?.trim();
     if (!trimmedName) {
-      return res.status(400).json({ success: false, message: 'Category name is required' });
+      return res.status(400).json({ success: false, message: 'Caste name is required' });
     }
 
     const [result] = await masterPool.query(
@@ -268,7 +401,7 @@ exports.createCasteCategory = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Category created successfully',
+      message: 'Caste created successfully',
       data: serializeCategory(rows[0], [])
     });
   } catch (error) {
@@ -276,10 +409,10 @@ exports.createCasteCategory = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({
         success: false,
-        message: 'Category name already exists'
+        message: 'Caste name already exists'
       });
     }
-    res.status(500).json({ success: false, message: 'Failed to create category' });
+    res.status(500).json({ success: false, message: 'Failed to create caste' });
   }
 };
 
@@ -289,7 +422,7 @@ exports.updateCasteCategory = async (req, res) => {
 
     const categoryId = parseInt(req.params.id, 10);
     if (!categoryId || Number.isNaN(categoryId)) {
-      return res.status(400).json({ success: false, message: 'Invalid category ID' });
+      return res.status(400).json({ success: false, message: 'Invalid caste ID' });
     }
 
     const [existingRows] = await masterPool.query(
@@ -297,7 +430,7 @@ exports.updateCasteCategory = async (req, res) => {
       [categoryId]
     );
     if (existingRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
+      return res.status(404).json({ success: false, message: 'Caste not found' });
     }
 
     const { name, isActive, sortOrder } = req.body;
@@ -307,7 +440,7 @@ exports.updateCasteCategory = async (req, res) => {
     if (name !== undefined) {
       const trimmedName = name?.trim();
       if (!trimmedName) {
-        return res.status(400).json({ success: false, message: 'Category name cannot be empty' });
+        return res.status(400).json({ success: false, message: 'Caste name cannot be empty' });
       }
       updateFields.push('name = ?');
       updateValues.push(trimmedName);
@@ -338,7 +471,7 @@ exports.updateCasteCategory = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Category updated successfully',
+      message: 'Caste updated successfully',
       data: updated
     });
   } catch (error) {
@@ -346,10 +479,10 @@ exports.updateCasteCategory = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({
         success: false,
-        message: 'Category name already exists'
+        message: 'Caste name already exists'
       });
     }
-    res.status(500).json({ success: false, message: 'Failed to update category' });
+    res.status(500).json({ success: false, message: 'Failed to update caste' });
   }
 };
 
@@ -359,7 +492,7 @@ exports.deleteCasteCategory = async (req, res) => {
 
     const categoryId = parseInt(req.params.id, 10);
     if (!categoryId || Number.isNaN(categoryId)) {
-      return res.status(400).json({ success: false, message: 'Invalid category ID' });
+      return res.status(400).json({ success: false, message: 'Invalid caste ID' });
     }
 
     const [existingRows] = await masterPool.query(
@@ -367,7 +500,7 @@ exports.deleteCasteCategory = async (req, res) => {
       [categoryId]
     );
     if (existingRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
+      return res.status(404).json({ success: false, message: 'Caste not found' });
     }
 
     const [casteRows] = await masterPool.query(
@@ -385,7 +518,7 @@ exports.deleteCasteCategory = async (req, res) => {
       if (totalCount > 0) {
         return res.status(409).json({
           success: false,
-          message: `Cannot delete category "${existingRows[0].name}" because ${totalCount} student(s) use its castes`,
+          message: `Cannot delete caste "${existingRows[0].name}" because ${totalCount} student(s) use its subcastes`,
           students,
           totalCount,
           hasMore: totalCount > students.length
@@ -394,10 +527,10 @@ exports.deleteCasteCategory = async (req, res) => {
     }
 
     await masterPool.query('DELETE FROM caste_categories WHERE id = ?', [categoryId]);
-    res.json({ success: true, message: 'Category deleted successfully' });
+    res.json({ success: true, message: 'Caste deleted successfully' });
   } catch (error) {
     console.error('deleteCasteCategory error:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete category' });
+    res.status(500).json({ success: false, message: 'Failed to delete caste' });
   }
 };
 
@@ -407,7 +540,7 @@ exports.createCaste = async (req, res) => {
 
     const categoryId = parseInt(req.params.id, 10);
     if (!categoryId || Number.isNaN(categoryId)) {
-      return res.status(400).json({ success: false, message: 'Invalid category ID' });
+      return res.status(400).json({ success: false, message: 'Invalid caste ID' });
     }
 
     const [categoryRows] = await masterPool.query(
@@ -415,13 +548,13 @@ exports.createCaste = async (req, res) => {
       [categoryId]
     );
     if (categoryRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
+      return res.status(404).json({ success: false, message: 'Caste not found' });
     }
 
     const { name, isActive, sortOrder } = req.body;
     const trimmedName = name?.trim();
     if (!trimmedName) {
-      return res.status(400).json({ success: false, message: 'Caste name is required' });
+      return res.status(400).json({ success: false, message: 'Subcaste name is required' });
     }
 
     const [result] = await masterPool.query(
@@ -438,7 +571,7 @@ exports.createCaste = async (req, res) => {
     const [rows] = await masterPool.query('SELECT * FROM castes WHERE id = ?', [result.insertId]);
     res.status(201).json({
       success: true,
-      message: 'Caste created successfully',
+      message: 'Subcaste created successfully',
       data: serializeCaste(rows[0])
     });
   } catch (error) {
@@ -446,10 +579,10 @@ exports.createCaste = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({
         success: false,
-        message: 'Caste already exists in this category'
+        message: 'Subcaste already exists under this caste'
       });
     }
-    res.status(500).json({ success: false, message: 'Failed to create caste' });
+    res.status(500).json({ success: false, message: 'Failed to create subcaste' });
   }
 };
 
@@ -460,7 +593,7 @@ exports.updateCaste = async (req, res) => {
     const categoryId = parseInt(req.params.id, 10);
     const casteId = parseInt(req.params.casteId, 10);
     if (!categoryId || Number.isNaN(categoryId) || !casteId || Number.isNaN(casteId)) {
-      return res.status(400).json({ success: false, message: 'Invalid category or caste ID' });
+      return res.status(400).json({ success: false, message: 'Invalid caste or subcaste ID' });
     }
 
     const [existingRows] = await masterPool.query(
@@ -468,7 +601,7 @@ exports.updateCaste = async (req, res) => {
       [casteId, categoryId]
     );
     if (existingRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Caste not found' });
+      return res.status(404).json({ success: false, message: 'Subcaste not found' });
     }
 
     const oldName = existingRows[0].name;
@@ -480,7 +613,7 @@ exports.updateCaste = async (req, res) => {
     if (name !== undefined) {
       const trimmedName = name?.trim();
       if (!trimmedName) {
-        return res.status(400).json({ success: false, message: 'Caste name cannot be empty' });
+        return res.status(400).json({ success: false, message: 'Subcaste name cannot be empty' });
       }
       updateFields.push('name = ?');
       updateValues.push(trimmedName);
@@ -514,8 +647,8 @@ exports.updateCaste = async (req, res) => {
     res.json({
       success: true,
       message: renamedTo
-        ? `Caste renamed from "${oldName}" to "${renamedTo}"`
-        : 'Caste updated successfully',
+        ? `Subcaste renamed from "${oldName}" to "${renamedTo}"`
+        : 'Subcaste updated successfully',
       data: serializeCaste(rows[0])
     });
   } catch (error) {
@@ -523,10 +656,10 @@ exports.updateCaste = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({
         success: false,
-        message: 'Caste already exists in this category'
+        message: 'Subcaste already exists under this caste'
       });
     }
-    res.status(500).json({ success: false, message: 'Failed to update caste' });
+    res.status(500).json({ success: false, message: 'Failed to update subcaste' });
   }
 };
 
@@ -537,7 +670,7 @@ exports.deleteCaste = async (req, res) => {
     const categoryId = parseInt(req.params.id, 10);
     const casteId = parseInt(req.params.casteId, 10);
     if (!categoryId || Number.isNaN(categoryId) || !casteId || Number.isNaN(casteId)) {
-      return res.status(400).json({ success: false, message: 'Invalid category or caste ID' });
+      return res.status(400).json({ success: false, message: 'Invalid caste or subcaste ID' });
     }
 
     const [existingRows] = await masterPool.query(
@@ -545,7 +678,7 @@ exports.deleteCaste = async (req, res) => {
       [casteId, categoryId]
     );
     if (existingRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Caste not found' });
+      return res.status(404).json({ success: false, message: 'Subcaste not found' });
     }
 
     const casteName = existingRows[0].name;
@@ -556,7 +689,7 @@ exports.deleteCaste = async (req, res) => {
     if (totalCount > 0) {
       return res.status(409).json({
         success: false,
-        message: `Cannot delete caste "${casteName}" because ${totalCount} student(s) are assigned to it`,
+        message: `Cannot delete subcaste "${casteName}" because ${totalCount} student(s) are assigned to it`,
         students,
         totalCount,
         hasMore: totalCount > students.length
@@ -564,10 +697,10 @@ exports.deleteCaste = async (req, res) => {
     }
 
     await masterPool.query('DELETE FROM castes WHERE id = ?', [casteId]);
-    res.json({ success: true, message: 'Caste deleted successfully' });
+    res.json({ success: true, message: 'Subcaste deleted successfully' });
   } catch (error) {
     console.error('deleteCaste error:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete caste' });
+    res.status(500).json({ success: false, message: 'Failed to delete subcaste' });
   }
 };
 

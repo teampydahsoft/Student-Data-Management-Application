@@ -3737,8 +3737,8 @@ const Settings = () => {
                 <Users size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Caste Categories</h2>
-                <p className="text-xs text-gray-500">{canEdit('caste_categories') ? 'Categories & castes' : 'View categories & castes'}</p>
+                <h2 className="text-sm font-semibold text-gray-900">Castes & Subcastes</h2>
+                <p className="text-xs text-gray-500">{canEdit('caste_categories') ? 'Castes & subcastes' : 'View castes & subcastes'}</p>
               </div>
             </div>
           </button>
@@ -5686,7 +5686,7 @@ const Settings = () => {
           </div>
         )}
 
-        {/* Caste Categories Section */}
+        {/* Castes & Subcastes Section */}
         {activeSection === 'caste-categories' && (
           <CasteCategorySettings readOnly={!canEdit('caste_categories')} />
         )}

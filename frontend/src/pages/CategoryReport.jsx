@@ -523,7 +523,7 @@ function CategoryReport() {
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200 sticky top-0">
                 <tr>
-                  <th className="px-4 py-3">Category (Caste)</th>
+                  <th className="px-4 py-3">Caste / Subcaste</th>
                   <th className="px-4 py-3 text-right">Count</th>
                 </tr>
               </thead>

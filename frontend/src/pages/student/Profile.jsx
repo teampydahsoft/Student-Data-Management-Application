@@ -429,7 +429,7 @@ const Profile = () => {
                         <InfoItem label="Father's Name" value={displayData.father_name || getStudentData('Father Name')} />
                         <InfoItem label="Gender" value={displayData.gender || getStudentData('Gender')} />
                         <InfoItem label="Date of Birth" value={displayData.dob || getStudentData('DOB')} />
-                        <InfoItem label="Caste/Category" value={displayData.caste || getStudentData('Caste')} />
+                        <InfoItem label="Caste/Subcaste" value={displayData.caste || getStudentData('Caste')} />
                         <InfoItem label="Aadhar Number" value={displayData.adhar_no || getStudentData('Adhar No')} />
                     </div>
                 </div>
