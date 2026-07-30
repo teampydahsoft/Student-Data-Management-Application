@@ -59,24 +59,32 @@ const Login = () => {
 
   // Forgot Password State
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotMobile, setForgotMobile] = useState('');
+  const [forgotContact, setForgotContact] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
   const [userTypeReset, setUserTypeReset] = useState('student');
 
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
-    if (!forgotMobile) return;
+    const contact = forgotContact.trim();
+    if (!contact) return;
 
     setForgotLoading(true);
     try {
       const targetUserType = isStudentLogin ? 'student' : userTypeReset;
       const endpoint = targetUserType === 'staff' ? '/auth/rbac/forgot-password' : '/students/forgot-password';
 
-      const response = await api.post(endpoint, { mobileNumber: forgotMobile });
+      const payload =
+        targetUserType === 'staff'
+          ? contact.includes('@')
+            ? { email: contact }
+            : { mobileNumber: contact }
+          : { mobileNumber: contact };
+
+      const response = await api.post(endpoint, payload);
       if (response.data.success) {
         toast.success(response.data.message);
         setShowForgotModal(false);
-        setForgotMobile('');
+        setForgotContact('');
       } else {
         toast.error(response.data.message || 'Failed to send password');
       }
@@ -599,7 +607,11 @@ const Login = () => {
               &times;
             </button>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Reset Password</h3>
-            <p className="text-sm text-gray-500 mb-4">Enter your registered mobile number. We'll send you a new password via SMS.</p>
+            <p className="text-sm text-gray-500 mb-4">
+              {(!isStudentLogin && userTypeReset === 'staff')
+                ? "Enter your registered email or mobile number. We'll send a new password to your email (and SMS if available)."
+                : "Enter your registered mobile number. We'll send you a new password via SMS."}
+            </p>
 
             {!isStudentLogin && (
               <div className="flex gap-4 mb-4">
@@ -609,7 +621,10 @@ const Login = () => {
                       type="radio"
                       name="userTypeReset"
                       checked={userTypeReset === type}
-                      onChange={() => setUserTypeReset(type)}
+                      onChange={() => {
+                        setUserTypeReset(type);
+                        setForgotContact('');
+                      }}
                       className="mr-2"
                     />
                     <span className="text-sm font-medium text-gray-700 capitalize">{type === 'staff' ? 'Staff / Admin' : type}</span>
@@ -620,13 +635,19 @@ const Login = () => {
 
             <form onSubmit={handleForgotSubmit}>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {(!isStudentLogin && userTypeReset === 'staff') ? 'Email or Mobile Number' : 'Mobile Number'}
+                </label>
                 <input
-                  type="tel"
-                  value={forgotMobile}
-                  onChange={(e) => setForgotMobile(e.target.value)}
+                  type={(!isStudentLogin && userTypeReset === 'staff') ? 'text' : 'tel'}
+                  value={forgotContact}
+                  onChange={(e) => setForgotContact(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
-                  placeholder="Enter mobile number"
+                  placeholder={
+                    (!isStudentLogin && userTypeReset === 'staff')
+                      ? 'Enter email or mobile number'
+                      : 'Enter mobile number'
+                  }
                   required
                 />
               </div>

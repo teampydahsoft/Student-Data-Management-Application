@@ -1771,75 +1771,177 @@ exports.getModules = async (req, res) => {
 };
 
 /**
- * POST /api/rbac/forgot-password
- * Reset password and send to mobile
+ * POST /api/auth/rbac/forgot-password
+ * Reset password by email or mobile; send via email (and SMS when phone is available)
  */
 exports.forgotPassword = async (req, res) => {
   try {
-    const { mobileNumber } = req.body;
+    const emailInput = (req.body.email || '').trim();
+    const mobileInput = (req.body.mobileNumber || req.body.phone || '').trim();
 
-    if (!mobileNumber) {
+    if (!emailInput && !mobileInput) {
       return res.status(400).json({
         success: false,
-        message: 'Mobile number is required'
+        message: 'Email or mobile number is required'
       });
     }
 
-    // Find user by phone
-    const [users] = await masterPool.query(
-      'SELECT id, name, phone, username FROM rbac_users WHERE phone = ? AND is_active = 1',
-      [mobileNumber]
-    );
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const isEmailLookup = emailInput && emailRegex.test(emailInput);
+
+    let users;
+    if (isEmailLookup) {
+      const [rows] = await masterPool.query(
+        `SELECT id, name, email, phone, username, role
+         FROM rbac_users
+         WHERE is_active = 1 AND LOWER(email) = LOWER(?)
+         LIMIT 1`,
+        [emailInput]
+      );
+      users = rows;
+    } else {
+      const mobileNumber = mobileInput || emailInput;
+      const normalizedPhone = String(mobileNumber).replace(/[^\d]/g, '');
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Enter a valid email or mobile number'
+        });
+      }
+
+      const [rows] = await masterPool.query(
+        `SELECT id, name, email, phone, username, role
+         FROM rbac_users
+         WHERE is_active = 1
+           AND (
+             phone = ?
+             OR REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(phone, ''), '+', ''), '-', ''), ' ', ''), '(', '') = ?
+             OR RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(phone, ''), '+', ''), '-', ''), ' ', ''), '(', ''), 10) = RIGHT(?, 10)
+           )
+         LIMIT 1`,
+        [mobileNumber, normalizedPhone, normalizedPhone]
+      );
+      users = rows;
+    }
 
     if (!users || users.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'User not found with this mobile number'
+        message: isEmailLookup
+          ? 'User not found with this email'
+          : 'User not found with this mobile number'
       });
     }
 
     const user = users[0];
 
+    if (!user.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'No email is registered for this account. Please contact admin.'
+      });
+    }
+
     // Generate new random password (8 chars)
     const newPassword = crypto.randomBytes(4).toString('hex');
-
-    // Hash the password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password in DB
     await masterPool.query(
       'UPDATE rbac_users SET password = ?, updated_at = NOW() WHERE id = ?',
       [hashedPassword, user.id]
     );
 
-    // Send SMS using the same template as students
-    // Template: "Hello {#var#} your password has been updated. Username: {#var#} New Password: {#var#} Login: {#var#} - Pydah College"
     const loginUrl = (process.env.STUDENT_PORTAL_URL || 'pydahsdms.vercel.app').replace(/\/+$/, '');
-    const message = `Hello ${user.name} your password has been updated. Username: ${user.username} New Password: ${newPassword} Login: ${loginUrl} - Pydah College`;
+    const roleLabel = ROLE_LABELS[user.role] || user.role;
+    let emailSent = false;
+    let smsSent = false;
+    let emailError = null;
+    let smsError = null;
 
-    // Explicitly use the Password Reset Template ID
-    // 1707176526611076697 is the shared ID for password resets
-    const TEMPLATE_ID = process.env.PASSWORD_RESET_SMS_TEMPLATE_ID || '1707176526611076697';
-
-    const smsResult = await sendSms({
-      to: mobileNumber,
-      message: message,
-      templateId: TEMPLATE_ID
-    });
-
-    if (smsResult.success) {
-      return res.json({
-        success: true,
-        message: 'New password sent to your registered mobile number'
+    // Always email staff/admin on self-service reset; SMS is best-effort if phone exists
+    try {
+      const emailResult = await sendPasswordResetEmail({
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        newPassword,
+        role: roleLabel
       });
-    } else {
-      console.error(`Failed to send SMS to ${mobileNumber}:`, smsResult);
-      return res.status(500).json({
-        success: false,
-        message: 'Password reset but failed to send SMS. Please contact admin.'
+      emailSent = emailResult.success;
+      if (!emailResult.success) {
+        emailError = emailResult.message || 'Failed to send email';
+      }
+    } catch (emailErr) {
+      emailError = emailErr.message || 'Unexpected error while sending email';
+      console.error('❌ Forgot password email failed:', {
+        userId: user.id,
+        email: user.email,
+        error: emailError
       });
     }
 
+    if (user.phone) {
+      try {
+        let smsMessage = `Hello ${user.name} your password has been updated. Username: ${user.username} New Password: ${newPassword} Login: ${loginUrl} - Pydah College`;
+        try {
+          const notificationSettings = await getNotificationSetting('password_update');
+          if (notificationSettings?.smsTemplate) {
+            smsMessage = replaceTemplateVariables(notificationSettings.smsTemplate, {
+              name: user.name,
+              username: user.username,
+              password: newPassword,
+              newPassword,
+              role: roleLabel,
+              loginUrl
+            });
+          }
+        } catch (_) {
+          // use default SMS template
+        }
+
+        const smsResult = await sendSms({
+          to: user.phone.trim(),
+          message: smsMessage,
+          templateId: PASSWORD_RESET_SMS_TEMPLATE_ID
+        });
+        smsSent = smsResult.success;
+        if (!smsResult.success) {
+          smsError = smsResult.reason || 'Failed to send SMS';
+        }
+      } catch (smsErr) {
+        smsError = smsErr.message || 'Unexpected error while sending SMS';
+        console.error('❌ Forgot password SMS failed:', {
+          userId: user.id,
+          phone: user.phone,
+          error: smsError
+        });
+      }
+    }
+
+    const channels = [];
+    if (emailSent) channels.push('email');
+    if (smsSent) channels.push('SMS');
+
+    if (channels.length > 0) {
+      return res.json({
+        success: true,
+        message: `New password sent to your registered ${channels.join(' and ')}`,
+        emailSent,
+        smsSent
+      });
+    }
+
+    console.error('Forgot password: password updated but all notifications failed', {
+      userId: user.id,
+      emailError,
+      smsError
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Password was reset but we could not send email or SMS. Please contact admin.',
+      emailError: emailError || undefined,
+      smsError: smsError || undefined
+    });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({
