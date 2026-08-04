@@ -817,8 +817,8 @@ const ServiceRequests = () => {
                                                         onChange={e => setActionData({ ...actionData, [field.name]: e.target.value })}
                                                     >
                                                         <option value="">Select...</option>
-                                                        {(field.options || []).map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        {(field.options || []).map((opt) => (
+                                                            <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>
                                                         ))}
                                                     </select>
                                                 ) : (

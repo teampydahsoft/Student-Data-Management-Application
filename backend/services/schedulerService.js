@@ -281,7 +281,7 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
         let pendingInsertQuery = `
              INSERT INTO attendance_records (student_id, admission_number, attendance_date, \`year\`, semester, status, marked_by)
              SELECT s.id, s.admission_number, ?, s.current_year, s.current_semester, 'pending', NULL
-             FROM students s
+             FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
              LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
              WHERE s.student_status = 'Regular'
                AND ar.id IS NULL
@@ -313,7 +313,7 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
             let pendingInsertQuery = `
                  INSERT INTO attendance_records (student_id, admission_number, attendance_date, status, marked_by)
                  SELECT s.id, s.admission_number, ?, 'pending', NULL
-                 FROM students s
+                 FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
                  LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
                  WHERE s.student_status = 'Regular'
                    AND ar.id IS NULL
@@ -390,7 +390,7 @@ const sendDailyAttendanceReports = async () => {
                 SUM(CASE WHEN ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
                 SUM(CASE WHEN ar.status = 'pending' OR ar.id IS NULL THEN 1 ELSE 0 END) AS pending,
                 DATE_FORMAT(MAX(ar.updated_at), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
-              FROM students s
+              FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
               LEFT JOIN attendance_records ar 
                 ON ar.student_id = s.id 
                 AND ar.attendance_date = ?

@@ -20,7 +20,7 @@ async function testCompletionCalculation() {
 
     // Get the student data for ADM001
     const [students] = await connection.execute(
-      'SELECT * FROM students WHERE admission_number = ? OR admission_no = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ?',
       ['ADM001', 'ADM001']
     );
 

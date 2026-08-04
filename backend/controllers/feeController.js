@@ -218,7 +218,7 @@ exports.getStudentFeeDetails = async (req, res) => {
     const [students] = await masterPool.query(
       `SELECT 
          s.student_name, s.course, s.branch, s.batch, s.current_year, s.current_semester, s.student_data
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        WHERE s.admission_number = ?`,
       [studentId]
     );

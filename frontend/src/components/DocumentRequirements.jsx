@@ -170,8 +170,8 @@ const DocumentRequirements = () => {
                 onChange={(e) => setFormData({ ...formData, course_type: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
               >
-                {COURSE_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
+                {COURSE_TYPES.map((type) => (
+                  <option key={type} value={type.id || type}>{type.name || type}</option>
                 ))}
               </select>
             </div>
@@ -182,8 +182,8 @@ const DocumentRequirements = () => {
                 onChange={(e) => setFormData({ ...formData, academic_stage: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
               >
-                {ACADEMIC_STAGES.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
+                {ACADEMIC_STAGES.map((stage) => (
+                  <option key={stage} value={stage.id || stage}>{stage.name || stage}</option>
                 ))}
               </select>
             </div>
@@ -198,8 +198,8 @@ const DocumentRequirements = () => {
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
               >
                 <option value="">Select a document</option>
-                {DOCUMENT_TYPES.filter(doc => !formData.required_documents.includes(doc)).map(doc => (
-                  <option key={doc} value={doc}>{doc}</option>
+                {DOCUMENT_TYPES.filter(doc => !formData.required_documents.includes(doc)).map((doc) => (
+                  <option key={doc} value={doc.id || doc}>{doc.name || doc}</option>
                 ))}
               </select>
               <button

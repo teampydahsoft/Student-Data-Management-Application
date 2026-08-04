@@ -1321,7 +1321,7 @@ const StudentScholarshipHistoryTab = ({
             >
               <option value="">Select caste</option>
               {casteOptions.map((caste) => (
-                <option key={caste} value={caste}>{caste}</option>
+                <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
               ))}
             </select>
           )}

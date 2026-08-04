@@ -24,6 +24,13 @@ router.get(
   studentController.getRegistrationAbstract
 );
 router.get(
+  '/registration/stats',
+  authMiddleware,
+  verifyPermission(MODULES.REPORTS, 'view_registration'),
+  attachUserScope,
+  studentController.getRegistrationStats
+);
+router.get(
   '/registration',
   authMiddleware,
   verifyPermission(MODULES.REPORTS, 'view_registration'),

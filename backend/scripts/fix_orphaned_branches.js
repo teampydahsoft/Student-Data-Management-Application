@@ -47,7 +47,7 @@ async function fixOrphanedBranches() {
     
     const [orphaned] = await masterPool.query(`
       SELECT s.branch, s.course, COUNT(*) as student_count
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       LEFT JOIN courses c ON s.course = c.name AND c.is_active = 1
       LEFT JOIN course_branches cb ON s.branch = cb.name AND cb.course_id = c.id AND cb.is_active = 1
       WHERE s.course = 'Diploma' 

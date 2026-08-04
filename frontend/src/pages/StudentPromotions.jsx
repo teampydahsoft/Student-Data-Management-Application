@@ -124,13 +124,13 @@ const StudentPromotions = () => {
       const response = await api.get(url);
       if (response.data?.success) {
         const data = response.data.data || {};
-        setQuickFilterOptions({
-          batches: data.batches || [],
-          courses: data.courses || [],
+        setQuickFilterOptions((prev) => ({
+          batches: currentFilters.batch ? prev.batches : (data.batches || []),
+          courses: currentFilters.course ? prev.courses : (data.courses || []),
           branches: data.branches || [],
           years: data.years || [],
           semesters: data.semesters || []
-        });
+        }));
       }
     } catch (error) {
       console.warn('Failed to load filter metadata:', error);
@@ -891,9 +891,7 @@ const StudentPromotions = () => {
             >
               <option value="">All Batches</option>
               {(quickFilterOptions.batches || []).map((batch) => (
-                <option key={batch} value={batch}>
-                  {batch}
-                </option>
+                <option key={batch.id || batch} value={batch.id || batch}>{batch.name || batch}</option>
               ))}
             </select>
           </div>
@@ -928,9 +926,7 @@ const StudentPromotions = () => {
                   return true;
                 })
                 .map((course) => (
-                  <option key={course} value={course}>
-                    {course}
-                  </option>
+                  <option key={course.id || course} value={course.id || course}>{course.name || course}</option>
                 ))}
             </select>
           </div>
@@ -970,9 +966,7 @@ const StudentPromotions = () => {
             >
               <option value="">All Branches</option>
               {(quickFilterOptions.branches || []).map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
+                <option key={branch.id || branch} value={branch.id || branch}>{branch.name || branch}</option>
               ))}
             </select>
           </div>
@@ -1295,8 +1289,8 @@ const StudentPromotions = () => {
                       className="px-2 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                       disabled={loadingStudents || isFetchingStudents}
                     >
-                      {pageSizeOptions.map(option => (
-                        <option key={option} value={option}>{option}</option>
+                      {pageSizeOptions.map((option) => (
+                        <option key={option} value={option.id || option}>{option.name || option}</option>
                       ))}
                     </select>
                   </label>

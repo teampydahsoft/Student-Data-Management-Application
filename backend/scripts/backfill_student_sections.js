@@ -14,7 +14,7 @@ const { masterPool } = require('../config/database');
         NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$.section'))), ''),
         NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$.Section'))), '')
       ) AS section_name
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     INNER JOIN courses c ON c.name = s.course AND c.is_active = 1
     INNER JOIN course_branches cb ON cb.course_id = c.id AND cb.name = s.branch AND cb.is_active = 1
     WHERE (

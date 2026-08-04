@@ -236,7 +236,7 @@ exports.getMyPendingFeedback = async (req, res) => {
         const studentId = req.user.id; // From token
 
         // verify student exists
-        const [students] = await masterPool.query('SELECT * FROM students WHERE id = ?', [studentId]);
+        const [students] = await masterPool.query('SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE id = ?', [studentId]);
         if (!students.length) return res.status(404).json({ success: false, message: 'Student not found' });
         const student = students[0];
 
@@ -396,7 +396,11 @@ exports.getAnalytics = async (req, res) => {
             params.push(semester);
         }
         if (branch) {
-            whereConditions.push('s.branch = ?');
+            if (/^\d+$/.test(branch)) {
+        whereConditions.push('s.branch_id = ?');
+      } else {
+        whereConditions.push('s.branch = ?');
+      }
             params.push(branch);
         }
 

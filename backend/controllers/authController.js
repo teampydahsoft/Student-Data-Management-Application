@@ -716,7 +716,7 @@ exports.verifyToken = async (req, res) => {
           cb.id as branch_id, col.id as college_id, c.level as course_level,
           ${studentRegistrationStatusComputedSql} AS registration_status_computed,
           s.registration_status, s.student_data
-         FROM students s
+         FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
          LEFT JOIN student_credentials sc ON sc.student_id = s.id
          LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
          LEFT JOIN courses c ON s.course COLLATE utf8mb4_unicode_ci = c.name COLLATE utf8mb4_unicode_ci AND c.college_id = col.id
@@ -1089,7 +1089,7 @@ exports.getCrtSsoUrl = async (req, res) => {
 
     const [rows] = await masterPool.query(
       `SELECT s.pin_no, s.admission_number, s.student_name, sc.username
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        LEFT JOIN student_credentials sc ON sc.student_id = s.id
        WHERE s.id = ?
        LIMIT 1`,

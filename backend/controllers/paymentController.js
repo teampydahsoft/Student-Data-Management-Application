@@ -17,7 +17,7 @@ exports.createOrder = async (req, res) => {
 
         // 1. Fetch Student Details to get College/Course and Prefill Data
         const [students] = await masterPool.query(
-            'SELECT s.student_name, s.course, s.branch, s.student_data FROM students s WHERE s.admission_number = ?',
+            'SELECT s.student_name, s.course, s.branch, s.student_data FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id WHERE s.admission_number = ?',
             [studentId]
         );
 
@@ -133,7 +133,7 @@ exports.verifyPayment = async (req, res) => {
 
         // 2. Fetch Student/Config to get secret for verification
         const [students] = await masterPool.query(
-            'SELECT s.id, s.student_name, s.course, s.current_year, s.current_semester, s.student_data FROM students s WHERE s.admission_number = ?',
+            'SELECT s.id, s.student_name, s.course, s.current_year, s.current_semester, s.student_data FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id WHERE s.admission_number = ?',
             [studentId]
         );
 

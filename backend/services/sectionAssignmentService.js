@@ -157,13 +157,19 @@ const assignSectionsToStudents = async ({
 
   const normalizedBatch = normalizeBatch(batch);
 
+  const courseCondition = /^\\d+$/.test(courseName) ? 's.course_id = ?' : 's.course = ?';
+  const branchCondition = /^\\d+$/.test(branchName) ? 's.branch_id = ?' : 's.branch = ?';
+  
   let query = `
     SELECT s.id, s.batch
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
     LEFT JOIN student_sections ss_manual ON ss_manual.student_id = s.id AND ss_manual.is_manual = 1
-    WHERE s.course = ? AND s.branch = ? AND ss_manual.id IS NULL`;
-  const params = [courseName, branchName];
+    WHERE ${courseCondition} AND ${branchCondition} AND ss_manual.id IS NULL`;
+  const params = [
+    /^\\d+$/.test(courseName) ? parseInt(courseName, 10) : courseName,
+    /^\\d+$/.test(branchName) ? parseInt(branchName, 10) : branchName
+  ];
 
   if (batch !== null && batch !== undefined) {
     if (normalizedBatch === '') {

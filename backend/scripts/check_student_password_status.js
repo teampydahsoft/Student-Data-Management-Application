@@ -14,7 +14,7 @@ async function checkStudentPasswordStatus() {
         COUNT(*) as total_regular_students,
         COUNT(sc.id) as students_with_password,
         (COUNT(*) - COUNT(sc.id)) as students_without_password
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       LEFT JOIN student_credentials sc ON s.id = sc.student_id
       WHERE s.student_status = 'Regular'
     `;
@@ -34,7 +34,7 @@ async function checkStudentPasswordStatus() {
 
             const missingQuery = `
             SELECT s.admission_number, s.student_name, s.student_mobile, s.current_year, s.branch, s.college, s.batch
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             LEFT JOIN student_credentials sc ON s.id = sc.student_id
             WHERE s.student_status = 'Regular' AND sc.id IS NULL
             ORDER BY s.college, s.branch, s.current_year

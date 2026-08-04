@@ -131,11 +131,11 @@ function CategoryReport() {
           const d = res.data.data || {};
           setFilterOptions((prev) => ({
             ...prev,
-            batches: d.batches || prev.batches,
-            courses: d.courses || prev.courses,
+            batches: filters.batch ? prev.batches : (d.batches || prev.batches),
+            courses: filters.course ? prev.courses : (d.courses || prev.courses),
             branches: d.branches || prev.branches,
-            years: d.years ?? prev.years,
-            semesters: d.semesters ?? prev.semesters
+            years: filters.year ? prev.years : (d.years ?? prev.years),
+            semesters: filters.semester ? prev.semesters : (d.semesters ?? prev.semesters)
           }));
         }
       } catch (err) {
@@ -326,7 +326,7 @@ function CategoryReport() {
             >
               <option value="">All Colleges</option>
               {(filterOptions.colleges || []).map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c.id || c}>{c.name || c}</option>
               ))}
             </select>
           </div>
@@ -352,7 +352,7 @@ function CategoryReport() {
             >
               <option value="">All Batches</option>
               {(filterOptions.batches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>
@@ -365,7 +365,7 @@ function CategoryReport() {
             >
               <option value="">All Programs</option>
               {availableCourses.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c.id || c}>{c.name || c}</option>
               ))}
             </select>
           </div>
@@ -378,7 +378,7 @@ function CategoryReport() {
             >
               <option value="">All Branches</option>
               {(filterOptions.branches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>

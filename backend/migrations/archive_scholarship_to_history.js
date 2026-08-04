@@ -31,7 +31,7 @@ async function run() {
   // Get all students who have scholarship data
   const [students] = await masterPool.query(`
     SELECT DISTINCT s.id, s.admission_number, s.current_year, s.current_semester
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     INNER JOIN student_scholarship ss ON ss.student_id = s.id
     WHERE ss.eligible IS NOT NULL AND TRIM(ss.eligible) != ''
     ORDER BY s.id ASC

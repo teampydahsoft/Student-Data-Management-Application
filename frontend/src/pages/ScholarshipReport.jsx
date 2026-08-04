@@ -188,8 +188,8 @@ function ScholarshipReport() {
           const d = res.data.data || {};
           setFilterOptions((prev) => ({
             ...prev,
-            batches: d.batches || prev.batches,
-            courses: d.courses || prev.courses,
+            batches: filters.batch ? prev.batches : (d.batches || prev.batches),
+            courses: filters.course ? prev.courses : (d.courses || prev.courses),
             branches: d.branches || prev.branches
           }));
         }
@@ -421,7 +421,7 @@ function ScholarshipReport() {
             >
               <option value="">Select College</option>
               {(filterOptions.colleges || []).map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c.id || c}>{c.name || c}</option>
               ))}
             </select>
           </div>
@@ -434,7 +434,7 @@ function ScholarshipReport() {
             >
               <option value="">Select Batch</option>
               {(filterOptions.batches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>
@@ -447,7 +447,7 @@ function ScholarshipReport() {
             >
               <option value="">Select Program</option>
               {availableCourses.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c.id || c}>{c.name || c}</option>
               ))}
             </select>
           </div>
@@ -460,7 +460,7 @@ function ScholarshipReport() {
             >
               <option value="">Select Branch</option>
               {(filterOptions.branches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>

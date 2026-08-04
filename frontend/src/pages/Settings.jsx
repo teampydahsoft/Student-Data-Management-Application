@@ -937,7 +937,7 @@ const RtfAmountSection = ({
                   className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:ring-2 focus:ring-pink-400 disabled:opacity-50 disabled:bg-gray-50"
                 >
                   <option value="">Select {label}</option>
-                  {opts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  {opts.map((opt) => <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>)}
                 </select>
               </div>
             ))}

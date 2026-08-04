@@ -91,7 +91,7 @@ exports.getStudentQrToken = async (req, res) => {
         try {
             // Use SELECT * to avoid ER_BAD_FIELD_ERROR if qr_token column creation had a warning/delay
             const [rows] = await masterPool.query(
-                'SELECT * FROM students WHERE admission_number = ? OR admission_no = ? LIMIT 1',
+                'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ? LIMIT 1',
                 [admissionNumber.trim(), admissionNumber.trim()]
             );
             student = rows?.[0] || null;
@@ -288,10 +288,10 @@ exports.getPublicStudentData = async (req, res) => {
             let queryParams = [];
 
             if (isToken) {
-                queryUrl = `SELECT * FROM students WHERE qr_token = ? LIMIT 1`;
+                queryUrl = `SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE qr_token = ? LIMIT 1`;
                 queryParams = [qrToken.trim()];
             } else {
-                queryUrl = `SELECT * FROM students WHERE admission_number = ? OR admission_no = ? LIMIT 1`;
+                queryUrl = `SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ? LIMIT 1`;
                 queryParams = [qrToken.trim(), qrToken.trim()];
             }
 
@@ -409,10 +409,10 @@ exports.verifyQrAccess = async (req, res) => {
             let queryParams = [];
 
             if (isToken) {
-                queryUrl = `SELECT * FROM students WHERE qr_token = ? LIMIT 1`;
+                queryUrl = `SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE qr_token = ? LIMIT 1`;
                 queryParams = [qrToken.trim()];
             } else {
-                queryUrl = `SELECT * FROM students WHERE admission_number = ? OR admission_no = ? LIMIT 1`;
+                queryUrl = `SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ? LIMIT 1`;
                 queryParams = [qrToken.trim(), qrToken.trim()];
             }
 

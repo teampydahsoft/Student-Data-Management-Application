@@ -51,7 +51,7 @@ export const ProfileChangeRequests = () => {
                     const d = res.data.data || {};
                     setFilterOptions((prev) => ({
                         ...prev,
-                        courses: d.courses?.length ? d.courses : prev.courses,
+                        courses: courseFilter ? prev.courses : (d.courses?.length ? d.courses : prev.courses),
                         branches: d.branches || []
                     }));
                 }
@@ -210,7 +210,7 @@ export const ProfileChangeRequests = () => {
                             >
                                 <option value="">All Courses</option>
                                 {availableCourses.map((course) => (
-                                    <option key={course} value={course}>{course}</option>
+                                    <option key={course} value={course.id || course}>{course.name || course}</option>
                                 ))}
                             </select>
                         </div>
@@ -223,7 +223,7 @@ export const ProfileChangeRequests = () => {
                             >
                                 <option value="">All Branches</option>
                                 {availableBranches.map((branch) => (
-                                    <option key={branch} value={branch}>{branch}</option>
+                                    <option key={branch} value={branch.id || branch}>{branch.name || branch}</option>
                                 ))}
                             </select>
                         </div>

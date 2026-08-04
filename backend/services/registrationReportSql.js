@@ -202,7 +202,7 @@ const buildFlaggedStudentSelect = ({
  * - split valid/invalid JSON paths (avoids JSON_EXTRACT errors + redundant LIKE scans)
  * - LEFT JOIN scholarship once instead of correlated EXISTS per aggregate
  */
-const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipFilter = '', academicYearFromYear = null }) => {
+const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipFilter = '', academicYearFromYear = null, omitGroupBy = false }) => {
   const verificationJsonSql = qualifyRegistrationSql(verificationCompletedJsonSql, 'base');
   const verificationLikeSql = qualifyRegistrationSql(verificationCompletedLikeSql, 'base');
   const scholarshipWhere = getScholarshipFilterClauseWithJoin(
@@ -214,12 +214,7 @@ const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipF
 
   const query = `
     SELECT
-      batch,
-      college,
-      course,
-      branch,
-      current_year,
-      current_semester,
+      ${omitGroupBy ? '"" AS batch, "" AS college, "" AS course, "" AS branch, 0 AS current_year, 0 AS current_semester,' : 'batch, college, course, branch, current_year, current_semester,'}
       COUNT(*) AS total,
       SUM(is_verification_complete) AS verification_completed,
       SUM(is_cert_verified) AS certificates_verified,
@@ -253,8 +248,8 @@ const buildRegistrationAbstractQuery = ({ whereClause, params = [], scholarshipF
         WHERE ${whereClause} AND NOT JSON_VALID(base.student_data)${scholarshipWhere}
       ) flagged
     ) reg_stats
-    GROUP BY batch, college, course, branch, current_year, current_semester
-    ORDER BY batch, college, course, branch, current_year, current_semester ASC
+    ${omitGroupBy ? '' : 'GROUP BY batch, college, course, branch, current_year, current_semester'}
+    ${omitGroupBy ? '' : 'ORDER BY batch, college, course, branch, current_year, current_semester ASC'}
   `;
 
   // WHERE appears in both UNION branches — duplicate bound params for each branch.

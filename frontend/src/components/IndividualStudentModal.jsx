@@ -923,9 +923,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                       >
                         <option value="">Select Status</option>
                         {STUDENT_STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
+                          <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
                         ))}
                       </select>
                     </div>
@@ -943,9 +941,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                       >
                         <option value="">Select Scholar Status</option>
                         {SCHOLAR_STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
+                          <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
                         ))}
                       </select>
                     </div>

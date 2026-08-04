@@ -1554,7 +1554,7 @@ exports.approveSubmission = async (req, res) => {
 
     // Check if student exists (check both admission_number and admission_no columns)
     const [students] = await masterConn.query(
-      'SELECT * FROM students WHERE admission_number = ? OR admission_no = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ?',
       [finalAdmissionNumber, finalAdmissionNumber]
     );
 
@@ -2948,7 +2948,7 @@ exports.getStudentCompletionStatus = async (req, res) => {
 
     // Get student data
     const [students] = await masterPool.query(
-      'SELECT * FROM students WHERE admission_number = ? OR admission_no = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ?',
       [admissionNumber, admissionNumber]
     );
 
@@ -3694,7 +3694,7 @@ const approveSingleSubmission = async (submission, submissionData, admissionNumb
 
   // Check if student exists and update/create accordingly
   const [students] = await masterConn.query(
-    'SELECT * FROM students WHERE admission_number = ? OR admission_no = ?',
+    'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ?',
     [finalAdmissionNumber, finalAdmissionNumber]
   );
 

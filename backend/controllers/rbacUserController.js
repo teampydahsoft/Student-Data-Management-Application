@@ -250,40 +250,54 @@ exports.getUsers = async (req, res) => {
 
     const [rows] = await masterPool.query(query, params);
 
-    // Fetch college, course, branch names for multi-select
-    const users = await Promise.all(rows.map(async (row) => {
+    // Fetch college, course, branch names for multi-select (Bulk Query to avoid N+1)
+    const allCollegeIds = new Set();
+    const allCourseIds = new Set();
+    const allBranchIds = new Set();
+
+    const parsedRows = rows.map(row => {
       const collegeIds = parseScopeData(row.college_ids);
       const courseIds = parseScopeData(row.course_ids);
       const branchIds = parseScopeData(row.branch_ids);
 
-      let collegeNames = [];
-      let courseNames = [];
-      let branchNames = [];
+      collegeIds.forEach(id => allCollegeIds.add(id));
+      courseIds.forEach(id => allCourseIds.add(id));
+      branchIds.forEach(id => allBranchIds.add(id));
 
-      if (collegeIds.length > 0) {
-        const [colleges] = await masterPool.query(
-          `SELECT id, name FROM colleges WHERE id IN (${collegeIds.map(() => '?').join(',')})`,
-          collegeIds
-        );
-        collegeNames = colleges.map(c => ({ id: c.id, name: c.name }));
-      }
+      return { ...row, parsedCollegeIds: collegeIds, parsedCourseIds: courseIds, parsedBranchIds: branchIds };
+    });
 
-      if (courseIds.length > 0) {
-        const [courses] = await masterPool.query(
-          `SELECT id, name FROM courses WHERE id IN (${courseIds.map(() => '?').join(',')})`,
-          courseIds
-        );
-        courseNames = courses.map(c => ({ id: c.id, name: c.name }));
-      }
+    const collegeMap = new Map();
+    if (allCollegeIds.size > 0) {
+      const ids = Array.from(allCollegeIds);
+      const [colleges] = await masterPool.query(
+        `SELECT id, name FROM colleges WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+      colleges.forEach(c => collegeMap.set(String(c.id), c.name));
+    }
 
-      if (branchIds.length > 0) {
-        const [branches] = await masterPool.query(
-          `SELECT id, name FROM course_branches WHERE id IN (${branchIds.map(() => '?').join(',')})`,
-          branchIds
-        );
-        branchNames = branches.map(b => ({ id: b.id, name: b.name }));
-      }
+    const courseMap = new Map();
+    if (allCourseIds.size > 0) {
+      const ids = Array.from(allCourseIds);
+      const [courses] = await masterPool.query(
+        `SELECT id, name FROM courses WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+      courses.forEach(c => courseMap.set(String(c.id), c.name));
+    }
 
+    const branchMap = new Map();
+    if (allBranchIds.size > 0) {
+      const ids = Array.from(allBranchIds);
+      const [branches] = await masterPool.query(
+        `SELECT id, name FROM course_branches WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+      branches.forEach(b => branchMap.set(String(b.id), b.name));
+    }
+
+    const users = parsedRows.map((row) => {
       return {
         id: row.id,
         name: row.name,
@@ -295,24 +309,24 @@ exports.getUsers = async (req, res) => {
         collegeId: row.college_id,
         courseId: row.course_id,
         branchId: row.branch_id,
-        collegeIds: collegeIds,
-        courseIds: courseIds,
-        branchIds: branchIds,
+        collegeIds: row.parsedCollegeIds,
+        courseIds: row.parsedCourseIds,
+        branchIds: row.parsedBranchIds,
         allCourses: !!row.all_courses,
         allBranches: !!row.all_branches,
         collegeName: row.college_name,
         courseName: row.course_name,
         branchName: row.branch_name,
-        collegeNames,
-        courseNames,
-        branchNames,
+        collegeNames: row.parsedCollegeIds.map(id => ({ id, name: collegeMap.get(String(id)) || 'Unknown' })),
+        courseNames: row.parsedCourseIds.map(id => ({ id, name: courseMap.get(String(id)) || 'Unknown' })),
+        branchNames: row.parsedBranchIds.map(id => ({ id, name: branchMap.get(String(id)) || 'Unknown' })),
         permissions: parsePermissions(row.permissions),
         isActive: !!row.is_active,
         hrms_id: row.hrms_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };
-    }));
+    });
 
     res.json({
       success: true,

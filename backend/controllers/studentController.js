@@ -3,7 +3,7 @@ const { fetchActiveQuotaCodes } = require('./quotaController');
 const { resolveCasteIdByName, resolveCategoryIdByName } = require('./casteCategoryController');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { studentsCache, registrationAbstractCache, registrationStatsCache } = require('../services/cache');
+const { studentsCache, registrationAbstractCache, registrationStatsCache, createCache } = require('../services/cache');
 const multer = require('multer');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
@@ -62,19 +62,50 @@ const { computeRegistrationStages, parseStudentData, aggregateRegistrationOveral
 const { extractBatchStartYear, formatAcademicYearLabel } = require('../services/studentScholarshipSync');
 const crypto = require('crypto');
 
+// In-memory cache for settings that are hit on every request
+const _settingsCache = createCache(5 * 60 * 1000); // 5 minute TTL
+
+/**
+ * Cached fetch of attendance_config setting.
+ * Avoids a DB round-trip on every quick-filter / registration-report request.
+ */
+const loadAttendanceConfig = async () => {
+  const CACHE_KEY = 'settings:attendance_config';
+  const cached = _settingsCache.get(CACHE_KEY);
+  if (cached !== null) return cached;
+  try {
+    const [settings] = await masterPool.query(
+      'SELECT value FROM settings WHERE `key` = ? LIMIT 1',
+      ['attendance_config']
+    );
+    const config = (settings && settings.length > 0) ? JSON.parse(settings[0].value || '{}') : {};
+    _settingsCache.set(CACHE_KEY, config);
+    return config;
+  } catch (err) {
+    console.warn('loadAttendanceConfig: failed to load config', err.message);
+    return {};
+  }
+};
+
 /**
  * Load the registration_stage_config setting from DB.
  * Returns a map: { "branchCode::yearId": { optionalStages: [] } }
  * Falls back to {} on any error so the system always degrades gracefully.
+ * Cached for 5 minutes to avoid repeated DB queries.
  */
 const loadRegistrationStageConfig = async () => {
+  const CACHE_KEY = 'settings:registration_stage_config';
+  const cached = _settingsCache.get(CACHE_KEY);
+  if (cached !== null) return cached;
   try {
     const [rows] = await masterPool.query(
       "SELECT value FROM settings WHERE `key` = 'registration_stage_config' LIMIT 1"
     );
     if (rows.length > 0) {
       const parsed = JSON.parse(rows[0].value || '{}');
-      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+      const result = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+      _settingsCache.set(CACHE_KEY, result);
+      return result;
     }
   } catch (e) {
     console.warn('loadRegistrationStageConfig: failed to load config', e.message);
@@ -94,7 +125,7 @@ const resolveOptionalStages = (stageConfig, branchCodeOrStudent, studentYear = n
 };
 
 const REGISTRATION_AGGREGATION_STUDENT_COLUMNS = `
-  id, batch, college, course, branch, current_year, current_semester,
+  id, batch, college, course, branch, college_id, course_id, branch_id, current_year, current_semester,
   student_data, certificates_status, fee_status, stud_type, scholar_status
 `;
 
@@ -117,16 +148,10 @@ const loadRegistrationAbstractFilters = async (req, tableAlias = 'base') => {
 
   let excludedStudents = [];
   try {
-    const [settings] = await masterPool.query(
-      'SELECT value FROM settings WHERE `key` = ?',
-      ['attendance_config']
-    );
-    if (settings && settings.length > 0) {
-      const config = JSON.parse(settings[0].value);
-      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
-    }
+    const config = await loadAttendanceConfig();
+    if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
   } catch (err) {
-    console.warn('Failed to fetch attendance config for registration report:', err);
+    console.warn('Failed to fetch attendance config for registration abstract filters:', err);
   }
 
   const whereParts = ['1=1'];
@@ -155,9 +180,29 @@ const loadRegistrationAbstractFilters = async (req, tableAlias = 'base') => {
   const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
 
   if (normalizedFilterBatch) { whereParts.push(`${tableAlias}.batch = ?`); params.push(normalizedFilterBatch); }
-  if (normalizedFilterCollege) { appendCollegeNameFilter(whereParts, params, normalizedFilterCollege, tableAlias); }
-  if (normalizedFilterCourse) { whereParts.push(`${tableAlias}.course = ?`); params.push(normalizedFilterCourse); }
-  if (normalizedFilterBranch) { whereParts.push(`${tableAlias}.branch = ?`); params.push(normalizedFilterBranch); }
+  const isNumeric = (val) => /^\d+$/.test(val);
+
+  if (normalizedFilterCollege) { 
+    if (isNumeric(normalizedFilterCollege)) {
+      whereParts.push(`${tableAlias}.college_id = ?`); params.push(parseInt(normalizedFilterCollege, 10));
+    } else {
+      appendCollegeNameFilter(whereParts, params, normalizedFilterCollege, tableAlias); 
+    }
+  }
+  if (normalizedFilterCourse) { 
+    if (isNumeric(normalizedFilterCourse)) {
+      whereParts.push(`${tableAlias}.course_id = ?`); params.push(parseInt(normalizedFilterCourse, 10));
+    } else {
+      whereParts.push(`${tableAlias}.course = ?`); params.push(normalizedFilterCourse); 
+    }
+  }
+  if (normalizedFilterBranch) { 
+    if (isNumeric(normalizedFilterBranch)) {
+      whereParts.push(`${tableAlias}.branch_id = ?`); params.push(parseInt(normalizedFilterBranch, 10));
+    } else {
+      whereParts.push(`${tableAlias}.branch = ?`); params.push(normalizedFilterBranch); 
+    }
+  }
   if (parsedFilterYear) { whereParts.push(`${tableAlias}.current_year = ?`); params.push(parsedFilterYear); }
   if (parsedFilterSemester) { whereParts.push(`${tableAlias}.current_semester = ?`); params.push(parsedFilterSemester); }
 
@@ -753,7 +798,10 @@ const FIELD_MAPPING = {
   gender: 'gender',
   student_status: 'student_status',
   scholar_status: 'scholar_status',
-  remarks: 'remarks'
+  remarks: 'remarks',
+  college_id: 'college_id',
+  course_id: 'course_id',
+  branch_id: 'branch_id'
 };
 
 const normalizeIdentifier = (value) => {
@@ -789,7 +837,11 @@ const createComprehensiveFieldMapping = () => {
     pin_no: ['pinnumber', 'pin_no', 'pin', 'pinnumber', 'pin_number', 'rollno', 'rollnumber', 'roll_no', 'pinno', 'pin_no', 'pin', 'pinnumber', 'pin_number', 'rollno', 'rollnumber', 'roll_no', 'rollnumber', 'roll_number', 'rollno', 'roll_no'],
     batch: ['batch', 'batchyear', 'batch_year', 'year', 'academicyear', 'academic_year', 'batch', 'batchyear', 'batch_year', 'year', 'academicyear', 'academic_year', 'batchyear', 'batch_year', 'academicyear', 'academic_year'],
     college: ['college', 'collegename', 'college_name', 'institution', 'institutionname', 'institution_name', 'campus', 'campusname', 'campus_name', 'college', 'collegename', 'college_name', 'institution', 'institutionname', 'institution_name', 'campus', 'campusname', 'campus_name'],
+    college_id: ['college_id', 'collegeid'],
     branch: ['branch', 'branchname', 'branch_name', 'department', 'dept', 'specialization', 'branch', 'branchname', 'branch_name', 'department', 'dept', 'specialization', 'specialisation', 'stream', 'discipline'],
+    branch_id: ['branch_id', 'branchid'],
+    course: ['course', 'coursename', 'course_name', 'program', 'programname', 'program_name', 'degree', 'degreename', 'degree_name', 'course', 'coursename', 'course_name', 'program', 'programname', 'program_name', 'degree', 'degreename', 'degree_name'],
+    course_id: ['course_id', 'courseid'],
     stud_type: ['studtype', 'studenttype', 'student_type', 'type', 'category', 'studentcategory', 'studtype', 'studenttype', 'student_type', 'type', 'category', 'studentcategory', 'studentcategory', 'student_category'],
     student_name: ['studentname', 'name', 'student', 'fullname', 'full_name', 'studentfullname', 'student_name', 'studentname', 'nameofstudent', 'name_of_student', 'sname', 's_name'],
     student_status: ['studentstatus', 'student_status', 'status', 'currentstatus', 'current_status', 'studentstatus', 'student_status', 'status', 'currentstatus', 'current_status', 'studstatus', 'stud_status'],
@@ -2562,10 +2614,18 @@ exports.commitBulkUploadStudents = async (req, res) => {
         if (columnName === 'course_code') {
           return;
         }
-        insertColumns.push(columnName);
+
+        let finalColumnName = columnName;
+        let finalValue = value;
+        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+          finalColumnName = columnName + '_id';
+          finalValue = parseInt(finalValue, 10);
+        }
+
+        insertColumns.push(finalColumnName);
         insertPlaceholders.push('?');
-        insertValues.push(value);
-        updatedColumns.add(columnName);
+        insertValues.push(finalValue);
+        updatedColumns.add(finalColumnName);
       });
 
       // Link caste_id / category_id for this bulk-imported student only
@@ -2844,7 +2904,8 @@ exports.getAllStudents = async (req, res) => {
       }
     }
 
-    const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('students', null);
+    const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
+    const countRegistrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('students', null);
 
     const hasPermitEndingDateColumn = await columnExists('permit_ending_date');
     const hasPermitRemarksColumn = await columnExists('permit_remarks');
@@ -2855,27 +2916,38 @@ exports.getAllStudents = async (req, res) => {
       hasPermitRemarksColumn ? 'permit_remarks' : null
     ].filter(Boolean);
     const permitSelectSql = permitSelectColumns.length
-      ? `${permitSelectColumns.join(', ')},`
+      ? `${permitSelectColumns.map(c => `s.${c}`).join(', ')}, `
       : '';
     const casteIdSelectSql = hasCasteIdColumn ? 'caste_id,' : '';
     const categoryIdSelectSql = hasCategoryIdColumn ? 'category_id,' : '';
 
     let query = `
       SELECT 
-        id, admission_number, admission_no, pin_no, student_name, student_data, 
-        fee_status, registration_status, ${permitSelectSql}
-        student_mobile, parent_mobile1, parent_mobile2, created_at, 
-        student_status, course, branch, section, current_year, current_semester, batch,
-        certificates_status, student_address, city_village, mandal_name, district, 
-        stud_type, scholar_status, gender, dob, father_name, adhar_no, admission_date, 
-        previous_college, remarks, college, ${casteIdSelectSql} ${categoryIdSelectSql} caste,
+        s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name, s.student_data, 
+        s.fee_status, s.registration_status,
+        ${permitSelectSql}
+        s.student_mobile, s.parent_mobile1, s.parent_mobile2, s.created_at, 
+        s.student_status, s.section, s.current_year, s.current_semester, s.batch,
+        s.certificates_status, s.student_address, s.city_village, s.mandal_name, s.district, 
+        s.stud_type, s.scholar_status, s.gender, s.dob, s.father_name, s.adhar_no, s.admission_date, 
+        s.previous_college, s.remarks, s.caste,
+        ${hasCasteIdColumn ? 's.caste_id,' : ''}
+        ${hasCategoryIdColumn ? 's.category_id,' : ''}
+        s.college_id, s.course_id, s.branch_id,
+        COALESCE(colleges.name, s.college) AS college,
+        COALESCE(courses.name, s.course) AS course,
+        COALESCE(course_branches.name, s.branch) AS branch,
         ${registrationStatusComputedSql} AS registration_status_computed
-      FROM students WHERE 1=1`;
+      FROM students s
+      LEFT JOIN colleges ON s.college_id = colleges.id
+      LEFT JOIN courses ON s.course_id = courses.id
+      LEFT JOIN course_branches ON s.branch_id = course_branches.id
+      WHERE 1=1`;
     const params = [];
 
     // Apply user scope filtering (college/course/branch restrictions)
     if (req.userScope) {
-      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 's');
       if (scopeCondition) {
         query += ` AND ${scopeCondition}`;
         params.push(...scopeParams);
@@ -2886,62 +2958,79 @@ exports.getAllStudents = async (req, res) => {
     // Student status can still be filtered using filter_student_status parameter
 
     if (search) {
-      const { clause, params: searchParams } = buildStudentSearchCondition(search);
+      const { clause, params: searchParams } = buildStudentSearchCondition(search, 's');
       query += clause;
       params.push(...searchParams);
     }
 
     // Date range filter
     if (filter_dateFrom) {
-      query += ' AND DATE(created_at) >= ?';
+      query += ' AND DATE(s.created_at) >= ?';
       params.push(filter_dateFrom);
     }
 
     if (filter_dateTo) {
-      query += ' AND DATE(created_at) <= ?';
+      query += ' AND DATE(s.created_at) <= ?';
       params.push(filter_dateTo);
     }
 
     // PIN number status filter
     if (filter_pinNumberStatus === 'assigned') {
-      query += ' AND pin_no IS NOT NULL';
+      query += ' AND s.pin_no IS NOT NULL';
     } else if (filter_pinNumberStatus === 'unassigned') {
-      query += ' AND pin_no IS NULL';
+      query += ' AND s.pin_no IS NULL';
     }
 
     if (parsedFilterYear && !isNaN(parsedFilterYear)) {
-      query += ' AND current_year = ?';
+      query += ' AND s.current_year = ?';
       params.push(parsedFilterYear);
     }
 
     if (parsedFilterSemester && !isNaN(parsedFilterSemester)) {
-      query += ' AND current_semester = ?';
+      query += ' AND s.current_semester = ?';
       params.push(parsedFilterSemester);
     }
 
     if (normalizedFilterBatch) {
-      query += ' AND batch = ?';
+      query += ' AND s.batch = ?';
       params.push(normalizedFilterBatch);
     }
 
+    const isNumeric = (val) => /^\d+$/.test(val);
+
     if (normalizedFilterCollege) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
-      query += ` AND ${clause}`;
-      params.push(...collegeParams);
+      if (isNumeric(normalizedFilterCollege)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(normalizedFilterCollege, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege, 's');
+        query += ` AND ${clause}`;
+        params.push(...collegeParams);
+      }
     }
 
     if (normalizedFilterCourse) {
-      query += ' AND course = ?';
-      params.push(normalizedFilterCourse);
+      if (isNumeric(normalizedFilterCourse)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(normalizedFilterCourse, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(normalizedFilterCourse);
+      }
     }
 
     if (normalizedFilterBranch) {
-      query += ' AND branch = ?';
-      params.push(normalizedFilterBranch);
+      if (isNumeric(normalizedFilterBranch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(normalizedFilterBranch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(normalizedFilterBranch);
+      }
     }
 
     if (normalizedFilterSection && normalizedFilterBranch) {
-      query += ` AND ${resolveStudentSectionSql('students')} = ?`;
+      query += ` AND ${resolveStudentSectionSql('s')} = ?`;
       params.push(normalizedFilterSection);
     }
 
@@ -2956,7 +3045,7 @@ exports.getAllStudents = async (req, res) => {
       validLevelCourseNames = levelCourses.map(c => c.name);
       if (validLevelCourseNames.length > 0) {
         const placeholders = validLevelCourseNames.map(() => '?').join(',');
-        query += ` AND course IN (${placeholders})`;
+        query += ` AND s.course IN (${placeholders})`;
         params.push(...validLevelCourseNames);
       } else {
         // No courses with this level, return empty result
@@ -2983,17 +3072,17 @@ exports.getAllStudents = async (req, res) => {
       if (filterValue && typeof filterValue === 'string' && filterValue.trim().length > 0) {
         // Special handling for null certificate status
         if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
-          query += ` AND ${field} IS NULL`;
+          query += ` AND s.${field} IS NULL`;
         } else if (field === 'scholar_status') {
-          query += getRegistrationScholarshipFilterClause(filterValue.trim(), null);
+          query += getRegistrationScholarshipFilterClause(filterValue.trim(), null, 's');
         } else if (field === 'caste') {
-          query += ` AND LOWER(TRIM(${field})) = LOWER(?)`;
+          query += ` AND LOWER(TRIM(s.${field})) = LOWER(?)`;
           params.push(filterValue.trim());
         } else if (exactMatchStudentFilterFields.has(field)) {
-          query += ` AND ${field} = ?`;
+          query += ` AND s.${field} = ?`;
           params.push(filterValue.trim());
         } else {
-          query += ` AND ${field} LIKE ?`;
+          query += ` AND s.${field} LIKE ?`;
           params.push(`%${filterValue.trim()}%`);
         }
       }
@@ -3001,7 +3090,7 @@ exports.getAllStudents = async (req, res) => {
 
     // Created at date filter
     if (normalizedOtherFilters.filter_created_at) {
-      query += ' AND DATE(created_at) = ?';
+      query += ' AND DATE(s.created_at) = ?';
       params.push(normalizedOtherFilters.filter_created_at);
     }
 
@@ -3011,7 +3100,7 @@ exports.getAllStudents = async (req, res) => {
         const fieldName = key.replace('filter_field_', '');
         // Escape field name for JSON path (handle spaces and special chars)
         const escapedFieldName = fieldName.replace(/"/g, '\\"');
-        query += ` AND JSON_UNQUOTE(JSON_EXTRACT(student_data, '$."${escapedFieldName}"')) = ?`;
+        query += ` AND JSON_UNQUOTE(JSON_EXTRACT(s.student_data, '$."${escapedFieldName}"')) = ?`;
         params.push(value);
       }
     });
@@ -3022,14 +3111,14 @@ exports.getAllStudents = async (req, res) => {
 
     if (normalizedSortBy === 'roll_number') {
       query += ` ORDER BY
-        CASE WHEN pin_no IS NULL OR TRIM(pin_no) = '' THEN 1 ELSE 0 END ASC,
-        CASE WHEN pin_no REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,
-        CASE WHEN pin_no REGEXP '^[0-9]+$' THEN CAST(pin_no AS UNSIGNED) END ${safeSortOrder},
-        pin_no ${safeSortOrder},
-        admission_number ${safeSortOrder},
-        id ${safeSortOrder}`;
+        CASE WHEN s.pin_no IS NULL OR TRIM(s.pin_no) = '' THEN 1 ELSE 0 END ASC,
+        CASE WHEN s.pin_no REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,
+        CASE WHEN s.pin_no REGEXP '^[0-9]+$' THEN CAST(s.pin_no AS UNSIGNED) END ${safeSortOrder},
+        s.pin_no ${safeSortOrder},
+        s.admission_number ${safeSortOrder},
+        s.id ${safeSortOrder}`;
     } else {
-      query += ' ORDER BY id DESC';
+      query += ' ORDER BY s.id DESC';
     }
     if (!fetchAll) {
       query += ' LIMIT ? OFFSET ?';
@@ -3132,7 +3221,7 @@ exports.getAllStudents = async (req, res) => {
         : normalizedReg === 'temporary'
           ? 'Temporary'
           : 'pending';
-      countQuery += ` AND (${registrationStatusComputedSql}) = ?`;
+      countQuery += ` AND (${countRegistrationStatusComputedSql}) = ?`;
       countParams.push(regStatusMatch);
     }
 
@@ -3317,12 +3406,12 @@ exports.getStudentByAdmission = async (req, res) => {
     const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
 
     const [students] = await masterPool.query(
-      `SELECT s.*,
+      `SELECT s.*, colleges.name as college, courses.name as course, course_branches.name as branch,
               srn.roll_number AS roll_number,
               srn.branch_prefix AS roll_branch_prefix,
               srn.serial AS roll_serial,
         ${registrationStatusComputedSql} AS registration_status_computed
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
       WHERE s.admission_number = ? OR s.admission_no = ?`,
       [admissionNumber, admissionNumber]
@@ -3806,9 +3895,16 @@ exports.updateStudent = async (req, res) => {
           continue; // Skip these as they are stored in student_data JSON only
         }
 
-        updateFields.push(`${columnName} = ?`);
-        updateValues.push(convertedValue);
-        updatedColumns.add(columnName);
+        let finalColumnName = columnName;
+        let finalValue = convertedValue;
+        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+          finalColumnName = columnName + '_id';
+          finalValue = parseInt(finalValue, 10);
+        }
+
+        updateFields.push(`${finalColumnName} = ?`);
+        updateValues.push(finalValue);
+        updatedColumns.add(finalColumnName);
 
         // Link this student only: set caste_id / category_id when caste (category text) is saved
         if (columnName === 'caste') {
@@ -4715,10 +4811,18 @@ exports.createStudent = async (req, res) => {
         if (columnName === 'branch_code') {
           return;
         }
-        insertColumns.push(columnName);
+
+        let finalColumnName = columnName;
+        let finalValue = value;
+        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+          finalColumnName = columnName + '_id';
+          finalValue = parseInt(finalValue, 10);
+        }
+
+        insertColumns.push(finalColumnName);
         insertPlaceholders.push('?');
-        insertValues.push(value);
-        updatedColumns.add(columnName);
+        insertValues.push(finalValue);
+        updatedColumns.add(finalColumnName);
       }
     });
 
@@ -4860,7 +4964,7 @@ exports.createStudent = async (req, res) => {
 
     // Fetch the created student data
     const [createdStudents] = await masterPool.query(
-      'SELECT * FROM students WHERE admission_number = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ?',
       [admissionNumber]
     );
 
@@ -5380,7 +5484,7 @@ exports.getFilterFields = async (_req, res) => {
 exports.getFilterOptions = async (req, res) => {
   try {
     // Get filter parameters from query string
-    const { course, branch, batch, year, semester } = req.query;
+    const { college, course, branch, batch, year, semester } = req.query;
 
     // Build WHERE clause based on applied filters
     let whereClause = 'WHERE 1=1';
@@ -5395,13 +5499,36 @@ exports.getFilterOptions = async (req, res) => {
       }
     }
 
+    const isNumeric = (val) => /^\d+$/.test(val);
+
+    if (college) {
+      if (isNumeric(college)) {
+        whereClause += ` AND college_id = ?`;
+        params.push(parseInt(college, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(college, 'students');
+        whereClause += ` AND ${clause}`;
+        params.push(...collegeParams);
+      }
+    }
+
     if (course) {
-      whereClause += ' AND course = ?';
-      params.push(course);
+      if (isNumeric(course)) {
+        whereClause += ` AND course_id = ?`;
+        params.push(parseInt(course, 10));
+      } else {
+        whereClause += ' AND course = ?';
+        params.push(course);
+      }
     }
     if (branch) {
-      whereClause += ' AND branch = ?';
-      params.push(branch);
+      if (isNumeric(branch)) {
+        whereClause += ` AND branch_id = ?`;
+        params.push(parseInt(branch, 10));
+      } else {
+        whereClause += ' AND branch = ?';
+        params.push(branch);
+      }
     }
     if (batch) {
       whereClause += ' AND batch = ?';
@@ -5491,23 +5618,17 @@ exports.getQuickFilterOptions = async (req, res) => {
     const params = [];
     let whereClause = `WHERE 1=1`;
 
-    // Apply Exclusions if requested
+    // Apply Exclusions if requested (uses cached config to avoid DB hit on every request)
     if (applyExclusions === 'true') {
       try {
-        const [settings] = await masterPool.query(
-          'SELECT value FROM settings WHERE `key` = ?',
-          ['attendance_config']
-        );
-        if (settings && settings.length > 0) {
-          const config = JSON.parse(settings[0].value);
-          const excludedCourses = config.excludedCourses || [];
-          if (Array.isArray(excludedCourses) && excludedCourses.length > 0) {
-            whereClause += ` AND course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
-            params.push(...excludedCourses);
-          }
+        const config = await loadAttendanceConfig();
+        const excludedCourses = config.excludedCourses || [];
+        if (Array.isArray(excludedCourses) && excludedCourses.length > 0) {
+          whereClause += ` AND course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
+          params.push(...excludedCourses);
         }
       } catch (err) {
-        console.warn('Failed to fetch attendance config for filters:', err);
+        console.warn('Failed to apply attendance config exclusions:', err);
       }
     }
 
@@ -5520,18 +5641,35 @@ exports.getQuickFilterOptions = async (req, res) => {
       }
     }
 
+    const isNumeric = (val) => /^\d+$/.test(val);
+
     if (college) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(college);
-      whereClause += ` AND ${clause}`;
-      params.push(...collegeParams);
+      if (isNumeric(college)) {
+        whereClause += ` AND college_id = ?`;
+        params.push(parseInt(college, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(college);
+        whereClause += ` AND ${clause}`;
+        params.push(...collegeParams);
+      }
     }
     if (course) {
-      whereClause += ' AND course = ?';
-      params.push(course);
+      if (isNumeric(course)) {
+        whereClause += ` AND course_id = ?`;
+        params.push(parseInt(course, 10));
+      } else {
+        whereClause += ' AND course = ?';
+        params.push(course);
+      }
     }
     if (branch) {
-      whereClause += ' AND branch = ?';
-      params.push(branch);
+      if (isNumeric(branch)) {
+        whereClause += ` AND branch_id = ?`;
+        params.push(parseInt(branch, 10));
+      } else {
+        whereClause += ' AND branch = ?';
+        params.push(branch);
+      }
     }
     if (batch) {
       whereClause += ' AND batch = ?';
@@ -5548,7 +5686,7 @@ exports.getQuickFilterOptions = async (req, res) => {
 
     // Fetch distinct values for each filter (only colleges that exist in colleges table, to exclude orphan names)
     const [collegeRows] = await masterPool.query(
-      `SELECT DISTINCT college FROM students ${whereClause} AND college IS NOT NULL AND college <> '' AND college COLLATE utf8mb4_unicode_ci IN (SELECT name FROM colleges WHERE is_active = 1) ORDER BY college ASC`,
+      `SELECT college AS id, college AS name FROM students ${whereClause} AND college IS NOT NULL AND college <> '' AND college COLLATE utf8mb4_unicode_ci IN (SELECT name FROM colleges WHERE is_active = 1) GROUP BY college ORDER BY college ASC`,
       params
     );
 
@@ -5594,9 +5732,14 @@ exports.getQuickFilterOptions = async (req, res) => {
     }
 
     if (college) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(college, 'students');
-      yearWhereClause += ` AND ${clause}`;
-      yearParams.push(...collegeParams);
+      if (isNumeric(college)) {
+        yearWhereClause += ` AND college_id = ?`;
+        yearParams.push(parseInt(college, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(college, 'students');
+        yearWhereClause += ` AND ${clause}`;
+        yearParams.push(...collegeParams);
+      }
     }
     if (level) {
       // Filter by level - get courses with that level
@@ -5615,12 +5758,22 @@ exports.getQuickFilterOptions = async (req, res) => {
       }
     }
     if (course) {
-      yearWhereClause += ' AND course = ?';
-      yearParams.push(course);
+      if (isNumeric(course)) {
+        yearWhereClause += ` AND course_id = ?`;
+        yearParams.push(parseInt(course, 10));
+      } else {
+        yearWhereClause += ' AND course = ?';
+        yearParams.push(course);
+      }
     }
     if (branch) {
-      yearWhereClause += ' AND branch = ?';
-      yearParams.push(branch);
+      if (isNumeric(branch)) {
+        yearWhereClause += ` AND branch_id = ?`;
+        yearParams.push(parseInt(branch, 10));
+      } else {
+        yearWhereClause += ' AND branch = ?';
+        yearParams.push(branch);
+      }
     }
     if (batch) {
       yearWhereClause += ' AND batch = ?';
@@ -5642,14 +5795,21 @@ exports.getQuickFilterOptions = async (req, res) => {
     // For courses, if college is selected, filter courses by college
     let courseRows;
     if (college) {
-      // Get college ID from college name
-      const [collegeRows] = await masterPool.query(
-        'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
-        [college]
-      );
+      let collegeId = null;
+      if (isNumeric(college)) {
+        collegeId = parseInt(college, 10);
+      } else {
+        // Get college ID from college name
+        const [collegeRows] = await masterPool.query(
+          'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
+          [college]
+        );
+        if (collegeRows.length > 0) {
+          collegeId = collegeRows[0].id;
+        }
+      }
 
-      if (collegeRows.length > 0) {
-        const collegeId = collegeRows[0].id;
+      if (collegeId !== null) {
         // Get courses for this college from courses table (these are the valid courses for this college)
         // Filter by level if level is provided
         let courseQuery = 'SELECT name FROM courses WHERE college_id = ? AND is_active = 1';
@@ -5670,7 +5830,7 @@ exports.getQuickFilterOptions = async (req, res) => {
           const courseWhereClause = `${whereClause} AND course IN (${placeholders})`;
           const courseParams = [...params, ...validCourseNames];
           [courseRows] = await masterPool.query(
-            `SELECT DISTINCT course FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
+            `SELECT course AS id, course AS name FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' GROUP BY course ORDER BY course ASC`,
             courseParams
           );
         } else {
@@ -5696,7 +5856,7 @@ exports.getQuickFilterOptions = async (req, res) => {
           const courseWhereClause = `${whereClause} AND course IN (${placeholders})`;
           const courseParams = [...params, ...validCourseNames];
           [courseRows] = await masterPool.query(
-            `SELECT DISTINCT course FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
+            `SELECT course AS id, course AS name FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' GROUP BY course ORDER BY course ASC`,
             courseParams
           );
         } else {
@@ -5704,7 +5864,7 @@ exports.getQuickFilterOptions = async (req, res) => {
         }
       } else {
         [courseRows] = await masterPool.query(
-          `SELECT DISTINCT course FROM students ${whereClause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
+          `SELECT course AS id, course AS name FROM students ${whereClause} AND course IS NOT NULL AND course <> '' GROUP BY course ORDER BY course ASC`,
           params
         );
       }
@@ -5713,14 +5873,21 @@ exports.getQuickFilterOptions = async (req, res) => {
     // For branches, if college is selected, filter branches by college and valid courses
     let branchRows;
     if (college) {
-      // Get college ID from college name
-      const [collegeRows] = await masterPool.query(
-        'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
-        [college]
-      );
+      let collegeId = null;
+      if (isNumeric(college)) {
+        collegeId = parseInt(college, 10);
+      } else {
+        // Get college ID from college name
+        const [collegeRows] = await masterPool.query(
+          'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
+          [college]
+        );
+        if (collegeRows.length > 0) {
+          collegeId = collegeRows[0].id;
+        }
+      }
 
-      if (collegeRows.length > 0) {
-        const collegeId = collegeRows[0].id;
+      if (collegeId !== null) {
         // Get courses for this college from courses table
         // Filter by level if level is provided
         let branchCourseQuery = 'SELECT id, name FROM courses WHERE college_id = ? AND is_active = 1';
@@ -5734,48 +5901,35 @@ exports.getQuickFilterOptions = async (req, res) => {
         const validCourseNames = collegeCourses.map(c => c.name);
         const validCourseIds = collegeCourses.map(c => c.id);
 
-        if (validCourseNames.length > 0) {
-          // If course is also selected, filter branches for that specific course
+        if (validCourseIds.length > 0) {
           if (course) {
-            // Get course ID for the selected course
-            const selectedCourse = collegeCourses.find(c => c.name === course);
+            // Get course ID for the selected course (handles both ID and Name)
+            const selectedCourse = collegeCourses.find(c => 
+              isNumeric(course) ? c.id === parseInt(course, 10) : c.name === course
+            );
             if (selectedCourse) {
               // Get branches for this specific course from course_branches table
               const [courseBranches] = await masterPool.query(
-                'SELECT name FROM course_branches WHERE course_id = ? AND is_active = 1 ORDER BY name ASC',
+                'SELECT MAX(id) AS id, name FROM course_branches WHERE course_id = ? AND is_active = 1 GROUP BY name ORDER BY name ASC',
                 [selectedCourse.id]
               );
-              const validBranchNames = courseBranches.map(b => b.name);
-
-              // RETURN ALL branches for this course from config
-              branchRows = validBranchNames.map(name => ({ branch: name }));
+              branchRows = courseBranches.map(b => ({ id: b.name, branch: b.name }));
             } else {
+              // Selected course doesn't belong to this college
               branchRows = [];
             }
           } else {
-            // Selected course doesn't belong to this college
-            branchRows = [];
-          }
-        } else {
-          // No course selected, get all branches for all courses in this college
-          // Get all branches for all courses in this college
-          if (validCourseIds.length > 0) {
+            // No course selected, get all branches for all courses in this college
             const courseIdPlaceholders = validCourseIds.map(() => '?').join(',');
             const [allBranches] = await masterPool.query(
-              `SELECT name FROM course_branches WHERE course_id IN (${courseIdPlaceholders}) AND is_active = 1 ORDER BY name ASC`,
+              `SELECT MAX(id) AS id, name FROM course_branches WHERE course_id IN (${courseIdPlaceholders}) AND is_active = 1 GROUP BY name ORDER BY name ASC`,
               validCourseIds
             );
-            const validBranchNames = allBranches.map(b => b.name);
-
-            if (validBranchNames.length > 0) {
-              // RETURN ALL branches for all courses in this college from config
-              branchRows = validBranchNames.map(name => ({ branch: name }));
-            } else {
-              branchRows = [];
-            }
-          } else {
-            branchRows = [];
+            branchRows = allBranches.map(b => ({ id: b.name, branch: b.name }));
           }
+        } else {
+          // No courses configured for this college, so no branches
+          branchRows = [];
         }
       } else {
         // College not found, return empty branches
@@ -5784,7 +5938,7 @@ exports.getQuickFilterOptions = async (req, res) => {
     } else {
       // No college filter, get all branches from students (NO exclusions)
       [branchRows] = await masterPool.query(
-        `SELECT DISTINCT branch FROM students ${whereClause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
+        `SELECT branch AS id, branch AS name FROM students ${whereClause} AND branch IS NOT NULL AND branch <> '' GROUP BY branch ORDER BY branch ASC`,
         params
       );
     }
@@ -5792,12 +5946,12 @@ exports.getQuickFilterOptions = async (req, res) => {
     res.json({
       success: true,
       data: {
-        colleges: collegeRows.map((row) => row.college),
+        colleges: collegeRows.map((row) => ({ id: row.id || row.college, name: row.name || row.college })),
         batches: batchRows.map((row) => row.batch),
         years: yearRows.map((row) => row.currentYear),
         semesters: semesterRows.map((row) => row.currentSemester),
-        courses: courseRows.map((row) => row.course),
-        branches: branchRows.map((row) => row.branch),
+        courses: courseRows.map((row) => ({ id: row.id || row.course, name: row.name || row.course })),
+        branches: branchRows.map((row) => ({ id: row.id || row.branch, name: row.name || row.branch })),
         sections: await fetchStudentTableSectionOptions({ course, branch, batch, year, semester, college })
       }
     });
@@ -6022,7 +6176,7 @@ exports.login = async (req, res) => {
 
     const [studentRows] = await masterPool.query(
       `SELECT s.admission_number, s.admission_no, s.pin_no, s.student_name, s.student_mobile, s.current_year, s.current_semester, s.student_photo, s.course, s.branch, s.college, s.batch
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        WHERE s.id = ?
        LIMIT 1`,
       [studentValid.student_id]
@@ -6087,13 +6241,13 @@ exports.getStudentByAdmission = async (req, res) => {
     const registrationStatusComputedSql = buildStudentRegistrationStatusComputedSql('s', null);
 
     const [students] = await masterPool.query(
-      `SELECT s.*, 
+      `SELECT s.*, colleges.name as college, courses.name as course, course_branches.name as branch, 
               sc.username,
               srn.roll_number AS roll_number,
               srn.branch_prefix AS roll_branch_prefix,
               srn.serial AS roll_serial,
               ${registrationStatusComputedSql} AS registration_status_computed
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        LEFT JOIN student_credentials sc ON s.id = sc.student_id
        LEFT JOIN student_roll_numbers srn ON srn.student_id = s.id
        WHERE s.admission_number = ? OR s.admission_no = ?`,
@@ -7128,7 +7282,7 @@ exports.rejoinStudent = async (req, res) => {
 
     // Fetch student
     const [students] = await masterPool.query(
-      'SELECT * FROM students WHERE admission_number = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ?',
       [admissionNumber]
     );
 
@@ -7298,7 +7452,7 @@ exports.rejoinStudent = async (req, res) => {
 
     // Fetch updated student
     const [updatedStudents] = await masterPool.query(
-      'SELECT * FROM students WHERE admission_number = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ?',
       [admissionNumber]
     );
 
@@ -7316,6 +7470,150 @@ exports.rejoinStudent = async (req, res) => {
     });
   }
 };
+/**
+ * GET /students/reports/registration/stats
+ * Returns ONLY the statistics object (no paginated data rows).
+ * Shares the same cache key as getRegistrationReport so results are reused.
+ * Designed to be called in parallel with the paginated report so stats don't
+ * block the table from rendering.
+ */
+exports.getRegistrationStats = async (req, res) => {
+  try {
+    const {
+      filter_batch, filter_course, filter_branch, filter_year, filter_semester,
+      filter_college, filter_level, filter_scholarship_status, filter_stage_pending, search
+    } = req.query;
+
+    const normalizedFilterBatch = filter_batch?.trim() || null;
+    const normalizedFilterCollege = filter_college?.trim() || null;
+    const normalizedFilterCourse = filter_course?.trim() || null;
+    const normalizedFilterBranch = filter_branch?.trim() || null;
+    const parsedFilterYear = filter_year ? parseInt(filter_year, 10) : null;
+    const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
+
+    let excludedStudents = [];
+    try {
+      const config = await loadAttendanceConfig();
+      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+    } catch (err) { console.warn('Failed to load attendance config for stats:', err); }
+
+    let baseQuery = 'FROM students WHERE 1=1';
+    const params = [];
+
+    if (excludedStudents.length > 0) {
+      baseQuery += ` AND admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+      params.push(...excludedStudents);
+    }
+    if (req.userScope) {
+      const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
+      if (scopeCondition) { baseQuery += ` AND ${scopeCondition}`; params.push(...scopeParams); }
+    }
+    baseQuery += " AND student_status = 'Regular'";
+    if (normalizedFilterBatch) { baseQuery += ' AND batch = ?'; params.push(normalizedFilterBatch); }
+    const isNumeric = (val) => /^\d+$/.test(val);
+
+    if (normalizedFilterCollege) {
+      if (isNumeric(normalizedFilterCollege)) {
+        baseQuery += ` AND college_id = ?`; params.push(parseInt(normalizedFilterCollege, 10));
+      } else {
+        const { clause, params: cp } = buildCollegeNameFilter(normalizedFilterCollege);
+        baseQuery += ` AND ${clause}`; params.push(...cp);
+      }
+    }
+    if (normalizedFilterCourse) {
+      if (isNumeric(normalizedFilterCourse)) {
+        baseQuery += ` AND course_id = ?`; params.push(parseInt(normalizedFilterCourse, 10));
+      } else {
+        baseQuery += ' AND course = ?'; params.push(normalizedFilterCourse);
+      }
+    }
+    if (normalizedFilterBranch) {
+      if (isNumeric(normalizedFilterBranch)) {
+        baseQuery += ` AND branch_id = ?`; params.push(parseInt(normalizedFilterBranch, 10));
+      } else {
+        baseQuery += ' AND branch = ?'; params.push(normalizedFilterBranch);
+      }
+    }
+    if (parsedFilterYear) { baseQuery += ' AND current_year = ?'; params.push(parsedFilterYear); }
+    if (parsedFilterSemester) { baseQuery += ' AND current_semester = ?'; params.push(parsedFilterSemester); }
+    if (filter_level) {
+      try {
+        const [levelCourses] = await masterPool.query('SELECT name FROM courses WHERE level = ? AND is_active = 1', [filter_level]);
+        const names = levelCourses.map(c => c.name);
+        if (names.length > 0) { baseQuery += ` AND course IN (${names.map(() => '?').join(',')})`; params.push(...names); }
+        else { baseQuery += ' AND 1=0'; }
+      } catch (err) { console.warn('Failed to filter stats by level:', err); }
+    }
+    if (search) {
+      const { clause, params: sp } = buildStudentSearchCondition(search);
+      baseQuery += clause; params.push(...sp);
+    }
+    const scholarshipFilter = (filter_scholarship_status || '').trim().toLowerCase();
+    const academicYearFilter = (req.query.filter_academic_year || '').trim();
+    const academicYearFromYear = parseAcademicYearFromYear(academicYearFilter);
+    baseQuery += getRegistrationScholarshipFilterClause(scholarshipFilter, academicYearFromYear);
+    baseQuery += buildRegistrationStagePendingFilterClause((filter_stage_pending || '').trim().toLowerCase(), academicYearFromYear);
+    if (academicYearFilter) {
+      const { clause: ayClause, params: ayParams } = buildAcademicYearFilterClause(academicYearFilter);
+      if (ayClause) { baseQuery += ayClause; params.push(...ayParams); }
+    }
+
+    const registrationScholarshipAssignedSumSql = buildRegistrationScholarshipAssignedSumSql(academicYearFromYear);
+    const registrationScholarshipPendingSumSql = buildRegistrationScholarshipPendingSumSql(academicYearFromYear);
+
+    const statsQuery = `
+      SELECT
+        COUNT(*) as total,
+        ${verificationCompletedSumSql} as verification_completed,
+        SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
+        SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
+        SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
+        ${promotionCompletedSumSql} as promotion_completed,
+        ${registrationScholarshipAssignedSumSql} as scholarship_assigned,
+        ${registrationScholarshipPendingSumSql} as scholarship_pending,
+        SUM(${buildRegistrationOverallCompletedCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_completed,
+        SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_temporary
+      ${baseQuery}
+    `;
+
+    const [statsResult] = await masterPool.query(statsQuery, params);
+    const statsRow = statsResult[0] || {};
+    const totalCount = parseInt(statsRow.total || 0, 10);
+
+    const aggregationStudentsQuery = `SELECT ${REGISTRATION_AGGREGATION_STUDENT_COLUMNS} ${baseQuery}`;
+    const statsCacheKey = buildRegistrationStatsCacheKey(req);
+    let computedOptional;
+    if (registrationStatsCache.has(statsCacheKey)) {
+      computedOptional = registrationStatsCache.get(statsCacheKey);
+    } else {
+      const stageConfigForStats = await loadRegistrationStageConfig();
+      const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
+      computedOptional = await loadRegistrationComputedAggregates(aggregationStudents, stageConfigForStats, academicYearFromYear);
+      registrationStatsCache.set(statsCacheKey, computedOptional);
+    }
+
+    const mergedStats = mergeRegistrationStatsWithSql(statsRow, computedOptional);
+    const { overallCompleted, overallTemporary, overallPending } = mergedStats;
+
+    return res.json({
+      success: true,
+      statistics: {
+        total: totalCount,
+        registration: { completed: overallCompleted, temporary: overallTemporary, pending: overallPending },
+        verification: { completed: parseInt(statsRow.verification_completed || 0, 10), pending: totalCount - parseInt(statsRow.verification_completed || 0, 10) },
+        certificates: { verified: parseInt(statsRow.certificates_verified || 0, 10), temporary: parseInt(statsRow.certificates_temporary || 0, 10), pending: totalCount - parseInt(statsRow.certificates_verified || 0, 10) - parseInt(statsRow.certificates_temporary || 0, 10) },
+        fees: { cleared: parseInt(statsRow.fee_cleared || 0, 10), pending: totalCount - parseInt(statsRow.fee_cleared || 0, 10) },
+        promotion: { completed: parseInt(statsRow.promotion_completed || 0, 10), pending: totalCount - parseInt(statsRow.promotion_completed || 0, 10) },
+        scholarship: { assigned: mergedStats.scholarshipAssigned, pending: mergedStats.scholarshipPending },
+        overall: { completed: overallCompleted, temporary: overallTemporary, pending: overallPending }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching registration stats:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch registration statistics' });
+  }
+};
+
 // Get Registration Report
 exports.getRegistrationReport = async (req, res) => {
   try {
@@ -7345,21 +7643,15 @@ exports.getRegistrationReport = async (req, res) => {
     const parsedFilterYear = filter_year ? parseInt(filter_year, 10) : null;
     const parsedFilterSemester = filter_semester ? parseInt(filter_semester, 10) : null;
 
-    // Fetch exclude settings
+    // Fetch exclude settings (cached to avoid DB hit on every request)
     let excludedCourses = [];
     let excludedStudents = [];
     try {
-      const [settings] = await masterPool.query(
-        'SELECT value FROM settings WHERE `key` = ?',
-        ['attendance_config']
-      );
-      if (settings && settings.length > 0) {
-        const config = JSON.parse(settings[0].value);
-        if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
-        if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
-      }
+      const config = await loadAttendanceConfig();
+      if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
+      if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
     } catch (err) {
-      console.warn('Failed to fetch attendance config for registration report:', err);
+      console.warn('Failed to load attendance config for registration report:', err);
     }
 
     let baseQuery = 'FROM students WHERE 1=1';
@@ -7395,18 +7687,35 @@ exports.getRegistrationReport = async (req, res) => {
       baseQuery += ' AND batch = ?';
       params.push(normalizedFilterBatch);
     }
+    const isNumeric = (val) => /^\d+$/.test(val);
+
     if (normalizedFilterCollege) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
-      baseQuery += ` AND ${clause}`;
-      params.push(...collegeParams);
+      if (isNumeric(normalizedFilterCollege)) {
+        baseQuery += ` AND college_id = ?`;
+        params.push(parseInt(normalizedFilterCollege, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+        baseQuery += ` AND ${clause}`;
+        params.push(...collegeParams);
+      }
     }
     if (normalizedFilterCourse) {
-      baseQuery += ' AND course = ?';
-      params.push(normalizedFilterCourse);
+      if (isNumeric(normalizedFilterCourse)) {
+        baseQuery += ` AND course_id = ?`;
+        params.push(parseInt(normalizedFilterCourse, 10));
+      } else {
+        baseQuery += ' AND course = ?';
+        params.push(normalizedFilterCourse);
+      }
     }
     if (normalizedFilterBranch) {
-      baseQuery += ' AND branch = ?';
-      params.push(normalizedFilterBranch);
+      if (isNumeric(normalizedFilterBranch)) {
+        baseQuery += ` AND branch_id = ?`;
+        params.push(parseInt(normalizedFilterBranch, 10));
+      } else {
+        baseQuery += ' AND branch = ?';
+        params.push(normalizedFilterBranch);
+      }
     }
     if (parsedFilterYear) {
       baseQuery += ' AND current_year = ?';
@@ -7464,27 +7773,19 @@ exports.getRegistrationReport = async (req, res) => {
       }
     }
 
-    // Get Total Count + Statistics in one pass (stats query already returns COUNT(*))
-    const registrationScholarshipAssignedSumSql = buildRegistrationScholarshipAssignedSumSql(academicYearFromYear);
-    const registrationScholarshipPendingSumSql = buildRegistrationScholarshipPendingSumSql(academicYearFromYear);
+    // Get Total Count + Statistics in one pass
+    // Remove "FROM students WHERE " from the start of baseQuery so we just pass the WHERE conditions
+    // Actually, baseQuery is "FROM students WHERE 1=1 AND ...". Let's extract just the conditions.
+    const whereConditions = baseQuery.replace('FROM students WHERE ', '');
+    const { query: statsQuery, params: statsParams } = buildRegistrationAbstractQuery({
+      whereClause: whereConditions,
+      params,
+      scholarshipFilter,
+      academicYearFromYear,
+      omitGroupBy: true
+    });
 
-    // Statistics Query - Efficient single-pass aggregation
-    const statsQuery = `
-      SELECT 
-        COUNT(*) as total,
-        ${verificationCompletedSumSql} as verification_completed,
-        SUM(CASE WHEN certificates_status LIKE '%Verified%' OR certificates_status = 'completed' THEN 1 ELSE 0 END) as certificates_verified,
-        SUM(CASE WHEN certificates_status = 'Temporary' OR certificates_status = 'temporary' THEN 1 ELSE 0 END) as certificates_temporary,
-        SUM(CASE WHEN fee_status LIKE '%no_due%' OR fee_status LIKE '%no due%' OR fee_status LIKE '%permitted%' OR fee_status LIKE '%completed%' OR fee_status LIKE '%nodue%' THEN 1 ELSE 0 END) as fee_cleared,
-        ${promotionCompletedSumSql} as promotion_completed,
-        ${registrationScholarshipAssignedSumSql} as scholarship_assigned,
-        ${registrationScholarshipPendingSumSql} as scholarship_pending,
-        SUM(${buildRegistrationOverallCompletedCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_completed,
-        SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYear)}) as overall_temporary
-      ${baseQuery}
-    `;
-
-    const [statsResult] = await masterPool.query(statsQuery, params);
+    const [statsResult] = await masterPool.query(statsQuery, statsParams);
     const statsRow = statsResult[0] || {};
     const totalRecords = parseInt(statsRow.total || 0, 10);
     const totalPages = Math.ceil(totalRecords / limitNum) || 0;
@@ -7653,18 +7954,38 @@ exports.getRegistrationAcademicYears = async (req, res) => {
       }
     }
 
+    const isNumeric = (val) => /^\d+$/.test(val);
+
     if (filter_college) {
-      const { clause, params: collegeParams } = buildCollegeNameFilter(filter_college.trim());
-      whereClause += ` AND ${clause}`;
-      params.push(...collegeParams);
+      const normalizedCollege = filter_college.trim();
+      if (isNumeric(normalizedCollege)) {
+        whereClause += ` AND college_id = ?`;
+        params.push(parseInt(normalizedCollege, 10));
+      } else {
+        const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedCollege);
+        whereClause += ` AND ${clause}`;
+        params.push(...collegeParams);
+      }
     }
     if (filter_course) {
-      whereClause += ' AND course = ?';
-      params.push(filter_course.trim());
+      const normalizedCourse = filter_course.trim();
+      if (isNumeric(normalizedCourse)) {
+        whereClause += ` AND course_id = ?`;
+        params.push(parseInt(normalizedCourse, 10));
+      } else {
+        whereClause += ' AND course = ?';
+        params.push(normalizedCourse);
+      }
     }
     if (filter_branch) {
-      whereClause += ' AND branch = ?';
-      params.push(filter_branch.trim());
+      const normalizedBranch = filter_branch.trim();
+      if (isNumeric(normalizedBranch)) {
+        whereClause += ` AND branch_id = ?`;
+        params.push(parseInt(normalizedBranch, 10));
+      } else {
+        whereClause += ' AND branch = ?';
+        params.push(normalizedBranch);
+      }
     }
     if (filter_level) {
       try {
@@ -8693,9 +9014,38 @@ exports.getSectionPartitionStudents = async (req, res) => {
       scopeParams = scope.params;
     }
 
-    const { clause: collegeClause, params: collegeParams } = buildCollegeNameFilter(normalizedCollege, 's');
-    let whereClause = `WHERE ${collegeClause} AND s.course = ? AND s.branch = ? AND s.batch = ? AND s.student_status = 'Regular'`;
-    const params = [...collegeParams, normalizedCourse, normalizedBranch, normalizedBatch];
+    const isNumeric = (val) => /^\d+$/.test(val);
+    let whereClause = `WHERE 1=1 AND s.batch = ? AND s.student_status = 'Regular'`;
+    const params = [normalizedBatch];
+
+    if (isNumeric(normalizedCollege)) {
+      whereClause += ` AND s.college_id = ?`;
+      params.push(parseInt(normalizedCollege, 10));
+    } else {
+      const { clause: collegeClause, params: collegeParams } = buildCollegeNameFilter(normalizedCollege, 's');
+      if (collegeClause !== '1=0') {
+        whereClause += ` AND ${collegeClause}`;
+        params.push(...collegeParams);
+      } else {
+        whereClause += ` AND 1=0`;
+      }
+    }
+
+    if (isNumeric(normalizedCourse)) {
+      whereClause += ` AND s.course_id = ?`;
+      params.push(parseInt(normalizedCourse, 10));
+    } else {
+      whereClause += ` AND s.course = ?`;
+      params.push(normalizedCourse);
+    }
+
+    if (isNumeric(normalizedBranch)) {
+      whereClause += ` AND s.branch_id = ?`;
+      params.push(parseInt(normalizedBranch, 10));
+    } else {
+      whereClause += ` AND s.branch = ?`;
+      params.push(normalizedBranch);
+    }
 
     if (scopeCondition) {
       whereClause += ` AND ${scopeCondition}`;
@@ -8707,7 +9057,7 @@ exports.getSectionPartitionStudents = async (req, res) => {
     const nameSql = resolveStudentNameSql('s');
 
     const [countRows] = await masterPool.query(
-      `SELECT COUNT(*) AS total FROM students s ${whereClause}`,
+      `SELECT COUNT(*) AS total FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id ${whereClause}`,
       params
     );
     const total = countRows[0]?.total || 0;
@@ -8723,7 +9073,7 @@ exports.getSectionPartitionStudents = async (req, res) => {
          ${pinSql} AS resolved_pin,
          ${nameSql} AS student_name,
          ${sectionSql} AS section
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        ${whereClause}
        ORDER BY
          CASE WHEN ${pinSql} IS NOT NULL AND ${pinSql} REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,

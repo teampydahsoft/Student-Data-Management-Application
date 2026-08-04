@@ -15,7 +15,7 @@ function getStudentAdmissionFromToken(user) {
 async function ensureStudentInScope(connection, admissionNumber, userScope, res) {
     let query = `
         SELECT s.admission_number, s.student_name, s.college, s.course, s.branch
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         WHERE s.admission_number = ?
     `;
     const params = [admissionNumber];
@@ -164,12 +164,20 @@ exports.getAllRequests = async (req, res) => {
         }
 
         if (course) {
-            conditions.push('s.course = ?');
+            if (/^\d+$/.test(course)) {
+        conditions.push('s.course_id = ?');
+      } else {
+        conditions.push('s.course = ?');
+      }
             params.push(String(course).trim());
         }
 
         if (branch) {
-            conditions.push('s.branch = ?');
+            if (/^\d+$/.test(branch)) {
+        conditions.push('s.branch_id = ?');
+      } else {
+        conditions.push('s.branch = ?');
+      }
             params.push(String(branch).trim());
         }
 

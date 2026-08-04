@@ -97,7 +97,7 @@ async function createDefaultFormForCompletion() {
     console.log('\n🧪 Testing completion calculation with default form...');
 
     const [testStudents] = await connection.execute(
-      'SELECT * FROM students WHERE admission_number = ? OR admission_no = ?',
+      'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE admission_number = ? OR admission_no = ?',
       ['ADM001', 'ADM001']
     );
 

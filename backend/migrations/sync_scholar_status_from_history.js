@@ -31,7 +31,7 @@ async function run() {
   // Find students with no scholar_status but who have scholarship rows
   const [studentsToFix] = await masterPool.query(`
     SELECT DISTINCT s.id, s.admission_number, s.scholar_status, s.current_year, s.current_semester
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     WHERE (
       s.scholar_status IS NULL
       OR TRIM(s.scholar_status) = ''

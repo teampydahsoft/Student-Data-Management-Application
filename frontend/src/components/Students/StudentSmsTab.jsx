@@ -80,8 +80,8 @@ const StudentSmsTab = ({ student }) => {
                             onChange={(e) => setFilterCategory(e.target.value)}
                             className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                         >
-                            {categories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
+                            {categories.map((cat) => (
+                                <option key={cat} value={cat.id || cat}>{cat.name || cat}</option>
                             ))}
                         </select>
                         <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-1 rounded-full ml-2">

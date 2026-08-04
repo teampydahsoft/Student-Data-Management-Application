@@ -109,6 +109,7 @@ const Reports = () => {
 
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -213,39 +214,38 @@ const Reports = () => {
   const [statsSectionHeight, setStatsSectionHeight] = useState(180);
   const [dayEndDate, setDayEndDate] = useState(formatDateToLocalISO(new Date()));
 
-  // Fetch Abstract Data
+  // Fetch Abstract Data — debounced to avoid firing on every intermediate filter change
   useEffect(() => {
-    if (reportType === 'registration' && activeTab === 'abstract') {
-      const fetchAbstract = async () => {
-        setAbstractLoading(true);
-        try {
-          const params = new URLSearchParams();
-          if (filters.college) params.append('filter_college', filters.college);
-          if (filters.batch) params.append('filter_batch', filters.batch);
-          if (filters.course) params.append('filter_course', filters.course);
-          if (filters.level) params.append('filter_level', filters.level);
-          if (filters.branch) params.append('filter_branch', filters.branch);
-          if (filters.year) params.append('filter_year', filters.year);
-          if (filters.semester) params.append('filter_semester', filters.semester);
-          if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
-          if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
-          if (filters.stagePending) params.append('filter_stage_pending', filters.stagePending);
-          if (filters.search) params.append('search', filters.search);
+    if (reportType !== 'registration' || activeTab !== 'abstract') return;
+    const timer = setTimeout(async () => {
+      setAbstractLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters.college) params.append('filter_college', filters.college);
+        if (filters.batch) params.append('filter_batch', filters.batch);
+        if (filters.course) params.append('filter_course', filters.course);
+        if (filters.level) params.append('filter_level', filters.level);
+        if (filters.branch) params.append('filter_branch', filters.branch);
+        if (filters.year) params.append('filter_year', filters.year);
+        if (filters.semester) params.append('filter_semester', filters.semester);
+        if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
+        if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
+        if (filters.stagePending) params.append('filter_stage_pending', filters.stagePending);
+        if (filters.search) params.append('search', filters.search);
 
-          const response = await api.get(`/students/reports/registration/abstract?${params.toString()}`);
-          if (response.data?.success) {
-            setAbstractData(response.data.data || []);
-            setGroupingParams(response.data.groupingParams || { key: 'college', label: 'College' });
-          }
-        } catch (error) {
-          console.error('Failed to load abstract:', error);
-          toast.error('Failed to load abstract report');
-        } finally {
-          setAbstractLoading(false);
+        const response = await api.get(`/students/reports/registration/abstract?${params.toString()}`);
+        if (response.data?.success) {
+          setAbstractData(response.data.data || []);
+          setGroupingParams(response.data.groupingParams || { key: 'college', label: 'College' });
         }
-      };
-      fetchAbstract();
-    }
+      } catch (error) {
+        console.error('Failed to load abstract:', error);
+        toast.error('Failed to load abstract report');
+      } finally {
+        setAbstractLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
   }, [reportType, activeTab, filters]);
 
   // Debounced search
@@ -262,6 +262,7 @@ const Reports = () => {
     async (overrideFilters) => {
       const activeFilters = overrideFilters ?? filters;
       setLoading(true);
+      setStatsLoading(true);
       try {
         const params = new URLSearchParams();
         if (activeFilters.college) params.append('filter_college', activeFilters.college);
@@ -279,8 +280,13 @@ const Reports = () => {
         if (activeFilters.limit) params.append('limit', activeFilters.limit);
 
         const query = params.toString();
-        const response = await api.get(`/students/reports/registration${query ? `?${query}` : ''}`);
 
+        // Fire data and stats requests in parallel — table renders immediately,
+        // stats cards update when the heavier stats query completes.
+        const dataPromise = api.get(`/students/reports/registration${query ? `?${query}` : ''}`);
+        const statsPromise = api.get(`/students/reports/registration/stats${query ? `?${query}` : ''}`);
+
+        const response = await dataPromise;
         if (response.data?.success) {
           setReportData(response.data.data || []);
           if (response.data.pagination) {
@@ -292,12 +298,26 @@ const Reports = () => {
               limit: parseInt(response.data.pagination.limit)
             }));
           }
+          // If the data response also includes statistics (from cache), use them immediately
           if (response.data.statistics) {
             setStats(response.data.statistics);
+            setStatsLoading(false);
           }
         } else {
           throw new Error(response.data?.message || 'Unable to load reports');
         }
+
+        // Await the stats response separately (may be slower on first load)
+        statsPromise.then(statsRes => {
+          if (statsRes.data?.success && statsRes.data.statistics) {
+            setStats(statsRes.data.statistics);
+          }
+        }).catch(err => {
+          console.warn('Stats fetch failed (non-critical):', err.message);
+        }).finally(() => {
+          setStatsLoading(false);
+        });
+
       } catch (error) {
         console.error('Failed to load registration report:', error);
         toast.error(
@@ -387,103 +407,10 @@ const Reports = () => {
     fetchAcademicYears();
   }, [reportType, filters.college, filters.course, filters.branch, filters.level]);
 
-  // Update Dependents when College, Level, or Batch changes
+  // Unified cascading filter options update — debounced so rapid filter changes
+  // (e.g. college → courses cascade) only fire one request per user action.
   useEffect(() => {
-    const updateCollegeBatchDependents = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filters.college) params.append('college', filters.college);
-        if (filters.level) params.append('level', filters.level);
-        if (filters.batch) params.append('batch', filters.batch);
-        // Only include course if it's selected (for branch filtering)
-        if (filters.course) params.append('course', filters.course);
-        params.append('applyExclusions', 'true');
-
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setFilterOptions(prev => ({
-            ...prev,
-            batches: data.batches || [],
-            courses: data.courses || [],
-            // Update branches based on current filters (will be filtered by course if course is selected)
-            branches: data.branches || [],
-            years: !filters.branch ? (data.years || []) : prev.years,
-            semesters: (!filters.branch && !filters.year) ? (data.semesters || []) : prev.semesters
-          }));
-        }
-      } catch (error) {
-        console.warn('Failed to update college/batch dependents:', error);
-      }
-    };
-    updateCollegeBatchDependents();
-  }, [filters.college, filters.level, filters.batch, filters.course, filters.branch, filters.year]);
-
-  // Update Dependents when Course changes
-  useEffect(() => {
-    if (!filters.course) return;
-
-    const updateCourseDependents = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filters.college) params.append('college', filters.college);
-        if (filters.level) params.append('level', filters.level);
-        if (filters.batch) params.append('batch', filters.batch);
-        params.append('course', filters.course);
-        params.append('applyExclusions', 'true');
-
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setFilterOptions(prev => ({
-            ...prev,
-            branches: data.branches || [],
-            years: !filters.branch ? (data.years || []) : prev.years,
-            semesters: (!filters.branch && !filters.year) ? (data.semesters || []) : prev.semesters
-          }));
-        }
-      } catch (error) {
-        console.warn('Failed to update course dependents:', error);
-      }
-    };
-    updateCourseDependents();
-  }, [filters.course, filters.branch, filters.year]);
-
-  // Update Dependents when Branch changes
-  useEffect(() => {
-    if (!filters.branch) return;
-
-    const updateBranchDependents = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filters.college) params.append('college', filters.college);
-        if (filters.level) params.append('level', filters.level);
-        if (filters.batch) params.append('batch', filters.batch);
-        if (filters.course) params.append('course', filters.course);
-        params.append('branch', filters.branch);
-        params.append('applyExclusions', 'true');
-
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setFilterOptions(prev => ({
-            ...prev,
-            years: data.years || [],
-            semesters: !filters.year ? (data.semesters || []) : prev.semesters
-          }));
-        }
-      } catch (error) {
-        console.warn('Failed to update branch dependents:', error);
-      }
-    };
-    updateBranchDependents();
-  }, [filters.branch, filters.year]);
-
-  // Update Dependents when Year changes
-  useEffect(() => {
-    if (!filters.year) return;
-
-    const updateYearDependents = async () => {
+    const timer = setTimeout(async () => {
       try {
         const params = new URLSearchParams();
         if (filters.college) params.append('college', filters.college);
@@ -491,36 +418,7 @@ const Reports = () => {
         if (filters.batch) params.append('batch', filters.batch);
         if (filters.course) params.append('course', filters.course);
         if (filters.branch) params.append('branch', filters.branch);
-        params.append('year', filters.year);
-        params.append('applyExclusions', 'true');
-
-        const response = await api.get(`/students/quick-filters?${params.toString()}`);
-        if (response.data?.success) {
-          const data = response.data.data || {};
-          setFilterOptions(prev => ({
-            ...prev,
-            semesters: data.semesters || []
-          }));
-        }
-      } catch (error) {
-        console.warn('Failed to update year dependents:', error);
-      }
-    };
-    updateYearDependents();
-  }, [filters.year]);
-
-  useEffect(() => {
-    loadReport({ ...filters, page: 1 });
-  }, [filters, loadReport]);
-
-  // Update Attendance Filter Options when College or Level changes
-  useEffect(() => {
-    const updateAttendanceFilterOptions = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (attendanceFilters.college) params.append('college', attendanceFilters.college);
-        if (attendanceFilters.level) params.append('level', attendanceFilters.level);
-        if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
+        if (filters.year) params.append('year', filters.year);
         params.append('applyExclusions', 'true');
 
         const response = await api.get(`/students/quick-filters?${params.toString()}`);
@@ -530,8 +428,47 @@ const Reports = () => {
             ...prev,
             batches: data.batches || [],
             courses: data.courses || [],
-            // Reset downstream options if their parents aren't selected
-            branches: !attendanceFilters.course ? (data.branches || []) : prev.branches
+            branches: data.branches || [],
+            years: data.years || [],
+            semesters: data.semesters || []
+          }));
+        }
+      } catch (error) {
+        console.warn('Failed to update filter options:', error);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filters.college, filters.level, filters.batch, filters.course, filters.branch, filters.year]);
+
+  // Debounced report load — prevents firing on every intermediate cascade filter update.
+  // Uses a 600ms debounce so only the final settled filter state triggers the API call.
+  useEffect(() => {
+    if (reportType !== 'registration') return;
+    const timer = setTimeout(() => {
+      loadReport({ ...filters, page: 1 });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [filters, loadReport, reportType]);
+
+  // Update Attendance Filter Options when College, Level, Batch, or Course changes
+  useEffect(() => {
+    const updateAttendanceFilterOptions = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (attendanceFilters.college) params.append('college', attendanceFilters.college);
+        if (attendanceFilters.level) params.append('level', attendanceFilters.level);
+        if (attendanceFilters.batch) params.append('batch', attendanceFilters.batch);
+        if (attendanceFilters.course) params.append('course', attendanceFilters.course);
+        params.append('applyExclusions', 'true');
+
+        const response = await api.get(`/students/quick-filters?${params.toString()}`);
+        if (response.data?.success) {
+          const data = response.data.data || {};
+          setFilterOptions(prev => ({
+            ...prev,
+            batches: data.batches || [],
+            courses: data.courses || [],
+            branches: data.branches || []
           }));
         }
       } catch (error) {
@@ -539,7 +476,7 @@ const Reports = () => {
       }
     };
     updateAttendanceFilterOptions();
-  }, [attendanceFilters.college, attendanceFilters.level, attendanceFilters.batch]);
+  }, [attendanceFilters.college, attendanceFilters.level, attendanceFilters.batch, attendanceFilters.course]);
 
   // Fetch attendance report data
   const fetchAttendanceReport = useCallback(async () => {
@@ -1501,20 +1438,31 @@ const Reports = () => {
   const availableCourses = useMemo(() => {
     if (!coursesWithLevels || coursesWithLevels.length === 0) {
       // Fallback to filterOptions.courses if coursesWithLevels is not loaded
-      return (filterOptions.courses || []).sort();
+      const courseList = filterOptions.courses || [];
+      return [...new Set(courseList.map(c => c.name || c).filter(Boolean))].sort();
     }
 
     let filteredCourses = coursesWithLevels;
 
     // Filter by college if college is selected
     if (filters.college) {
-      // Find college ID from college name
-      const selectedCollege = collegesList.find(c => c.name === filters.college);
-      if (selectedCollege && selectedCollege.id) {
+      let targetCollegeId = null;
+      const isNumericCollege = !isNaN(filters.college) && !isNaN(parseFloat(filters.college));
+      
+      if (isNumericCollege) {
+        targetCollegeId = parseInt(filters.college, 10);
+      } else {
+        const selectedCollege = collegesList.find(c => c.name === filters.college);
+        if (selectedCollege) {
+          targetCollegeId = selectedCollege.id;
+        }
+      }
+
+      if (targetCollegeId !== null) {
         // Filter courses by collegeId
         filteredCourses = filteredCourses.filter(course => {
           const courseCollegeId = course.collegeId || course.college_id;
-          return courseCollegeId === selectedCollege.id;
+          return courseCollegeId === targetCollegeId;
         });
       } else {
         // College not found in list, return empty
@@ -1629,6 +1577,16 @@ const Reports = () => {
       }
       return <span className="text-sm font-bold text-red-500">{pendingCount}</span>;
     };
+
+    if (statsLoading) {
+      return (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0 animate-pulse">
+          {[...Array(7)].map((_, i) => (
+            <div key={i} className="bg-gray-100 p-2 md:p-3 rounded-lg border border-gray-200 h-20"></div>
+          ))}
+        </div>
+      );
+    }
 
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0">
@@ -1969,9 +1927,7 @@ const Reports = () => {
               >
                 <option value="">All Colleges</option>
                 {filterOptions.colleges.map((college) => (
-                  <option key={college} value={college}>
-                    {college}
-                  </option>
+                  <option key={college.id || college} value={college.id || college}>{college.name || college}</option>
                 ))}
               </select>
 
@@ -1995,9 +1951,7 @@ const Reports = () => {
               >
                 <option value="">All Batches</option>
                 {(filterOptions.batches || []).map((batch) => (
-                  <option key={batch} value={batch}>
-                    {batch}
-                  </option>
+                  <option key={batch.id || batch} value={batch.id || batch}>{batch.name || batch}</option>
                 ))}
               </select>
 
@@ -2009,9 +1963,7 @@ const Reports = () => {
               >
                 <option value="">All Programs</option>
                 {availableCourses.map((course) => (
-                  <option key={course} value={course}>
-                    {course}
-                  </option>
+                  <option key={course.id || course} value={course.id || course}>{course.name || course}</option>
                 ))}
               </select>
 
@@ -2023,9 +1975,7 @@ const Reports = () => {
               >
                 <option value="">All Branches</option>
                 {(filterOptions.branches || []).map((branch) => (
-                  <option key={branch} value={branch}>
-                    {branch}
-                  </option>
+                  <option key={branch.id || branch} value={branch.id || branch}>{branch.name || branch}</option>
                 ))}
               </select>
 
@@ -2251,9 +2201,9 @@ const Reports = () => {
       {/* Analytics View */}
       {reportType === 'registration' && activeTab === 'analytics' && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden gap-4 animate-in fade-in duration-300">
-          {stats && <StatsGrid />}
+          {(stats || statsLoading) && <StatsGrid />}
 
-          {stats && (
+          {(stats || statsLoading) && (
             <div className="flex-1 min-h-0 flex flex-col gap-4">
               {/* Overview Charts (Bar + Line) */}
               <div className="h-80 shrink-0 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2296,11 +2246,11 @@ const Reports = () => {
 
               {/* Detailed Pie Charts Grid - Strip at bottom */}
               <div className="h-48 shrink-0 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {renderSingleStageChart('Verification', stats.verification?.completed || 0, stats.verification?.pending || 0, ['#EAB308', '#FCA5A5'])}
-                {renderSingleStageChart('Certificates', stats.certificates?.verified || 0, stats.certificates?.pending || 0, ['#A855F7', '#FCA5A5'])}
-                {renderSingleStageChart('Fees', stats.fees?.cleared || 0, stats.fees?.pending || 0, ['#22C55E', '#FCA5A5'])}
-                {renderSingleStageChart('Promotion', stats.promotion?.completed || 0, stats.promotion?.pending || 0, ['#6366F1', '#FCA5A5'])}
-                {renderSingleStageChart('Scholarship', stats.scholarship?.assigned || 0, stats.scholarship?.pending || 0, ['#EC4899', '#FCA5A5'])}
+                {renderSingleStageChart('Verification', stats?.verification?.completed || 0, stats?.verification?.pending || 0, ['#EAB308', '#FCA5A5'])}
+                {renderSingleStageChart('Certificates', stats?.certificates?.verified || 0, stats?.certificates?.pending || 0, ['#A855F7', '#FCA5A5'])}
+                {renderSingleStageChart('Fees', stats?.fees?.cleared || 0, stats?.fees?.pending || 0, ['#22C55E', '#FCA5A5'])}
+                {renderSingleStageChart('Promotion', stats?.promotion?.completed || 0, stats?.promotion?.pending || 0, ['#6366F1', '#FCA5A5'])}
+                {renderSingleStageChart('Scholarship', stats?.scholarship?.assigned || 0, stats?.scholarship?.pending || 0, ['#EC4899', '#FCA5A5'])}
               </div>
             </div>
           )}
@@ -2312,9 +2262,11 @@ const Reports = () => {
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-300 gap-4">
 
           {/* Stats Grid - Fixed at top of Sheets view */}
-          <div className="flex-shrink-0">
-            {stats && <StatsGrid />}
-          </div>
+          {reportType === 'registration' && (
+            <div className="mb-4">
+              {(stats || statsLoading) && <StatsGrid />}
+            </div>
+          )}
 
           {/* Table Area - Grows to fill remaining space */}
           {loading ? (
@@ -2558,9 +2510,7 @@ const Reports = () => {
                   >
                     <option value="">All Colleges</option>
                     {filterOptions.colleges.map((college) => (
-                      <option key={college} value={college}>
-                        {college}
-                      </option>
+                      <option key={college.id || college} value={college.id || college}>{college.name || college}</option>
                     ))}
                   </select>
                 </div>
@@ -2604,9 +2554,7 @@ const Reports = () => {
                   >
                     <option value="">All Batches</option>
                     {(filterOptions.batches || []).map((batch) => (
-                      <option key={batch} value={batch}>
-                        {batch}
-                      </option>
+                      <option key={batch.id || batch} value={batch.id || batch}>{batch.name || batch}</option>
                     ))}
                   </select>
                 </div>
@@ -2621,19 +2569,22 @@ const Reports = () => {
                   >
                     <option value="">All Programs</option>
                     {(filterOptions.courses || [])
-                      .filter(course => {
+                      .filter(courseObj => {
+                        const courseStr = courseObj.name || courseObj;
                         // Filter by level if level is selected
                         if (attendanceFilters.level) {
-                          const courseInfo = coursesWithLevels.find(c => c.name === course);
+                          const courseInfo = coursesWithLevels.find(c => c.name === courseStr);
                           return courseInfo?.level === attendanceFilters.level;
                         }
                         return true;
                       })
-                      .map((course) => (
-                        <option key={course} value={course}>
-                          {course}
-                        </option>
-                      ))}
+                      .map((course) => {
+                        const courseId = course.id || course;
+                        const courseName = course.name || course;
+                        return (
+                          <option key={courseId} value={courseId}>{courseName}</option>
+                        );
+                      })}
                   </select>
                 </div>
 
@@ -2647,9 +2598,7 @@ const Reports = () => {
                   >
                     <option value="">All Branches</option>
                     {(filterOptions.branches || []).map((branch) => (
-                      <option key={branch} value={branch}>
-                        {branch}
-                      </option>
+                      <option key={branch.id || branch} value={branch.id || branch}>{branch.name || branch}</option>
                     ))}
                   </select>
                 </div>
@@ -3536,8 +3485,8 @@ const Reports = () => {
                                 className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
                               >
                                 <option value="">COLLEGE</option>
-                                {dayEndFilterOptions.colleges.map(opt => (
-                                  <option key={opt} value={opt} title={opt}>{opt}</option>
+                                {dayEndFilterOptions.colleges.map((opt) => (
+                                  <option key={opt} value={opt.id || opt} title={opt}>{opt.name || opt}</option>
                                 ))}
                               </select>
                             </th>
@@ -3562,8 +3511,8 @@ const Reports = () => {
                                 className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
                               >
                                 <option value="">BATCH</option>
-                                {dayEndFilterOptions.batches.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
+                                {dayEndFilterOptions.batches.map((opt) => (
+                                  <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>
                                 ))}
                               </select>
                             </th>
@@ -3603,8 +3552,8 @@ const Reports = () => {
                                 className="bg-transparent font-bold outline-none cursor-pointer w-full text-xs"
                               >
                                 <option value="">BRANCH</option>
-                                {filteredBranches.map(opt => (
-                                  <option key={opt} value={opt} title={opt}>{opt}</option>
+                                {filteredBranches.map((opt) => (
+                                  <option key={opt} value={opt.id || opt} title={opt}>{opt.name || opt}</option>
                                 ))}
                               </select>
                             </th>
@@ -3615,8 +3564,8 @@ const Reports = () => {
                                 className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
                               >
                                 <option value="">YEAR</option>
-                                {dayEndFilterOptions.years.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
+                                {dayEndFilterOptions.years.map((opt) => (
+                                  <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>
                                 ))}
                               </select>
                             </th>
@@ -3627,8 +3576,8 @@ const Reports = () => {
                                 className="bg-transparent font-bold outline-none cursor-pointer w-full text-center text-xs"
                               >
                                 <option value="">SEM</option>
-                                {dayEndFilterOptions.semesters.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
+                                {dayEndFilterOptions.semesters.map((opt) => (
+                                  <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>
                                 ))}
                               </select>
                             </th>

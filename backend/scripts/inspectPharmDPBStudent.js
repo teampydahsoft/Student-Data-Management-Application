@@ -15,7 +15,7 @@ const {
   const stageConfig = JSON.parse(cfg[0]?.value || '{}');
 
   const [rows] = await masterPool.query(`
-    SELECT * FROM students
+    SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id
     WHERE branch = 'Pharm D PB' AND batch = '2021' AND current_year = 6
   `);
 

@@ -3265,9 +3265,7 @@ const Attendance = () => {
             >
               <option value="">All Batches</option>
               {filterOptions.batches.map((batchOption) => (
-                <option key={batchOption} value={batchOption}>
-                  {batchOption}
-                </option>
+                <option key={batchOption.id || batchOption} value={batchOption.id || batchOption}>{batchOption.name || batchOption}</option>
               ))}
             </select>
             <select
@@ -3303,9 +3301,7 @@ const Attendance = () => {
                   return true;
                 })
                 .map((courseOption) => (
-                  <option key={courseOption} value={courseOption}>
-                    {courseOption}
-                  </option>
+                  <option key={courseOption.id || courseOption} value={courseOption.id || courseOption}>{courseOption.name || courseOption}</option>
                 ))}
             </select>
             <select
@@ -3322,9 +3318,7 @@ const Attendance = () => {
             >
               <option value="">All Branches</option>
               {availableBranches.map((branchOption) => (
-                <option key={branchOption} value={branchOption}>
-                  {branchOption}
-                </option>
+                <option key={branchOption.id || branchOption} value={branchOption.id || branchOption}>{branchOption.name || branchOption}</option>
               ))}
             </select>
             {showSectionFilters && (
@@ -3335,9 +3329,7 @@ const Attendance = () => {
               >
                 <option value="">All Sections</option>
                 {sectionFilterOptions.map((sectionOption) => (
-                  <option key={sectionOption} value={sectionOption}>
-                    {sectionOption}
-                  </option>
+                  <option key={sectionOption.id || sectionOption} value={sectionOption.id || sectionOption}>{sectionOption.name || sectionOption}</option>
                 ))}
               </select>
             )}
@@ -3669,7 +3661,7 @@ const Attendance = () => {
                               className="bg-transparent border-none focus:ring-0 cursor-pointer w-[200px] text-ellipsis overflow-hidden text-[10px] font-bold"
                             >
                               <option value="" className="text-gray-900">COLLEGE</option>
-                              {dayEndFilterOptions.colleges.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {dayEndFilterOptions.colleges.map((opt) => <option key={opt} value={opt.id || opt} className="text-gray-900">{opt.name || opt}</option>)}
                             </select>
                           </th>
                           <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-left">
@@ -3679,7 +3671,7 @@ const Attendance = () => {
                               className="bg-transparent border-none focus:ring-0 cursor-pointer w-[80px] text-ellipsis overflow-hidden text-[10px] font-bold p-0"
                             >
                               <option value="" className="text-gray-900">BATCH</option>
-                              {filteredDayEndBatches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {filteredDayEndBatches.map((opt) => <option key={opt} value={opt.id || opt} className="text-gray-900">{opt.name || opt}</option>)}
                             </select>
                           </th>
                           <th className="px-6 py-5 w-[180px] text-[10px] font-bold uppercase tracking-widest text-left">
@@ -3689,7 +3681,7 @@ const Attendance = () => {
                               className="bg-transparent border-none focus:ring-0 cursor-pointer w-[140px] text-ellipsis overflow-hidden text-[10px] font-bold p-0"
                             >
                               <option value="" className="text-gray-900">BRANCH</option>
-                              {filteredDayEndBranches.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {filteredDayEndBranches.map((opt) => <option key={opt} value={opt.id || opt} className="text-gray-900">{opt.name || opt}</option>)}
                             </select>
                           </th>
                           <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">
@@ -3699,7 +3691,7 @@ const Attendance = () => {
                               className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0 text-center"
                             >
                               <option value="" className="text-gray-900">YEAR</option>
-                              {filteredDayEndYears.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {filteredDayEndYears.map((opt) => <option key={opt} value={opt.id || opt} className="text-gray-900">{opt.name || opt}</option>)}
                             </select>
                           </th>
                           <th className="px-6 py-5 w-[100px] text-[10px] font-bold uppercase tracking-widest text-center">
@@ -3709,7 +3701,7 @@ const Attendance = () => {
                               className="bg-transparent border-none focus:ring-0 cursor-pointer w-full text-[10px] font-bold p-0 text-center"
                             >
                               <option value="" className="text-gray-900">SEM</option>
-                              {filteredDayEndSemesters.map(opt => <option key={opt} value={opt} className="text-gray-900">{opt}</option>)}
+                              {filteredDayEndSemesters.map((opt) => <option key={opt} value={opt.id || opt} className="text-gray-900">{opt.name || opt}</option>)}
                             </select>
                           </th>
                           {dayEndReportMode === 'overall' && (
@@ -4707,8 +4699,8 @@ const Attendance = () => {
                         className="px-1.5 py-0.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-primary-500 focus:border-primary-500 text-[11px] touch-manipulation min-h-[28px] sm:min-h-[32px]"
                         disabled={loading}
                       >
-                        {pageSizeOptions.map(option => (
-                          <option key={option} value={option}>{option}</option>
+                        {pageSizeOptions.map((option) => (
+                          <option key={option} value={option.id || option}>{option.name || option}</option>
                         ))}
                       </select>
                     </label>

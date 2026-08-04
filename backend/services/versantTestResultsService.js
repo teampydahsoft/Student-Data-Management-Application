@@ -314,7 +314,7 @@ async function resolveSdmsStudentIdentifiers({ studentId, admissionNumber, usern
   const baseSql = `
      SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
             sc.username AS login_username
-     FROM students s
+     FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
      LEFT JOIN student_credentials sc ON sc.student_id = s.id
      WHERE s.id = ? OR s.admission_number = ? OR sc.username = ?
      LIMIT 1`;
@@ -324,7 +324,7 @@ async function resolveSdmsStudentIdentifiers({ studentId, admissionNumber, usern
       `SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
               s.batch, s.course, s.branch,
               sc.username AS login_username
-       FROM students s
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
        LEFT JOIN student_credentials sc ON sc.student_id = s.id
        WHERE s.id = ? OR s.admission_number = ? OR sc.username = ?
        LIMIT 1`,
@@ -1343,7 +1343,7 @@ async function analyzeSdmsCrtLinks({ batch, course, limit } = {}) {
     SELECT s.id, s.admission_number, s.admission_no, s.pin_no, s.student_name,
            s.batch, s.course, s.branch,
            (SELECT sc.username FROM student_credentials sc WHERE sc.student_id = s.id ORDER BY sc.id LIMIT 1) AS login_username
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     WHERE s.student_status = 'Regular'
   `;
   const params = [];

@@ -123,11 +123,11 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
             if (courRes.data.success) setCourses(courRes.data.data.map(c => ({ 
               value: c.name, 
               label: c.name + (c.level ? ` (${c.level.toUpperCase()})` : ''), 
-              collegeId: c.college_id, 
+              collegeId: c.collegeId,  // API returns camelCase collegeId
               id: c.id,
               level: c.level
             })));
-            if (branchRes.data.success) setBranches(branchRes.data.data.map(b => ({ value: b.name, label: b.name, courseId: b.course_id, id: b.id })));
+            if (branchRes.data.success) setBranches(branchRes.data.data.map(b => ({ value: b.name, label: b.name, courseId: b.course_id })));
             if (yearRes.data.success) setYears(yearRes.data.data.map(y => ({ value: y.name, label: `${y.name} Year`, batchId: y.batch_id })));
             if (semRes.data.success) setSemesters(semRes.data.data.map(s => ({ value: s.name, label: `Semester ${s.name}`, batchId: s.batch_id })));
         } catch (error) {
@@ -139,9 +139,17 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
         if (formData.target_college.length === 0) {
             setAvailableCourses(courses);
         } else {
-            const selectedCollegeIds = colleges.filter(c => formData.target_college.includes(c.value)).map(c => c.id);
+            const selectedCollegeIds = colleges
+                .filter(c => formData.target_college.includes(c.value))
+                .map(c => c.id);
             const filtered = courses.filter(c => selectedCollegeIds.includes(c.collegeId));
-            setAvailableCourses(filtered.length > 0 || selectedCollegeIds.length === 0 ? filtered : courses);
+            setAvailableCourses(filtered);
+            // Clear any selected courses that are no longer available
+            const filteredValues = filtered.map(c => c.value);
+            const validSelectedCourses = (formData.target_course || []).filter(v => filteredValues.includes(v));
+            if (validSelectedCourses.length !== (formData.target_course || []).length) {
+                setFormData(prev => ({ ...prev, target_course: validSelectedCourses, target_branch: [] }));
+            }
         }
     }, [formData.target_college, courses, colleges]);
 
@@ -151,7 +159,7 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
         } else {
             const selectedCourseNames = formData.target_course;
             const filtered = branches.filter(b => selectedCourseNames.includes(b.courseId));
-            setAvailableBranches(filtered.length > 0 ? filtered : branches);
+            setAvailableBranches(filtered);
         }
     }, [formData.target_course, courses, branches]);
 

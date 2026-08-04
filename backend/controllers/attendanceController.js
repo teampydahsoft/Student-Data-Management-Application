@@ -196,7 +196,16 @@ const FINALIZED_STATUSES = new Set(['present', 'absent', 'holiday']);
 const UNRESOLVED_ATTENDANCE_CLAUSE = `(ar.id IS NULL OR ar.status = 'pending')`;
 const FINALIZED_ATTENDANCE_CLAUSE = `ar.status IN ('present', 'absent', 'holiday')`;
 
+let _cachedAttendanceConfig = null;
+let _cachedAttendanceConfigTime = 0;
+const ATTENDANCE_CACHE_TTL_MS = 60000; // 1 minute
+
 const fetchAttendanceConfig = async () => {
+  const now = Date.now();
+  if (_cachedAttendanceConfig && (now - _cachedAttendanceConfigTime) < ATTENDANCE_CACHE_TTL_MS) {
+    return _cachedAttendanceConfig;
+  }
+
   let excludedCourses = [];
   let excludedStudents = [];
   try {
@@ -209,10 +218,15 @@ const fetchAttendanceConfig = async () => {
       if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
       if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
     }
+    _cachedAttendanceConfig = { excludedCourses, excludedStudents };
+    _cachedAttendanceConfigTime = now;
   } catch (err) {
     console.warn('Failed to fetch attendance config:', err);
+    if (!_cachedAttendanceConfig) {
+      _cachedAttendanceConfig = { excludedCourses: [], excludedStudents: [] };
+    }
   }
-  return { excludedCourses, excludedStudents };
+  return _cachedAttendanceConfig;
 };
 
 /** Same eligibility rules as the main attendance list (getAttendance). */
@@ -257,7 +271,7 @@ const countUnresolvedAttendance = async ({
   const { excludedCourses, excludedStudents } = await fetchAttendanceConfig();
   let query = `
     SELECT COUNT(DISTINCT s.id) AS pending_count
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     LEFT JOIN attendance_records ar
       ON ar.student_id = s.id
      AND ar.attendance_date = ?
@@ -267,17 +281,37 @@ const countUnresolvedAttendance = async ({
   const params = [attendanceDate];
 
   if (course) {
-    query += ' AND s.course = ?';
-    params.push(course);
-  }
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
   if (batch) {
     query += ' AND s.batch = ?';
     params.push(batch);
   }
   if (branch) {
-    query += ' AND s.branch = ?';
-    params.push(branch);
-  }
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
   if (currentYear) {
     const parsedYear = parseInt(currentYear, 10);
     if (!Number.isNaN(parsedYear)) {
@@ -424,18 +458,11 @@ exports.getFilterOptions = async (req, res) => {
     let excludedStudents = [];
 
     try {
-      const [settings] = await masterPool.query(
-        'SELECT value FROM settings WHERE `key` = ?',
-        ['attendance_config']
-      );
-      if (settings && settings.length > 0) {
-        const config = JSON.parse(settings[0].value);
-        if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
-        if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
-      }
+      const config = await fetchAttendanceConfig();
+      excludedCourses = config.excludedCourses;
+      excludedStudents = config.excludedStudents;
     } catch (err) {
       console.warn('Failed to fetch attendance config, using defaults:', err);
-      // Fallback - empty arrays
     }
 
     // Helper to build WHERE clause parts (User Scope + Excluded Courses/Students)
@@ -526,13 +553,20 @@ exports.getFilterOptions = async (req, res) => {
     // 2. Courses (Use Level 1 - Depend on Batch)
     let courseRowsRes;
     if (college) {
-      const [collegeRows] = await masterPool.query(
-        'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
-        [college]
-      );
+      let collegeId = null;
+      if (/^\d+$/.test(college)) {
+        collegeId = parseInt(college, 10);
+      } else {
+        const [collegeRows] = await masterPool.query(
+          'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
+          [college]
+        );
+        if (collegeRows.length > 0) {
+          collegeId = collegeRows[0].id;
+        }
+      }
 
-      if (collegeRows.length > 0) {
-        const collegeId = collegeRows[0].id;
+      if (collegeId !== null) {
         const [collegeCourses] = await masterPool.query(
           'SELECT name FROM courses WHERE college_id = ? AND is_active = 1 ORDER BY name ASC',
           [collegeId]
@@ -544,7 +578,7 @@ exports.getFilterOptions = async (req, res) => {
           const courseWhereClause = `${level1.clause} AND course IN (${placeholders})`;
           const courseQueryParams = [...level1.params, ...validCourseNames];
           [courseRowsRes] = await masterPool.query(
-            `SELECT DISTINCT course FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
+            `SELECT DISTINCT course_id AS id, course AS name FROM students ${courseWhereClause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
             courseQueryParams
           );
         } else {
@@ -555,7 +589,7 @@ exports.getFilterOptions = async (req, res) => {
       }
     } else {
       [courseRowsRes] = await masterPool.query(
-        `SELECT DISTINCT course FROM students ${level1.clause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
+        `SELECT DISTINCT course_id AS id, course AS name FROM students ${level1.clause} AND course IS NOT NULL AND course <> '' ORDER BY course ASC`,
         level1.params
       );
     }
@@ -571,13 +605,20 @@ exports.getFilterOptions = async (req, res) => {
     // If batch is selected, filter branches by batch through junction table
     let branchRowsRes;
     if (college) {
-      const [collegeRows] = await masterPool.query(
-        'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
-        [college]
-      );
+      let collegeId = null;
+      if (/^\d+$/.test(college)) {
+        collegeId = parseInt(college, 10);
+      } else {
+        const [collegeRows] = await masterPool.query(
+          'SELECT id FROM colleges WHERE name = ? AND is_active = 1 LIMIT 1',
+          [college]
+        );
+        if (collegeRows.length > 0) {
+          collegeId = collegeRows[0].id;
+        }
+      }
 
-      if (collegeRows.length > 0) {
-        const collegeId = collegeRows[0].id;
+      if (collegeId !== null) {
         const [collegeCourses] = await masterPool.query(
           'SELECT id, name FROM courses WHERE college_id = ? AND is_active = 1 ORDER BY name ASC',
           [collegeId]
@@ -587,13 +628,13 @@ exports.getFilterOptions = async (req, res) => {
 
         if (validCourseNames.length > 0) {
           if (course) {
-            const selectedCourse = collegeCourses.find(c => c.name === course);
+            const selectedCourse = collegeCourses.find(c => /^\d+$/.test(course) ? c.id === parseInt(course, 10) : c.name === course);
             if (selectedCourse) {
               // Query branches directly from students table
               // This ensures all branches load, regardless of junction table entries
               // The students table is the source of truth for what branches exist
               [branchRowsRes] = await masterPool.query(
-                `SELECT DISTINCT branch FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
+                `SELECT DISTINCT branch_id AS id, branch AS name FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
                 level2.params
               );
             } else {
@@ -603,7 +644,7 @@ exports.getFilterOptions = async (req, res) => {
             // No specific course selected, get branches from students table
             // Query directly from students table to ensure all branches load
             [branchRowsRes] = await masterPool.query(
-              `SELECT DISTINCT branch FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
+              `SELECT DISTINCT branch_id AS id, branch AS name FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
               level2.params
             );
           }
@@ -619,13 +660,13 @@ exports.getFilterOptions = async (req, res) => {
       if (batch || course) {
         // When batch and/or course is selected, use level2 to filter
         [branchRowsRes] = await masterPool.query(
-          `SELECT DISTINCT branch FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
+          `SELECT DISTINCT branch_id AS id, branch AS name FROM students ${level2.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
           level2.params
         );
       } else {
         // No batch and no course selected, get all branches from students
         [branchRowsRes] = await masterPool.query(
-          `SELECT DISTINCT branch FROM students ${level0.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
+          `SELECT DISTINCT branch_id AS id, branch AS name FROM students ${level0.clause} AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`,
           level0.params
         );
       }
@@ -660,8 +701,8 @@ exports.getFilterOptions = async (req, res) => {
         batches: batchRowsRes.map((row) => row.batch),
         years: yearRows.map((row) => row.currentYear),
         semesters: semesterRows.map((row) => row.currentSemester),
-        courses: courseRowsRes.map((row) => row.course),
-        branches: branchRowsRes.map((row) => row.branch),
+        courses: courseRowsRes.map((row) => ({ id: row.id || row.course, name: row.name || row.course })),
+        branches: branchRowsRes.map((row) => ({ id: row.id || row.branch, name: row.name || row.branch })),
         sections
       }
     });
@@ -749,7 +790,7 @@ exports.getAttendance = async (req, res) => {
         ar.status AS attendance_status,
         ar.holiday_reason,
         COALESCE(ar.sms_sent, 0) AS sms_sent
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar
         ON ar.student_id = s.id
@@ -780,8 +821,18 @@ exports.getAttendance = async (req, res) => {
 
     // Apply indexed filters first (these use the composite index)
     if (course) {
-      query += ' AND s.course = ?';
-      params.push(course);
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
     }
 
     if (batch) {
@@ -806,8 +857,18 @@ exports.getAttendance = async (req, res) => {
     }
 
     if (branch) {
-      query += ' AND s.branch = ?';
-      params.push(branch);
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
     }
 
     const normalizedSection = typeof section === 'string' ? section.trim() : '';
@@ -910,7 +971,7 @@ exports.getAttendance = async (req, res) => {
     // This ensures accurate pagination based on all applied filters (batch, course, branch, year, semester, etc.)
     let countQuery = `
       SELECT COUNT(DISTINCT s.id) AS total
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar
         ON ar.student_id = s.id
@@ -940,8 +1001,18 @@ exports.getAttendance = async (req, res) => {
 
     // Apply indexed filters first (these use the composite index)
     if (course) {
-      countQuery += ' AND s.course = ?';
-      countParams.push(course);
+      if (/^\d+$/.test(course)) {
+        countQuery += ' AND s.course_id = ?';
+        countParams.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        countQuery += ' AND s.course_id = ?';
+        countParams.push(parseInt(course, 10));
+      } else {
+        countQuery += ' AND s.course = ?';
+        countParams.push(course);
+      }
+      }
     }
 
     if (batch) {
@@ -966,8 +1037,18 @@ exports.getAttendance = async (req, res) => {
     }
 
     if (branch) {
-      countQuery += ' AND s.branch = ?';
-      countParams.push(branch);
+      if (/^\d+$/.test(branch)) {
+        countQuery += ' AND s.branch_id = ?';
+        countParams.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        countQuery += ' AND s.branch_id = ?';
+        countParams.push(parseInt(branch, 10));
+      } else {
+        countQuery += ' AND s.branch = ?';
+        countParams.push(branch);
+      }
+      }
     }
 
     if (normalizedSection && branch) {
@@ -1086,7 +1167,7 @@ exports.getAttendance = async (req, res) => {
         COUNT(DISTINCT CASE WHEN ar.status = 'pending' THEN s.id END) AS pending_count,
         COUNT(DISTINCT CASE WHEN ${FINALIZED_ATTENDANCE_CLAUSE} THEN s.id END) AS marked_count,
         COUNT(DISTINCT CASE WHEN ${UNRESOLVED_ATTENDANCE_CLAUSE} THEN s.id END) AS unresolved_count
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
       LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
       WHERE 1=1 AND s.student_status = 'Regular'
@@ -1101,8 +1182,18 @@ exports.getAttendance = async (req, res) => {
     // Optimize: Order WHERE conditions to use composite index effectively
     // Apply indexed filters first (these use the composite index)
     if (course) {
-      statsQuery += ' AND s.course = ?';
-      statsParams.push(course);
+      if (/^\d+$/.test(course)) {
+        statsQuery += ' AND s.course_id = ?';
+        statsParams.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        statsQuery += ' AND s.course_id = ?';
+        statsParams.push(parseInt(course, 10));
+      } else {
+        statsQuery += ' AND s.course = ?';
+        statsParams.push(course);
+      }
+      }
     }
 
     if (batch) {
@@ -1127,8 +1218,18 @@ exports.getAttendance = async (req, res) => {
     }
 
     if (branch) {
-      statsQuery += ' AND s.branch = ?';
-      statsParams.push(branch);
+      if (/^\d+$/.test(branch)) {
+        statsQuery += ' AND s.branch_id = ?';
+        statsParams.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        statsQuery += ' AND s.branch_id = ?';
+        statsParams.push(parseInt(branch, 10));
+      } else {
+        statsQuery += ' AND s.branch = ?';
+        statsParams.push(branch);
+      }
+      }
     }
 
     if (normalizedSection && branch) {
@@ -1442,12 +1543,20 @@ exports.deleteAttendanceForDate = async (req, res) => {
     }
 
     if (course) {
-      whereConditions.push('s.course = ?');
+      if (/^\d+$/.test(course)) {
+        whereConditions.push('s.course_id = ?');
+      } else {
+        whereConditions.push('s.course = ?');
+      }
       params.push(course);
     }
 
     if (branch) {
-      whereConditions.push('s.branch = ?');
+      if (/^\d+$/.test(branch)) {
+        whereConditions.push('s.branch_id = ?');
+      } else {
+        whereConditions.push('s.branch = ?');
+      }
       params.push(branch);
     }
 
@@ -1638,7 +1747,7 @@ exports.markAttendance = async (req, res) => {
           s.branch,
           s.student_data,
           ${STUDENT_ROLL_NUMBERS_SELECT}
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         ${STUDENT_ROLL_NUMBERS_JOIN}
         WHERE s.id IN (?)
           AND s.student_status = 'Regular'
@@ -3158,7 +3267,7 @@ exports.retrySms = async (req, res) => {
     }
 
     // Get student details
-    let query = 'SELECT * FROM students WHERE ';
+    let query = 'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE ';
     let params = [];
 
     if (studentId) {
@@ -3483,7 +3592,7 @@ exports.getAttendanceSummary = async (req, res) => {
     }
 
     const [studentCountRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${eligibilitySql}${semesterSql}${scopeCondition}`,
+      `SELECT COUNT(*) AS totalStudents FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id WHERE 1=1${whereClause}${eligibilitySql}${semesterSql}${scopeCondition}`,
       [...params, ...eligibilityParams, ...semesterParams, ...scopeParams]
     );
     const totalStudents = studentCountRows[0]?.totalStudents || 0;
@@ -3541,7 +3650,7 @@ exports.getAttendanceSummary = async (req, res) => {
           SUM(CASE WHEN ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
           GROUP_CONCAT(DISTINCT CASE WHEN ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
           DATE_FORMAT(MAX(ar.updated_at), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
@@ -3751,7 +3860,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         `SELECT s.id, s.student_name, s.pin_no, s.batch, s.course, s.branch, s.college, s.current_year, s.current_semester,
                 ${STUDENT_ROLL_NUMBERS_SELECT},
                 col.id as college_id, cb.id as branch_id
-         FROM students s
+         FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
          ${STUDENT_ROLL_NUMBERS_JOIN}
           LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
           LEFT JOIN courses c ON s.course COLLATE utf8mb4_unicode_ci = c.name COLLATE utf8mb4_unicode_ci AND c.college_id = col.id
@@ -4134,7 +4243,7 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
           s.current_year,
           s.current_semester,
           s.created_at
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         ORDER BY s.batch, s.course, s.branch, s.current_year, s.current_semester
       `
     );
@@ -4578,7 +4687,7 @@ exports.downloadAttendanceReport = async (req, res) => {
         s.student_data,
         s.created_at,
         ${STUDENT_ROLL_NUMBERS_SELECT}
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
       WHERE 1=1
     `;
@@ -4605,13 +4714,33 @@ exports.downloadAttendanceReport = async (req, res) => {
     }
 
     if (course) {
-      studentQuery += ' AND s.course = ?';
-      studentParams.push(course);
+      if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        studentParams.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        studentParams.push(parseInt(course, 10));
+      } else {
+        studentQuery += ' AND s.course = ?';
+        studentParams.push(course);
+      }
+      }
     }
 
     if (branch) {
-      studentQuery += ' AND s.branch = ?';
-      studentParams.push(branch);
+      if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        studentParams.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        studentParams.push(parseInt(branch, 10));
+      } else {
+        studentQuery += ' AND s.branch = ?';
+        studentParams.push(branch);
+      }
+      }
     }
 
     if (year) {
@@ -5003,7 +5132,7 @@ exports.downloadDayEndReport = async (req, res) => {
           SUM(CASE WHEN ar.status = 'holiday' THEN 1 ELSE 0 END) AS holiday,
           GROUP_CONCAT(DISTINCT CASE WHEN ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
           DATE_FORMAT(MAX(ar.updated_at), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         LEFT JOIN attendance_records ar 
           ON ar.student_id = s.id 
           AND ar.attendance_date = ?
@@ -5325,7 +5454,15 @@ exports.getAttendanceAbstract = async (req, res) => {
             p.push(...req.userScope.collegeIds);
           }
         }
-        if (college) { q += ' AND c.name = ?'; p.push(college); }
+        if (college) {
+          if (/^\d+$/.test(college)) {
+            q += ' AND s.college_id = ?';
+            p.push(parseInt(college, 10));
+          } else {
+            q += ' AND c.name = ?';
+            p.push(college);
+          }
+        }
         return { query: q, params: p };
       } else {
         let q = `
@@ -5337,7 +5474,7 @@ exports.getAttendanceAbstract = async (req, res) => {
         s.branch,
         s.current_year,
         s.current_semester
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       WHERE s.student_status = 'Regular'
     `;
         const p = [];
@@ -5353,7 +5490,15 @@ exports.getAttendanceAbstract = async (req, res) => {
           const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 's');
           if (scopeCondition) { q += ` AND ${scopeCondition}`; p.push(...scopeParams); }
         }
-        if (college) { q += ' AND s.college = ?'; p.push(college); }
+        if (college) {
+          if (/^\d+$/.test(college)) {
+            q += ' AND s.college_id = ?';
+            p.push(parseInt(college, 10));
+          } else {
+            q += ' AND s.college = ?';
+            p.push(college);
+          }
+        }
         return { query: q, params: p };
       }
     };
@@ -5366,12 +5511,22 @@ exports.getAttendanceAbstract = async (req, res) => {
       studentParams.push(batch);
     }
     if (course) {
-      studentQuery += ' AND s.course = ?';
-      studentParams.push(course);
+      if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        studentParams.push(parseInt(course, 10));
+      } else {
+        studentQuery += ' AND s.course = ?';
+        studentParams.push(course);
+      }
     }
     if (branch) {
-      studentQuery += ' AND s.branch = ?';
-      studentParams.push(branch);
+      if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        studentParams.push(parseInt(branch, 10));
+      } else {
+        studentQuery += ' AND s.branch = ?';
+        studentParams.push(branch);
+      }
     }
     if (year) {
       const parsedYear = parseInt(year, 10);
@@ -5421,8 +5576,24 @@ exports.getAttendanceAbstract = async (req, res) => {
         studentQuery = legacy.query;
         studentParams = [...legacy.params];
         if (batch) { studentQuery += ' AND s.batch = ?'; studentParams.push(batch); }
-        if (course) { studentQuery += ' AND s.course = ?'; studentParams.push(course); }
-        if (branch) { studentQuery += ' AND s.branch = ?'; studentParams.push(branch); }
+        if (course) {
+          if (/^\d+$/.test(course)) {
+            studentQuery += ' AND s.course_id = ?';
+            studentParams.push(parseInt(course, 10));
+          } else {
+            studentQuery += ' AND s.course = ?';
+            studentParams.push(course);
+          }
+        }
+        if (branch) {
+          if (/^\d+$/.test(branch)) {
+            studentQuery += ' AND s.branch_id = ?';
+            studentParams.push(parseInt(branch, 10));
+          } else {
+            studentQuery += ' AND s.branch = ?';
+            studentParams.push(branch);
+          }
+        }
         if (year) {
           const parsedYear = parseInt(year, 10);
           if (!Number.isNaN(parsedYear)) { studentQuery += ' AND s.current_year = ?'; studentParams.push(parsedYear); }
@@ -5671,7 +5842,7 @@ exports.getAttendanceReportForStudents = async (req, res) => {
         s.student_data,
         s.created_at,
         ${STUDENT_ROLL_NUMBERS_SELECT}
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
       WHERE s.student_status = 'Regular'
     `;
@@ -5709,20 +5880,35 @@ exports.getAttendanceReportForStudents = async (req, res) => {
 
     // Apply filters
     if (college) {
-      studentQuery += ' AND s.college = ?';
-      studentParams.push(college);
+      if (/^\d+$/.test(college)) {
+        studentQuery += ' AND s.college_id = ?';
+        studentParams.push(parseInt(college, 10));
+      } else {
+        studentQuery += ' AND s.college = ?';
+        studentParams.push(college);
+      }
     }
     if (batch) {
       studentQuery += ' AND s.batch = ?';
       studentParams.push(batch);
     }
     if (course) {
-      studentQuery += ' AND s.course = ?';
-      studentParams.push(course);
+      if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        studentParams.push(parseInt(course, 10));
+      } else {
+        studentQuery += ' AND s.course = ?';
+        studentParams.push(course);
+      }
     }
     if (branch) {
-      studentQuery += ' AND s.branch = ?';
-      studentParams.push(branch);
+      if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        studentParams.push(parseInt(branch, 10));
+      } else {
+        studentQuery += ' AND s.branch = ?';
+        studentParams.push(branch);
+      }
     }
     if (year) {
       const parsedYear = parseInt(year, 10);
@@ -5900,7 +6086,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
     }
 
     const [studentCountRows] = await masterPool.query(
-      `SELECT COUNT(*) AS totalStudents FROM students s WHERE 1=1${whereClause}${joinDateSql}${semesterSql}${scopeCondition}`,
+      `SELECT COUNT(*) AS totalStudents FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id WHERE 1=1${whereClause}${joinDateSql}${semesterSql}${scopeCondition}`,
       [...params, ...joinDateParams, ...semesterParams, ...scopeParams]
     );
     const totalStudents = studentCountRows[0]?.totalStudents || 0;
@@ -5914,7 +6100,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
             ELSE COALESCE(ar.status, 'unmarked')
           END) AS status,
           COUNT(*) AS count
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         LEFT JOIN internship_assignments i_assign
           ON s.id = i_assign.student_id
           AND ? BETWEEN i_assign.start_date AND i_assign.end_date
@@ -5952,7 +6138,7 @@ exports.getOverallAttendanceSummary = async (req, res) => {
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.remarks IS NOT NULL AND ar.remarks != '' THEN ar.remarks ELSE NULL END SEPARATOR ', ') AS attendance_remarks,
           DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         LEFT JOIN internship_assignments i_assign
           ON s.id = i_assign.student_id
           AND ? BETWEEN i_assign.start_date AND i_assign.end_date
@@ -6177,7 +6363,7 @@ exports.downloadOverallAttendanceReport = async (req, res) => {
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.status = 'holiday' THEN ar.holiday_reason ELSE NULL END SEPARATOR ', ') AS holiday_reasons,
           GROUP_CONCAT(DISTINCT CASE WHEN i_assign.id IS NULL AND ar.remarks IS NOT NULL AND ar.remarks != '' THEN ar.remarks ELSE NULL END SEPARATOR ', ') AS attendance_remarks,
           DATE_FORMAT(MAX(CASE WHEN i_assign.id IS NOT NULL THEN COALESCE(ia.check_out_time, ia.check_in_time) ELSE ar.updated_at END), '%Y-%m-%dT%H:%i:%s+05:30') AS last_updated
-        FROM students s
+        FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         LEFT JOIN internship_assignments i_assign
           ON s.id = i_assign.student_id
           AND ? BETWEEN i_assign.start_date AND i_assign.end_date

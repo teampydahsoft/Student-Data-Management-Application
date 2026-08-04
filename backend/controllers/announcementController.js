@@ -469,7 +469,7 @@ exports.sendSMSAnnouncement = async (req, res) => {
         }
 
         // 1. Fetch Recipients
-        let query = 'SELECT * FROM students WHERE student_status = "Regular"';
+        let query = 'SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id WHERE student_status = "Regular"';
         const params = [];
 
         const parseParam = (val) => {
@@ -554,11 +554,12 @@ exports.sendSMSAnnouncement = async (req, res) => {
                             });
                         }
 
+                        // Send SMS to parent mobile only
                         let mobile = student.parent_mobile1 || student.parent_mobile2;
                         if (!mobile && student.student_data) {
                             mobile = student.student_data['Parent Mobile Number 1'] || student.student_data['Parent Mobile Number 2'];
                         }
-                        if (!mobile) mobile = student.student_mobile;
+                        // Do NOT fall back to student mobile — parent-only policy
 
                         if (mobile) {
                             const cleanMobile = String(mobile).replace(/[^0-9]/g, '');

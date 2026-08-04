@@ -172,7 +172,7 @@ const SidebarDetailItem = ({ label, value, icon, editable, disabled, type = 'tex
         >
           <option value="">Select {label}</option>
           {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt.id || opt} value={opt.name || opt}>{opt.name || opt}</option>
           ))}
         </select>
       ) : (
@@ -1415,15 +1415,15 @@ const Students = () => {
       const response = await api.get(url);
       if (response.data?.success) {
         const data = response.data.data || {};
-        setQuickFilterOptions({
-          batches: [...new Set(data.batches || [])],
-          colleges: [...new Set(data.colleges || [])],
-          courses: [...new Set(data.courses || [])],
-          branches: [...new Set(data.branches || [])],
-          years: [...new Set(data.years || [])],
-          semesters: [...new Set(data.semesters || [])],
-          sections: [...new Set(data.sections || [])]
-        });
+        setQuickFilterOptions((prev) => ({
+          batches: currentFilters.batch ? prev.batches : [...new Set(data.batches || [])],
+          colleges: currentFilters.college ? prev.colleges : [...new Set(data.colleges || [])],
+          courses: currentFilters.course ? prev.courses : [...new Set(data.courses || [])],
+          branches: currentFilters.branch ? prev.branches : (data.branches || []),
+          years: currentFilters.year ? prev.years : [...new Set(data.years || [])],
+          semesters: currentFilters.semester ? prev.semesters : [...new Set(data.semesters || [])],
+          sections: data.sections || []
+        }));
       }
       return true;
     } catch (error) {
@@ -1958,7 +1958,7 @@ const Students = () => {
           >
             <option value="">Select...</option>
             {allOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+              <option key={opt} value={opt.id || opt}>{opt.name || opt}</option>
             ))}
           </select>
         );
@@ -2119,13 +2119,20 @@ const Students = () => {
       ...stageSyncedFields,
       caste_id: student.caste_id ?? null,
       category_id: student.category_id ?? null,
-      nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : ''
+      nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : '',
+      // Preserve IDs so edits correctly update the ID columns on the backend
+      college_id: student.college_id != null ? String(student.college_id) : null,
+      course_id: student.course_id != null ? String(student.course_id) : null,
+      branch_id: student.branch_id != null ? String(student.branch_id) : null,
     });
     setEditBaseline(cloneStudentFormSnapshot({
       ...stageSyncedFields,
       caste_id: student.caste_id ?? null,
       category_id: student.category_id ?? null,
-      nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : ''
+      nested_caste: openDisplay.linked ? (openDisplay.casteName || '') : '',
+      college_id: student.college_id != null ? String(student.college_id) : null,
+      course_id: student.course_id != null ? String(student.course_id) : null,
+      branch_id: student.branch_id != null ? String(student.branch_id) : null,
     }));
     setEditRegistrationStatus(student.registration_status || 'pending');
     setEditFeeStatus(student.fee_status || 'pending');
@@ -2548,15 +2555,68 @@ const Students = () => {
         newData.Batch = value;
       }
 
-      // If college changes, refresh course and branch options for the modal
+      // If college changes, resolve college_id from colleges list and clear course/branch
       if (key === 'college') {
+        const collegeObj = colleges.find(c => c.name === value);
+        if (collegeObj) {
+          // Send college_id as a numeric string — backend maps it to college_id column
+          newData.college_id = String(collegeObj.id);
+        } else {
+          newData.college_id = null;
+        }
+        // Clear dependent fields when college changes
+        newData.course = '';
+        newData.Course = '';
+        newData['Course Name'] = '';
+        newData.Program = '';
+        newData['Program Name'] = '';
+        newData.course_id = null;
+        newData.branch = '';
+        newData.Branch = '';
+        newData['Branch Name'] = '';
+        newData.branch_id = null;
         fetchQuickFilterOptions({ college: value }).catch(console.warn);
       }
 
-      // If course/program changes, refresh branch options
+      // If course/program changes, resolve course_id from coursesWithLevels and clear branch
       if (key === 'course' || key === 'Program') {
-        newData.branch = ''; // Clear branch when program changes
+        newData.course = value;
+        newData.Course = value;
+        newData['Course Name'] = value;
+        newData.Program = value;
+        newData['Program Name'] = value;
+
+        const courseObj = coursesWithLevels.find(c => c.name === value);
+        if (courseObj) {
+          // Send course_id as a numeric string — backend maps it to course_id column
+          newData.course_id = String(courseObj.id);
+        } else {
+          newData.course_id = null;
+        }
+
+        // Clear branch when program changes
+        newData.branch = '';
+        newData.Branch = '';
+        newData['Branch Name'] = '';
+        newData.branch_id = null;
         fetchQuickFilterOptions({ college: newData.college, course: value }).catch(console.warn);
+      }
+
+      if (key === 'branch' || key === 'Branch') {
+        newData.branch = value;
+        newData.Branch = value;
+        newData['Branch Name'] = value;
+
+        // Resolve branch_id from coursesWithLevels
+        const courseName = newData.course || prev.course;
+        const courseObj = coursesWithLevels.find(c => c.name === courseName);
+        const branchObj = (courseObj?.branches || []).find(b => b.name === value);
+        if (branchObj) {
+          // Send branch_id as a numeric string — backend maps it to branch_id column
+          newData.branch_id = String(branchObj.id);
+        } else {
+          newData.branch_id = null;
+        }
       }
 
       return newData;
@@ -2944,7 +3004,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(quickFilterOptions.batches || []).map((batch) => (
-                    <option key={batch} value={batch}>{batch}</option>
+                    <option key={batch} value={batch.id || batch}>{batch.name || batch}</option>
                   ))}
                 </select>
               </div>
@@ -2979,9 +3039,7 @@ const Students = () => {
                       return true;
                     })
                     .map((course) => (
-                      <option key={course} value={course}>
-                        {course}
-                      </option>
+                      <option key={course.id || course} value={course.id || course}>{course.name || course}</option>
                     ))}
                 </select>
               </div>
@@ -3007,7 +3065,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(quickFilterOptions.branches || []).map((branch) => (
-                    <option key={branch} value={branch}>{branch}</option>
+                    <option key={branch} value={branch.id || branch}>{branch.name || branch}</option>
                   ))}
                 </select>
               </div>
@@ -3021,7 +3079,7 @@ const Students = () => {
                   >
                     <option value="">All</option>
                     {(quickFilterOptions.sections || []).map((section) => (
-                      <option key={section} value={section}>{section}</option>
+                      <option key={section} value={section.id || section}>{section.name || section}</option>
                     ))}
                   </select>
                 </div>
@@ -3035,7 +3093,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.stud_type || []).map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type} value={type.id || type}>{type.name || type}</option>
                   ))}
                 </select>
               </div>
@@ -3048,7 +3106,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.student_status || []).map((status) => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status.id || status}>{status.name || status}</option>
                   ))}
                 </select>
               </div>
@@ -3074,7 +3132,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.caste || []).map((caste) => (
-                    <option key={caste} value={caste}>{caste}</option>
+                    <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
                   ))}
                 </select>
               </div>
@@ -3087,7 +3145,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.gender || []).map((gender) => (
-                    <option key={gender} value={gender}>{gender}</option>
+                    <option key={gender} value={gender.id || gender}>{gender.name || gender}</option>
                   ))}
                 </select>
               </div>
@@ -3127,7 +3185,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(quickFilterOptions.years || []).map((year) => (
-                    <option key={year} value={year}>{year}</option>
+                    <option key={year} value={year.id || year}>{year.name || year}</option>
                   ))}
                 </select>
               </div>
@@ -3140,7 +3198,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(quickFilterOptions.semesters || []).map((sem) => (
-                    <option key={sem} value={sem}>{sem}</option>
+                    <option key={sem} value={sem.id || sem}>{sem.name || sem}</option>
                   ))}
                 </select>
               </div>
@@ -3153,7 +3211,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.remarks || []).map((remark) => (
-                    <option key={remark} value={remark}>{remark}</option>
+                    <option key={remark} value={remark.id || remark}>{remark.name || remark}</option>
                   ))}
                 </select>
               </div>
@@ -3166,7 +3224,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.district || []).map((district) => (
-                    <option key={district} value={district}>{district}</option>
+                    <option key={district} value={district.id || district}>{district.name || district}</option>
                   ))}
                 </select>
               </div>
@@ -3179,7 +3237,7 @@ const Students = () => {
                 >
                   <option value="">All</option>
                   {(dropdownFilterOptions.mandal_name || []).map((mandal) => (
-                    <option key={mandal} value={mandal}>{mandal}</option>
+                    <option key={mandal} value={mandal.id || mandal}>{mandal.name || mandal}</option>
                   ))}
                 </select>
               </div>
@@ -3783,8 +3841,8 @@ const Students = () => {
                   className="px-1.5 py-0.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-primary-500 focus:border-primary-500 text-[11px] touch-manipulation min-h-[28px] sm:min-h-[32px]"
                   disabled={isLoading || isFetching}
                 >
-                  {pageSizeOptions.map(option => (
-                    <option key={option} value={option}>{option}</option>
+                  {pageSizeOptions.map((option) => (
+                    <option key={option} value={option.id || option}>{option.name || option}</option>
                   ))}
                 </select>
               </label>
@@ -4055,7 +4113,7 @@ const Students = () => {
                           >
                             <option value="">Select Batch</option>
                             {batchOptions.map((batch) => (
-                              <option key={batch} value={batch}>{batch}</option>
+                              <option key={batch} value={batch.id || batch}>{batch.name || batch}</option>
                             ))}
                             {(editData.batch || selectedStudent?.batch) &&
                               !batchOptions.includes(editData.batch || selectedStudent?.batch) && (
@@ -4075,7 +4133,7 @@ const Students = () => {
                             >
                               <option value="">Select Section</option>
                               {studentSectionOptions.map((section) => (
-                                <option key={section} value={section}>{section}</option>
+                                <option key={section} value={section.id || section}>{section.name || section}</option>
                               ))}
                             </select>
                           </div>
@@ -4100,6 +4158,8 @@ const Students = () => {
                       icon={<Book size={14} />}
                       editable={editMode}
                       disabled={isFieldFrozen(selectedStudent, 'college')}
+                      type={editMode ? 'select' : 'text'}
+                      options={colleges.filter(c => c.isActive !== false)}
                       onChange={(val) => updateEditField('college', val)}
                     />
                     <SidebarDetailItem
@@ -4109,7 +4169,17 @@ const Students = () => {
                       editable={editMode}
                       disabled={isFieldFrozen(selectedStudent, 'course')}
                       type="select"
-                      options={quickFilterOptions.courses}
+                      options={(() => {
+                        const collegeName = editData.college || selectedStudent?.college;
+                        const collegeObj = colleges.find(c => c.name === collegeName);
+                        const filtered = collegeObj
+                          ? coursesWithLevels.filter(c => {
+                              const cid = c.collegeId || c.college_id;
+                              return !cid || Number(cid) === Number(collegeObj.id);
+                            })
+                          : coursesWithLevels;
+                        return filtered.filter(c => c.isActive !== false);
+                      })()}
                       onChange={(val) => updateEditField('course', val)}
                     />
                     <SidebarDetailItem
@@ -4119,7 +4189,11 @@ const Students = () => {
                       editable={editMode}
                       disabled={isFieldFrozen(selectedStudent, 'branch')}
                       type="select"
-                      options={quickFilterOptions.branches}
+                      options={(() => {
+                        const courseName = editData.course || selectedStudent?.course;
+                        const courseObj = coursesWithLevels.find(c => c.name === courseName);
+                        return (courseObj?.branches || []).filter(b => b.isActive !== false);
+                      })()}
                       onChange={(val) => updateEditField('branch', val)}
                       onFocus={() => {
                         // Refresh branches for selected course when dropdown is focused
@@ -5159,7 +5233,7 @@ const Students = () => {
                                             : [],
                                           editData.nested_caste
                                         ).map((caste) => (
-                                          <option key={caste} value={caste}>{caste}</option>
+                                          <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
                                         ))}
                                       </select>
                                     ) : (
@@ -5399,9 +5473,7 @@ const Students = () => {
                                       <option value="">Select Status</option>
                                     )}
                                     {STUDENT_STATUS_OPTIONS.map((status) => (
-                                      <option key={status} value={status}>
-                                        {status}
-                                      </option>
+                                      <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
                                     ))}
                                   </select>
                                 ) : (
@@ -5456,9 +5528,7 @@ const Students = () => {
                                       <option value="">Select Fee Status</option>
                                     )}
                                     {FEE_STATUS_OPTIONS.map((status) => (
-                                      <option key={status} value={status}>
-                                        {status}
-                                      </option>
+                                      <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
                                     ))}
                                   </select>
                                 ) : (
@@ -5539,9 +5609,7 @@ const Students = () => {
                                       <option value="">Select Registration Status</option>
                                     )}
                                     {REGISTRATION_STATUS_OPTIONS.map((status) => (
-                                      <option key={status} value={status}>
-                                        {status}
-                                      </option>
+                                      <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
                                     ))}
                                   </select>
                                 ) : (

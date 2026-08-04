@@ -70,7 +70,7 @@ async function migrateStudentData() {
         
         // Get all students from old table
         console.log('Fetching students from old table...');
-        const [oldStudents] = await connection.query('SELECT * FROM students_old');
+        const [oldStudents] = await connection.query('SELECT students.*, colleges.name as college, courses.name as course, course_branches.name as branch FROM students LEFT JOIN colleges ON students.college_id = colleges.id LEFT JOIN courses ON students.course_id = courses.id LEFT JOIN course_branches ON students.branch_id = course_branches.id_old');
         
         console.log(`Found ${oldStudents.length} students to migrate.`);
         

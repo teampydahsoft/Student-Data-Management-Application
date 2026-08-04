@@ -11,7 +11,7 @@ exports.getInternshipFilters = async (req, res) => {
                 s.current_year,
                 s.current_semester,
                 s.college
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments ia ON s.id = ia.student_id
             WHERE ia.end_date >= CURDATE()
             AND s.student_status = 'Regular'
@@ -21,9 +21,48 @@ exports.getInternshipFilters = async (req, res) => {
 
         // Apply filters dynamically for cascading
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); } // Helper if colleges have IDs
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    } // Helper if colleges have IDs
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 

@@ -670,9 +670,7 @@ const VersantTests = () => {
               >
                 <option value="">All types</option>
                 {filterOptions.testTypes?.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
+                  <option key={t.id || t} value={t.id || t}>{t.name || t}</option>
                 ))}
               </select>
               <select
@@ -685,9 +683,7 @@ const VersantTests = () => {
               >
                 <option value="">All modules</option>
                 {filterOptions.modules?.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
+                  <option key={m.id || m} value={m.id || m}>{m.name || m}</option>
                 ))}
               </select>
             </div>

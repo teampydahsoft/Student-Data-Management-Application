@@ -38,7 +38,7 @@ async function createStudentCredentials() {
     console.log('\n📚 Fetching all students...');
     const [students] = await connection.query(`
       SELECT s.id, s.admission_number, s.pin_no, s.student_name, s.student_mobile
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       LEFT JOIN student_credentials sc ON s.id = sc.student_id
       WHERE (s.student_status = 'regular' OR s.student_status = 'Regular' OR s.student_status IS NULL)
       AND sc.id IS NULL

@@ -870,14 +870,14 @@ const Clubs = () => {
                                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
                                     >
                                         <option value="">All Programs</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map(c => <option key={c} value={c}>{c}</option>)}
+                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
                                     </select>
                                     <select
                                         value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
                                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
                                     >
                                         <option value="">All Branches</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map(b => <option key={b} value={b}>{b}</option>)}
+                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
                                     </select>
                                 </div>
 
@@ -982,14 +982,14 @@ const Clubs = () => {
                                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
                                     >
                                         <option value="">All Programs</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map(c => <option key={c} value={c}>{c}</option>)}
+                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
                                     </select>
                                     <select
                                         value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
                                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
                                     >
                                         <option value="">All Branches</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map(b => <option key={b} value={b}>{b}</option>)}
+                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
                                     </select>
                                 </div>
 

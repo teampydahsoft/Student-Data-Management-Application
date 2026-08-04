@@ -432,7 +432,7 @@ async function consolidateBranches() {
         FROM course_branches cb
         WHERE cb.id IN (?)
           AND EXISTS (
-            SELECT 1 FROM students s
+            SELECT 1 FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             WHERE s.branch = cb.name
           );
       `, [duplicateBranchIds]);

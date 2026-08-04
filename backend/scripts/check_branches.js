@@ -27,7 +27,7 @@ const { masterPool } = require('../config/database');
     
     const [orphaned] = await masterPool.query(`
       SELECT DISTINCT s.branch, COUNT(*) as cnt
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       WHERE s.course = 'Diploma'
         AND s.branch NOT IN (
           SELECT cb.name FROM course_branches cb 

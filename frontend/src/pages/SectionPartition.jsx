@@ -191,11 +191,11 @@ const SectionPartition = () => {
       const response = await api.get(url);
       if (response.data?.success) {
         const data = response.data.data || {};
-        setQuickFilterOptions({
-          batches: data.batches || [],
-          courses: data.courses || [],
+        setQuickFilterOptions((prev) => ({
+          batches: currentFilters.batch ? prev.batches : (data.batches || []),
+          courses: currentFilters.course ? prev.courses : (data.courses || []),
           branches: data.branches || []
-        });
+        }));
       }
     } catch (error) {
       console.warn('Failed to load filter metadata:', error);
@@ -545,7 +545,7 @@ const SectionPartition = () => {
             >
               <option value="">Select Course</option>
               {quickFilterOptions.courses.map((course) => (
-                <option key={course} value={course}>{course}</option>
+                <option key={course} value={course.id || course}>{course.name || course}</option>
               ))}
             </select>
           </div>
@@ -562,7 +562,7 @@ const SectionPartition = () => {
             >
               <option value="">Select Branch</option>
               {availableBranches.map((branch) => (
-                <option key={branch} value={branch}>{branch}</option>
+                <option key={branch} value={branch.id || branch}>{branch.name || branch}</option>
               ))}
             </select>
           </div>
@@ -579,7 +579,7 @@ const SectionPartition = () => {
             >
               <option value="">Select Batch</option>
               {quickFilterOptions.batches.map((batch) => (
-                <option key={batch} value={batch}>{batch}</option>
+                <option key={batch} value={batch.id || batch}>{batch.name || batch}</option>
               ))}
             </select>
           </div>
@@ -764,7 +764,7 @@ const SectionPartition = () => {
                           >
                             <option value="">—</option>
                             {configuredSectionItems.map((section) => (
-                              <option key={section} value={section}>{section}</option>
+                              <option key={section} value={section.id || section}>{section.name || section}</option>
                             ))}
                           </select>
                         </td>
@@ -846,7 +846,7 @@ const SectionPartition = () => {
                       >
                         <option value="">None (clear section)</option>
                         {configuredSectionItems.map((section) => (
-                          <option key={section} value={section}>{section}</option>
+                          <option key={section} value={section.id || section}>{section.name || section}</option>
                         ))}
                       </select>
                     </div>

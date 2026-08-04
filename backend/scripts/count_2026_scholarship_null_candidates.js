@@ -45,7 +45,7 @@ const semesterWiseRowSql = `
       s.current_semester,
       s.stud_type,
       s.scholar_status
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     WHERE ${activeStudentSql}
       AND ${academicYearSql.replace('?', TARGET_ACADEMIC_START)}
   `, [TARGET_ACADEMIC_START]);
@@ -109,7 +109,7 @@ const semesterWiseRowSql = `
         WHEN ss.student_semester IS NOT NULL AND LOWER(TRIM(ss.eligible)) = 'not_eligible' THEN 1
         ELSE 0
       END) AS not_eligible_rows_preserved
-    FROM students s
+    FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
     LEFT JOIN student_scholarship ss
       ON ss.student_id = s.id
      AND ss.student_year = GREATEST(1, IFNULL(s.current_year, 1))

@@ -1423,7 +1423,7 @@ const InternshipAdmin = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.batch} onChange={e => handleFilterChange('batch', e.target.value)}>
                                         <option value="">All Batches</option>
-                                        {[...new Set(filterOptions.batches || [])].map(b => <option key={`assign-batch-${b}`} value={b}>{b}</option>)}
+                                        {[...new Set(filterOptions.batches || [])].map((b) => <option key={`assign-batch-${b}`} value={b.id || b}>{b.name || b}</option>)}
                                     </select>
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.college} onChange={e => handleFilterChange('college', e.target.value)}>
                                         <option value="">All Colleges</option>
@@ -1431,19 +1431,19 @@ const InternshipAdmin = () => {
                                     </select>
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.course} onChange={e => handleFilterChange('course', e.target.value)}>
                                         <option value="">All Courses</option>
-                                        {[...new Set(filterOptions.courses || [])].map(c => <option key={`assign-course-${c}`} value={c}>{c}</option>)}
+                                        {[...new Set(filterOptions.courses || [])].map((c) => <option key={`assign-course-${c}`} value={c.id || c}>{c.name || c}</option>)}
                                     </select>
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.branch} onChange={e => handleFilterChange('branch', e.target.value)}>
                                         <option value="">All Branches</option>
-                                        {[...new Set(filterOptions.branches || [])].map(b => <option key={`assign-branch-${b}`} value={b}>{b}</option>)}
+                                        {[...new Set(filterOptions.branches || [])].map((b) => <option key={`assign-branch-${b}`} value={b.id || b}>{b.name || b}</option>)}
                                     </select>
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}>
                                         <option value="">All Years</option>
-                                        {[...new Set(filterOptions.years || [])].map(y => <option key={`assign-year-${y}`} value={y}>{y}</option>)}
+                                        {[...new Set(filterOptions.years || [])].map((y) => <option key={`assign-year-${y}`} value={y.id || y}>{y.name || y}</option>)}
                                     </select>
                                     <select className="border rounded-md px-3 py-2 text-sm outline-none w-full" value={filters.semester} onChange={e => handleFilterChange('semester', e.target.value)}>
                                         <option value="">All Semesters</option>
-                                        {[...new Set(filterOptions.semesters || [])].map(s => <option key={`assign-sem-${s}`} value={s}>{s}</option>)}
+                                        {[...new Set(filterOptions.semesters || [])].map((s) => <option key={`assign-sem-${s}`} value={s.id || s}>{s.name || s}</option>)}
                                     </select>
                                 </div>
                                 <div className="flex justify-between items-center text-xs text-gray-500">
@@ -1705,7 +1705,7 @@ const InternshipAdmin = () => {
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.batch} onChange={e => handleFilterChange('batch', e.target.value)}>
                                 <option value="">All Batches</option>
-                                {[...new Set(filterOptions.batches || [])].map(b => <option key={`report-batch-${b}`} value={b}>{b}</option>)}
+                                {[...new Set(filterOptions.batches || [])].map((b) => <option key={`report-batch-${b}`} value={b.id || b}>{b.name || b}</option>)}
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.college} onChange={e => handleFilterChange('college', e.target.value)}>
                                 <option value="">All Colleges</option>
@@ -1714,19 +1714,19 @@ const InternshipAdmin = () => {
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.course} onChange={e => handleFilterChange('course', e.target.value)}>
                                 <option value="">All Courses</option>
-                                {[...new Set(filterOptions.courses || [])].map(c => <option key={`report-course-${c}`} value={c}>{c}</option>)}
+                                {[...new Set(filterOptions.courses || [])].map((c) => <option key={`report-course-${c}`} value={c.id || c}>{c.name || c}</option>)}
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.branch} onChange={e => handleFilterChange('branch', e.target.value)}>
                                 <option value="">All Branches</option>
-                                {[...new Set(filterOptions.branches || [])].map(b => <option key={`report-branch-${b}`} value={b}>{b}</option>)}
+                                {[...new Set(filterOptions.branches || [])].map((b) => <option key={`report-branch-${b}`} value={b.id || b}>{b.name || b}</option>)}
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}>
                                 <option value="">All Years</option>
-                                {[...new Set(filterOptions.years || [])].map(y => <option key={`report-year-${y}`} value={y}>{y}</option>)}
+                                {[...new Set(filterOptions.years || [])].map((y) => <option key={`report-year-${y}`} value={y.id || y}>{y.name || y}</option>)}
                             </select>
                             <select className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto flex-1 min-w-[140px]" value={filters.semester} onChange={e => handleFilterChange('semester', e.target.value)}>
                                 <option value="">All Semesters</option>
-                                {[...new Set(filterOptions.semesters || [])].map(s => <option key={`report-sem-${s}`} value={s}>{s}</option>)}
+                                {[...new Set(filterOptions.semesters || [])].map((s) => <option key={`report-sem-${s}`} value={s.id || s}>{s.name || s}</option>)}
                             </select>
 
                             <button
@@ -1849,28 +1849,28 @@ const InternshipAdmin = () => {
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Batch</label>
                                 <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.batch} onChange={e => setPeriodFilters(f => ({ ...f, batch: e.target.value }))}>
                                     <option value="">All</option>
-                                    {periodFilterOptions.batches?.map(b => <option key={b} value={b}>{b}</option>)}
+                                    {periodFilterOptions.batches?.map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">College</label>
                                 <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.college} onChange={e => setPeriodFilters(f => ({ ...f, college: e.target.value }))}>
                                     <option value="">All</option>
-                                    {periodFilterOptions.colleges?.map(c => <option key={c} value={c}>{c}</option>)}
+                                    {periodFilterOptions.colleges?.map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Course</label>
                                 <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.course} onChange={e => setPeriodFilters(f => ({ ...f, course: e.target.value }))}>
                                     <option value="">All</option>
-                                    {periodFilterOptions.courses?.map(c => <option key={c} value={c}>{c}</option>)}
+                                    {periodFilterOptions.courses?.map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Branch</label>
                                 <select className="px-3 py-1.5 border rounded-lg text-sm outline-none" value={periodFilters.branch} onChange={e => setPeriodFilters(f => ({ ...f, branch: e.target.value }))}>
                                     <option value="">All</option>
-                                    {periodFilterOptions.branches?.map(b => <option key={b} value={b}>{b}</option>)}
+                                    {periodFilterOptions.branches?.map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
                                 </select>
                             </div>
                             <button onClick={fetchPeriodReport} className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1.5">

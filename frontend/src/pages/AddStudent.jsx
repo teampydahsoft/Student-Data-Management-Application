@@ -1236,7 +1236,7 @@ const AddStudent = () => {
                     <option value="">Select Course</option>
                     {quickFilterCourses.length > 0
                       ? [...new Set(quickFilterCourses)].map((name) => (
-                        <option key={`qf-course-${name}`} value={name}>{name}</option>
+                        <option key={`qf-course-${name}`} value={name.id || name}>{name.name || name}</option>
                       ))
                       : [...new Map(availableCourses.map(c => [c.name, c])).values()].map((course) => (
                         <option key={`course-${course.id || course.name}`} value={course.name}>
@@ -1603,9 +1603,7 @@ const AddStudent = () => {
                 >
                   <option value="">Select State</option>
                   {Object.keys(addressData).sort().map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
+                    <option key={state.id || state} value={state.id || state}>{state.name || state}</option>
                   ))}
                 </select>
               </div>
@@ -1624,9 +1622,7 @@ const AddStudent = () => {
                 >
                   <option value="">Select District</option>
                   {districts.map((district) => (
-                    <option key={district} value={district}>
-                      {district}
-                    </option>
+                    <option key={district.id || district} value={district.id || district}>{district.name || district}</option>
                   ))}
                 </select>
               </div>
@@ -1646,7 +1642,7 @@ const AddStudent = () => {
                   >
                     <option value="">{studentData.district ? "Select Mandal" : "Select District first"}</option>
                     {mandals.map((mandal) => (
-                      <option key={mandal} value={mandal}>{mandal}</option>
+                      <option key={mandal} value={mandal.id || mandal}>{mandal.name || mandal}</option>
                     ))}
                     <option value="Other">Other (Enter Manually)</option>
                   </select>

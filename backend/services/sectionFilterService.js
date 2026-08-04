@@ -45,20 +45,38 @@ const getConfiguredSectionsForBranch = async ({ course, branch } = {}) => {
   }
 
   if (course) {
-    const [courseRows] = await masterPool.query(
-      'SELECT id FROM courses WHERE name = ? AND is_active = 1 LIMIT 1',
-      [course]
-    );
+    let courseRows;
+    if (/^\d+$/.test(course)) {
+      [courseRows] = await masterPool.query(
+        'SELECT id, name FROM courses WHERE id = ? AND is_active = 1 LIMIT 1',
+        [parseInt(course, 10)]
+      );
+    } else {
+      [courseRows] = await masterPool.query(
+        'SELECT id, name FROM courses WHERE name = ? AND is_active = 1 LIMIT 1',
+        [course]
+      );
+    }
+
     if (courseRows.length === 0) {
       return { courseName: course, configuredSections: [] };
     }
 
-    const [branchRows] = await masterPool.query(
-      'SELECT metadata FROM course_branches WHERE course_id = ? AND name = ? AND is_active = 1 LIMIT 1',
-      [courseRows[0].id, branch]
-    );
+    let branchRows;
+    if (/^\d+$/.test(branch)) {
+      [branchRows] = await masterPool.query(
+        'SELECT metadata FROM course_branches WHERE course_id = ? AND id = ? AND is_active = 1 LIMIT 1',
+        [courseRows[0].id, parseInt(branch, 10)]
+      );
+    } else {
+      [branchRows] = await masterPool.query(
+        'SELECT metadata FROM course_branches WHERE course_id = ? AND name = ? AND is_active = 1 LIMIT 1',
+        [courseRows[0].id, branch]
+      );
+    }
+
     if (branchRows.length === 0 || !branchRows[0].metadata) {
-      return { courseName: course, configuredSections: [] };
+      return { courseName: courseRows[0].name, configuredSections: [] };
     }
 
     const metadata = parseBranchMetadata(branchRows[0].metadata);
@@ -67,18 +85,29 @@ const getConfiguredSectionsForBranch = async ({ course, branch } = {}) => {
     }
 
     return {
-      courseName: course,
+      courseName: courseRows[0].name,
       configuredSections: metadata.sections.items.map((item) => item?.name).filter(Boolean)
     };
   }
 
-  const [branchRows] = await masterPool.query(
-    `SELECT cb.metadata, c.name AS course_name
-     FROM course_branches cb
-     JOIN courses c ON cb.course_id = c.id
-     WHERE cb.name = ? AND cb.is_active = 1 AND c.is_active = 1`,
-    [branch]
-  );
+  let branchRows;
+  if (/^\d+$/.test(branch)) {
+    [branchRows] = await masterPool.query(
+      `SELECT cb.metadata, c.name AS course_name
+       FROM course_branches cb
+       JOIN courses c ON cb.course_id = c.id
+       WHERE cb.id = ? AND cb.is_active = 1 AND c.is_active = 1`,
+      [parseInt(branch, 10)]
+    );
+  } else {
+    [branchRows] = await masterPool.query(
+      `SELECT cb.metadata, c.name AS course_name
+       FROM course_branches cb
+       JOIN courses c ON cb.course_id = c.id
+       WHERE cb.name = ? AND cb.is_active = 1 AND c.is_active = 1`,
+      [branch]
+    );
+  }
 
   for (const row of branchRows) {
     const metadata = parseBranchMetadata(row.metadata);

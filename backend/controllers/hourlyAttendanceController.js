@@ -19,8 +19,16 @@ function buildStudentWhere(scope, filters) {
     parts.push(...conditions);
     prms.push(...params);
   }
-  if (filters.course) { parts.push('s.course = ?'); prms.push(filters.course); }
-  if (filters.branch) { parts.push('s.branch = ?'); prms.push(filters.branch); }
+  if (filters.course) { if (/^\d+$/.test(course)) {
+        parts.push('s.course_id = ?');
+      } else {
+        parts.push('s.course = ?');
+      } prms.push(filters.course); }
+  if (filters.branch) { if (/^\d+$/.test(branch)) {
+        parts.push('s.branch_id = ?');
+      } else {
+        parts.push('s.branch = ?');
+      } prms.push(filters.branch); }
   if (filters.batch) { parts.push('s.batch = ?'); prms.push(filters.batch); }
   if (filters.year) { parts.push('s.current_year = ?'); prms.push(filters.year); }
   if (filters.semester) { parts.push('s.current_semester = ?'); prms.push(filters.semester); }
@@ -145,7 +153,7 @@ exports.listStudents = async (req, res) => {
     const { where, params } = buildStudentWhere(scope, { course, branch, batch, year, semester });
     const [rows] = await masterPool.query(
       `SELECT s.id AS student_id, s.student_name, s.admission_number, s.course, s.branch, s.batch, s.current_year, s.current_semester
-       FROM students s WHERE ${where} ORDER BY s.student_name`,
+       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id WHERE ${where} ORDER BY s.student_name`,
       params
     );
     res.json({ success: true, data: rows });

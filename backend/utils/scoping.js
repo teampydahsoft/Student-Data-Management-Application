@@ -20,41 +20,40 @@ function buildScopeConditions(userScope, tableAlias = 's') {
   const conditions = [];
   const params = [];
 
-  // Apply college filter using names (since students table stores college name)
-  if (userScope.collegeNames && userScope.collegeNames.length > 0) {
+  // Apply college filter using IDs for performance, fallback to names
+  if (userScope.collegeIds && userScope.collegeIds.length > 0) {
+    const placeholders = userScope.collegeIds.map(() => '?').join(',');
+    conditions.push(`${tableAlias}.college_id IN (${placeholders})`);
+    params.push(...userScope.collegeIds);
+  } else if (userScope.collegeNames && userScope.collegeNames.length > 0) {
     const placeholders = userScope.collegeNames.map(() => '?').join(',');
     conditions.push(`${tableAlias}.college IN (${placeholders})`);
     params.push(...userScope.collegeNames);
-  } else if (userScope.collegeIds && userScope.collegeIds.length > 0) {
-    // Fallback: get college names from IDs via subquery
-    const placeholders = userScope.collegeIds.map(() => '?').join(',');
-    conditions.push(`${tableAlias}.college IN (SELECT name FROM colleges WHERE id IN (${placeholders}))`);
-    params.push(...userScope.collegeIds);
   }
 
   // Apply course filter (only if not "all courses")
   if (!userScope.allCourses) {
-    if (userScope.courseNames && userScope.courseNames.length > 0) {
+    if (userScope.courseIds && userScope.courseIds.length > 0) {
+      const placeholders = userScope.courseIds.map(() => '?').join(',');
+      conditions.push(`${tableAlias}.course_id IN (${placeholders})`);
+      params.push(...userScope.courseIds);
+    } else if (userScope.courseNames && userScope.courseNames.length > 0) {
       const placeholders = userScope.courseNames.map(() => '?').join(',');
       conditions.push(`${tableAlias}.course IN (${placeholders})`);
       params.push(...userScope.courseNames);
-    } else if (userScope.courseIds && userScope.courseIds.length > 0) {
-      const placeholders = userScope.courseIds.map(() => '?').join(',');
-      conditions.push(`${tableAlias}.course IN (SELECT name FROM courses WHERE id IN (${placeholders}))`);
-      params.push(...userScope.courseIds);
     }
   }
 
   // Apply branch filter (only if not "all branches")
   if (!userScope.allBranches) {
-    if (userScope.branchNames && userScope.branchNames.length > 0) {
+    if (userScope.branchIds && userScope.branchIds.length > 0) {
+      const placeholders = userScope.branchIds.map(() => '?').join(',');
+      conditions.push(`${tableAlias}.branch_id IN (${placeholders})`);
+      params.push(...userScope.branchIds);
+    } else if (userScope.branchNames && userScope.branchNames.length > 0) {
       const placeholders = userScope.branchNames.map(() => '?').join(',');
       conditions.push(`${tableAlias}.branch IN (${placeholders})`);
       params.push(...userScope.branchNames);
-    } else if (userScope.branchIds && userScope.branchIds.length > 0) {
-      const placeholders = userScope.branchIds.map(() => '?').join(',');
-      conditions.push(`${tableAlias}.branch IN (SELECT name FROM course_branches WHERE id IN (${placeholders}))`);
-      params.push(...userScope.branchIds);
     }
   }
 

@@ -116,7 +116,7 @@ const buildStudentQuery = (useBatchFilter) => {
       SELECT id, admission_number, student_name, batch, branch, course, college,
              current_year, current_semester, student_data, certificates_status,
              fee_status, scholar_status, registration_status, stud_type, student_status
-      FROM students s
+      FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       WHERE ${filters.join(' AND ')}
       ORDER BY s.batch, s.branch, s.current_year, s.admission_number
     `,

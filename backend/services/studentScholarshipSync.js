@@ -257,16 +257,21 @@ const fetchBatchSanctionedAmountsByYear = async (pool, student) => {
   const batch = String(student?.batch || '').trim();
   const course = String(student?.course || '').trim();
   const branch = String(student?.branch || '').trim();
+  const course_id = student?.course_id;
+  const branch_id = student?.branch_id;
   if (!batch || !course || !branch) return {};
 
+  const courseCondition = course_id ? 's.course_id = ?' : 's.course = ?';
+  const branchCondition = branch_id ? 's.branch_id = ?' : 's.branch = ?';
+  
   const [rows] = await pool.query(
     `SELECT ss.student_year, MAX(ss.sanctioned_amount) AS sanctioned_amount
      FROM student_scholarship ss
      INNER JOIN students s ON s.id = ss.student_id
-     WHERE s.batch = ? AND s.course = ? AND s.branch = ?
+     WHERE s.batch = ? AND ${courseCondition} AND ${branchCondition}
        AND ss.sanctioned_amount > 0
      GROUP BY ss.student_year`,
-    [batch, course, branch]
+    [batch, course_id || course, branch_id || branch]
   );
 
   const map = {};
@@ -283,19 +288,24 @@ const propagateBatchSanctionedAmount = async (connection, student, studentYear, 
   const batch = String(student?.batch || '').trim();
   const course = String(student?.course || '').trim();
   const branch = String(student?.branch || '').trim();
+  const course_id = student?.course_id;
+  const branch_id = student?.branch_id;
   const amount = toNumber(sanctionedAmount);
   const year = Math.max(1, toNumber(studentYear));
 
   if (!batch || !course || !branch || !year || amount <= 0) return;
 
+  const courseCondition = course_id ? 's.course_id = ?' : 's.course = ?';
+  const branchCondition = branch_id ? 's.branch_id = ?' : 's.branch = ?';
+
   await connection.query(
     `UPDATE student_scholarship ss
      INNER JOIN students s ON s.id = ss.student_id
      SET ss.sanctioned_amount = ?
-     WHERE s.batch = ? AND s.course = ? AND s.branch = ?
+     WHERE s.batch = ? AND ${courseCondition} AND ${branchCondition}
        AND ss.student_year = ?
        AND ss.sanctioned_amount IS NOT NULL`,
-    [amount, batch, course, branch, year]
+    [amount, batch, course_id || course, branch_id || branch, year]
   );
 };
 

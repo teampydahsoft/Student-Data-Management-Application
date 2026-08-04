@@ -347,7 +347,7 @@ exports.getAttendanceReport = async (req, res) => {
                 s.id AS student_db_id, s.student_name, s.admission_number, s.batch, s.course, s.branch, s.current_year, s.current_semester,
                 ia.id AS attendance_id, ia.check_in_time, ia.check_out_time, ia.check_in_location, ia.check_out_location, ia.status, ia.is_suspicious, ia.suspicious_reason, ia.attendance_date,
                 il_assigned.company_name AS assigned_company_name, il_assigned.address AS assigned_address, il_assigned.allowed_end_time AS assigned_allowed_end_time
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments i_assign ON s.id = i_assign.student_id
             JOIN internship_locations il_assigned ON i_assign.internship_id = il_assigned.id
             LEFT JOIN internship_attendance ia 
@@ -371,9 +371,48 @@ exports.getAttendanceReport = async (req, res) => {
 
         if (location) { query += ' AND i_assign.internship_id = ?'; params.push(location); }
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); }
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -435,7 +474,7 @@ exports.getDayEndReport = async (req, res) => {
                 SUM(CASE WHEN ia.status = 'Absent' THEN 1 ELSE 0 END) AS absent,
                 SUM(CASE WHEN ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
                 MAX(COALESCE(ia.check_out_time, ia.check_in_time)) AS last_updated
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments i_assign
                 ON s.id = i_assign.student_id
                 AND ? BETWEEN i_assign.start_date AND i_assign.end_date
@@ -450,9 +489,48 @@ exports.getDayEndReport = async (req, res) => {
         const params = [reportDate, reportDate, reportDate];
 
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); }
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -544,7 +622,7 @@ exports.downloadDayEndReport = async (req, res) => {
                 SUM(CASE WHEN ia.status = 'Absent' THEN 1 ELSE 0 END) AS absent,
                 SUM(CASE WHEN ia.status = 'Rejected' THEN 1 ELSE 0 END) AS rejected,
                 MAX(COALESCE(ia.check_out_time, ia.check_in_time)) AS last_updated
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments i_assign
                 ON s.id = i_assign.student_id
                 AND ? BETWEEN i_assign.start_date AND i_assign.end_date
@@ -557,9 +635,48 @@ exports.downloadDayEndReport = async (req, res) => {
         const params = [reportDate, reportDate];
 
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); }
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -1457,7 +1574,7 @@ exports.getInternshipFilters = async (req, res) => {
                 s.current_year,
                 s.current_semester,
                 s.college
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments ia ON s.id = ia.student_id
             WHERE ia.end_date >= ?
             AND s.student_status = 'Regular'
@@ -1468,9 +1585,48 @@ exports.getInternshipFilters = async (req, res) => {
         // Apply filters dynamically for cascading
         if (location) { query += ' AND ia.internship_id = ?'; params.push(location); }
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); }
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -1545,7 +1701,7 @@ exports.getEligibleStudents = async (req, res) => {
                 il.company_name AS current_company,
                 ia.start_date AS current_start_date,
                 ia.end_date AS current_end_date
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             LEFT JOIN internship_assignments ia ON s.id = ia.student_id AND ia.end_date >= ?
             LEFT JOIN internship_locations il ON ia.internship_id = il.id
             WHERE s.student_status = 'Regular'
@@ -1553,9 +1709,48 @@ exports.getEligibleStudents = async (req, res) => {
         const params = [today];
 
         if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
-        if (college) { query += ' AND s.college = ?'; params.push(college); }
-        if (course) { query += ' AND s.course = ?'; params.push(course); }
-        if (branch) { query += ' AND s.branch = ?'; params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year) { query += ' AND s.current_year = ?'; params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -1618,13 +1813,39 @@ exports.revalidateAttendanceByFilters = async (req, res) => {
             await connection.beginTransaction();
 
             // 1. Find all students matching filters
-            let studentQuery = `SELECT DISTINCT s.id FROM students s JOIN internship_assignments ia ON s.id = ia.student_id WHERE s.student_status = 'Regular'`;
+            let studentQuery = `SELECT DISTINCT s.id FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id JOIN internship_assignments ia ON s.id = ia.student_id WHERE s.student_status = 'Regular'`;
             const params = [];
 
             if (locationId) { studentQuery += ' AND ia.internship_id = ?'; params.push(locationId); }
             if (batch) { studentQuery += ' AND s.batch = ?'; params.push(batch); }
-            if (course) { studentQuery += ' AND s.course = ?'; params.push(course); }
-            if (branch) { studentQuery += ' AND s.branch = ?'; params.push(branch); }
+            if (course) {
+      if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        studentQuery += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        studentQuery += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+            if (branch) {
+      if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        studentQuery += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        studentQuery += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
             if (year) { studentQuery += ' AND s.current_year = ?'; params.push(year); }
             if (semester) { studentQuery += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -1783,9 +2004,48 @@ exports.getPeriodReport = async (req, res) => {
 
         if (location) { assignQuery += ' AND ia.internship_id = ?'; params.push(location); }
         if (batch)    { assignQuery += ' AND s.batch = ?';          params.push(batch); }
-        if (college)  { assignQuery += ' AND s.college = ?';        params.push(college); }
-        if (course)   { assignQuery += ' AND s.course = ?';         params.push(course); }
-        if (branch)   { assignQuery += ' AND s.branch = ?';         params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        assignQuery += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        assignQuery += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        assignQuery += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        assignQuery += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        assignQuery += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        assignQuery += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        assignQuery += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        assignQuery += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        assignQuery += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year)     { assignQuery += ' AND s.current_year = ?';   params.push(year); }
         if (semester) { assignQuery += ' AND s.current_semester = ?'; params.push(semester); }
 
@@ -2020,7 +2280,7 @@ exports.getStudentsForDate = async (req, res) => {
                 att.status AS current_status,
                 att.is_manual,
                 att.marked_by_name
-            FROM students s
+            FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
             JOIN internship_assignments ia
                 ON s.id = ia.student_id
                 AND ? BETWEEN ia.start_date AND ia.end_date
@@ -2033,9 +2293,48 @@ exports.getStudentsForDate = async (req, res) => {
 
         if (location) { query += ' AND ia.internship_id = ?'; params.push(location); }
         if (batch)    { query += ' AND s.batch = ?';          params.push(batch); }
-        if (college)  { query += ' AND s.college = ?';        params.push(college); }
-        if (course)   { query += ' AND s.course = ?';         params.push(course); }
-        if (branch)   { query += ' AND s.branch = ?';         params.push(branch); }
+        if (college) {
+      if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        if (/^\d+$/.test(college)) {
+        query += ' AND s.college_id = ?';
+        params.push(parseInt(college, 10));
+      } else {
+        query += ' AND s.college = ?';
+        params.push(college);
+      }
+      }
+    }
+        if (course) {
+      if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        if (/^\d+$/.test(course)) {
+        query += ' AND s.course_id = ?';
+        params.push(parseInt(course, 10));
+      } else {
+        query += ' AND s.course = ?';
+        params.push(course);
+      }
+      }
+    }
+        if (branch) {
+      if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        if (/^\d+$/.test(branch)) {
+        query += ' AND s.branch_id = ?';
+        params.push(parseInt(branch, 10));
+      } else {
+        query += ' AND s.branch = ?';
+        params.push(branch);
+      }
+      }
+    }
         if (year)     { query += ' AND s.current_year = ?';   params.push(year); }
         if (semester) { query += ' AND s.current_semester = ?'; params.push(semester); }
 

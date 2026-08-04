@@ -170,7 +170,7 @@ export default function PostAttendance() {
             <select value={batch} onChange={(e) => setBatch(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2">
               <option value="">All</option>
               {(filters.batches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>
@@ -179,7 +179,7 @@ export default function PostAttendance() {
             <select value={course} onChange={(e) => setCourse(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2">
               <option value="">Select</option>
               {(filters.courses || []).map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c.id || c}>{c.name || c}</option>
               ))}
             </select>
           </div>
@@ -188,7 +188,7 @@ export default function PostAttendance() {
             <select value={branch} onChange={(e) => setBranch(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2">
               <option value="">Select</option>
               {(filters.branches || []).map((b) => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b.id || b}>{b.name || b}</option>
               ))}
             </select>
           </div>

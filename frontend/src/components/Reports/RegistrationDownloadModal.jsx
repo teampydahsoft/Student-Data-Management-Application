@@ -159,7 +159,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('college', e.target.value)}
                                 >
                                     <option value="">All Colleges</option>
-                                    {[...new Set(filterOptions.colleges || [])].map(opt => <option key={`reg-col-${opt}`} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.colleges || [])].map((opt) => <option key={`reg-col-${opt}`} value={opt.id || opt}>{opt.name || opt}</option>)}
                                 </select>
                             </div>
                             {/* Batch */}
@@ -171,7 +171,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('batch', e.target.value)}
                                 >
                                     <option value="">All Batches</option>
-                                    {[...new Set(filterOptions.batches || [])].map(opt => <option key={`reg-batch-${opt}`} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.batches || [])].map((opt) => <option key={`reg-batch-${opt}`} value={opt.id || opt}>{opt.name || opt}</option>)}
                                 </select>
                             </div>
                             {/* Program */}
@@ -183,7 +183,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('course', e.target.value)}
                                 >
                                     <option value="">All Programs</option>
-                                    {[...new Set(filterOptions.courses || [])].map(opt => <option key={`reg-course-${opt}`} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.courses || [])].map((opt) => <option key={`reg-course-${opt}`} value={opt.id || opt}>{opt.name || opt}</option>)}
                                 </select>
                             </div>
                             {/* Branch */}
@@ -195,7 +195,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('branch', e.target.value)}
                                 >
                                     <option value="">All Branches</option>
-                                    {[...new Set(filterOptions.branches || [])].map(opt => <option key={`reg-branch-${opt}`} value={opt}>{opt}</option>)}
+                                    {[...new Set(filterOptions.branches || [])].map((opt) => <option key={`reg-branch-${opt}`} value={opt.id || opt}>{opt.name || opt}</option>)}
                                 </select>
                             </div>
                             {/* Year */}
@@ -207,7 +207,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('year', e.target.value)}
                                 >
                                     <option value="">All Years</option>
-                                    {[1, 2, 3, 4].map(y => <option key={y} value={y}>{y}</option>)}
+                                    {[1, 2, 3, 4].map((y) => <option key={y} value={y.id || y}>{y.name || y}</option>)}
                                 </select>
                             </div>
                             {/* Semester */}
@@ -219,7 +219,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                                     onChange={(e) => handleFilterChange('semester', e.target.value)}
                                 >
                                     <option value="">All Semesters</option>
-                                    {[1, 2].map(s => <option key={s} value={s}>{s}</option>)}
+                                    {[1, 2].map((s) => <option key={s} value={s.id || s}>{s.name || s}</option>)}
                                 </select>
                             </div>
                             {/* Scholarship Status */}

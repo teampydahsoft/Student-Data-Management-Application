@@ -45,13 +45,35 @@ const normalizeEligible = (value) => {
 // Financial data (sanctioned amount / releases) is allowed ONLY when every
 // semester in the year is Eligible. A single non-eligible semester forces null.
 
-const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
+let _cachedRtfConfig = null;
+let _cachedRtfConfigTime = 0;
+const CACHE_TTL_MS = 60000; // 1 minute
+
+const getRtfAmountConfig = async () => {
+  const now = Date.now();
+  if (_cachedRtfConfig && (now - _cachedRtfConfigTime) < CACHE_TTL_MS) {
+    return _cachedRtfConfig;
+  }
   try {
     const [rows] = await masterPool.query(
       "SELECT value FROM settings WHERE `key` = 'rtf_amount_config' LIMIT 1"
     );
-    if (!rows.length) return null;
-    const config = JSON.parse(rows[0].value || '{}');
+    if (!rows.length) {
+      _cachedRtfConfig = {};
+    } else {
+      _cachedRtfConfig = JSON.parse(rows[0].value || '{}');
+    }
+    _cachedRtfConfigTime = now;
+    return _cachedRtfConfig;
+  } catch (err) {
+    console.error('Error fetching rtf_amount_config:', err);
+    return {};
+  }
+};
+
+const getRtfLockedAmount = async (college, batch, course, branch, studentYear, caste = '') => {
+  try {
+    const config = await getRtfAmountConfig();
     const entries = Array.isArray(config.entries) ? config.entries : [];
     // Match: must match college/batch/course/branch AND be locked
     // Caste match: if entry has a caste, it must match the student's caste;
@@ -66,18 +88,15 @@ const getRtfLockedAmount = async (college, batch, course, branch, studentYear, c
     if (!entry) return null;
     const yearEntry = (entry.years || []).find((y) => Number(y.year) === Number(studentYear));
     return yearEntry ? Number(yearEntry.amount) || null : null;
-  } catch {
+  } catch (error) {
+    console.error('Error in getRtfLockedAmount:', error);
     return null;
   }
 };
 
 const isCollegeAccountForCaste = async (caste) => {
   try {
-    const [rows] = await masterPool.query(
-      "SELECT value FROM settings WHERE `key` = 'rtf_amount_config' LIMIT 1"
-    );
-    if (!rows.length) return false;
-    const config = JSON.parse(rows[0].value || '{}');
+    const config = await getRtfAmountConfig();
     const map = (config && typeof config.casteAccountTypes === 'object' && config.casteAccountTypes)
       ? config.casteAccountTypes
       : {};
