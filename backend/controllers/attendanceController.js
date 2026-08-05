@@ -491,8 +491,13 @@ exports.getFilterOptions = async (req, res) => {
       }
 
       if (college) {
-        clause += ' AND college = ?';
-        params.push(college);
+        if (/^\d+$/.test(college)) {
+          clause += ' AND college_id = ?';
+          params.push(parseInt(college, 10));
+        } else {
+          clause += ' AND college = ?';
+          params.push(college);
+        }
       }
 
       return { clause, params };
@@ -511,15 +516,25 @@ exports.getFilterOptions = async (req, res) => {
     // Level 2: + Course (For Branches)
     const level2 = { clause: level1.clause, params: [...level1.params] };
     if (course) {
-      level2.clause += ' AND course = ?';
-      level2.params.push(course);
+      if (/^\d+$/.test(course)) {
+        level2.clause += ' AND course_id = ?';
+        level2.params.push(parseInt(course, 10));
+      } else {
+        level2.clause += ' AND course = ?';
+        level2.params.push(course);
+      }
     }
 
     // Level 3: + Branch (For Years/Semesters)
     const level3 = { clause: level2.clause, params: [...level2.params] };
     if (branch) {
-      level3.clause += ' AND branch = ?';
-      level3.params.push(branch);
+      if (/^\d+$/.test(branch)) {
+        level3.clause += ' AND branch_id = ?';
+        level3.params.push(parseInt(branch, 10));
+      } else {
+        level3.clause += ' AND branch = ?';
+        level3.params.push(branch);
+      }
     }
 
     // --- Queries ---
@@ -596,7 +611,7 @@ exports.getFilterOptions = async (req, res) => {
     // Apply level filter to courses when level is provided
     if (levelCourseNames && levelCourseNames.length > 0) {
       const levelSet = new Set(levelCourseNames);
-      courseRowsRes = courseRowsRes.filter(r => levelSet.has(r.course));
+      courseRowsRes = courseRowsRes.filter(r => levelSet.has(r.name));
     } else if (levelCourseNames && levelCourseNames.length === 0) {
       courseRowsRes = [];
     }
