@@ -381,7 +381,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
         const collegeRes = await api.get('/students/quick-filters', {
           params: { batch: selectedBatch, applyExclusions: 'true' }
         });
-        const collegeNames = collegeRes.data?.data?.colleges || [];
+        const collegeNames = (collegeRes.data?.data?.colleges || []).map(c => typeof c === 'object' ? c.name : c);
 
         let courseNames = [];
         if (selectedCollegeId) {
@@ -390,7 +390,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
             const courseRes = await api.get('/students/quick-filters', {
               params: { batch: selectedBatch, college: college.name, applyExclusions: 'true' }
             });
-            courseNames = courseRes.data?.data?.courses || [];
+            courseNames = (courseRes.data?.data?.courses || []).map(c => typeof c === 'object' ? c.name : c);
           }
         }
 
@@ -407,7 +407,7 @@ const AcademicCalendar = ({ colleges, courses, academicYears, readOnly = false }
                 applyExclusions: 'true'
               }
             });
-            branchNames = branchRes.data?.data?.branches || [];
+            branchNames = (branchRes.data?.data?.branches || []).map(c => typeof c === 'object' ? c.name : c);
           }
         }
 
