@@ -382,7 +382,7 @@ const Students = () => {
     stud_type: [],
     student_status: [],
     scholar_status: [],
-    caste: [],
+    category_id: [],
     gender: [],
     certificates_status: [],
     remarks: [],
@@ -471,6 +471,7 @@ const Students = () => {
     if (filters.level) filterParams.level = filters.level;
     if (filters.branch) filterParams.branch = filters.branch;
     if (filters.section) filterParams.section = filters.section;
+    if (filters.category_id) filterParams.category_id = filters.category_id;
 
     // All student database fields
     const studentFields = [
@@ -966,7 +967,7 @@ const Students = () => {
       { key: 'adhar_no', altKeys: ['ADHAR No', 'aadhar_no', 'aadhaar_no'] },
       { key: 'father_name', altKeys: ['Father Name', 'fathername'] },
       { key: 'gender', altKeys: ['M/F', 'Gender'] },
-      { key: 'caste', altKeys: ['Caste'] },
+      { key: 'category_id', altKeys: ['Category'] },
 
       // Academic Fields
       { key: 'admission_number', altKeys: ['Admission Number', 'Admission No', 'admission_no'] },
@@ -1462,7 +1463,7 @@ const Students = () => {
           stud_type: data.stud_type || [],
           student_status: data.student_status || [],
           scholar_status: SCHOLAR_STATUS_OPTIONS,
-          caste: data.caste || [],
+          category_id: data.category_id || [],
           gender: data.gender || [],
           certificates_status: data.certificates_status || [],
           remarks: data.remarks || [],
@@ -3124,16 +3125,19 @@ const Students = () => {
                 </select>
               </div>
               <div className="flex flex-col">
-                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Caste</label>
+                <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Category</label>
                 <select
-                  value={filters.caste || ''}
-                  onChange={(e) => handleFilterChange('caste', e.target.value)}
+                  value={filters.category_id || ''}
+                  onChange={(e) => handleFilterChange('category_id', e.target.value)}
                   className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 >
                   <option value="">All</option>
-                  {(dropdownFilterOptions.caste || []).map((caste) => (
-                    <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
-                  ))}
+                  {(dropdownFilterOptions.category_id || []).map((catId) => {
+                    const cat = casteCategories.find(c => String(c.id) === String(catId));
+                    return (
+                      <option key={catId} value={catId}>{cat ? cat.name : catId}</option>
+                    );
+                  })}
                 </select>
               </div>
               <div className="flex flex-col">

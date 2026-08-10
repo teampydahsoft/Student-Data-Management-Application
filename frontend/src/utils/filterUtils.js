@@ -189,7 +189,7 @@ export const fetchDropdownFilterOptions = async (filters = {}, excludeField = nu
         stud_type: data.stud_type || [],
         student_status: data.student_status || [],
         scholar_status: data.scholar_status || [],
-        caste: data.caste || [],
+        category_id: data.category_id || [],
         gender: data.gender || [],
         certificates_status: data.certificates_status || [],
         remarks: data.remarks || []
@@ -200,7 +200,7 @@ export const fetchDropdownFilterOptions = async (filters = {}, excludeField = nu
       stud_type: [],
       student_status: [],
       scholar_status: [],
-      caste: [],
+      category_id: [],
       gender: [],
       certificates_status: [],
       remarks: []
@@ -211,7 +211,7 @@ export const fetchDropdownFilterOptions = async (filters = {}, excludeField = nu
       stud_type: [],
       student_status: [],
       scholar_status: [],
-      caste: [],
+      category_id: [],
       gender: [],
       certificates_status: [],
       remarks: []

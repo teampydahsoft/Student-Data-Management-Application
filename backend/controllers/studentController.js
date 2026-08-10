@@ -2622,6 +2622,11 @@ exports.commitBulkUploadStudents = async (req, res) => {
           finalValue = parseInt(finalValue, 10);
         }
 
+        if (finalColumnName === 'caste' || finalColumnName === 'Caste') {
+          updatedColumns.add(finalColumnName);
+          return;
+        }
+
         insertColumns.push(finalColumnName);
         insertPlaceholders.push('?');
         insertValues.push(finalValue);
@@ -2845,12 +2850,12 @@ exports.getAllStudents = async (req, res) => {
     const studentFieldFilters = [
       'admission_number', 'pin_no', 'stud_type', 'student_name', 'student_status',
       'scholar_status', 'student_mobile', 'parent_mobile1', 'parent_mobile2',
-      'caste', 'gender', 'father_name', 'dob', 'adhar_no', 'admission_date',
+      'category_id', 'gender', 'father_name', 'dob', 'adhar_no', 'admission_date',
       'student_address', 'city_village', 'mandal_name', 'district',
       'previous_college', 'certificates_status', 'remarks', 'college'
     ];
     const exactMatchStudentFilterFields = new Set([
-      'caste',
+      'category_id',
       'gender',
       'stud_type',
       'student_status',
@@ -3902,9 +3907,13 @@ exports.updateStudent = async (req, res) => {
           finalValue = parseInt(finalValue, 10);
         }
 
-        updateFields.push(`${finalColumnName} = ?`);
-        updateValues.push(finalValue);
-        updatedColumns.add(finalColumnName);
+        if (finalColumnName === 'caste' || finalColumnName === 'Caste') {
+          updatedColumns.add(finalColumnName);
+        } else {
+          updateFields.push(`${finalColumnName} = ?`);
+          updateValues.push(finalValue);
+          updatedColumns.add(finalColumnName);
+        }
 
         // Link this student only: set caste_id / category_id when caste (category text) is saved
         if (columnName === 'caste') {
@@ -4819,10 +4828,14 @@ exports.createStudent = async (req, res) => {
           finalValue = parseInt(finalValue, 10);
         }
 
-        insertColumns.push(finalColumnName);
-        insertPlaceholders.push('?');
-        insertValues.push(finalValue);
-        updatedColumns.add(finalColumnName);
+        if (finalColumnName === 'caste' || finalColumnName === 'Caste') {
+          updatedColumns.add(finalColumnName);
+        } else {
+          insertColumns.push(finalColumnName);
+          insertPlaceholders.push('?');
+          insertValues.push(finalValue);
+          updatedColumns.add(finalColumnName);
+        }
       }
     });
 
@@ -5562,7 +5575,7 @@ exports.getFilterOptions = async (req, res) => {
     );
     const scholarStatusOptions = STANDARD_SCHOLAR_STATUS_FILTER_OPTIONS;
     const [casteRows] = await masterPool.query(
-      `SELECT DISTINCT caste FROM students ${whereClause} AND caste IS NOT NULL AND caste <> '' ORDER BY caste ASC`,
+      `SELECT DISTINCT category_id FROM students ${whereClause} AND category_id IS NOT NULL`,
       params
     );
     const [genderRows] = await masterPool.query(
@@ -5592,7 +5605,7 @@ exports.getFilterOptions = async (req, res) => {
         stud_type: studTypeOptions,
         student_status: studentStatusRows.map((row) => row.student_status),
         scholar_status: scholarStatusOptions,
-        caste: casteRows.map((row) => row.caste),
+        category_id: casteRows.map((row) => row.category_id),
         gender: genderRows.map((row) => row.gender),
         certificates_status: certificatesStatusRows.map((row) => row.certificates_status),
         remarks: remarksRows.map((row) => row.remarks),
