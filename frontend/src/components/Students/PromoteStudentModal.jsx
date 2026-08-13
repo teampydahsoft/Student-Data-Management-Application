@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, TrendingUp, Wand2 } from 'lucide-react';
+import { X, TrendingUp, Wand2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
+import UpdateSemesterEndDateModal from './UpdateSemesterEndDateModal';
+import PromotionValidationModal from './PromotionValidationModal';
 
 const ACADEMIC_STAGES = [
   { year: 1, semester: 1 },
@@ -31,6 +33,10 @@ const PromoteStudentModal = ({ isOpen, student, onClose, onPromoted }) => {
   const [targetSemester, setTargetSemester] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [courseConfig, setCourseConfig] = useState(null);
+  const [currentSemesterData, setCurrentSemesterData] = useState(null);
+  const [nextSemesterData, setNextSemesterData] = useState(null);
+  const [isUpdateSemesterModalOpen, setIsUpdateSemesterModalOpen] = useState(false);
+  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
 
   const currentStage = useMemo(() => {
     if (!student) return { year: 1, semester: 1 };
@@ -120,6 +126,53 @@ const PromoteStudentModal = ({ isOpen, student, onClose, onPromoted }) => {
     return getNextStageWithConfig(currentStage.year, currentStage.semester, courseConfig);
   }, [currentStage, courseConfig]);
 
+  const targetStage = useMemo(() => {
+    return mode === 'auto'
+      ? automaticNextStage
+      : { year: Number(targetYear), semester: Number(targetSemester) };
+  }, [mode, automaticNextStage, targetYear, targetSemester]);
+
+  // Fetch semester data from academic calendar
+  useEffect(() => {
+    if (!isOpen || !student || !student.course_id || !currentStage) {
+      setCurrentSemesterData(null);
+      setNextSemesterData(null);
+      return;
+    }
+
+    const fetchSemesterData = async () => {
+      try {
+        const response = await api.get('/semesters', {
+          params: {
+            courseId: student.course_id,
+            batch: student.batch || student.academic_year
+          }
+        });
+        const semesters = response.data?.data || [];
+        
+        const matchingCurrent = semesters.find(
+          s => Number(s.yearOfStudy) === currentStage.year && Number(s.semesterNumber) === currentStage.semester
+        );
+        setCurrentSemesterData(matchingCurrent);
+
+        if (targetStage) {
+          const matchingNext = semesters.find(
+            s => Number(s.yearOfStudy) === targetStage.year && Number(s.semesterNumber) === targetStage.semester
+          );
+          setNextSemesterData(matchingNext);
+        } else {
+          setNextSemesterData(null);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch semester data:', error);
+        setCurrentSemesterData(null);
+        setNextSemesterData(null);
+      }
+    };
+
+    fetchSemesterData();
+  }, [isOpen, student, currentStage, targetStage]);
+
   useEffect(() => {
     if (!student) {
       setTargetYear(1);
@@ -137,15 +190,21 @@ const PromoteStudentModal = ({ isOpen, student, onClose, onPromoted }) => {
     return null;
   }
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = (event) => {
     event.preventDefault();
     if (mode === 'auto' && !automaticNextStage) {
       toast.error('Student is already at the final academic stage');
       return;
     }
 
+    setIsValidationModalOpen(true);
+  };
+
+  const executePromotion = async () => {
     try {
       setSubmitting(true);
+      setIsValidationModalOpen(false);
+      
       const payload =
         mode === 'manual'
           ? {
@@ -228,7 +287,7 @@ const PromoteStudentModal = ({ isOpen, student, onClose, onPromoted }) => {
                   </>
                 ) : (
                   <p className="text-sm text-indigo-700 font-medium">
-                    🎓 Student has already completed all semesters (Year 4 • Semester 2)
+                    ✨ Student has already completed all semesters (Year 4 • Semester 2)
                   </p>
                 )}
               </div>
@@ -340,9 +399,31 @@ const PromoteStudentModal = ({ isOpen, student, onClose, onPromoted }) => {
           </div>
         </form>
       </div>
+
+      <UpdateSemesterEndDateModal
+        isOpen={isUpdateSemesterModalOpen}
+        onClose={() => setIsUpdateSemesterModalOpen(false)}
+        semesterData={currentSemesterData}
+        onUpdated={(updatedSemester) => {
+          setCurrentSemesterData(updatedSemester);
+          setIsUpdateSemesterModalOpen(false);
+          // Optional: re-trigger submit or let the user click submit again
+        }}
+      />
+
+      <PromotionValidationModal
+        isOpen={isValidationModalOpen}
+        onClose={() => setIsValidationModalOpen(false)}
+        currentSemesterData={currentSemesterData}
+        nextSemesterData={nextSemesterData}
+        onProceed={executePromotion}
+        onUpdateEndDate={() => {
+          setIsValidationModalOpen(false);
+          setIsUpdateSemesterModalOpen(true);
+        }}
+      />
     </div>
   );
 };
 
 export default PromoteStudentModal;
-

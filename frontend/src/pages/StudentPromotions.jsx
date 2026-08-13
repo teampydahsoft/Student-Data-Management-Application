@@ -17,6 +17,8 @@ import api from '../config/api';
 import LoadingAnimation from '../components/LoadingAnimation';
 import RejoinModal from '../components/RejoinModal';
 import ProfileUpdateSettingsModal from '../components/Students/ProfileUpdateSettingsModal';
+import PromotionValidationModal from '../components/Students/PromotionValidationModal';
+import UpdateSemesterEndDateModal from '../components/Students/UpdateSemesterEndDateModal';
 
 import { SkeletonTable } from '../components/SkeletonLoader';
 import { formatDate } from '../utils/dateUtils';
@@ -80,6 +82,12 @@ const StudentPromotions = () => {
   // Additional year promotion popup state
   const [additionalYearStudents, setAdditionalYearStudents] = useState([]); // students eligible for additional year
   const [additionalYearChoices, setAdditionalYearChoices] = useState({}); // { admissionNumber: 'additional' | 'complete' }
+
+  // Modals state for validations
+  const [isUpdateSemesterModalOpen, setIsUpdateSemesterModalOpen] = useState(false);
+  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
+  const [problematicSemesterData, setProblematicSemesterData] = useState(null);
+  const [problematicNextSemesterData, setProblematicNextSemesterData] = useState(null);
 
   const selectedCount = selectedAdmissionNumbers.size;
 
@@ -517,6 +525,7 @@ const StudentPromotions = () => {
 
       const courseConfigMap = new Map();
       const branchMetaMap = new Map(); // key: "courseName|branchName"
+      let allSemesters = [];
       if (uniqueCourses.size > 0) {
         try {
           const coursesResponse = await api.get('/courses?includeInactive=false');
@@ -527,7 +536,8 @@ const StudentPromotions = () => {
               courseConfigMap.set(courseName, {
                 totalYears: course.totalYears || course.total_years || course.defaultYears,
                 semestersPerYear: course.semestersPerYear || course.semesters_per_year,
-                yearSemesterConfig: course.yearSemesterConfig || course.year_semester_config
+                yearSemesterConfig: course.yearSemesterConfig || course.year_semester_config,
+                courseId: course.id
               });
               // Store branch metadata for additional year lookup
               (course.branches || []).forEach(branch => {
@@ -536,8 +546,12 @@ const StudentPromotions = () => {
               });
             }
           });
+
+          // Fetch all semesters to validate end dates
+          const semestersResponse = await api.get('/semesters');
+          allSemesters = semestersResponse.data?.data || [];
         } catch (error) {
-          console.warn('Failed to fetch course configurations:', error);
+          console.warn('Failed to fetch course configurations or semesters:', error);
         }
       }
 
@@ -553,12 +567,54 @@ const StudentPromotions = () => {
         }) : null;
 
         const issues = [];
+        const warnings = [];
         const infoNotes = [];
 
         if (!student) {
           issues.push('Student record not found');
         } else if (!currentStage) {
           issues.push('Missing current academic stage');
+        }
+
+        let currentSemesterData = null;
+        let nextSemesterData = null;
+
+        // Validate Academic Calendar End Date and Next Start Date
+        if (student && currentStage && courseConfig && courseConfig.courseId) {
+          const studentBatch = student.batch || student.academic_year || student.student_data?.['Academic Year'] || student.student_data?.batch;
+          currentSemesterData = allSemesters.find(s => 
+            Number(s.courseId) === Number(courseConfig.courseId) && 
+            (s.batchLabel === studentBatch || s.batch === studentBatch) && 
+            Number(s.yearOfStudy) === currentStage.year && 
+            Number(s.semesterNumber) === currentStage.semester
+          );
+
+          if (currentSemesterData && currentSemesterData.endDate) {
+            const endDate = new Date(currentSemesterData.endDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+            if (endDate > today) {
+              warnings.push('Current semester end date is in the future. Please update in Academic Calendar.');
+            }
+          } else if (currentSemesterData && !currentSemesterData.endDate) {
+            warnings.push('Current semester end date is missing in the academic calendar.');
+          } else if (!currentSemesterData) {
+            issues.push('No academic calendar entry found for the current semester. Please configure it in Settings first.');
+          }
+
+          if (nextStage) {
+            nextSemesterData = allSemesters.find(s => 
+              Number(s.courseId) === Number(courseConfig.courseId) && 
+              (s.batchLabel === studentBatch || s.batch === studentBatch) && 
+              Number(s.yearOfStudy) === nextStage.year && 
+              Number(s.semesterNumber) === nextStage.semester
+            );
+
+            if (!nextSemesterData || !nextSemesterData.startDate) {
+              issues.push('Next semester start date is missing in the academic calendar.');
+            }
+          }
         }
 
         // Note: Course completion check is done after issues array is built
@@ -624,7 +680,12 @@ const StudentPromotions = () => {
           isCourseCompleted,
           hasAdditionalYearOption,
           additionalYearTarget,
-          infoNotes
+          issues,
+          warnings,
+          infoNotes,
+          currentSemesterData,
+          nextSemesterData,
+          canBePromoted: issues.length === 0 && !isCourseCompleted && !hasAdditionalYearOption
         };
       });
 
@@ -671,6 +732,20 @@ const StudentPromotions = () => {
     } finally {
       setLoadingPromotionPlan(false);
     }
+  };
+
+  const handleConfirmPromotionClick = () => {
+    const studentsWithIssuesOrWarnings = promotionPlan.filter(item => 
+      (item.warnings && item.warnings.length > 0) || 
+      (item.issues && item.issues.some(issue => issue.includes('academic calendar')))
+    );
+    if (studentsWithIssuesOrWarnings.length > 0) {
+      setProblematicSemesterData(studentsWithIssuesOrWarnings[0].currentSemesterData);
+      setProblematicNextSemesterData(studentsWithIssuesOrWarnings[0].nextSemesterData);
+      setIsValidationModalOpen(true);
+      return;
+    }
+    executePromotion();
   };
 
   const executePromotion = async () => {
@@ -1436,6 +1511,19 @@ const StudentPromotions = () => {
                 </div>
               )}
 
+              {/* Warnings Panel */}
+              {promotionPlan.some(item => item.warnings && item.warnings.length > 0) && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-900">Future End Date Warnings</p>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      Some selected students are in semesters that have an end date in the future (or missing). By confirming, you are choosing to proceed with their promotion anyway.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Additional Year Decision Panel */}
               {additionalYearStudents.length > 0 && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl overflow-hidden">
@@ -1635,7 +1723,7 @@ const StudentPromotions = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={executePromotion}
+                  onClick={handleConfirmPromotionClick}
                   className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold shadow-lg hover:from-indigo-700 hover:to-indigo-800 transition-all transform hover:scale-105 active:scale-95 text-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
                   disabled={submitting}
                 >
@@ -1868,10 +1956,35 @@ const StudentPromotions = () => {
         onClose={() => setShowProfileUpdateSettings(false)}
       />
 
+      <UpdateSemesterEndDateModal
+        isOpen={isUpdateSemesterModalOpen}
+        onClose={() => setIsUpdateSemesterModalOpen(false)}
+        semesterData={problematicSemesterData}
+        onUpdated={(updatedSemester) => {
+          setIsUpdateSemesterModalOpen(false);
+          setConfirmationOpen(false); // Close confirmation to force re-evaluation
+          toast.success('End date updated. Please select students and promote again.');
+        }}
+      />
+
+      <PromotionValidationModal
+        isOpen={isValidationModalOpen}
+        onClose={() => setIsValidationModalOpen(false)}
+        currentSemesterData={problematicSemesterData}
+        nextSemesterData={problematicNextSemesterData}
+        onProceed={() => {
+          setIsValidationModalOpen(false);
+          executePromotion();
+        }}
+        onUpdateEndDate={() => {
+          setIsValidationModalOpen(false);
+          setIsUpdateSemesterModalOpen(true);
+        }}
+      />
+
     </div>
   );
 
 };
 
 export default StudentPromotions;
-
