@@ -456,6 +456,7 @@ exports.sendSMSAnnouncement = async (req, res) => {
             template_id,
             template_content,
             variable_mappings,
+            selected_mobile_targets,
             target_college,
             target_batch,
             target_course,
@@ -466,6 +467,15 @@ exports.sendSMSAnnouncement = async (req, res) => {
 
         if (!template_id || !template_content) {
             return res.status(400).json({ success: false, message: 'Template ID and content are required' });
+        }
+
+        const allowedMobileTargets = ['student_mobile', 'parent_mobile1', 'parent_mobile2'];
+        const mobileTargets = Array.isArray(selected_mobile_targets) && selected_mobile_targets.length
+            ? selected_mobile_targets.filter(target => allowedMobileTargets.includes(target))
+            : ['parent_mobile1'];
+
+        if (!mobileTargets.length) {
+            return res.status(400).json({ success: false, message: 'At least one valid mobile target is required' });
         }
 
         // 1. Fetch Recipients
@@ -554,38 +564,42 @@ exports.sendSMSAnnouncement = async (req, res) => {
                             });
                         }
 
-                        // Send SMS to parent mobile only
-                        let mobile = student.parent_mobile1 || student.parent_mobile2;
-                        if (!mobile && student.student_data) {
-                            mobile = student.student_data['Parent Mobile Number 1'] || student.student_data['Parent Mobile Number 2'];
-                        }
-                        // Do NOT fall back to student mobile — parent-only policy
+                        const mobileMap = {
+                            student_mobile: student.student_mobile || student.student_data?.['Student Mobile Number'],
+                            parent_mobile1: student.parent_mobile1 || student.student_data?.['Parent Mobile Number 1'],
+                            parent_mobile2: student.parent_mobile2 || student.student_data?.['Parent Mobile Number 2']
+                        };
+                        const uniqueNumbers = [...new Set(
+                            mobileTargets
+                                .map(target => mobileMap[target])
+                                .filter(Boolean)
+                                .map(number => String(number).replace(/[^0-9]/g, ''))
+                                .filter(number => number.length >= 10)
+                        )];
 
-                        if (mobile) {
-                            const cleanMobile = String(mobile).replace(/[^0-9]/g, '');
-                            if (cleanMobile.length >= 10) {
-                                await smsService.sendSms({
-                                    to: cleanMobile,
-                                    message: message,
-                                    templateId: template_id,
-                                    peId: process.env.SMS_PE_ID,
-                                    meta: {
-                                        category: 'Announcement',
-                                        student: {
-                                            id: student.id,
-                                            admissionNumber: student.admission_number,
-                                            currentYear: student.current_year,
-                                            currentSemester: student.current_semester
-                                        }
-                                    }
-                                });
-                                sentCount++;
-                            } else {
-                                failedCount++;
-                            }
-                        } else {
+                        if (!uniqueNumbers.length) {
                             failedCount++;
+                            return;
                         }
+
+                        await Promise.all(uniqueNumbers.map(async (mobileNumber) => {
+                            await smsService.sendSms({
+                                to: mobileNumber,
+                                message: message,
+                                templateId: template_id,
+                                peId: process.env.SMS_PE_ID,
+                                meta: {
+                                    category: 'Announcement',
+                                    student: {
+                                        id: student.id,
+                                        admissionNumber: student.admission_number,
+                                        currentYear: student.current_year,
+                                        currentSemester: student.current_semester
+                                    }
+                                }
+                            });
+                            sentCount++;
+                        }));
 
                     } catch (e) {
                         console.error(`Failed to send SMS to student ${student.admission_number}:`, e);

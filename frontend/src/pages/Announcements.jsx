@@ -41,6 +41,8 @@ const Announcements = () => {
     // SMS States
     const [smsMode, setSmsMode] = useState('broadcast'); // 'broadcast' | 'templates'
     const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [isMobileTargetModalOpen, setIsMobileTargetModalOpen] = useState(false);
+    const [selectedMobileTargets, setSelectedMobileTargets] = useState(['parent_mobile1']);
 
     // UI States
     const [loading, setLoading] = useState(false);
@@ -407,16 +409,33 @@ const Announcements = () => {
         } catch (e) { toast.error('Failed to delete'); }
     };
 
-    const handleSendBroadcast = async (e) => {
-        e.preventDefault();
+    const validateBroadcastBeforeSend = () => {
         if (!selectedTemplate) return toast.error('Please select a template');
 
         const sendMappings = syncVariableMappings(formData.template_content, formData.variable_mappings);
         if (sendMappings.length === 0 && /\{#var#\}/.test(formData.template_content || '')) {
-            return toast.error('Could not detect variables — check template content');
+            toast.error('Could not detect variables — check template content');
+            return null;
         }
         if (sendMappings.some(m => !m.value || !String(m.value).trim())) {
-            return toast.error('Please enter or select a value for every variable before sending');
+            toast.error('Please enter or select a value for every variable before sending');
+            return null;
+        }
+        return sendMappings;
+    };
+
+    const handleSendBroadcast = async (e) => {
+        e.preventDefault();
+        const sendMappings = validateBroadcastBeforeSend();
+        if (!sendMappings) return;
+        setIsMobileTargetModalOpen(true);
+    };
+
+    const handleConfirmBroadcastSend = async () => {
+        const sendMappings = validateBroadcastBeforeSend();
+        if (!sendMappings) return;
+        if (selectedMobileTargets.length === 0) {
+            return toast.error('Please select at least one mobile number target');
         }
 
         setLoading(true);
@@ -425,6 +444,7 @@ const Announcements = () => {
                 template_id: formData.template_id,
                 template_content: formData.template_content,
                 variable_mappings: sendMappings,
+                selected_mobile_targets: selectedMobileTargets,
                 target_college: formData.target_college,
                 target_batch: formData.target_batch,
                 target_course: formData.target_course,
@@ -436,6 +456,7 @@ const Announcements = () => {
             const response = await api.post('/announcements/sms', payload);
             if (response.data.success) {
                 toast.success(response.data.message || 'SMS Sending Initiated');
+                setIsMobileTargetModalOpen(false);
                 // Reset form but keep mode
                 setFormData(prev => ({
                     ...initialFormState,
@@ -450,6 +471,14 @@ const Announcements = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleMobileTarget = (targetKey) => {
+        setSelectedMobileTargets(prev => (
+            prev.includes(targetKey)
+                ? prev.filter(item => item !== targetKey)
+                : [...prev, targetKey]
+        ));
     };
 
     const handleDelete = async (id, type) => {
@@ -1167,6 +1196,69 @@ const Announcements = () => {
                     </div>
                 )
             }
+
+            {/* Mobile Target Selection Modal */}
+            {isMobileTargetModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                        <div className="p-5 border-b flex justify-between items-center bg-gray-50">
+                            <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+                                <Smartphone className="text-green-600" size={20} />
+                                Select Target Mobile Numbers
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => setIsMobileTargetModalOpen(false)}
+                                className="p-2 hover:bg-gray-200 rounded-full text-gray-500"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Choose one or more number types to receive this SMS broadcast.
+                            </p>
+
+                            <div className="space-y-2">
+                                {[
+                                    { key: 'student_mobile', label: 'Student Mobile Number' },
+                                    { key: 'parent_mobile1', label: 'Parent 1 Mobile Number 1' },
+                                    { key: 'parent_mobile2', label: 'Parent 1 Mobile Number 2' }
+                                ].map((target) => (
+                                    <label key={target.key} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMobileTargets.includes(target.key)}
+                                            onChange={() => toggleMobileTarget(target.key)}
+                                            className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">{target.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMobileTargetModalOpen(false)}
+                                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmBroadcastSend}
+                                    disabled={loading}
+                                    className="bg-green-600 text-white px-5 py-2 rounded text-sm font-bold hover:bg-green-700 disabled:opacity-70 flex items-center gap-2"
+                                >
+                                    {loading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                                    Confirm & Send
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };
