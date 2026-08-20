@@ -9,6 +9,19 @@ import { Users, Building2, UserCog, GraduationCap, X, UserPlus, ExternalLink, Bo
 import toast from 'react-hot-toast';
 import TimetableTable from '../../components/Admin/TimetableTable';
 
+const yearOrdinalSuffix = (year) => {
+  const v = year % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  switch (year % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+};
+
+const formatHodYearLabel = (year) => `${year}${yearOrdinalSuffix(year)} Year`;
+
 const FacultyManagement = () => {
   const [tab, setTab] = useState('employees');
   const [employeeFilter, setEmployeeFilter] = useState('all'); // all | principals | aos | hods | faculty
@@ -302,19 +315,23 @@ const FacultyManagement = () => {
       try {
         setLoadingAvailableYears(true);
         const res = await api.get(`/faculty/branches/${assignHodBranch.id}/available-years`);
-        if (res.data.success && Array.isArray(res.data.data)) {
-          setAvailableYearsForBranch(res.data.data);
-        } else {
-          setAvailableYearsForBranch([1, 2, 3, 4, 5, 6]);
+        const years = (res.data.success && Array.isArray(res.data.data) && res.data.data.length > 0)
+          ? res.data.data
+          : [1, 2, 3, 4, 5, 6];
+        setAvailableYearsForBranch(years);
+        if (!editingHod) {
+          setSelectedHodYears([...years]);
         }
       } catch (e) {
-        setAvailableYearsForBranch([1, 2, 3, 4, 5, 6]);
+        const fallback = [1, 2, 3, 4, 5, 6];
+        setAvailableYearsForBranch(fallback);
+        if (!editingHod) setSelectedHodYears([...fallback]);
       } finally {
         setLoadingAvailableYears(false);
       }
     };
     fetchYears();
-  }, [assignHodBranch?.id]);
+  }, [assignHodBranch?.id, editingHod]);
 
   useEffect(() => {
     if (!branchYearSemDetail) {
@@ -361,13 +378,6 @@ const FacultyManagement = () => {
     setNewHodEmail('');
     setNewHodUsername('');
     setNewHodPassword('');
-  };
-
-  const toggleHodYear = (y) => {
-    setSelectedHodYears((prev) => {
-      const next = prev.includes(y) ? prev.filter((x) => x !== y) : [...prev, y].sort((a, b) => a - b);
-      return next.length > 0 ? next : prev;
-    });
   };
 
   const programs = React.useMemo(() => {
@@ -593,7 +603,9 @@ const FacultyManagement = () => {
         role: 'branch_hod',
         collegeIds: [Number(selectedCollegeId)],
         courseIds: [assignHodBranch.course_id].filter(Boolean),
-        branchIds: [assignHodBranch.id]
+        branchIds: [assignHodBranch.id],
+        hodYears: selectedHodYears,
+        allHodYears: yearsToShow.length > 0 && yearsToShow.every((y) => selectedHodYears.includes(y))
       });
       const newUserId = createRes.data?.data?.id;
       if (newUserId) {
@@ -678,6 +690,49 @@ const FacultyManagement = () => {
       ? [...new Set([...availableYearsForBranch, ...editingHod.hod.years])].sort((a, b) => a - b)
       : availableYearsForBranch)
     : [1, 2, 3, 4, 5, 6];
+
+  const allHodYearsSelected = yearsToShow.length > 0 && yearsToShow.every((y) => selectedHodYears.includes(y));
+  const selectAllHodYears = () => setSelectedHodYears([...yearsToShow]);
+  const toggleHodYear = (y) => {
+    setSelectedHodYears((prev) => {
+      const allSelected = yearsToShow.length > 0 && yearsToShow.every((year) => prev.includes(year));
+      if (allSelected) return [y];
+      const next = prev.includes(y) ? prev.filter((x) => x !== y) : [...prev, y].sort((a, b) => a - b);
+      return next.length > 0 ? next : prev;
+    });
+  };
+
+  const renderHodYearPicker = () => (
+    <div>
+      <label className="block text-sm font-semibold text-slate-700 mb-2">Year access</label>
+      {loadingAvailableYears ? (
+        <p className="text-sm text-slate-500">Loading years…</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={selectAllHodYears}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${allHodYearsSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            All years
+          </button>
+          {yearsToShow.map((y) => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => toggleHodYear(y)}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${!allHodYearsSelected && selectedHodYears.includes(y) ? 'bg-indigo-600 text-white' : allHodYearsSelected ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              {formatHodYearLabel(y)}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-slate-500 mt-1">
+        Years are based on the selected course/branch duration. Choose all years or a particular year (1st Year, 2nd Year, …).
+      </p>
+    </div>
+  );
 
   // Filtered list for Employees tab (by sub-tab)
   const getFilteredEmployeeList = () => {
@@ -2102,26 +2157,7 @@ const FacultyManagement = () => {
                   {editingHod ? (
                     <div className="space-y-4">
                       <p className="text-slate-600 text-sm">Branch: <strong>{assignHodBranch.name}</strong></p>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Years (based on students in this branch)</label>
-                        {loadingAvailableYears ? (
-                          <p className="text-sm text-slate-500">Loading years…</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {yearsToShow.map((y) => (
-                              <button
-                                key={y}
-                                type="button"
-                                onClick={() => toggleHodYear(y)}
-                                className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${selectedHodYears.includes(y) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                              >
-                                Year {y}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <p className="text-xs text-slate-500 mt-1">Years shown are from students currently in this branch</p>
-                      </div>
+                      {renderHodYearPicker()}
                       <div className="flex gap-2 pt-2">
                         <button
                           type="button"
@@ -2179,26 +2215,7 @@ const FacultyManagement = () => {
                               ))}
                             </select>
                           )}
-                          <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Years (based on students in this branch)</label>
-                            {loadingAvailableYears ? (
-                              <p className="text-sm text-slate-500">Loading years…</p>
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                {yearsToShow.map((y) => (
-                                  <button
-                                    key={y}
-                                    type="button"
-                                    onClick={() => toggleHodYear(y)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${selectedHodYears.includes(y) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                  >
-                                    Year {y}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            <p className="text-xs text-slate-500 mt-1">Years shown are from students currently in this branch</p>
-                          </div>
+                          {renderHodYearPicker()}
                           <div className="flex gap-2 pt-2">
                             <button
                               type="button"
@@ -2260,26 +2277,7 @@ const FacultyManagement = () => {
                               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                           </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Years (based on students in this branch)</label>
-                            {loadingAvailableYears ? (
-                              <p className="text-sm text-slate-500">Loading years…</p>
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                {yearsToShow.map((y) => (
-                                  <button
-                                    key={y}
-                                    type="button"
-                                    onClick={() => toggleHodYear(y)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${selectedHodYears.includes(y) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                  >
-                                    Year {y}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            <p className="text-xs text-slate-500 mt-1">Years shown are from students currently in this branch</p>
-                          </div>
+                          {renderHodYearPicker()}
                           <div className="flex gap-2 pt-2">
                             <button
                               type="button"

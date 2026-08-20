@@ -34,7 +34,8 @@ import {
   Save,
   ToggleRight,
   ToggleLeft,
-  Shield
+  Shield,
+  Calendar
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -64,7 +65,7 @@ const ROLE_DESCRIPTIONS = {
   college_principal: 'Manages overall college operations and has oversight of all programs and branches',
   college_ao: 'Administrative officer responsible for college-level operations and record management',
   college_attender: 'Basic access for attendance tracking and daily record management',
-  branch_hod: 'Head of Department with control over specific branches and their operations',
+  branch_hod: 'Head of Department with control over specific branches, and year-based student access',
   office_assistant: 'Assists with office operations, document management, and administrative tasks',
   cashier: 'Handles fee collection, payment processing, and financial transactions',
   faculty: 'Teaching staff with access to student records, attendance, and course-related modules',
@@ -108,8 +109,272 @@ const initialFormState = {
   branchIds: [],
   allCourses: false,
   allBranches: false,
+  hodYears: [],
+  allHodYears: true,
   permissions: {},
   hrms_id: ''
+};
+
+const yearOrdinalSuffix = (year) => {
+  const v = year % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  switch (year % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+};
+
+const formatHodYearLabel = (year) => `${year}${yearOrdinalSuffix(year)} Year`;
+
+const getCourseTotalYears = (course) => {
+  if (!course) return 0;
+  return Number(course.totalYears || course.total_years || course.structure?.totalYears || 0) || 0;
+};
+
+const getBranchTotalYears = (branch, coursesList = []) => {
+  if (!branch) return 0;
+  const fromBranch = Number(branch.totalYears || branch.total_years || branch.structure?.totalYears || 0) || 0;
+  if (fromBranch > 0) return fromBranch;
+  const course = coursesList.find((c) => String(c.id) === String(branch.courseId || branch.course_id));
+  return getCourseTotalYears(course);
+};
+
+const getHodAvailableYears = ({
+  role,
+  courseIds = [],
+  branchIds = [],
+  allCourses = false,
+  allBranches = false,
+  coursesList = [],
+  branchesList = []
+}) => {
+  if (role !== 'branch_hod') return [];
+
+  let maxYears = 0;
+  const relevantBranches = allBranches
+    ? branchesList
+    : branchesList.filter((b) => branchIds.some((id) => String(id) === String(b.id)));
+
+  relevantBranches.forEach((branch) => {
+    maxYears = Math.max(maxYears, getBranchTotalYears(branch, coursesList));
+  });
+
+  if (maxYears === 0) {
+    const relevantCourses = allCourses
+      ? coursesList
+      : coursesList.filter((c) => courseIds.some((id) => String(id) === String(c.id)));
+    relevantCourses.forEach((course) => {
+      maxYears = Math.max(maxYears, getCourseTotalYears(course));
+    });
+  }
+
+  if (maxYears < 1) {
+    const coursesReady = allCourses
+      ? coursesList.length > 0
+      : courseIds.some((id) => coursesList.some((c) => String(c.id) === String(id)));
+    if (!coursesReady && relevantBranches.length === 0) return [];
+    maxYears = 4;
+  }
+
+  return Array.from({ length: Math.min(maxYears, 10) }, (_, i) => i + 1);
+};
+
+const formatHodYearsDisplay = (userData) => {
+  if (userData?.role !== 'branch_hod') return null;
+  if (userData.allHodYears || !userData.hodYears?.length) return 'All Years';
+  if (userData.hodYears.length === 1) return formatHodYearLabel(userData.hodYears[0]);
+  return userData.hodYears.map(formatHodYearLabel).join(', ');
+};
+
+const HodYearAccessSelector = ({ availableYears, selectedYears = [], allYears, onChange, variant = 'compact' }) => {
+  if (!availableYears?.length) return null;
+
+  const selected = allYears ? availableYears : selectedYears;
+  const allSelected = availableYears.length > 0
+    && selected.length === availableYears.length
+    && availableYears.every((y) => selected.includes(y));
+  const isModal = variant === 'modal';
+
+  const apply = (nextYears, nextAll) => onChange({ hodYears: nextYears, allHodYears: nextAll });
+
+  const toggleAll = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (allSelected) apply([], false);
+    else apply([...availableYears], true);
+  };
+
+  const toggleYear = (year, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (allSelected) {
+      apply([year], false);
+      return;
+    }
+    const next = selected.includes(year)
+      ? selected.filter((y) => y !== year)
+      : [...selected, year].sort((a, b) => a - b);
+    const nowAll = next.length === availableYears.length && availableYears.every((y) => next.includes(y));
+    apply(nowAll ? [...availableYears] : next, nowAll);
+  };
+
+  const chipBase = isModal
+    ? 'px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all'
+    : 'px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors';
+
+  const chipActive = isModal
+    ? 'bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-500/20'
+    : 'bg-amber-500 text-white border-amber-500';
+
+  const chipIdle = isModal
+    ? 'bg-white text-slate-600 border-slate-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+    : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300 hover:bg-amber-50';
+
+  return (
+    <div>
+      <div className={`flex items-center justify-between ${isModal ? 'mb-2' : 'mb-1'}`}>
+        <label className={`flex items-center gap-1.5 font-semibold text-slate-600 ${isModal ? 'text-xs' : 'text-[11px]'}`}>
+          <Calendar size={isModal ? 14 : 12} className="text-amber-500" />
+          Year Access <span className="text-red-500">*</span>
+        </label>
+        <span className={`text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded ${isModal ? 'text-[10px]' : 'text-[9px]'}`}>
+          {allSelected ? 'All years' : `${selected.length} selected`}
+        </span>
+      </div>
+      <div className={isModal ? 'p-3 rounded-xl border-2 border-dashed border-slate-300 bg-white' : ''}>
+        <div className={`flex flex-wrap ${isModal ? 'gap-2' : 'gap-1.5'}`}>
+          <button
+            type="button"
+            onClick={toggleAll}
+            className={`${chipBase} ${allSelected ? chipActive : chipIdle}`}
+          >
+            All Years
+          </button>
+          {availableYears.map((year) => {
+            const isOn = !allSelected && selected.includes(year);
+            return (
+              <button
+                key={year}
+                type="button"
+                onClick={(e) => toggleYear(year, e)}
+                className={`${chipBase} ${isOn ? chipActive : chipIdle}`}
+              >
+                {formatHodYearLabel(year)}
+              </button>
+            );
+          })}
+        </div>
+        <p className={isModal ? 'text-[10px] text-slate-500 mt-2.5' : 'text-[9px] text-slate-400 mt-1'}>
+          {allSelected
+            ? 'This HOD can access students in all years of the selected course/branch.'
+            : selected.length
+              ? `Access limited to ${selected.map(formatHodYearLabel).join(', ')}.`
+              : 'Select All Years or a particular year (1st Year, 2nd Year, …).'}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const RoleSelectModal = ({ isOpen, onClose, roles, selectedRole, onSelect }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) setSearchTerm('');
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const filteredRoles = roles.filter((role) => {
+    const roleValue = role.value ?? role.role_key;
+    const roleLabel = role.label ?? ROLE_LABELS[roleValue] ?? roleValue;
+    const description = role.description ?? ROLE_DESCRIPTIONS[roleValue] ?? '';
+    const term = searchTerm.toLowerCase();
+    return roleLabel.toLowerCase().includes(term) || description.toLowerCase().includes(term);
+  });
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white w-full max-w-2xl rounded-lg sm:rounded-2xl shadow-2xl overflow-hidden my-auto">
+        <div className="bg-gradient-to-r from-violet-600 to-purple-600 px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+                <ShieldCheck size={20} className="text-white" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg font-bold text-white truncate">Select Role</h3>
+                <p className="text-xs sm:text-sm text-white/80">Choose one role for this user</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-lg bg-white/20 text-white hover:bg-white/30 active:bg-white/40 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 border-b border-slate-100">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search roles..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            />
+          </div>
+        </div>
+
+        <div className="p-3 sm:p-4 max-h-[50vh] overflow-y-auto">
+          {filteredRoles.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No roles found</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredRoles.map((role) => {
+                const roleValue = role.value ?? role.role_key;
+                const roleLabel = role.label ?? ROLE_LABELS[roleValue] ?? roleValue;
+                const isSelected = selectedRole === roleValue;
+                return (
+                  <button
+                    key={roleValue}
+                    type="button"
+                    onClick={() => onSelect(roleValue)}
+                    className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all border-2 ${
+                      isSelected
+                        ? `${ROLE_COLORS[roleValue] || 'bg-slate-100 text-slate-700 border-slate-200'} border-current`
+                        : 'bg-white border-slate-200 hover:border-violet-300 hover:bg-violet-50/40'
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[roleValue] || 'from-slate-400 to-slate-600'} flex items-center justify-center shadow-sm flex-shrink-0`}>
+                      <ShieldCheck size={16} className="text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-sm text-slate-800 truncate">{roleLabel}</h4>
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {role.description ?? ROLE_DESCRIPTIONS[roleValue] ?? ''}
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <div className="w-5 h-5 bg-current rounded-full flex items-center justify-center flex-shrink-0">
+                        <Check size={12} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // Selection Modal Component
@@ -409,6 +674,7 @@ const UserManagement = () => {
   const [showEditCollegeModal, setShowEditCollegeModal] = useState(false);
   const [showEditCourseModal, setShowEditCourseModal] = useState(false);
   const [showEditBranchModal, setShowEditBranchModal] = useState(false);
+  const [showEditRoleModal, setShowEditRoleModal] = useState(false);
   const [editCourses, setEditCourses] = useState([]);
   const [editBranches, setEditBranches] = useState([]);
   const [loadingEditCourses, setLoadingEditCourses] = useState(false);
@@ -803,7 +1069,7 @@ const UserManagement = () => {
       setCourses([]);
       setBranches([]);
     }
-    setForm(prev => ({ ...prev, courseIds: [], branchIds: [], allCourses: false, allBranches: false }));
+    setForm(prev => ({ ...prev, courseIds: [], branchIds: [], allCourses: false, allBranches: false, hodYears: [], allHodYears: true }));
   }, [form.collegeIds]);
 
   useEffect(() => {
@@ -812,7 +1078,7 @@ const UserManagement = () => {
     } else {
       setBranches([]);
     }
-    setForm(prev => ({ ...prev, branchIds: [], allBranches: false }));
+    setForm(prev => ({ ...prev, branchIds: [], allBranches: false, hodYears: [], allHodYears: true }));
   }, [form.courseIds, form.allCourses]);
 
   if (!hasUserManagementAccess) {
@@ -925,6 +1191,16 @@ const UserManagement = () => {
       toast.error('Please select at least one college');
       return;
     }
+    if (form.role === 'branch_hod') {
+      if (!form.allBranches && form.branchIds.length === 0) {
+        toast.error('Please select at least one branch for Branch HOD');
+        return;
+      }
+      if (!form.allHodYears && (!form.hodYears || form.hodYears.length === 0)) {
+        toast.error('Please select All Years or at least one year for this Branch HOD');
+        return;
+      }
+    }
 
     setCreatingUser(true);
     try {
@@ -936,10 +1212,12 @@ const UserManagement = () => {
         password: form.password,
         role: form.role,
         collegeIds: form.collegeIds,
-        courseIds: form.allCourses ? [] : form.courseIds,
-        branchIds: form.allBranches ? [] : form.branchIds,
-        allCourses: form.allCourses,
-        allBranches: form.allBranches,
+        courseIds: form.allCourses && form.role !== 'branch_hod' ? [] : form.courseIds,
+        branchIds: form.allBranches && form.role !== 'branch_hod' ? [] : form.branchIds,
+        allCourses: form.role === 'branch_hod' ? false : form.allCourses,
+        allBranches: form.role === 'branch_hod' ? false : form.allBranches,
+        hodYears: form.role === 'branch_hod' ? form.hodYears : [],
+        allHodYears: form.role === 'branch_hod' ? !!form.allHodYears : false,
         permissions: initializePermissions(),
         hrms_id: form.hrms_id || null, // Include hrms_id
         sendCredentials: !form.hrms_id // Only send credentials for local accounts
@@ -987,8 +1265,12 @@ const UserManagement = () => {
       collegeIds: userData.collegeIds || (userData.collegeId ? [userData.collegeId] : []),
       courseIds: userData.courseIds || (userData.courseId ? [userData.courseId] : []),
       branchIds: userData.branchIds || (userData.branchId ? [userData.branchId] : []),
-      allCourses: userData.allCourses || false,
-      allBranches: userData.allBranches || false,
+      allCourses: userData.role === 'branch_hod' ? false : (userData.allCourses || false),
+      allBranches: userData.role === 'branch_hod' ? false : (userData.allBranches || false),
+      hodYears: userData.hodYears || [],
+      allHodYears: userData.role === 'branch_hod'
+        ? (userData.allHodYears ?? (!userData.hodYears || userData.hodYears.length === 0))
+        : true,
       permissions: userData.permissions || {},
       isActive: userData.isActive,
       hrms_id: userData.hrms_id || ''
@@ -1001,8 +1283,7 @@ const UserManagement = () => {
     if (collegeIds.length > 0) {
       await loadEditCourses(collegeIds);
     }
-    if (courseIds.length > 0 && !userData.allCourses) {
-      // Wait a bit for courses to load then load branches
+    if (courseIds.length > 0 && (!userData.allCourses || userData.role === 'branch_hod')) {
       setTimeout(async () => {
         await loadEditBranches(courseIds);
       }, 100);
@@ -1017,7 +1298,9 @@ const UserManagement = () => {
       courseIds: [],
       branchIds: [],
       allCourses: false,
-      allBranches: false
+      allBranches: false,
+      hodYears: [],
+      allHodYears: true
     }));
     setEditCourses([]);
     setEditBranches([]);
@@ -1032,7 +1315,9 @@ const UserManagement = () => {
       ...prev,
       courseIds: newCourseIds,
       branchIds: [],
-      allBranches: false
+      allBranches: false,
+      hodYears: [],
+      allHodYears: true
     }));
     setEditBranches([]);
     if (newCourseIds.length > 0) {
@@ -1047,7 +1332,9 @@ const UserManagement = () => {
       allCourses: checked,
       courseIds: checked ? [] : prev.courseIds,
       allBranches: checked ? true : prev.allBranches,
-      branchIds: checked ? [] : prev.branchIds
+      branchIds: checked ? [] : prev.branchIds,
+      hodYears: [],
+      allHodYears: true
     }));
     if (checked) {
       setEditBranches([]);
@@ -1071,11 +1358,23 @@ const UserManagement = () => {
     setShowEditCollegeModal(false);
     setShowEditCourseModal(false);
     setShowEditBranchModal(false);
+    setShowEditRoleModal(false);
   };
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     if (!editForm) return;
+
+    if (editForm.role === 'branch_hod') {
+      if (!editForm.allBranches && (!editForm.branchIds || editForm.branchIds.length === 0)) {
+        toast.error('Please select at least one branch for Branch HOD');
+        return;
+      }
+      if (!editForm.allHodYears && (!editForm.hodYears || editForm.hodYears.length === 0)) {
+        toast.error('Please select All Years or at least one year for this Branch HOD');
+        return;
+      }
+    }
 
     setUpdatingUser(true);
     try {
@@ -1085,10 +1384,12 @@ const UserManagement = () => {
         phone: editForm.phone?.trim() || null,
         role: editForm.role,
         collegeIds: editForm.collegeIds,
-        courseIds: editForm.allCourses ? [] : editForm.courseIds,
-        branchIds: editForm.allBranches ? [] : editForm.branchIds,
-        allCourses: editForm.allCourses,
-        allBranches: editForm.allBranches,
+        courseIds: editForm.allCourses && editForm.role !== 'branch_hod' ? [] : editForm.courseIds,
+        branchIds: editForm.allBranches && editForm.role !== 'branch_hod' ? [] : editForm.branchIds,
+        allCourses: editForm.role === 'branch_hod' ? false : editForm.allCourses,
+        allBranches: editForm.role === 'branch_hod' ? false : editForm.allBranches,
+        hodYears: editForm.role === 'branch_hod' ? editForm.hodYears : [],
+        allHodYears: editForm.role === 'branch_hod' ? !!editForm.allHodYears : false,
         permissions: editForm.permissions,
         isActive: editForm.isActive,
         hrms_id: editForm.hrms_id || null
@@ -1267,6 +1568,62 @@ const UserManagement = () => {
   };
 
   const needsBranchSelection = form.role === 'branch_hod';
+
+  const createHodAvailableYears = useMemo(() => getHodAvailableYears({
+    role: form.role,
+    courseIds: form.courseIds,
+    branchIds: form.branchIds,
+    allCourses: form.allCourses,
+    allBranches: form.allBranches,
+    coursesList: courses,
+    branchesList: branches
+  }), [form.role, form.courseIds, form.branchIds, form.allCourses, form.allBranches, courses, branches]);
+
+  const editHodAvailableYears = useMemo(() => {
+    if (!editForm) return [];
+    return getHodAvailableYears({
+      role: editForm.role,
+      courseIds: editForm.courseIds,
+      branchIds: editForm.branchIds,
+      allCourses: editForm.allCourses,
+      allBranches: editForm.allBranches,
+      coursesList: editCourses,
+      branchesList: editBranches
+    });
+  }, [editForm, editCourses, editBranches]);
+
+  useEffect(() => {
+    if (form.role !== 'branch_hod') return;
+    setForm((prev) => {
+      if (prev.allHodYears) {
+        const same = prev.hodYears.length === createHodAvailableYears.length
+          && createHodAvailableYears.every((y) => prev.hodYears.includes(y));
+        if (same) return prev;
+        return { ...prev, hodYears: [...createHodAvailableYears] };
+      }
+      const kept = prev.hodYears.filter((y) => createHodAvailableYears.includes(y));
+      const same = kept.length === prev.hodYears.length && kept.every((y, i) => y === prev.hodYears[i]);
+      if (same) return prev;
+      return { ...prev, hodYears: kept };
+    });
+  }, [form.role, createHodAvailableYears]);
+
+  useEffect(() => {
+    if (!editForm || editForm.role !== 'branch_hod') return;
+    setEditForm((prev) => {
+      if (!prev) return prev;
+      if (prev.allHodYears) {
+        const same = (prev.hodYears || []).length === editHodAvailableYears.length
+          && editHodAvailableYears.every((y) => prev.hodYears.includes(y));
+        if (same) return prev;
+        return { ...prev, hodYears: [...editHodAvailableYears] };
+      }
+      const kept = (prev.hodYears || []).filter((y) => editHodAvailableYears.includes(y));
+      const same = kept.length === (prev.hodYears || []).length && kept.every((y, i) => y === prev.hodYears[i]);
+      if (same) return prev;
+      return { ...prev, hodYears: kept };
+    });
+  }, [editForm?.role, editHodAvailableYears]);
 
   return (
     <div className="w-full min-h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-slate-50 via-slate-50 to-blue-50/30">
@@ -1705,24 +2062,30 @@ const UserManagement = () => {
                       <div className="flex items-center justify-between mb-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
                           <GraduationCap size={12} className="text-emerald-500" />
-                          Courses
+                          Courses {form.role === 'branch_hod' && <span className="text-red-500">*</span>}
                         </label>
-                        <label className="flex items-center gap-1.5 text-[9px] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={form.allCourses}
-                            onChange={(e) => {
-                              handleFormChange('allCourses', e.target.checked);
-                              if (e.target.checked) {
-                                handleFormChange('courseIds', []);
-                                handleFormChange('allBranches', true);
-                                handleFormChange('branchIds', []);
-                              }
-                            }}
-                            className="w-3 h-3 rounded text-emerald-500"
-                          />
-                          <span className="font-medium text-emerald-600">All</span>
-                        </label>
+                        {form.role !== 'branch_hod' ? (
+                          <label className="flex items-center gap-1.5 text-[9px] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={form.allCourses}
+                              onChange={(e) => {
+                                handleFormChange('allCourses', e.target.checked);
+                                if (e.target.checked) {
+                                  handleFormChange('courseIds', []);
+                                  handleFormChange('allBranches', true);
+                                  handleFormChange('branchIds', []);
+                                }
+                              }}
+                              className="w-3 h-3 rounded text-emerald-500"
+                            />
+                            <span className="font-medium text-emerald-600">All</span>
+                          </label>
+                        ) : (
+                          <span className="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {form.courseIds.length} selected
+                          </span>
+                        )}
                       </div>
                       {!form.allCourses ? (
                         <button
@@ -1760,18 +2123,24 @@ const UserManagement = () => {
                           <BookOpen size={12} className="text-orange-500" />
                           Branches {needsBranchSelection && <span className="text-red-500">*</span>}
                         </label>
-                        <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={form.allBranches}
-                            onChange={(e) => {
-                              handleFormChange('allBranches', e.target.checked);
-                              if (e.target.checked) handleFormChange('branchIds', []);
-                            }}
-                            className="w-3 h-3 rounded text-orange-500"
-                          />
-                          <span className="font-medium text-orange-600">All</span>
-                        </label>
+                        {form.role !== 'branch_hod' ? (
+                          <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={form.allBranches}
+                              onChange={(e) => {
+                                handleFormChange('allBranches', e.target.checked);
+                                if (e.target.checked) handleFormChange('branchIds', []);
+                              }}
+                              className="w-3 h-3 rounded text-orange-500"
+                            />
+                            <span className="font-medium text-orange-600">All</span>
+                          </label>
+                        ) : (
+                          <span className="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {form.branchIds.length} selected
+                          </span>
+                        )}
                       </div>
                       {!form.allBranches ? (
                         <button
@@ -1799,6 +2168,16 @@ const UserManagement = () => {
                         </div>
                       )}
                     </div>
+                  )}
+
+                    {form.role === 'branch_hod' && createHodAvailableYears.length > 0 && (form.courseIds.length > 0 || form.allCourses) && (
+                    <HodYearAccessSelector
+                      variant="compact"
+                      availableYears={createHodAvailableYears}
+                      selectedYears={form.hodYears}
+                      allYears={form.allHodYears}
+                      onChange={({ hodYears, allHodYears }) => setForm((prev) => ({ ...prev, hodYears, allHodYears }))}
+                    />
                   )}
 
                   {form.collegeIds.length === 0 && (
@@ -2096,6 +2475,12 @@ const UserManagement = () => {
                                     </span>
                                   </div>
                                 )}
+                                {userData.role === 'branch_hod' && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-medium">
+                                    <Calendar size={10} className="flex-shrink-0" />
+                                    {formatHodYearsDisplay(userData)}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="px-2 py-1.5">
@@ -2264,6 +2649,12 @@ const UserManagement = () => {
                                   <GraduationCap size={13} className="text-emerald-500 flex-shrink-0 mt-0.5" />
                                   <span className="flex-1">{userData.courseNames.map(c => c.name).join(', ')}</span>
                                 </div>
+                              )}
+                              {userData.role === 'branch_hod' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md text-[11px] font-medium">
+                                  <Calendar size={12} className="flex-shrink-0" />
+                                  {formatHodYearsDisplay(userData)}
+                                </span>
                               )}
                             </div>
                           </div>
@@ -3297,10 +3688,10 @@ const UserManagement = () => {
                 </button>
               </div>
 
-              <form className="flex-1 overflow-y-auto p-4 sm:p-6" onSubmit={handleUpdateUser}>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-                  {/* User Info */}
-                  <div className="space-y-4">
+              <form className="min-h-0 flex flex-col overflow-hidden" onSubmit={handleUpdateUser}>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 p-4 sm:p-6 min-h-0">
+                  {/* User Info — this column sets the dialog body height */}
+                  <div className="flex flex-col space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -3479,38 +3870,30 @@ const UserManagement = () => {
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Role</label>
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                        {(availableRolesForCreate.length ? availableRolesForCreate : FIXED_ROLES.map(r => ({ value: r.value, label: r.label }))).map(role => {
-                          const roleValue = role.value ?? role.role_key;
-                          const roleLabel = role.label ?? ROLE_LABELS[roleValue] ?? roleValue;
-                          const isSelected = editForm.role === roleValue;
-                          return (
-                            <div
-                              key={roleValue}
-                              onClick={() => setEditForm(prev => ({ ...prev, role: roleValue }))}
-                              className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all border-2 ${isSelected
-                                ? `${ROLE_COLORS[roleValue] || 'bg-slate-100 text-slate-700 border-slate-200'} border-current`
-                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                }`}
-                            >
-                              <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[roleValue] || 'from-slate-400 to-slate-600'} flex items-center justify-center shadow-sm flex-shrink-0`}>
-                                <ShieldCheck size={14} className="text-white" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-xs text-slate-800">{roleLabel}</h4>
-                                <p className="text-[10px] text-slate-500 line-clamp-1">
-                                  {role.description ?? ROLE_DESCRIPTIONS[roleValue] ?? ''}
-                                </p>
-                              </div>
-                              {isSelected && (
-                                <div className="w-4 h-4 bg-current rounded-full flex items-center justify-center flex-shrink-0">
-                                  <Check size={10} className="text-white" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditRoleModal(true)}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-violet-400 hover:bg-violet-50/50 transition-all group text-left"
+                      >
+                        <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[editForm.role] || 'from-slate-400 to-slate-600'} flex items-center justify-center shadow-sm flex-shrink-0`}>
+                          <ShieldCheck size={16} className="text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {editForm.role ? (
+                            <>
+                              <p className="font-medium text-slate-700 text-sm truncate">
+                                {ROLE_LABELS[editForm.role] || availableRolesForCreate.find((r) => (r.value ?? r.role_key) === editForm.role)?.label || editForm.role}
+                              </p>
+                              <p className="text-[11px] text-slate-400 truncate">
+                                {ROLE_DESCRIPTIONS[editForm.role] || 'Click to change role'}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-slate-400 text-sm">Click to select a role</p>
+                          )}
+                        </div>
+                        <Edit size={14} className="text-slate-400 group-hover:text-violet-500" />
+                      </button>
                     </div>
                     <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors">
                       <input
@@ -3523,8 +3906,8 @@ const UserManagement = () => {
                     </label>
                   </div>
 
-                  {/* Access Scope Edit */}
-                  <div className="space-y-4">
+                  {/* Access Scope Edit — matches User Details height */}
+                  <div className="flex flex-col space-y-4 lg:h-0 lg:min-h-full lg:overflow-y-auto pr-0 lg:pr-1">
                     <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                       <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
                         <Layers size={16} className="text-emerald-500" />
@@ -3567,22 +3950,29 @@ const UserManagement = () => {
                     {/* Courses Selection */}
                     {editForm.collegeIds.length > 0 && (
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
-                            <GraduationCap size={12} className="text-emerald-500" />
-                            Courses
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                            <GraduationCap size={14} className="text-emerald-500" />
+                            Courses <span className="text-red-500">*</span>
                           </label>
-                          <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={editForm.allCourses}
-                              onChange={(e) => handleEditAllCoursesChange(e.target.checked)}
-                              className="w-3 h-3 rounded text-emerald-500"
-                            />
-                            <span className="font-medium text-emerald-600">All</span>
-                          </label>
+                          {editForm.role !== 'branch_hod' && (
+                            <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editForm.allCourses}
+                                onChange={(e) => handleEditAllCoursesChange(e.target.checked)}
+                                className="w-3 h-3 rounded text-emerald-500"
+                              />
+                              <span className="font-medium text-emerald-600">All</span>
+                            </label>
+                          )}
+                          {editForm.role === 'branch_hod' && (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {editForm.courseIds.length} selected
+                            </span>
+                          )}
                         </div>
-                        {!editForm.allCourses ? (
+                        {(!editForm.allCourses || editForm.role === 'branch_hod') ? (
                           <button
                             type="button"
                             onClick={() => setShowEditCourseModal(true)}
@@ -3612,24 +4002,30 @@ const UserManagement = () => {
                     )}
 
                     {/* Branches Selection */}
-                    {(editForm.courseIds.length > 0 && !editForm.allCourses) && (
+                    {(editForm.courseIds.length > 0 && (!editForm.allCourses || editForm.role === 'branch_hod')) && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
                             <BookOpen size={14} className="text-orange-500" />
-                            Branches
+                            Branches {editForm.role === 'branch_hod' && <span className="text-red-500">*</span>}
                           </label>
-                          <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={editForm.allBranches}
-                              onChange={(e) => handleEditAllBranchesChange(e.target.checked)}
-                              className="w-3 h-3 rounded text-orange-500"
-                            />
-                            <span className="font-medium text-orange-600">All</span>
-                          </label>
+                          {editForm.role !== 'branch_hod' ? (
+                            <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editForm.allBranches}
+                                onChange={(e) => handleEditAllBranchesChange(e.target.checked)}
+                                className="w-3 h-3 rounded text-orange-500"
+                              />
+                              <span className="font-medium text-orange-600">All</span>
+                            </label>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {editForm.branchIds.length} selected
+                            </span>
+                          )}
                         </div>
-                        {!editForm.allBranches ? (
+                        {(!editForm.allBranches || editForm.role === 'branch_hod') ? (
                           <button
                             type="button"
                             onClick={() => setShowEditBranchModal(true)}
@@ -3658,6 +4054,16 @@ const UserManagement = () => {
                       </div>
                     )}
 
+                    {editForm.role === 'branch_hod' && editHodAvailableYears.length > 0 && (editForm.courseIds.length > 0 || editForm.allCourses) && (
+                      <HodYearAccessSelector
+                        variant="modal"
+                        availableYears={editHodAvailableYears}
+                        selectedYears={editForm.hodYears || []}
+                        allYears={editForm.allHodYears}
+                        onChange={({ hodYears, allHodYears }) => setEditForm((prev) => ({ ...prev, hodYears, allHodYears }))}
+                      />
+                    )}
+
                     {editForm.collegeIds.length === 0 && (
                       <div className="text-center py-6">
                         <Layers size={32} className="text-slate-300 mx-auto mb-2" />
@@ -3666,9 +4072,9 @@ const UserManagement = () => {
                     )}
                   </div>
 
-                  {/* Improved Permissions UI */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  {/* Permissions — same height as User Details, scrolls internally */}
+                  <div className="flex flex-col min-h-0 max-h-[50vh] lg:max-h-none lg:h-0 lg:min-h-full">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                           <Settings size={16} className="text-amber-500" />
@@ -3693,7 +4099,7 @@ const UserManagement = () => {
                       </div>
                     </div>
 
-                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 mt-4">
                       {Object.keys(BACKEND_MODULES).map(key => {
                         const moduleKey = BACKEND_MODULES[key];
                         const modulePerms = MODULE_PERMISSIONS[moduleKey];
@@ -3850,7 +4256,7 @@ const UserManagement = () => {
                   </div>
                 </div>
 
-                <div className="mt-4 sm:mt-6 pt-4 sm:pt-5 border-t border-slate-200 flex flex-col sm:flex-row justify-end gap-3">
+                <div className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row justify-end gap-3">
                   <button type="button" onClick={closeEditModal} className="w-full sm:w-auto px-4 sm:px-5 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors touch-manipulation min-h-[44px]">
                     Cancel
                   </button>
@@ -3918,6 +4324,21 @@ const UserManagement = () => {
         allSelected={editForm?.allBranches || false}
         onAllChange={handleEditAllBranchesChange}
         emptyMessage="No branches available for selected courses"
+      />
+
+      <RoleSelectModal
+        isOpen={showEditRoleModal}
+        onClose={() => setShowEditRoleModal(false)}
+        roles={availableRolesForCreate.length ? availableRolesForCreate : FIXED_ROLES.map((r) => ({ value: r.value, label: r.label }))}
+        selectedRole={editForm?.role}
+        onSelect={(roleValue) => {
+          setEditForm((prev) => ({
+            ...prev,
+            role: roleValue,
+            ...(roleValue !== 'branch_hod' ? { hodYears: [], allHodYears: true } : {})
+          }));
+          setShowEditRoleModal(false);
+        }}
       />
 
       {/* Reset Password Modal */}

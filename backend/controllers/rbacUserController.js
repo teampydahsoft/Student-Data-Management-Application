@@ -135,6 +135,214 @@ const parseScopeData = (data) => {
   }
 };
 
+const parseHodYears = (years) => {
+  if (!Array.isArray(years)) return [];
+  return [...new Set(
+    years
+      .map((y) => parseInt(y, 10))
+      .filter((y) => !Number.isNaN(y) && y >= 1 && y <= 10)
+  )].sort((a, b) => a - b);
+};
+
+const parseHodYearsJson = (raw) => {
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return parseHodYears(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return [];
+  }
+};
+
+const yearsRange = (totalYears) => {
+  const maxY = Math.min(Math.max(parseInt(totalYears, 10) || 4, 1), 10);
+  return Array.from({ length: maxY }, (_, i) => i + 1);
+};
+
+const resolveBranchIdsForHod = async ({ branchIds, courseIds, collegeIds, allBranches, allCourses }) => {
+  const explicit = Array.isArray(branchIds)
+    ? [...new Set(branchIds.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id)))]
+    : [];
+  if (!allBranches && explicit.length > 0) return explicit;
+  if (!allBranches) return explicit;
+
+  let courseIdList = Array.isArray(courseIds)
+    ? courseIds.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id))
+    : [];
+
+  if ((allCourses || courseIdList.length === 0) && Array.isArray(collegeIds) && collegeIds.length > 0) {
+    const collegePlaceholders = collegeIds.map(() => '?').join(',');
+    const [courseRows] = await masterPool.query(
+      `SELECT id FROM courses WHERE college_id IN (${collegePlaceholders}) AND is_active = 1`,
+      collegeIds
+    );
+    courseIdList = (courseRows || []).map((row) => row.id);
+  }
+
+  if (courseIdList.length === 0) return explicit;
+
+  const coursePlaceholders = courseIdList.map(() => '?').join(',');
+  const [branchRows] = await masterPool.query(
+    `SELECT id FROM course_branches WHERE course_id IN (${coursePlaceholders}) AND is_active = 1`,
+    courseIdList
+  );
+  return (branchRows || []).map((row) => row.id);
+};
+
+const getBranchYearLimits = async (branchIds) => {
+  const limits = {};
+  if (!Array.isArray(branchIds) || branchIds.length === 0) return limits;
+  const placeholders = branchIds.map(() => '?').join(',');
+  const [rows] = await masterPool.query(
+    `SELECT cb.id,
+            COALESCE(NULLIF(cb.total_years, 0), NULLIF(c.total_years, 0), 4) AS total_years
+     FROM course_branches cb
+     JOIN courses c ON c.id = cb.course_id
+     WHERE cb.id IN (${placeholders})`,
+    branchIds
+  );
+  (rows || []).forEach((row) => {
+    limits[Number(row.id)] = Math.min(Math.max(parseInt(row.total_years, 10) || 4, 1), 10);
+  });
+  return limits;
+};
+
+const syncBranchHodYearAssignments = async (userId, role, {
+  branchIds,
+  courseIds,
+  collegeIds,
+  allBranches,
+  allCourses,
+  hodYears,
+  allHodYears
+} = {}) => {
+  if (role !== USER_ROLES.BRANCH_HOD) {
+    await masterPool.query(
+      'DELETE FROM branch_hod_year_assignments WHERE rbac_user_id = ?',
+      [userId]
+    );
+    return { hodYears: [], allHodYears: false, hodYearAssignments: [] };
+  }
+
+  const resolvedBranchIds = await resolveBranchIdsForHod({
+    branchIds,
+    courseIds,
+    collegeIds,
+    allBranches,
+    allCourses
+  });
+
+  if (resolvedBranchIds.length === 0) {
+    await masterPool.query(
+      'DELETE FROM branch_hod_year_assignments WHERE rbac_user_id = ?',
+      [userId]
+    );
+    return { hodYears: [], allHodYears: !!allHodYears, hodYearAssignments: [] };
+  }
+
+  const limits = await getBranchYearLimits(resolvedBranchIds);
+  const yearsExplicitlyProvided = hodYears !== undefined || allHodYears !== undefined;
+  const requested = parseHodYears(hodYears);
+
+  const existingByBranch = new Map();
+  if (!yearsExplicitlyProvided) {
+    const placeholders = resolvedBranchIds.map(() => '?').join(',');
+    const [existingRows] = await masterPool.query(
+      `SELECT branch_id, years FROM branch_hod_year_assignments
+       WHERE rbac_user_id = ? AND branch_id IN (${placeholders})`,
+      [userId, ...resolvedBranchIds]
+    );
+    (existingRows || []).forEach((row) => {
+      existingByBranch.set(Number(row.branch_id), parseHodYearsJson(row.years));
+    });
+  }
+
+  const assignments = [];
+
+  for (const branchId of resolvedBranchIds) {
+    const maxY = limits[Number(branchId)] || 4;
+    const allowed = yearsRange(maxY);
+    let yearsArr;
+    if (yearsExplicitlyProvided) {
+      yearsArr = (allHodYears === true || requested.length === 0)
+        ? allowed
+        : requested.filter((y) => y <= maxY);
+    } else {
+      const existing = existingByBranch.get(Number(branchId));
+      yearsArr = existing && existing.length > 0
+        ? existing.filter((y) => y <= maxY)
+        : allowed;
+    }
+    if (yearsArr.length === 0) yearsArr = allowed;
+
+    await masterPool.query(
+      `INSERT INTO branch_hod_year_assignments (branch_id, rbac_user_id, years)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE years = VALUES(years)`,
+      [branchId, userId, JSON.stringify(yearsArr)]
+    );
+    assignments.push({ branchId, years: yearsArr });
+  }
+
+  const keepPlaceholders = resolvedBranchIds.map(() => '?').join(',');
+  await masterPool.query(
+    `DELETE FROM branch_hod_year_assignments
+     WHERE rbac_user_id = ? AND branch_id NOT IN (${keepPlaceholders})`,
+    [userId, ...resolvedBranchIds]
+  );
+
+  const uniqueYears = [...new Set(assignments.flatMap((a) => a.years))].sort((a, b) => a - b);
+  const coversAll = assignments.length > 0 && assignments.every((a) => {
+    const maxY = limits[a.branchId] || 4;
+    return a.years.length === maxY && a.years.every((y, idx) => y === idx + 1);
+  });
+
+  return {
+    hodYears: uniqueYears,
+    allHodYears: (yearsExplicitlyProvided && (allHodYears === true || requested.length === 0)) || coversAll,
+    hodYearAssignments: assignments
+  };
+};
+
+const fetchHodYearAccessByUserIds = async (userIds) => {
+  const map = new Map();
+  if (!Array.isArray(userIds) || userIds.length === 0) return map;
+
+  const placeholders = userIds.map(() => '?').join(',');
+  const [rows] = await masterPool.query(
+    `SELECT bhya.rbac_user_id, bhya.branch_id, bhya.years,
+            COALESCE(NULLIF(cb.total_years, 0), NULLIF(c.total_years, 0), 4) AS total_years
+     FROM branch_hod_year_assignments bhya
+     LEFT JOIN course_branches cb ON cb.id = bhya.branch_id
+     LEFT JOIN courses c ON c.id = cb.course_id
+     WHERE bhya.rbac_user_id IN (${placeholders})`,
+    userIds
+  );
+
+  (rows || []).forEach((row) => {
+    const years = parseHodYearsJson(row.years);
+    const entry = map.get(row.rbac_user_id) || { assignments: [], years: new Set() };
+    entry.assignments.push({ branchId: row.branch_id, years, totalYears: parseInt(row.total_years, 10) || 4 });
+    years.forEach((y) => entry.years.add(y));
+    map.set(row.rbac_user_id, entry);
+  });
+
+  const result = new Map();
+  map.forEach((entry, userId) => {
+    const hodYears = [...entry.years].sort((a, b) => a - b);
+    const allHodYears = entry.assignments.length > 0 && entry.assignments.every((a) => {
+      const maxY = a.totalYears || 4;
+      return a.years.length === maxY && a.years.every((y, idx) => y === idx + 1);
+    });
+    result.set(userId, {
+      hodYears,
+      allHodYears,
+      hodYearAssignments: entry.assignments.map(({ branchId, years }) => ({ branchId, years }))
+    });
+  });
+  return result;
+};
+
 /**
  * GET /api/rbac/users
  * Get all users (filtered by scope)
@@ -297,7 +505,13 @@ exports.getUsers = async (req, res) => {
       branches.forEach(b => branchMap.set(String(b.id), b.name));
     }
 
+    const hodUserIds = parsedRows
+      .filter((row) => row.role === USER_ROLES.BRANCH_HOD)
+      .map((row) => row.id);
+    const hodYearAccessByUser = await fetchHodYearAccessByUserIds(hodUserIds);
+
     const users = parsedRows.map((row) => {
+      const hodAccess = hodYearAccessByUser.get(row.id) || null;
       return {
         id: row.id,
         name: row.name,
@@ -314,6 +528,9 @@ exports.getUsers = async (req, res) => {
         branchIds: row.parsedBranchIds,
         allCourses: !!row.all_courses,
         allBranches: !!row.all_branches,
+        hodYears: hodAccess?.hodYears || [],
+        allHodYears: row.role === USER_ROLES.BRANCH_HOD ? (hodAccess ? hodAccess.allHodYears : true) : false,
+        hodYearAssignments: hodAccess?.hodYearAssignments || [],
         collegeName: row.college_name,
         courseName: row.course_name,
         branchName: row.branch_name,
@@ -412,6 +629,10 @@ exports.getUser = async (req, res) => {
     const collegeIds = parseScopeData(userData.college_ids);
     const courseIds = parseScopeData(userData.course_ids);
     const branchIds = parseScopeData(userData.branch_ids);
+    const hodAccessMap = userData.role === USER_ROLES.BRANCH_HOD
+      ? await fetchHodYearAccessByUserIds([userData.id])
+      : new Map();
+    const hodAccess = hodAccessMap.get(userData.id) || null;
 
     res.json({
       success: true,
@@ -431,6 +652,9 @@ exports.getUser = async (req, res) => {
         branchIds,
         allCourses: !!userData.all_courses,
         allBranches: !!userData.all_branches,
+        hodYears: hodAccess?.hodYears || [],
+        allHodYears: userData.role === USER_ROLES.BRANCH_HOD ? (hodAccess ? hodAccess.allHodYears : true) : false,
+        hodYearAssignments: hodAccess?.hodYearAssignments || [],
         collegeName: userData.college_name,
         courseName: userData.course_name,
         branchName: userData.branch_name,
@@ -553,6 +777,8 @@ exports.createUser = async (req, res) => {
       branchIds,
       allCourses,
       allBranches,
+      hodYears,
+      allHodYears,
       permissions,
       sendCredentials,
       hrms_id
@@ -756,6 +982,19 @@ exports.createUser = async (req, res) => {
     );
 
     const newUser = rows[0];
+
+    let hodYearAccess = { hodYears: [], allHodYears: false, hodYearAssignments: [] };
+    if (role === USER_ROLES.BRANCH_HOD) {
+      hodYearAccess = await syncBranchHodYearAssignments(newUser.id, role, {
+        branchIds: normalizedBranchIds,
+        courseIds: normalizedCourseIds,
+        collegeIds: normalizedCollegeIds,
+        allBranches,
+        allCourses,
+        hodYears,
+        allHodYears
+      });
+    }
 
     // Send credentials notifications (email and/or SMS) based on settings
     let emailSent = false;
@@ -1106,6 +1345,9 @@ exports.createUser = async (req, res) => {
         branchIds: parseScopeData(newUser.branch_ids),
         allCourses: !!newUser.all_courses,
         allBranches: !!newUser.all_branches,
+        hodYears: hodYearAccess.hodYears,
+        allHodYears: hodYearAccess.allHodYears,
+        hodYearAssignments: hodYearAccess.hodYearAssignments,
         collegeName: newUser.college_name,
         courseName: newUser.course_name,
         branchName: newUser.branch_name,
@@ -1151,6 +1393,8 @@ exports.updateUser = async (req, res) => {
       branchIds,
       allCourses,
       allBranches,
+      hodYears,
+      allHodYears,
       permissions,
       isActive,
       hrms_id
@@ -1330,6 +1574,40 @@ exports.updateUser = async (req, res) => {
     const [updateResult] = await masterPool.query(updateQuery, params);
     console.log(`[Update User] Update result - affected rows: ${updateResult.affectedRows}`);
 
+    const finalRole = role !== undefined ? role : existingUser.role;
+    const finalCollegeIds = collegeIds !== undefined ? collegeIds : parseScopeData(existingUser.college_ids);
+    const finalCourseIds = courseIds !== undefined ? courseIds : parseScopeData(existingUser.course_ids);
+    const finalBranchIds = branchIds !== undefined ? branchIds : parseScopeData(existingUser.branch_ids);
+    const finalAllCourses = allCourses !== undefined ? allCourses : !!existingUser.all_courses;
+    const finalAllBranches = allBranches !== undefined ? allBranches : !!existingUser.all_branches;
+    const shouldSyncHodYears =
+      (existingUser.role === USER_ROLES.BRANCH_HOD && finalRole !== USER_ROLES.BRANCH_HOD)
+      || (finalRole === USER_ROLES.BRANCH_HOD && (
+        hodYears !== undefined
+        || allHodYears !== undefined
+        || branchIds !== undefined
+        || courseIds !== undefined
+        || allBranches !== undefined
+        || allCourses !== undefined
+        || role !== undefined
+      ));
+
+    let hodYearAccess = { hodYears: [], allHodYears: false, hodYearAssignments: [] };
+    if (shouldSyncHodYears) {
+      hodYearAccess = await syncBranchHodYearAssignments(id, finalRole, {
+        branchIds: finalBranchIds,
+        courseIds: finalCourseIds,
+        collegeIds: finalCollegeIds,
+        allBranches: finalAllBranches,
+        allCourses: finalAllCourses,
+        hodYears,
+        allHodYears
+      });
+    } else if (finalRole === USER_ROLES.BRANCH_HOD) {
+      const existingHodAccess = await fetchHodYearAccessByUserIds([Number(id)]);
+      hodYearAccess = existingHodAccess.get(Number(id)) || hodYearAccess;
+    }
+
     // Fetch updated user
     const [rows] = await masterPool.query(
       `
@@ -1390,6 +1668,9 @@ exports.updateUser = async (req, res) => {
         branchIds: parseScopeData(rows[0].branch_ids),
         allCourses: !!rows[0].all_courses,
         allBranches: !!rows[0].all_branches,
+        hodYears: hodYearAccess.hodYears,
+        allHodYears: hodYearAccess.allHodYears,
+        hodYearAssignments: hodYearAccess.hodYearAssignments,
         collegeName: rows[0].college_name,
         courseName: rows[0].course_name,
         branchName: rows[0].branch_name,
