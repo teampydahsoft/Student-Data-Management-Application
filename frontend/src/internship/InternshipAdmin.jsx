@@ -143,13 +143,50 @@ const InternshipAdmin = () => {
     const [availableStudents, setAvailableStudents] = useState([]);
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
+    const [assignStudentSearch, setAssignStudentSearch] = useState('');
 
     // View Assigned Students Modal State
     const [viewStudentsModal, setViewStudentsModal] = useState(false);
     const [viewStudentsList, setViewStudentsList] = useState([]);
     const [viewStudentsLoading, setViewStudentsLoading] = useState(false);
+    const [viewStudentsFilters, setViewStudentsFilters] = useState({ batch: '', branch: '' });
+    const [viewStudentsSearch, setViewStudentsSearch] = useState('');
     const [currentInternshipName, setCurrentInternshipName] = useState('');
     const [currentViewInternshipId, setCurrentViewInternshipId] = useState(null);
+
+    const viewStudentsBatchOptions = useMemo(
+        () => [...new Set(viewStudentsList.map(s => s.batch).filter(Boolean))].sort(),
+        [viewStudentsList]
+    );
+    const viewStudentsBranchOptions = useMemo(() => {
+        const source = viewStudentsFilters.batch
+            ? viewStudentsList.filter(s => s.batch === viewStudentsFilters.batch)
+            : viewStudentsList;
+        return [...new Set(source.map(s => s.branch).filter(Boolean))].sort();
+    }, [viewStudentsList, viewStudentsFilters.batch]);
+    const filteredViewStudentsList = useMemo(() => {
+        const query = viewStudentsSearch.trim().toLowerCase();
+        return viewStudentsList.filter(s => {
+            if (viewStudentsFilters.batch && s.batch !== viewStudentsFilters.batch) return false;
+            if (viewStudentsFilters.branch && s.branch !== viewStudentsFilters.branch) return false;
+            if (query) {
+                const name = (s.student_name || '').toLowerCase();
+                const admission = (s.admission_number || '').toLowerCase();
+                if (!name.includes(query) && !admission.includes(query)) return false;
+            }
+            return true;
+        });
+    }, [viewStudentsList, viewStudentsFilters, viewStudentsSearch]);
+
+    const filteredAvailableStudents = useMemo(() => {
+        const query = assignStudentSearch.trim().toLowerCase();
+        if (!query) return availableStudents;
+        return availableStudents.filter(s => {
+            const name = (s.name || '').toLowerCase();
+            const admission = (s.admission_number || String(s.id || '')).toLowerCase();
+            return name.includes(query) || admission.includes(query);
+        });
+    }, [availableStudents, assignStudentSearch]);
 
     // Edit Assignment Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -452,6 +489,7 @@ const InternshipAdmin = () => {
                 }));
                 setAvailableStudents(students);
                 setSelectedStudentIds([]); // Reset selection
+                setAssignStudentSearch('');
 
                 const assignedCount = students.filter(s => s.currentCompany).length;
                 if (assignedCount > 0) {
@@ -1030,17 +1068,29 @@ const InternshipAdmin = () => {
 
     // Duplicates removed
 
+    const refreshViewStudentsList = async (internshipId) => {
+        const res = await api.get(`/internship/${internshipId}/students`);
+        if (res.data.success) setViewStudentsList(res.data.data);
+    };
+
+    const handleViewStudentsFilterChange = (key, value) => {
+        setViewStudentsFilters(prev => {
+            const next = { ...prev, [key]: value };
+            if (key === 'batch') next.branch = '';
+            return next;
+        });
+    };
+
     const handleViewStudents = async (id, name) => {
         setCurrentInternshipName(name);
         setCurrentViewInternshipId(id);
+        setViewStudentsFilters({ batch: '', branch: '' });
+        setViewStudentsSearch('');
         setViewStudentsModal(true);
         setViewStudentsLoading(true);
-        setViewStudentsList([]); // Clear previous
+        setViewStudentsList([]);
         try {
-            const res = await api.get(`/internship/${id}/students`);
-            if (res.data.success) {
-                setViewStudentsList(res.data.data);
-            }
+            await refreshViewStudentsList(id);
         } catch (error) {
             toast.error('Failed to fetch assigned students');
         } finally {
@@ -1069,10 +1119,7 @@ const InternshipAdmin = () => {
             setShowEditModal(false);
             setEditingAssignmentId(null);
             // Refresh list
-            if (currentViewInternshipId) {
-                const res = await api.get(`/internship/${currentViewInternshipId}/students`);
-                if (res.data.success) setViewStudentsList(res.data.data);
-            }
+            if (currentViewInternshipId) await refreshViewStudentsList(currentViewInternshipId);
         } catch (error) {
             toast.error('Failed to update assignment');
         }
@@ -1084,10 +1131,7 @@ const InternshipAdmin = () => {
             await api.delete(`/internship/assignment/${assignmentId}`);
             toast.success('Assignment removed successfully');
             // Refresh
-            if (currentViewInternshipId) {
-                const res = await api.get(`/internship/${currentViewInternshipId}/students`);
-                if (res.data.success) setViewStudentsList(res.data.data);
-            }
+            if (currentViewInternshipId) await refreshViewStudentsList(currentViewInternshipId);
         } catch (error) {
             toast.error('Failed to remove assignment');
         }
@@ -1169,7 +1213,7 @@ const InternshipAdmin = () => {
 
     const handleSelectAll = (e) => {
         if (e.target.checked) {
-            setSelectedStudentIds(availableStudents.map(s => s.id));
+            setSelectedStudentIds(filteredAvailableStudents.map(s => s.id));
         } else {
             setSelectedStudentIds([]);
         }
@@ -1466,8 +1510,27 @@ const InternshipAdmin = () => {
                             {/* Student List Table */}
                             {availableStudents.length > 0 && (
                                 <div className="mt-4 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                    <div className="p-3 bg-gray-100 border-b border-gray-200 flex justify-between items-center">
+                                    <div className="p-3 bg-gray-100 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3">
                                         <span className="text-xs font-semibold text-gray-700">{selectedStudentIds.length} Selected</span>
+                                        <div className="relative flex-1 min-w-[200px] max-w-sm">
+                                            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search by name or admission no..."
+                                                value={assignStudentSearch}
+                                                onChange={e => setAssignStudentSearch(e.target.value)}
+                                                className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                            />
+                                            {assignStudentSearch && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAssignStudentSearch('')}
+                                                    className="absolute right-2 top-2 p-0.5 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                         <button onClick={() => setAvailableStudents([])} className="text-xs text-red-600 hover:underline">Clear List</button>
                                     </div>
                                     <div className="max-h-60 overflow-y-auto">
@@ -1478,7 +1541,7 @@ const InternshipAdmin = () => {
                                                         <input
                                                             type="checkbox"
                                                             onChange={handleSelectAll}
-                                                            checked={availableStudents.length > 0 && selectedStudentIds.length === availableStudents.length}
+                                                            checked={filteredAvailableStudents.length > 0 && filteredAvailableStudents.every(s => selectedStudentIds.includes(s.id))}
                                                         />
                                                     </th>
                                                     <th className="px-4 py-2">Name / Admission No.</th>
@@ -1487,7 +1550,13 @@ const InternshipAdmin = () => {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200 bg-white">
-                                                {availableStudents.map(student => (
+                                                {filteredAvailableStudents.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500">
+                                                            No students match your search.
+                                                        </td>
+                                                    </tr>
+                                                ) : filteredAvailableStudents.map(student => (
                                                     <tr key={student.id} className={`hover:bg-gray-50 ${student.currentCompany ? 'bg-yellow-50' : ''}`}>
                                                         <td className="px-4 py-2">
                                                             <input
@@ -2424,6 +2493,67 @@ const InternshipAdmin = () => {
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1">
+                            {!viewStudentsLoading && viewStudentsList.length > 0 && (
+                                <div className="mb-4 flex flex-wrap items-center gap-3 pb-4 border-b border-gray-100">
+                                    <div className="relative flex-1 min-w-[220px]">
+                                        <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search by name or admission no..."
+                                            value={viewStudentsSearch}
+                                            onChange={e => setViewStudentsSearch(e.target.value)}
+                                            className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                        {viewStudentsSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setViewStudentsSearch('')}
+                                                className="absolute right-2 top-2 p-0.5 text-gray-400 hover:text-gray-600"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                        <Filter className="w-3.5 h-3.5" /> Filter by
+                                    </div>
+                                    <select
+                                        className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 min-w-[140px]"
+                                        value={viewStudentsFilters.batch}
+                                        onChange={e => handleViewStudentsFilterChange('batch', e.target.value)}
+                                    >
+                                        <option value="">All Batches</option>
+                                        {viewStudentsBatchOptions.map(b => (
+                                            <option key={`view-batch-${b}`} value={b}>{b}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 min-w-[160px]"
+                                        value={viewStudentsFilters.branch}
+                                        onChange={e => handleViewStudentsFilterChange('branch', e.target.value)}
+                                    >
+                                        <option value="">All Branches</option>
+                                        {viewStudentsBranchOptions.map(b => (
+                                            <option key={`view-branch-${b}`} value={b}>{b}</option>
+                                        ))}
+                                    </select>
+                                    {(viewStudentsFilters.batch || viewStudentsFilters.branch || viewStudentsSearch) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setViewStudentsFilters({ batch: '', branch: '' });
+                                                setViewStudentsSearch('');
+                                            }}
+                                            className="text-xs text-indigo-600 hover:underline font-medium"
+                                        >
+                                            Clear All
+                                        </button>
+                                    )}
+                                    <span className="text-xs text-gray-500 ml-auto">
+                                        Showing {filteredViewStudentsList.length} of {viewStudentsList.length} students
+                                    </span>
+                                </div>
+                            )}
                             {viewStudentsLoading ? (
                                 <div className="text-center py-12 flex flex-col items-center justify-center text-gray-500">
                                     <Loader2 className="w-8 h-8 animate-spin mb-2 text-indigo-600" />
@@ -2432,6 +2562,10 @@ const InternshipAdmin = () => {
                             ) : viewStudentsList.length === 0 ? (
                                 <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                     No students assigned to this location yet.
+                                </div>
+                            ) : filteredViewStudentsList.length === 0 ? (
+                                <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                    No students match the selected search or filters.
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
@@ -2447,7 +2581,7 @@ const InternshipAdmin = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {viewStudentsList.map((s) => (
+                                            {filteredViewStudentsList.map((s) => (
                                                 <tr key={s.admission_number || s.id} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-4 py-3">
                                                         <div className="font-medium text-gray-900">{s.student_name}</div>

@@ -1048,8 +1048,9 @@ exports.assignInternship = async (req, res) => {
 exports.getAssignedStudents = async (req, res) => {
     try {
         const { id } = req.params; // internshipId
+        const { batch, branch } = req.query;
 
-        const [rows] = await masterPool.query(`
+        let query = `
             SELECT 
                 ia.id AS assignment_id,
                 s.student_name, 
@@ -1065,8 +1066,23 @@ exports.getAssignedStudents = async (req, res) => {
             FROM internship_assignments ia
             JOIN students s ON ia.student_id = s.id
             WHERE ia.internship_id = ?
-            ORDER BY s.student_name ASC
-        `, [id]);
+        `;
+        const params = [id];
+
+        if (batch) { query += ' AND s.batch = ?'; params.push(batch); }
+        if (branch) {
+            if (/^\d+$/.test(branch)) {
+                query += ' AND s.branch_id = ?';
+                params.push(parseInt(branch, 10));
+            } else {
+                query += ' AND s.branch = ?';
+                params.push(branch);
+            }
+        }
+
+        query += ' ORDER BY s.student_name ASC';
+
+        const [rows] = await masterPool.query(query, params);
 
         res.json({ success: true, data: rows });
     } catch (error) {
