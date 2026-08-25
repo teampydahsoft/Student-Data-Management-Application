@@ -1,5 +1,6 @@
 const { masterPool } = require('../config/database');
 const { appendSemesterCalendarFilter } = require('./semesterCalendarService');
+const { appendAttendanceJoinDateClause } = require('../utils/studentAttendanceEligibility');
 
 // Exclude the same courses as in attendance page (must match frontend EXCLUDED_COURSES)
 const EXCLUDED_COURSES = ['M.Tech', 'MBA', 'MCA', 'M Sc Aqua', 'MSC Aqua', 'MCS', 'M.Pharma', 'M Pharma'];
@@ -53,6 +54,9 @@ const getAllAttendanceForDate = async (attendanceDate) => {
 
     // Exclude students outside configured semester dates (same as attendance page)
     query = appendSemesterCalendarFilter(query, params, attendanceDate);
+    const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+    query += joinDateSql;
+    params.push(...joinDateParams);
     
     query += ` ORDER BY s.college, s.course, s.batch, s.branch, s.current_year, s.current_semester, s.student_name`;
     

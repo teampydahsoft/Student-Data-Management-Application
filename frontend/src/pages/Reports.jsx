@@ -3112,12 +3112,11 @@ const Reports = () => {
                                   );
                                 })}
                                 {(() => {
+                                  const presentDays = student.statistics?.presentDays || 0;
+                                  const absentDays = student.statistics?.absentDays || 0;
+                                  const markedDays = presentDays + absentDays;
                                   const studentWorkingDays = student.statistics?.workingDays || 0;
-
-                                  // Calculate percentage based on student's personal working days
-                                  const pct = studentWorkingDays > 0
-                                    ? (student.statistics?.presentDays || 0) / studentWorkingDays * 100
-                                    : 0;
+                                  const pct = markedDays > 0 ? (presentDays / markedDays) * 100 : 0;
 
                                   const colorClass = pct >= 75 ? 'bg-green-50 text-green-700' :
                                     pct >= 60 ? 'bg-yellow-50 text-yellow-700' :
@@ -3128,11 +3127,11 @@ const Reports = () => {
                                       <td className="px-3 py-2 sticky right-[120px] z-10 font-bold text-center border-l border-r bg-blue-50 text-blue-700">
                                         {studentWorkingDays}
                                       </td>
-                                      <td className={`px-3 py-2 sticky right-[60px] z-10 font-bold text-center border-r ${student.statistics?.presentDays >= studentWorkingDays * 0.75 ? 'bg-green-50 text-green-700' :
-                                        student.statistics?.presentDays >= studentWorkingDays * 0.60 ? 'bg-yellow-50 text-yellow-700' :
+                                      <td className={`px-3 py-2 sticky right-[60px] z-10 font-bold text-center border-r ${presentDays >= markedDays * 0.75 ? 'bg-green-50 text-green-700' :
+                                        presentDays >= markedDays * 0.60 ? 'bg-yellow-50 text-yellow-700' :
                                           'bg-red-50 text-red-700'
                                         }`}>
-                                        {student.statistics?.presentDays || 0}
+                                        {presentDays}
                                       </td>
                                       <td className={`px-3 py-2 sticky right-0 z-10 font-bold text-center border-l ${colorClass}`}>
                                         {pct.toFixed(1)}%

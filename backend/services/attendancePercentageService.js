@@ -75,9 +75,12 @@ const calculateStudentAttendanceStats = (attendanceMap, dateSet, holidayDates, a
     }
   });
 
-  // Calculate percentage: (Present Days / Working Days) * 100
-  const attendancePercentage = workingDays > 0
-    ? parseFloat(((presentDays / workingDays) * 100).toFixed(2))
+  // Percentage is based on marked days only (present / present+absent), matching
+  // the student attendance page. Unmarked days stay in workingDays for display
+  // but must not drag later-joining students (e.g. lateral entry) below the batch.
+  const markedDays = presentDays + absentDays;
+  const attendancePercentage = markedDays > 0
+    ? parseFloat(((presentDays / markedDays) * 100).toFixed(2))
     : 0.00;
 
   return {

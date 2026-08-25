@@ -7,6 +7,7 @@ const { getISTDateString } = require('../utils/dateUtils');
 const { getNonWorkingDayInfo } = require('./nonWorkingDayService');
 const { getAllNotificationUsers, filterAttendanceByUserScope } = require('./getUserScopeAttendance');
 const { appendSemesterCalendarFilter } = require('./semesterCalendarService');
+const { appendAttendanceJoinDateClause } = require('../utils/studentAttendanceEligibility');
 
 // Helper to check if a form falls due today based on recurrence config
 const isFormDue = (form, today) => {
@@ -288,6 +289,9 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
              ${excludeCourseClause}
              ${excludeStudentClause}`;
         pendingInsertQuery = appendSemesterCalendarFilter(pendingInsertQuery, params, attendanceDate);
+        const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+        pendingInsertQuery += joinDateSql;
+        params.push(...joinDateParams);
         const [result] = await masterPool.query(pendingInsertQuery, params);
 
         const affected = result.affectedRows || 0;
@@ -320,6 +324,9 @@ const markPendingStudentsAsPending = async (attendanceDate, excludedCourses, exc
                  ${excludeCourseClause}
                  ${excludeStudentClause}`;
             pendingInsertQuery = appendSemesterCalendarFilter(pendingInsertQuery, params, attendanceDate);
+            const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+            pendingInsertQuery += joinDateSql;
+            params.push(...joinDateParams);
             const [result] = await masterPool.query(pendingInsertQuery, params);
             const affected = result.affectedRows || 0;
             if (affected > 0) {
@@ -410,6 +417,9 @@ const sendDailyAttendanceReports = async () => {
         }
 
         query = appendSemesterCalendarFilter(query, params, attendanceDate);
+        const { sql: joinDateSql, params: joinDateParams } = appendAttendanceJoinDateClause(attendanceDate, 's');
+        query += joinDateSql;
+        params.push(...joinDateParams);
 
         query += `
               GROUP BY s.college, s.batch, s.course, s.branch, s.current_year, s.current_semester

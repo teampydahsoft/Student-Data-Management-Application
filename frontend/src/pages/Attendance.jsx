@@ -3111,7 +3111,7 @@ const Attendance = () => {
           csvValue(semesterTotals.holidays || 0)
         ].join(',')
       );
-      const totalWorkingDays = (semesterTotals.present || 0) + (semesterTotals.absent || 0) + (semesterTotals.unmarked || 0);
+      const totalWorkingDays = (semesterTotals.present || 0) + (semesterTotals.absent || 0);
       const presentDays = semesterTotals.present || 0;
       const percentage = totalWorkingDays > 0 ? ((presentDays / totalWorkingDays) * 100).toFixed(2) : '0.00';
       rows.push(csvValue('Attendance Percentage') + ',' + csvValue(`${percentage}%`));

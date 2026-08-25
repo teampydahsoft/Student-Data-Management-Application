@@ -103,6 +103,17 @@ const getCurrentMonthRangeIST = (now = getNowInIST()) => {
     return { start, end };
 };
 
+const isBeforeAttendanceStart = (dateKey, startDate) =>
+    Boolean(startDate && dateKey && dateKey < startDate);
+
+const applyDayToTotals = (totalsAcc, { isHoliday, status, isBeforeStart }) => {
+    if (isBeforeStart) return;
+    if (isHoliday) totalsAcc.holidays += 1;
+    else if (status === 'present') totalsAcc.present += 1;
+    else if (status === 'absent') totalsAcc.absent += 1;
+    else totalsAcc.unmarked += 1;
+};
+
 // Correct percentage: present / (present + absent) — excludes holidays and pending
 const calcPct = (present, absent) => {
     const marked = present + absent;
@@ -303,7 +314,7 @@ const WeeklyTab = ({ weekly, semesterSeries }) => {
 
 // ─── Monthly Tab ─────────────────────────────────────────────────────────────
 
-const MonthlyTab = ({ monthly, semesterSeries }) => {
+const MonthlyTab = ({ monthly, semesterSeries, attendanceStartDate }) => {
     // Selected month (defaults to API month or current month in IST)
     const initialMonth = useMemo(() => {
         if (monthly?.startDate) return dateFromKeyIST(monthly.startDate);
@@ -354,18 +365,17 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
             const isHoliday = Boolean(entry?.isHoliday) || entry?.status === 'holiday';
             const status = entry?.status || 'unmarked';
             const holiday = entry?.holiday || null;
+            const isBeforeStart = isBeforeAttendanceStart(key, attendanceStartDate);
 
-            if (isHoliday) totalsAcc.holidays += 1;
-            else if (status === 'present') totalsAcc.present += 1;
-            else if (status === 'absent') totalsAcc.absent += 1;
-            else totalsAcc.unmarked += 1;
+            applyDayToTotals(totalsAcc, { isHoliday, status, isBeforeStart });
 
             dayCells.push({
                 dateKey: key,
                 dayNumber: d,
                 weekday: cur.getDay(),
-                status: isHoliday ? 'holiday' : status,
-                isHoliday,
+                status: isBeforeStart ? 'not_applicable' : (isHoliday ? 'holiday' : status),
+                isHoliday: isBeforeStart ? false : isHoliday,
+                isBeforeStart,
                 holiday
             });
         }
@@ -381,7 +391,7 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
             pct: percentage,
             colors: colorSet
         };
-    }, [monthCursor, semesterSeries]);
+    }, [monthCursor, semesterSeries, attendanceStartDate]);
 
     const goToPrevMonth = () => {
         const prev = new Date(monthCursor);
@@ -468,6 +478,17 @@ const MonthlyTab = ({ monthly, semesterSeries }) => {
                 <div className="grid grid-cols-7 gap-1 text-[10px] sm:text-xs">
                     {calendarCells.map((cell, idx) => {
                         if (!cell) return <div key={idx} className="h-14 sm:h-16 rounded-xl" />;
+                        if (cell.isBeforeStart) {
+                            return (
+                                <div
+                                    key={cell.dateKey}
+                                    className="h-14 sm:h-16 rounded-xl border border-gray-100 bg-gray-50 flex flex-col items-start justify-between p-1.5 sm:p-2"
+                                >
+                                    <span className="text-[11px] font-bold text-gray-300">{cell.dayNumber}</span>
+                                    <span className="text-[8px] sm:text-[9px] text-gray-300">Before joining</span>
+                                </div>
+                            );
+                        }
                         const effectiveStatus = cell.isHoliday ? 'holiday' : (cell.status || 'unmarked');
                         const baseClasses = statusBg(effectiveStatus);
                         return (
@@ -711,6 +732,7 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
     };
 
     const semesterSeries = historyData?.semester?.series ?? [];
+    const attendanceStartDate = historyData?.student?.attendanceStartDate || null;
 
     // Force "Weekly" and "Monthly" to reflect current week/month (IST),
     // derived from semester series so we never regress to rolling windows.
@@ -725,21 +747,19 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
 
         for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
             const key = dateKeyFromDate(cursor);
+            if (isBeforeAttendanceStart(key, attendanceStartDate)) continue;
             const entry = map.get(key);
             const isHoliday = Boolean(entry?.isHoliday) || entry?.status === 'holiday';
             const status = entry?.status || 'unmarked';
             const holiday = entry?.holiday || null;
 
-            if (isHoliday) totals.holidays += 1;
-            else if (status === 'present') totals.present += 1;
-            else if (status === 'absent') totals.absent += 1;
-            else totals.unmarked += 1;
+            applyDayToTotals(totals, { isHoliday, status, isBeforeStart: false });
 
             series.push({ date: key, status: isHoliday ? 'holiday' : status, isHoliday, holiday });
         }
 
         return { startDate: startKey, endDate: endKey, totals, series, holidays: series.filter(s => s.isHoliday) };
-    }, [semesterSeries]);
+    }, [semesterSeries, attendanceStartDate]);
 
     const derivedMonthly = useMemo(() => {
         const { start, end } = getCurrentMonthRangeIST();
@@ -752,21 +772,19 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
 
         for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
             const key = dateKeyFromDate(cursor);
+            if (isBeforeAttendanceStart(key, attendanceStartDate)) continue;
             const entry = map.get(key);
             const isHoliday = Boolean(entry?.isHoliday) || entry?.status === 'holiday';
             const status = entry?.status || 'unmarked';
             const holiday = entry?.holiday || null;
 
-            if (isHoliday) totals.holidays += 1;
-            else if (status === 'present') totals.present += 1;
-            else if (status === 'absent') totals.absent += 1;
-            else totals.unmarked += 1;
+            applyDayToTotals(totals, { isHoliday, status, isBeforeStart: false });
 
             series.push({ date: key, status: isHoliday ? 'holiday' : status, isHoliday, holiday });
         }
 
         return { startDate: startKey, endDate: endKey, totals, series, holidays: series.filter(s => s.isHoliday) };
-    }, [semesterSeries]);
+    }, [semesterSeries, attendanceStartDate]);
 
     if (loading) return <LoadingSkeleton />;
 
@@ -835,6 +853,7 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
                     <MonthlyTab
                         monthly={derivedMonthly}
                         semesterSeries={semesterSeries}
+                        attendanceStartDate={attendanceStartDate}
                     />
                 )}
                 {activeTab === 'semester' && (

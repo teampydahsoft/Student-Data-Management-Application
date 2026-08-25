@@ -98,6 +98,8 @@ const { logAudit } = require('../services/auditLogService');
 const {
   appendAttendanceJoinDateClause,
   resolveAttendanceStartDate,
+  resolveAttendanceProgramYear,
+  isAttendanceEligibleOnDate,
   countEligibleStudentsOnDate
 } = require('../utils/studentAttendanceEligibility');
 const {
@@ -3817,7 +3819,7 @@ exports.getAttendanceSummary = async (req, res) => {
   }
 };
 
-const buildStudentSeries = (rows, startDate, endDate, holidayInfo) => {
+const buildStudentSeries = (rows, startDate, endDate, holidayInfo, attendanceStartDate = null) => {
   const cursor = new Date(startDate);
   const end = new Date(endDate);
   const map = new Map(
@@ -3831,6 +3833,11 @@ const buildStudentSeries = (rows, startDate, endDate, holidayInfo) => {
 
   while (cursor <= end) {
     const key = formatDateKey(cursor);
+    if (!isAttendanceEligibleOnDate(key, attendanceStartDate)) {
+      cursor.setDate(cursor.getDate() + 1);
+      continue;
+    }
+
     const recordedStatus = map.get(key) || null;
     const isHoliday = holidayDates.has(key);
     const holiday = holidayDetails.get(key) || null;
@@ -3856,6 +3863,21 @@ const buildStudentSeries = (rows, startDate, endDate, holidayInfo) => {
   return { series, totals };
 };
 
+const dateFromKey = (dateKey) => {
+  if (!dateKey) return null;
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const clampDateToJoinDate = (dateObj, attendanceStartDate) => {
+  if (!dateObj || !attendanceStartDate) return dateObj;
+  if (formatDateKey(dateObj) >= attendanceStartDate) return dateObj;
+  return dateFromKey(attendanceStartDate) || dateObj;
+};
+
 exports.getStudentAttendanceHistory = async (req, res) => {
   try {
     const studentId = Number(req.params.studentId);
@@ -3872,7 +3894,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
     let studentRows;
     try {
       [studentRows] = await masterPool.query(
-        `SELECT s.id, s.student_name, s.pin_no, s.batch, s.course, s.branch, s.college, s.current_year, s.current_semester,
+        `SELECT s.id, s.student_name, s.pin_no, s.admission_number, s.stud_type, s.created_at,
+                s.batch, s.course, s.branch, s.college, s.current_year, s.current_semester,
                 ${STUDENT_ROLL_NUMBERS_SELECT},
                 col.id as college_id, cb.id as branch_id
          FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
@@ -3886,7 +3909,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
     } catch (colErr) {
       if (colErr.code === 'ER_BAD_FIELD_ERROR' && (colErr.sqlMessage || '').includes('college')) {
         [studentRows] = await masterPool.query(
-          'SELECT id, student_name, pin_no, batch, course, branch, current_year, current_semester FROM students WHERE id = ?',
+          'SELECT id, student_name, pin_no, admission_number, stud_type, created_at, batch, course, branch, current_year, current_semester FROM students WHERE id = ?',
           [studentId]
         );
       } else {
@@ -3902,13 +3925,15 @@ exports.getStudentAttendanceHistory = async (req, res) => {
     }
 
     const student = studentRows[0];
+    const attendanceStartDate = resolveAttendanceStartDate(student);
+    const attendanceProgramYear = resolveAttendanceProgramYear(student);
     let semesterStartDate = null;
     let semesterEndDate = null;
     let semesterInfo = null;
     let semesterSource = 'fallback';
 
     // Resolve semester start/end from Settings → Academic Calendar (semesters table)
-    if (student.course && student.current_year != null && student.current_semester != null) {
+    if (student.course && attendanceProgramYear != null && student.current_semester != null) {
       try {
         const collegeId = student.college_id;
 
@@ -3928,7 +3953,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         let branchId = student.branch_id;
 
         if (courseId != null) {
-          const semParams = [courseId, student.current_year, student.current_semester, todayKey, todayKey];
+          const semParams = [courseId, attendanceProgramYear, student.current_semester, todayKey, todayKey];
           let semWhere = 'course_id = ? AND year_of_study = ? AND semester_number = ? AND start_date <= ? AND end_date >= ?';
           if (collegeId != null) {
             semWhere = '(college_id = ? OR college_id IS NULL) AND ' + semWhere;
@@ -3945,7 +3970,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
           );
 
           if (semesterRows.length === 0) {
-            const recentParams = [courseId, student.current_year, student.current_semester];
+            const recentParams = [courseId, attendanceProgramYear, student.current_semester];
             let recentWhere = 'course_id = ? AND year_of_study = ? AND semester_number = ?';
             if (collegeId != null) {
               recentWhere = '(college_id = ? OR college_id IS NULL) AND ' + recentWhere;
@@ -4033,6 +4058,10 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       monthStart = getFirstOfMonth(referenceDate);
     }
 
+    semesterStartDate = clampDateToJoinDate(semesterStartDate, attendanceStartDate);
+    weekStart = clampDateToJoinDate(weekStart, attendanceStartDate);
+    monthStart = clampDateToJoinDate(monthStart, attendanceStartDate);
+
     // Determine the date range for fetching attendance.
     // We want to return every record the student has, regardless of semester
     // boundaries, so that past months behave exactly like the current one.
@@ -4062,6 +4091,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
     } else {
       queryStartDate = monthStart < weekStart ? monthStart : weekStart;
     }
+
+    queryStartDate = clampDateToJoinDate(queryStartDate, attendanceStartDate);
 
     // make sure we don't accidentally ask for dates after the semester start
     if (semesterStartDate && queryStartDate < semesterStartDate) {
@@ -4109,8 +4140,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       console.warn('Failed to fetch holiday range for student history:', error.message || error);
     }
 
-    const weekly = buildStudentSeries(weeklyRows, weekStart, weekEnd, holidayRangeInfo);
-    const monthly = buildStudentSeries(monthlyRows, monthStart, referenceDate, holidayRangeInfo);
+    const weekly = buildStudentSeries(weeklyRows, weekStart, weekEnd, holidayRangeInfo, attendanceStartDate);
+    const monthly = buildStudentSeries(monthlyRows, monthStart, referenceDate, holidayRangeInfo, attendanceStartDate);
 
     // Calculate attendance percentage based on semester dates
     let semesterAttendance = null;
@@ -4135,7 +4166,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         semesterRows,
         semesterStartDate,
         semesterEndDate > referenceDate ? referenceDate : semesterEndDate,
-        semesterHolidayInfo
+        semesterHolidayInfo,
+        attendanceStartDate
       );
 
       semesterAttendance = {
@@ -4172,6 +4204,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         // fall back to the prior behaviour if query fails
       }
 
+      fallbackStart = clampDateToJoinDate(fallbackStart, attendanceStartDate);
+
       const fallbackEnd = referenceDate;
       const fallbackEndKey = formatDateKey(fallbackEnd);
       const fallbackStartKey = formatDateKey(fallbackStart);
@@ -4192,7 +4226,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         fallbackRows,
         fallbackStart,
         fallbackEnd,
-        fallbackHolidayInfo
+        fallbackHolidayInfo,
+        attendanceStartDate
       );
 
       semesterAttendance = {
@@ -4217,7 +4252,8 @@ exports.getStudentAttendanceHistory = async (req, res) => {
           course: student.course,
           branch: student.branch,
           currentYear: student.current_year,
-          currentSemester: student.current_semester
+          currentSemester: student.current_semester,
+          attendanceStartDate
         },
         weekly: {
           startDate: formatDateKey(weekStart),
@@ -4257,7 +4293,10 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
           s.branch,
           s.current_year,
           s.current_semester,
-          s.created_at
+          s.created_at,
+          s.stud_type,
+          s.admission_number,
+          s.pin_no
         FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
         ORDER BY s.batch, s.course, s.branch, s.current_year, s.current_semester
       `
@@ -4701,6 +4740,7 @@ exports.downloadAttendanceReport = async (req, res) => {
         s.current_semester,
         s.student_data,
         s.created_at,
+        s.stud_type,
         ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
@@ -5856,6 +5896,7 @@ exports.getAttendanceReportForStudents = async (req, res) => {
         s.college,
         s.student_data,
         s.created_at,
+        s.stud_type,
         ${STUDENT_ROLL_NUMBERS_SELECT}
       FROM students s LEFT JOIN colleges ON s.college_id = colleges.id LEFT JOIN courses ON s.course_id = courses.id LEFT JOIN course_branches ON s.branch_id = course_branches.id
       ${STUDENT_ROLL_NUMBERS_JOIN}
