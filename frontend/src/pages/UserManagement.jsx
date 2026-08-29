@@ -40,7 +40,80 @@ import {
 import toast from 'react-hot-toast';
 import api from '../config/api';
 import useAuthStore from '../store/authStore';
-import { ROLE_LABELS, ROLE_COLORS, isFullAccessRole, hasModuleAccess, hasWriteAccess, FRONTEND_MODULES, BACKEND_MODULES, MODULE_PERMISSIONS, MODULE_LABELS, createDefaultPermissions } from '../constants/rbac';
+import { ROLE_LABELS, ROLE_COLORS, isFullAccessRole, hasModuleAccess, hasWriteAccess, FRONTEND_MODULES, BACKEND_MODULES, MODULE_PERMISSIONS, MODULE_LABELS, createDefaultPermissions, STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS } from '../constants/rbac';
+
+const SUBPAGE_GRID_CLASS = 'grid grid-cols-[minmax(0,1fr)_112px_112px] gap-3 items-center';
+
+const StudentViewDialogSubPagesSection = ({
+  permissions = {},
+  onToggleViewSms,
+  onToggleViewMerit,
+  onToggleEditMerit
+}) => {
+  const viewSmsEnabled = permissions.view_sms === true;
+  const viewMeritEnabled = permissions.view_merit_status === true;
+  const editMeritEnabled = permissions.edit_merit_status === true;
+
+  return (
+    <div className="mt-5 pt-5 border-t border-slate-200">
+      <p className="text-[11px] font-bold text-slate-400 uppercase mb-3 px-1">
+        View Details Dialog Sub-Pages
+      </p>
+      <div className={`${SUBPAGE_GRID_CLASS} mb-2 px-1`}>
+        <span className="text-[11px] font-bold text-slate-400 uppercase">Page</span>
+        <span className="text-[11px] font-bold text-blue-500 uppercase text-center">Read</span>
+        <span className="text-[11px] font-bold text-emerald-500 uppercase text-center">Write</span>
+      </div>
+
+      <div className="space-y-2">
+        <div className={`${SUBPAGE_GRID_CLASS} rounded-lg px-3 py-2.5 bg-slate-50 border border-slate-200`}>
+          <div className="min-w-0 pr-2">
+            <span className="text-xs font-medium text-slate-700">SMS Logs</span>
+            <p className="text-[10px] text-slate-500 leading-snug">SMS tracking tab inside student view dialog</p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleViewSms}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${viewSmsEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${viewSmsEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {viewSmsEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {viewSmsEnabled ? 'On' : 'Off'}
+          </button>
+          <span className="text-[10px] text-slate-400 text-center">—</span>
+        </div>
+
+        <div className={`${SUBPAGE_GRID_CLASS} rounded-lg px-3 py-2.5 bg-slate-50 border border-slate-200`}>
+          <div className="min-w-0 pr-2">
+            <span className="text-xs font-medium text-slate-700">Merit Status</span>
+            <p className="text-[10px] text-slate-500 leading-snug">Per-year merit status tab inside student view dialog</p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleViewMerit}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${viewMeritEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${viewMeritEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {viewMeritEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {viewMeritEnabled ? 'On' : 'Off'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleEditMerit}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${editMeritEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${editMeritEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {editMeritEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {editMeritEnabled ? 'On' : 'Off'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ROLE_AVATAR_COLORS = {
   college_principal: 'from-indigo-400 to-indigo-600',
@@ -3090,7 +3163,7 @@ const UserManagement = () => {
                           <button type="button" onClick={() => toggleAll(false)} className="px-3 py-1.5 text-[11px] font-semibold bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 border border-slate-200">Revoke All</button>
                         </div>
                       </div>
-                      <div className={`${effectiveModuleKey === BACKEND_MODULES.SETTINGS ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-2'}`}>
+                      <div className={`${effectiveModuleKey === BACKEND_MODULES.SETTINGS ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-2.5'}`}>
                         {effectiveModuleKey === BACKEND_MODULES.SETTINGS ? (
                           /* Settings: grouped read/write per section */
                           (() => {
@@ -3157,19 +3230,25 @@ const UserManagement = () => {
                             );
                           })()
                         ) : (
-                        modulePerms.permissions.map((permKey) => {
+                        modulePerms.permissions
+                          .filter((permKey) => !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
+                          .map((permKey) => {
                           const enabled = permsForRole[permKey] === true;
                           const label = modulePerms.labels?.[permKey] || permKey;
                           const isStudentMgmtView = effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && permKey === 'view';
                           return (
-                            <div key={permKey} className={isStudentMgmtView ? 'sm:col-span-2 flex gap-2 items-center' : ''}>
+                            <div
+                              key={permKey}
+                              className={`w-full min-w-0 ${isStudentMgmtView ? 'sm:col-span-2' : ''}`}
+                            >
+                              <div className={`flex gap-2 items-stretch ${isStudentMgmtView ? 'w-full' : ''}`}>
                               <button
                                 type="button"
                                 onClick={() => toggleOne(permKey)}
-                                className={`flex-1 flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs text-left transition-all ${enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                className={`w-full min-w-0 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-xs text-left transition-all ${enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                               >
-                                <span className="font-medium">{label}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{enabled ? 'Allowed' : 'Disabled'}</span>
+                                <span className="font-medium truncate">{label}</span>
+                                <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{enabled ? 'Allowed' : 'Disabled'}</span>
                               </button>
                               {isStudentMgmtView && enabled && (
                                 <button
@@ -3179,17 +3258,36 @@ const UserManagement = () => {
                                     setShowFieldPermissionsModal(true);
                                     loadStudentFields('roleConfig');
                                   }}
-                                  className="px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+                                  className="shrink-0 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
                                 >
                                   <Settings size={14} />
                                   Configure Fields
                                 </button>
                               )}
+                              </div>
                             </div>
                           );
                         })
                         )}
                       </div>
+                      {effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && (
+                        <StudentViewDialogSubPagesSection
+                          permissions={permsForRole}
+                          onToggleViewSms={() => toggleOne('view_sms')}
+                          onToggleViewMerit={() => {
+                            const viewEnabled = permsForRole.view_merit_status === true;
+                            const editEnabled = permsForRole.edit_merit_status === true;
+                            toggleOne('view_merit_status');
+                            if (viewEnabled && editEnabled) toggleOne('edit_merit_status');
+                          }}
+                          onToggleEditMerit={() => {
+                            const viewEnabled = permsForRole.view_merit_status === true;
+                            const editEnabled = permsForRole.edit_merit_status === true;
+                            toggleOne('edit_merit_status');
+                            if (!editEnabled && !viewEnabled) toggleOne('view_merit_status');
+                          }}
+                        />
+                      )}
                     </div>
                   );
                 })()}
@@ -3534,25 +3632,27 @@ const UserManagement = () => {
                                 );
                               })()
                             ) : (
-                            modulePerms.permissions.map((permKey) => {
+                            modulePerms.permissions
+                              .filter((permKey) => !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
+                              .map((permKey) => {
                               const enabled = permsForUser[permKey] === true;
                               const label = modulePerms.labels[permKey] || permKey;
                               const isStudentMgmtView = effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && permKey === 'view';
 
                               return (
-                                <div key={permKey} className={isStudentMgmtView ? "sm:col-span-2" : ""}>
-                                  <div className="flex gap-2">
+                                <div key={permKey} className={`w-full min-w-0 ${isStudentMgmtView ? 'sm:col-span-2' : ''}`}>
+                                  <div className="flex gap-2 items-stretch w-full">
                                     <button
                                       type="button"
                                       onClick={() => toggleSinglePermission(permKey)}
-                                      className={`flex-1 flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs text-left transition-all ${enabled
+                                      className={`w-full min-w-0 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-xs text-left transition-all ${enabled
                                         ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm'
                                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                                         }`}
                                     >
-                                      <span className="flex items-center gap-2">
+                                      <span className="flex items-center gap-2 min-w-0">
                                         <span
-                                          className={`w-5 h-5 rounded-md flex items-center justify-center border ${enabled
+                                          className={`shrink-0 w-5 h-5 rounded-md flex items-center justify-center border ${enabled
                                             ? 'bg-emerald-500 border-emerald-500 text-white'
                                             : 'bg-slate-50 border-slate-300 text-slate-400'
                                             }`}
@@ -3566,7 +3666,7 @@ const UserManagement = () => {
                                         <span className="font-medium truncate">{label}</span>
                                       </span>
                                       <span
-                                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${enabled
+                                        className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${enabled
                                           ? 'bg-emerald-100 text-emerald-700'
                                           : 'bg-slate-100 text-slate-500'
                                           }`}
@@ -3575,7 +3675,6 @@ const UserManagement = () => {
                                       </span>
                                     </button>
 
-                                    {/* Add Configure Fields button for Student Management View permission */}
                                     {isStudentMgmtView && enabled && (
                                       <button
                                         type="button"
@@ -3584,7 +3683,7 @@ const UserManagement = () => {
                                           setShowFieldPermissionsModal(true);
                                           loadStudentFields('user');
                                         }}
-                                        className="px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+                                        className="shrink-0 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
                                       >
                                         <Settings size={14} />
                                         Configure Fields
@@ -3596,6 +3695,25 @@ const UserManagement = () => {
                             })
                             )}
                           </div>
+
+                          {effectiveModuleKey === BACKEND_MODULES.STUDENT_MANAGEMENT && (
+                            <StudentViewDialogSubPagesSection
+                              permissions={permsForUser}
+                              onToggleViewSms={() => toggleSinglePermission('view_sms')}
+                              onToggleViewMerit={() => {
+                                const viewEnabled = permsForUser.view_merit_status === true;
+                                const editEnabled = permsForUser.edit_merit_status === true;
+                                toggleSinglePermission('view_merit_status');
+                                if (viewEnabled && editEnabled) toggleSinglePermission('edit_merit_status');
+                              }}
+                              onToggleEditMerit={() => {
+                                const viewEnabled = permsForUser.view_merit_status === true;
+                                const editEnabled = permsForUser.edit_merit_status === true;
+                                toggleSinglePermission('edit_merit_status');
+                                if (!editEnabled && !viewEnabled) toggleSinglePermission('view_merit_status');
+                              }}
+                            />
+                          )}
 
                           {allEnabled && (
                             <div className="flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">

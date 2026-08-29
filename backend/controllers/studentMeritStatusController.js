@@ -3,6 +3,7 @@ const { buildAcademicYearContext } = require('../services/studentScholarshipSync
 const { resolveStudentProgramYears } = require('../utils/studentProgramYears');
 
 const VALID_MERIT_STATUSES = new Set(['yes', 'no']);
+const MAX_REMARKS_LENGTH = 1000;
 
 let tableEnsured = false;
 
@@ -15,6 +16,7 @@ const ensureMeritStatusTable = async () => {
       student_id INT NOT NULL,
       student_year INT NOT NULL,
       merit_status ENUM('yes', 'no') DEFAULT NULL,
+      remarks TEXT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY unique_student_year (student_id, student_year),
@@ -22,6 +24,20 @@ const ensureMeritStatusTable = async () => {
       CONSTRAINT fk_merit_status_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Existing deployments created the table without remarks — add it if missing
+  const [columns] = await masterPool.query(
+    `SELECT COUNT(*) AS count
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'student_merit_status'
+       AND COLUMN_NAME = 'remarks'`
+  );
+  if (!(columns[0]?.count > 0)) {
+    await masterPool.query(
+      'ALTER TABLE student_merit_status ADD COLUMN remarks TEXT NULL AFTER merit_status'
+    );
+  }
 
   tableEnsured = true;
 };
@@ -32,6 +48,12 @@ const normalizeMeritStatus = (value) => {
   if (normalized === 'y' || normalized === 'true' || normalized === '1') return 'yes';
   if (normalized === 'n' || normalized === 'false' || normalized === '0') return 'no';
   return VALID_MERIT_STATUSES.has(normalized) ? normalized : '';
+};
+
+const normalizeRemarks = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.slice(0, MAX_REMARKS_LENGTH);
 };
 
 const getStudentByAdmissionNumber = async (admissionNumber) => {
@@ -48,7 +70,7 @@ const getStudentByAdmissionNumber = async (admissionNumber) => {
 
 const fetchMeritStatusRows = async (studentId) => {
   const [rows] = await masterPool.query(
-    `SELECT student_year, merit_status
+    `SELECT student_year, merit_status, remarks
      FROM student_merit_status
      WHERE student_id = ?
      ORDER BY student_year ASC`,
@@ -60,20 +82,27 @@ const fetchMeritStatusRows = async (studentId) => {
 const buildMeritStatusPayload = async (student) => {
   const programYears = await resolveStudentProgramYears(masterPool, student);
   const storedRows = await fetchMeritStatusRows(student.id);
-  const statusByYear = storedRows.reduce((acc, row) => {
-    acc[row.student_year] = normalizeMeritStatus(row.merit_status);
+  const rowByYear = storedRows.reduce((acc, row) => {
+    acc[row.student_year] = {
+      merit_status: normalizeMeritStatus(row.merit_status),
+      remarks: normalizeRemarks(row.remarks)
+    };
     return acc;
   }, {});
 
   const academicContext = buildAcademicYearContext(student.batch, programYears.totalYears);
   const maxAccessibleYear = programYears.currentYear;
 
-  const years = programYears.years.map((entry) => ({
-    ...entry,
-    merit_status: statusByYear[entry.student_year] || '',
-    academic_year_label: academicContext.labels?.[entry.student_year] || '',
-    editable: entry.student_year <= maxAccessibleYear
-  }));
+  const years = programYears.years.map((entry) => {
+    const stored = rowByYear[entry.student_year] || {};
+    return {
+      ...entry,
+      merit_status: stored.merit_status || '',
+      remarks: stored.remarks || '',
+      academic_year_label: academicContext.labels?.[entry.student_year] || '',
+      editable: entry.student_year <= maxAccessibleYear
+    };
+  });
 
   return {
     student: {
@@ -100,6 +129,26 @@ const buildMeritStatusPayload = async (student) => {
   };
 };
 
+const buildCurrentMeritStatusMap = async (students = []) => {
+  const studentIds = students.map((student) => Number(student.id)).filter(Boolean);
+  if (!studentIds.length) return new Map();
+
+  await ensureMeritStatusTable();
+
+  const [rows] = await masterPool.query(
+    `SELECT ms.student_id, ms.merit_status
+     FROM student_merit_status ms
+     INNER JOIN students s ON s.id = ms.student_id
+     WHERE ms.student_id IN (?)
+       AND ms.student_year = COALESCE(s.current_year, 1)`,
+    [studentIds]
+  );
+
+  return new Map(
+    rows.map((row) => [Number(row.student_id), normalizeMeritStatus(row.merit_status)])
+  );
+};
+
 exports.getMeritStatus = async (req, res) => {
   try {
     await ensureMeritStatusTable();
@@ -118,6 +167,43 @@ exports.getMeritStatus = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch merit status' });
   }
 };
+
+exports.buildCurrentMeritStatusMap = buildCurrentMeritStatusMap;
+
+/** Filter students by current-year merit status (yes / no / unset). */
+const getMeritStatusFilterClause = (filterValue, studentAlias = 's') => {
+  const normalized = String(filterValue || '').trim().toLowerCase();
+  if (!normalized) return { clause: '', params: [] };
+
+  if (normalized === '__unset__' || normalized === 'unset' || normalized === 'not_set') {
+    return {
+      clause: ` AND NOT EXISTS (
+        SELECT 1 FROM student_merit_status ms
+        WHERE ms.student_id = ${studentAlias}.id
+          AND ms.student_year = COALESCE(${studentAlias}.current_year, 1)
+          AND ms.merit_status IS NOT NULL
+      )`,
+      params: []
+    };
+  }
+
+  if (normalized === 'yes' || normalized === 'no') {
+    return {
+      clause: ` AND EXISTS (
+        SELECT 1 FROM student_merit_status ms
+        WHERE ms.student_id = ${studentAlias}.id
+          AND ms.student_year = COALESCE(${studentAlias}.current_year, 1)
+          AND ms.merit_status = ?
+      )`,
+      params: [normalized]
+    };
+  }
+
+  return { clause: '', params: [] };
+};
+
+exports.getMeritStatusFilterClause = getMeritStatusFilterClause;
+exports.ensureMeritStatusTable = ensureMeritStatusTable;
 
 exports.saveMeritStatus = async (req, res) => {
   const connection = await masterPool.getConnection();
@@ -162,7 +248,10 @@ exports.saveMeritStatus = async (req, res) => {
       }
 
       const meritStatus = normalizeMeritStatus(entry.merit_status);
-      if (!meritStatus) {
+      const remarks = normalizeRemarks(entry.remarks);
+
+      // Remarks are optional. Clear the year row only when both status and remarks are empty.
+      if (!meritStatus && !remarks) {
         await connection.query(
           'DELETE FROM student_merit_status WHERE student_id = ? AND student_year = ?',
           [student.id, studentYear]
@@ -171,14 +260,26 @@ exports.saveMeritStatus = async (req, res) => {
       }
 
       await connection.query(
-        `INSERT INTO student_merit_status (student_id, student_year, merit_status)
-         VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE merit_status = VALUES(merit_status), updated_at = CURRENT_TIMESTAMP`,
-        [student.id, studentYear, meritStatus]
+        `INSERT INTO student_merit_status (student_id, student_year, merit_status, remarks)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           merit_status = VALUES(merit_status),
+           remarks = VALUES(remarks),
+           updated_at = CURRENT_TIMESTAMP`,
+        [student.id, studentYear, meritStatus || null, remarks || null]
       );
     }
 
     await connection.commit();
+
+    try {
+      const { studentsCache } = require('../services/cache');
+      if (studentsCache && typeof studentsCache.clear === 'function') {
+        studentsCache.clear();
+      }
+    } catch (_) {
+      /* ignore cache clear failures */
+    }
 
     const data = await buildMeritStatusPayload(student);
     res.json({ success: true, data, message: 'Merit status saved successfully' });

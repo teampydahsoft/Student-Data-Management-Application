@@ -46,10 +46,10 @@ const StudentMeritStatusTab = ({
     fetchMeritStatus();
   }, [fetchMeritStatus]);
 
-  const updateYearStatus = (studentYear, meritStatus) => {
+  const updateYearField = (studentYear, field, value) => {
     setYears((prev) => prev.map((entry) => (
       entry.student_year === studentYear
-        ? { ...entry, merit_status: meritStatus }
+        ? { ...entry, [field]: value }
         : entry
     )));
   };
@@ -73,7 +73,8 @@ const StudentMeritStatusTab = ({
         .filter((entry) => entry.editable !== false)
         .map((entry) => ({
           student_year: entry.student_year,
-          merit_status: entry.merit_status || ''
+          merit_status: entry.merit_status || '',
+          remarks: entry.remarks || ''
         }));
 
       const response = await api.put(
@@ -159,6 +160,9 @@ const StudentMeritStatusTab = ({
                 )}
                 <th className="px-4 py-2.5 font-bold whitespace-nowrap">Academic Year</th>
                 <th className="px-4 py-2.5 font-bold whitespace-nowrap">Merit Status</th>
+                <th className="px-4 py-2.5 font-bold whitespace-nowrap min-w-[220px]">
+                  Remarks <span className="font-normal normal-case text-gray-400">(optional)</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -171,7 +175,7 @@ const StudentMeritStatusTab = ({
                     key={entry.student_year}
                     className={isCurrent ? 'bg-indigo-50/40' : 'bg-white'}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-gray-900">{entry.label}</span>
                         {entry.isOptionalYear && (
@@ -187,18 +191,18 @@ const StudentMeritStatusTab = ({
                       </div>
                     </td>
                     {hasPartialBranch && (
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 align-top">
                         Year {entry.courseYear}
                       </td>
                     )}
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-gray-600 align-top">
                       {entry.academic_year_label || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       {isEditable ? (
                         <select
                           value={entry.merit_status || ''}
-                          onChange={(e) => updateYearStatus(entry.student_year, e.target.value)}
+                          onChange={(e) => updateYearField(entry.student_year, 'merit_status', e.target.value)}
                           className="min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
                           {MERIT_STATUS_OPTIONS.map((option) => (
@@ -217,6 +221,22 @@ const StudentMeritStatusTab = ({
                         }`}>
                           {formatMeritStatusDisplay(entry.merit_status)}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {isEditable ? (
+                        <textarea
+                          value={entry.remarks || ''}
+                          onChange={(e) => updateYearField(entry.student_year, 'remarks', e.target.value)}
+                          rows={2}
+                          maxLength={1000}
+                          placeholder="Optional remarks for this year"
+                          className="w-full min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-y"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                          {entry.remarks || <span className="text-gray-400">—</span>}
+                        </p>
                       )}
                     </td>
                   </tr>

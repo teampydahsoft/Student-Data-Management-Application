@@ -66,6 +66,7 @@ import { useStudents, useUpdateStudent, useDeleteStudent, useBulkDeleteStudents,
 import useStudentQuotas from '../hooks/useStudentQuotas';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
+import { formatMeritStatusDisplay, MERIT_STATUS_FILTER_OPTIONS } from '../config/studentProgramYears';
 import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
 import {
   SCHOLARSHIP_ELIGIBLE_OPTIONS,
@@ -313,14 +314,17 @@ const Students = () => {
   const canDeleteStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'delete_student');
   const canUpdatePin = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'update_pin');
   const canExportStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'export');
+  const isCashier = user?.role === USER_ROLES.CASHIER;
   // SMS tab should be visible for super admin, admin, or users with view_sms permission
   const canViewSms = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_sms');
+  const canViewMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_merit_status') || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
+  const canEditMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
+  // Table column: show for anyone who can open the Students list (seeded values must be visible)
+  const showMeritColumn = canViewStudents && !isCashier;
   // Check if user has access to Attendance module
   const canViewAttendance = hasModuleAccess(userPermissions, FRONTEND_MODULES.ATTENDANCE);
   const canAddRemarks = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'add_remarks');
   const canManageRemarks = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'manage_remarks');
-
-  const isCashier = user?.role === USER_ROLES.CASHIER;
 
   // Helper to check field-level permissions
   const canViewField = useCallback((fieldKey) => {
@@ -478,7 +482,7 @@ const Students = () => {
     // All student database fields
     const studentFields = [
       'admission_number', 'pin_no', 'stud_type', 'student_name', 'student_status',
-      'scholar_status', 'student_mobile', 'parent_mobile1', 'parent_mobile2',
+      'scholar_status', 'merit_status', 'student_mobile', 'parent_mobile1', 'parent_mobile2',
       'caste', 'gender', 'father_name', 'dob', 'adhar_no', 'admission_date',
       'student_address', 'city_village', 'mandal_name', 'district',
       'previous_college', 'certificates_status', 'remarks', 'created_at'
@@ -778,6 +782,26 @@ const Students = () => {
     setRegistrationStageConfig({});
   }, [selectedStudent?.admission_number]);
 
+  const fetchMeritForStudent = useCallback(async (admissionNumber) => {
+    if (!admissionNumber || !canViewMeritStatus) return null;
+
+    try {
+      const response = await api.get(`/student-merit-status/${encodeURIComponent(admissionNumber)}`);
+      if (response.data.success) {
+        const data = response.data.data;
+        const currentYear = Math.max(1, Number(data?.currentYear) || 1);
+        const currentMerit = data?.years?.find(
+          (entry) => Number(entry.student_year) === currentYear
+        )?.merit_status || '';
+        setSelectedStudent((prev) => (prev ? { ...prev, merit_status: currentMerit } : prev));
+        return data;
+      }
+    } catch (error) {
+      console.error('Failed to fetch merit status:', error);
+    }
+    return null;
+  }, [canViewMeritStatus]);
+
   const fetchScholarshipForStudent = useCallback(async (admissionNumber) => {
     if (!admissionNumber) {
       setScholarshipData(null);
@@ -868,7 +892,8 @@ const Students = () => {
 
     fetchFullDetails();
     fetchScholarshipForStudent(selectedStudent?.admission_number);
-  }, [showModal, selectedStudent?.admission_number, fetchScholarshipForStudent]);
+    fetchMeritForStudent(selectedStudent?.admission_number);
+  }, [showModal, selectedStudent?.admission_number, fetchScholarshipForStudent, fetchMeritForStudent]);
 
   useEffect(() => {
     pageSizeRef.current = pageSize;
@@ -3126,6 +3151,21 @@ const Students = () => {
                   ))}
                 </select>
               </div>
+              {showMeritColumn && (
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Merit Status</label>
+                  <select
+                    value={filters.merit_status || ''}
+                    onChange={(e) => handleFilterChange('merit_status', e.target.value)}
+                    className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  >
+                    <option value="">All</option>
+                    {MERIT_STATUS_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex flex-col">
                 <label className="text-[10px] font-semibold text-gray-500 mb-0.5 ml-0.5 uppercase tracking-wide">Category</label>
                 <select
@@ -3408,6 +3448,11 @@ const Students = () => {
                             <div className="font-semibold">Scholar</div>
                           </th>
                         )}
+                        {showMeritColumn && (
+                          <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left max-w-[120px]">
+                            <div className="font-semibold">Merit</div>
+                          </th>
+                        )}
                         {canViewField('registration_status') && (
                           <th className="py-2 px-1.5 text-xs font-semibold text-gray-700 text-left">
                             <div className="font-semibold">Reg</div>
@@ -3624,6 +3669,32 @@ const Students = () => {
                                 </div>
                               </td>
                             )}
+                            {showMeritColumn && (
+                              <td
+                                className="py-1 px-1 text-[10px] text-gray-700 max-w-[120px] truncate"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (canViewMeritStatus) {
+                                    handleViewDetails(student, 'merit_status');
+                                  }
+                                }}
+                              >
+                                <div
+                                  className={`px-2 py-1 rounded transition-colors ${
+                                    canViewMeritStatus ? 'cursor-pointer' : ''
+                                  } ${
+                                    student.merit_status === 'yes'
+                                      ? 'text-green-700 hover:bg-green-50'
+                                      : student.merit_status === 'no'
+                                        ? 'text-red-700 hover:bg-red-50'
+                                        : 'text-gray-500 hover:bg-amber-50 hover:text-amber-700'
+                                  }`}
+                                  title={canViewMeritStatus ? 'Open merit status' : 'Merit status'}
+                                >
+                                  {formatMeritStatusDisplay(student.merit_status)}
+                                </div>
+                              </td>
+                            )}
                             {canViewField('registration_status') && !isCashier && (
                               <td className="py-1 px-1 text-[10px]">
                                 <span className={`inline-flex px-1.5 py-0.5 rounded ${getRegistrationStatusBadgeClass(student.registration_status)}`}>
@@ -3801,6 +3872,38 @@ const Students = () => {
                                 <p className="text-xs text-gray-500">Scholar Status</p>
                                 <p className="text-sm font-medium text-gray-900 truncate" title={formatScholarshipStatusDisplay(student.scholar_status)}>
                                   {formatScholarshipStatusDisplay(student.scholar_status)}
+                                </p>
+                              </div>
+                            )}
+                            {showMeritColumn && (
+                              <div
+                                role={canViewMeritStatus ? 'button' : undefined}
+                                tabIndex={canViewMeritStatus ? 0 : undefined}
+                                onClick={(e) => {
+                                  if (!canViewMeritStatus) return;
+                                  e.stopPropagation();
+                                  handleViewDetails(student, 'merit_status');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (!canViewMeritStatus) return;
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleViewDetails(student, 'merit_status');
+                                  }
+                                }}
+                                className={`rounded-lg p-1 -m-1 ${canViewMeritStatus ? 'hover:bg-amber-50 cursor-pointer' : ''}`}
+                                title={canViewMeritStatus ? 'Open merit status' : 'Merit status'}
+                              >
+                                <p className="text-xs text-gray-500">Merit Status</p>
+                                <p className={`text-sm font-medium truncate ${
+                                  student.merit_status === 'yes'
+                                    ? 'text-green-700'
+                                    : student.merit_status === 'no'
+                                      ? 'text-red-700'
+                                      : 'text-gray-900'
+                                }`}>
+                                  {formatMeritStatusDisplay(student.merit_status)}
                                 </p>
                               </div>
                             )}
@@ -4347,12 +4450,14 @@ const Students = () => {
                     >
                       <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
                     </button>
-                    <button
-                      onClick={() => setActiveStudentTab('merit_status')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'merit_status' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <Award size={16} /> <span className="whitespace-nowrap">Merit Status</span>
-                    </button>
+                    {canViewMeritStatus && (
+                      <button
+                        onClick={() => setActiveStudentTab('merit_status')}
+                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'merit_status' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                      >
+                        <Award size={16} /> <span className="whitespace-nowrap">Merit Status</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setActiveStudentTab('history')}
                       className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
@@ -4683,10 +4788,21 @@ const Students = () => {
                       }}
                     />
                   )}
-                  {activeStudentTab === 'merit_status' && (
+                  {activeStudentTab === 'merit_status' && canViewMeritStatus && (
                     <StudentMeritStatusTab
                       student={selectedStudent}
-                      readOnly={isCashier}
+                      readOnly={isCashier || !canEditMeritStatus}
+                      onUpdated={(data) => {
+                        const currentYear = Math.max(
+                          1,
+                          Number(data?.currentYear || selectedStudent?.current_year) || 1
+                        );
+                        const currentMerit = data?.years?.find(
+                          (entry) => Number(entry.student_year) === currentYear
+                        )?.merit_status || '';
+                        setSelectedStudent((prev) => (prev ? { ...prev, merit_status: currentMerit } : prev));
+                        invalidateStudents();
+                      }}
                     />
                   )}
 
@@ -5522,6 +5638,31 @@ const Students = () => {
                                 </button>
                               </div>
                             )}
+                            {showMeritColumn && (
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                  Merit Status (Current Year)
+                                </label>
+                                <p className={`text-sm font-medium ${
+                                  selectedStudent?.merit_status === 'yes'
+                                    ? 'text-green-700'
+                                    : selectedStudent?.merit_status === 'no'
+                                      ? 'text-red-700'
+                                      : 'text-gray-900'
+                                }`}>
+                                  {formatMeritStatusDisplay(selectedStudent?.merit_status)}
+                                </p>
+                                {canViewMeritStatus && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveStudentTab('merit_status')}
+                                    className="mt-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                                  >
+                                    Update in Merit Status tab →
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {canViewField('fee_status') && (
                               <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
@@ -5953,7 +6094,9 @@ const Students = () => {
         filters={memoizedFilters}
         search={debouncedSearch}
         forms={forms}
-        canViewField={canViewField}
+        canViewField={(fieldKey) => (
+          fieldKey === 'merit_status' ? showMeritColumn : canViewField(fieldKey)
+        )}
         totalCount={totalStudents}
       />
 

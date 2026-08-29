@@ -41,7 +41,7 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -52,7 +52,9 @@ export const MODULE_PERMISSIONS = {
       export: 'Export Students',
       view_sms: 'View SMS Logs',
       add_remarks: 'Add Remarks',
-      manage_remarks: 'Manage Remarks (Edit/Delete)'
+      manage_remarks: 'Manage Remarks (Edit/Delete)',
+      view_merit_status: 'View Merit Status',
+      edit_merit_status: 'Edit Merit Status'
     }
   },
   [BACKEND_MODULES.PROMOTIONS]: {
@@ -457,6 +459,15 @@ export const ROLE_COLORS = {
 export const isFullAccessRole = (role) => {
   return role === USER_ROLES.SUPER_ADMIN || role === USER_ROLES.ADMIN;
 };
+
+export const STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS = [
+  'view_sms',
+  'view_merit_status',
+  'edit_merit_status'
+];
+
+/** @deprecated Use STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS */
+export const STUDENT_MANAGEMENT_MERIT_PERMISSION_KEYS = ['view_merit_status', 'edit_merit_status'];
 
 // Create default permissions (all false)
 export const createDefaultPermissions = () => {

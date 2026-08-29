@@ -1,4 +1,4 @@
--- Per-student, per-year merit status (yes / no)
+-- Per-student, per-year merit status (yes / no) with optional remarks
 USE student_database;
 
 CREATE TABLE IF NOT EXISTS student_merit_status (
@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS student_merit_status (
   student_id INT NOT NULL,
   student_year INT NOT NULL,
   merit_status ENUM('yes', 'no') DEFAULT NULL,
+  remarks TEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY unique_student_year (student_id, student_year),

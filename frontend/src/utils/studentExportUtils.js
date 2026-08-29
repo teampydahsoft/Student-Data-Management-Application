@@ -7,7 +7,7 @@ const HARDCODED_FORM_KEYS = new Set([
   'adhar_no', 'aadhar_no', 'aadhaar_no', 'caste', 'stud_type', 'studtype',
   'student_address', 'city_village', 'mandal_name', 'district',
   'previous_college', 'certificates_status', 'remarks', 'pin_no',
-  'admission_date', 'student_status', 'scholar_status', 'fee_status',
+  'admission_date', 'student_status', 'scholar_status', 'merit_status', 'fee_status',
   'registration_status', 'student_photo', 'apaar_id', 'apaar',
   'admission_number', 'admission_no', 'created_at', 'updated_at', 'id',
   'is_student_mobile_verified', 'is_parent_mobile_verified',
@@ -43,6 +43,7 @@ export const CORE_EXPORT_FIELDS = [
   { key: 'stud_type', label: 'Student Type', group: 'Academic', altKeys: ['StudType', 'Student Type'] },
   { key: 'student_status', label: 'Student Status', group: 'Status', altKeys: ['Student Status', 'Status'] },
   { key: 'scholar_status', label: 'Scholar Status', group: 'Status', altKeys: ['Scholar Status', 'Scholarship Status'] },
+  { key: 'merit_status', label: 'Merit Status', group: 'Status', altKeys: ['Merit Status'] },
   { key: 'fee_status', label: 'Fee Status', group: 'Status', altKeys: ['Fee Status'] },
   { key: 'registration_status', label: 'Registration Status', group: 'Status', altKeys: ['Registration Status'] },
   { key: 'certificates_status', label: 'Certificates Status', group: 'Status', altKeys: ['Certificates Status'] },
@@ -124,6 +125,12 @@ export const getStudentFieldValue = (student, field) => {
 
   for (const key of keys) {
     if (!isEmptyValue(student[key])) {
+      if (field.key === 'merit_status') {
+        const normalized = String(student[key]).trim().toLowerCase();
+        if (normalized === 'yes') return 'Yes';
+        if (normalized === 'no') return 'No';
+        return '';
+      }
       return student[key];
     }
   }
@@ -131,6 +138,12 @@ export const getStudentFieldValue = (student, field) => {
   const data = parseStudentData(student);
   for (const key of keys) {
     if (!isEmptyValue(data[key])) {
+      if (field.key === 'merit_status') {
+        const normalized = String(data[key]).trim().toLowerCase();
+        if (normalized === 'yes') return 'Yes';
+        if (normalized === 'no') return 'No';
+        return '';
+      }
       return data[key];
     }
   }

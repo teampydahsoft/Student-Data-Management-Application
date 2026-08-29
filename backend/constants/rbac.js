@@ -102,7 +102,7 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -115,7 +115,9 @@ const MODULE_PERMISSIONS = {
       edit_details: 'Edit Student Details (Individual Fields)',
       view_sms: 'View SMS Logs',
       add_remarks: 'Add Remarks',
-      manage_remarks: 'Manage Remarks (Edit/Delete)'
+      manage_remarks: 'Manage Remarks (Edit/Delete)',
+      view_merit_status: 'View Merit Status',
+      edit_merit_status: 'Edit Merit Status'
     }
   },
   [MODULES.PROMOTIONS]: {

@@ -34,6 +34,7 @@ const {
   resolveRegistrationScholarshipForStudent,
   registrationUsesScholarshipTableOnly
 } = require('../services/studentScholarshipSync');
+const { buildCurrentMeritStatusMap, getMeritStatusFilterClause, ensureMeritStatusTable } = require('./studentMeritStatusController');
 const {
   isVerificationCompleteForCycle,
   isPromotionCompleteForCycle,
@@ -2846,6 +2847,13 @@ exports.getAllStudents = async (req, res) => {
         return acc;
       }, {});
 
+    if (normalizedOtherFilters.filter_merit_status?.trim()) {
+      await ensureMeritStatusTable();
+    } else {
+      // Ensure table exists so LEFT JOIN below never fails after seeding/deploy
+      await ensureMeritStatusTable();
+    }
+
     // Student database field filters - defined once for reuse
     const studentFieldFilters = [
       'admission_number', 'pin_no', 'stud_type', 'student_name', 'student_status',
@@ -2942,11 +2950,15 @@ exports.getAllStudents = async (req, res) => {
         COALESCE(colleges.name, s.college) AS college,
         COALESCE(courses.name, s.course) AS course,
         COALESCE(course_branches.name, s.branch) AS branch,
+        ms.merit_status AS merit_status,
         ${registrationStatusComputedSql} AS registration_status_computed
       FROM students s
       LEFT JOIN colleges ON s.college_id = colleges.id
       LEFT JOIN courses ON s.course_id = courses.id
       LEFT JOIN course_branches ON s.branch_id = course_branches.id
+      LEFT JOIN student_merit_status ms
+        ON ms.student_id = s.id
+       AND ms.student_year = COALESCE(s.current_year, 1)
       WHERE 1=1`;
     const params = [];
 
@@ -3068,6 +3080,13 @@ exports.getAllStudents = async (req, res) => {
           : 'pending';
       query += ` AND (${registrationStatusComputedSql}) = ?`;
       params.push(regStatusMatch);
+    }
+
+    const meritStatusFilter = normalizedOtherFilters.filter_merit_status;
+    if (meritStatusFilter && typeof meritStatusFilter === 'string' && meritStatusFilter.trim().length > 0) {
+      const { clause, params: meritParams } = getMeritStatusFilterClause(meritStatusFilter.trim(), 's');
+      query += clause;
+      params.push(...meritParams);
     }
 
     // Student database field filters
@@ -3230,6 +3249,13 @@ exports.getAllStudents = async (req, res) => {
       countParams.push(regStatusMatch);
     }
 
+    const meritStatusFilterForCount = normalizedOtherFilters.filter_merit_status;
+    if (meritStatusFilterForCount && typeof meritStatusFilterForCount === 'string' && meritStatusFilterForCount.trim().length > 0) {
+      const { clause, params: meritParams } = getMeritStatusFilterClause(meritStatusFilterForCount.trim(), 'students');
+      countQuery += clause;
+      countParams.push(...meritParams);
+    }
+
     // Student database field filters for count query
     studentFieldFilters.forEach(field => {
       const filterKey = `filter_${field}`;
@@ -3273,9 +3299,10 @@ exports.getAllStudents = async (req, res) => {
     const [countResult] = await masterPool.query(countQuery, countParams);
 
     const stageConfigForList = await loadRegistrationStageConfig();
-    const [scholarshipMap, registrationStatusLabelMap] = await Promise.all([
+    const [scholarshipMap, registrationStatusLabelMap, meritStatusMap] = await Promise.all([
       buildRegistrationScholarshipMap(masterPool, students),
-      buildRegistrationStatusLabelMap(masterPool, students, stageConfigForList)
+      buildRegistrationStatusLabelMap(masterPool, students, stageConfigForList),
+      buildCurrentMeritStatusMap(students)
     ]);
 
     const admissionNumbers = students.map(s => s.admission_number).filter(Boolean);
@@ -3370,6 +3397,12 @@ exports.getAllStudents = async (req, res) => {
         fee_status: resolvedFeeStatus,
         registration_status: resolvedRegistrationStatus,
         scholar_status: normalizedScholarStatus,
+        merit_status: (() => {
+          const fromMap = meritStatusMap.get(Number(student.id));
+          const raw = fromMap || student.merit_status || '';
+          const normalized = String(raw).trim().toLowerCase();
+          return normalized === 'yes' || normalized === 'no' ? normalized : '';
+        })(),
         accommodation: accommodation
       };
     });

@@ -78,6 +78,12 @@ export const MERIT_STATUS_OPTIONS = [
   { value: 'no', label: 'No' }
 ];
 
+export const MERIT_STATUS_FILTER_OPTIONS = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: '__UNSET__', label: 'Not Set' }
+];
+
 export const formatMeritStatusDisplay = (value) => {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (normalized === 'yes') return 'Yes';
