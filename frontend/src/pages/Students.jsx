@@ -31,7 +31,8 @@ import {
   CreditCard,
   Loader2,
   GitBranch,
-  GraduationCap
+  GraduationCap,
+  Award
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -46,6 +47,7 @@ import StudentRemarksModal from '../components/Students/StudentRemarksModal';
 import StudentRemarksContent from '../components/Students/StudentRemarksContent';
 import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 import StudentScholarshipHistoryTab from '../components/Students/StudentScholarshipHistoryTab';
+import StudentMeritStatusTab from '../components/Students/StudentMeritStatusTab';
 import StudentExportModal from '../components/Students/StudentExportModal';
 import BulkRollNumberModal from '../components/BulkRollNumberModal';
 import BulkUploadModal from '../components/BulkUploadModal';
@@ -4346,6 +4348,12 @@ const Students = () => {
                       <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
                     </button>
                     <button
+                      onClick={() => setActiveStudentTab('merit_status')}
+                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'merit_status' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                    >
+                      <Award size={16} /> <span className="whitespace-nowrap">Merit Status</span>
+                    </button>
+                    <button
                       onClick={() => setActiveStudentTab('history')}
                       className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
                     >
@@ -4369,7 +4377,7 @@ const Students = () => {
                 <div className={`p-3 sm:p-4 lg:p-6 ${
                   activeStudentTab === 'history'
                     ? 'flex-1 overflow-hidden flex flex-col'
-                    : activeStudentTab === 'scholarship'
+                    : activeStudentTab === 'scholarship' || activeStudentTab === 'merit_status'
                       ? 'flex-1 min-h-0 overflow-y-auto'
                       : ''
                 }`}>
@@ -4673,6 +4681,12 @@ const Students = () => {
                           ...(data?.student?.caste ? { caste: data.student.caste } : {})
                         } : prev));
                       }}
+                    />
+                  )}
+                  {activeStudentTab === 'merit_status' && (
+                    <StudentMeritStatusTab
+                      student={selectedStudent}
+                      readOnly={isCashier}
                     />
                   )}
 

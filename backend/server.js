@@ -165,6 +165,7 @@ app.use("/api/certificate-templates", certificateTemplateRoutes);
 app.use("/api/events", require("./routes/eventRoutes"));
 app.use("/api/student-history", require("./routes/studentHistoryRoutes"));
 app.use("/api/student-scholarship", require("./routes/studentScholarshipRoutes"));
+app.use("/api/student-merit-status", require("./routes/studentMeritStatusRoutes"));
 app.use("/api/sms-templates", require("./routes/smsTemplateRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes")); // [NEW] Notification Routes
 app.use("/api/feedback-forms", require("./routes/feedbackRoutes")); // [NEW] Feedback Form Routes
@@ -239,6 +240,7 @@ app.use("/certificate-templates", certificateTemplateRoutes);
 app.use("/events", require("./routes/eventRoutes"));
 app.use("/student-history", require("./routes/studentHistoryRoutes"));
 app.use("/student-scholarship", require("./routes/studentScholarshipRoutes"));
+app.use("/student-merit-status", require("./routes/studentMeritStatusRoutes"));
 app.use("/sms-templates", require("./routes/smsTemplateRoutes"));
 app.use("/notifications", require("./routes/notificationRoutes"));
 app.use("/feedback-forms", require("./routes/feedbackRoutes"));
