@@ -19,7 +19,6 @@ module.exports = {
         NODE_ENV: 'production',
         TZ: 'Asia/Kolkata'
       },
-      cron_restart: '0 3 * * *',
       time: true
     }
   ]
