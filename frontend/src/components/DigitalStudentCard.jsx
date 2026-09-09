@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { User, CreditCard } from 'lucide-react';
+import { User } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getStaticFileUrlDirect } from '../config/api';
 import api from '../config/api';
 
 // Module-level token cache: admissionNumber → qrToken
 const _qrTokenCache = {};
+// Module-level photo cache: admissionNumber → data URL / path
+const _photoCache = {};
 
+const resolvePhotoUrl = (raw) => {
+  if (!raw || typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === '{}' || trimmed === 'null') return '';
+  if (trimmed.startsWith('http') || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  return getStaticFileUrlDirect(trimmed);
+};
 
 /**
  * Reusable Digital Student ID Card.
@@ -15,12 +26,11 @@ const _qrTokenCache = {};
  */
 const DigitalStudentCard = ({ student, getStudentData, className = '', compact = false }) => {
   const [qrToken, setQrToken] = useState(null);
+  const [fetchedPhoto, setFetchedPhoto] = useState('');
 
-  if (!student) return null;
+  const admNo = student?.admission_number || student?.admission_no || '';
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
-    const admNo = student.admission_number || student.admission_no;
     if (!admNo) return;
     if (_qrTokenCache[admNo]) { setQrToken(_qrTokenCache[admNo]); return; }
     api.get(`/qr/token/${encodeURIComponent(admNo)}`)
@@ -31,7 +41,46 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         }
       })
       .catch(() => { /* not authenticated / network error — QR will use origin URL fallback */ });
-  }, [student.admission_number, student.admission_no]);
+  }, [admNo]);
+
+  useEffect(() => {
+    if (!student) {
+      setFetchedPhoto('');
+      return;
+    }
+    const fromField = resolvePhotoUrl(student.student_photo);
+    if (fromField) {
+      setFetchedPhoto(fromField);
+      return;
+    }
+    if (!admNo) {
+      setFetchedPhoto('');
+      return;
+    }
+    if (_photoCache[admNo]) {
+      setFetchedPhoto(_photoCache[admNo]);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/students/${encodeURIComponent(admNo)}/photo`)
+      .then((r) => {
+        if (cancelled) return;
+        const raw = r.data?.success ? r.data.data : null;
+        const url = resolvePhotoUrl(typeof raw === 'string' ? raw : '');
+        if (url) {
+          _photoCache[admNo] = url;
+          setFetchedPhoto(url);
+        } else {
+          setFetchedPhoto('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedPhoto('');
+      });
+    return () => { cancelled = true; };
+  }, [admNo, student, student?.student_photo]);
+
+  if (!student) return null;
 
   const fromStudentDataJson = (key, fallback = '') => {
     const sd = student.student_data;
@@ -73,11 +122,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
     return fromStudentDataJson(key, fallback);
   };
 
-  const photoUrl = student.student_photo
-    ? (student.student_photo.startsWith('http') || student.student_photo.startsWith('data:'))
-      ? student.student_photo
-      : getStaticFileUrlDirect(student.student_photo)
-    : '';
+  const photoUrl = fetchedPhoto || resolvePhotoUrl(student.student_photo);
 
   const name = get('student_name', '—');
   const pinNumber = get('pin_no', '') || get('admission_number', '—');
@@ -138,13 +183,20 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
     );
   }
 
+  const admissionNo = student.admission_number || student.admission_no || pinNumber;
+
   return (
     <div
-      className={`w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-200 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col ${className}`}
-      style={{ fontFamily: "'Inter', sans-serif" }}
+      className={`id-card-print-root digital-id-card w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-200 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col ${className}`}
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        aspectRatio: '54 / 85.6',
+        minHeight: '520px',
+      }}
+      data-qr-admission={admissionNo}
     >
       {/* Top Graphic Shapes (Red Theme) */}
-      <div className="absolute top-0 left-0 right-0 h-36 sm:h-44 overflow-hidden pointer-events-none z-0">
+      <div className="id-card-header-graphic absolute top-0 left-0 right-0 h-36 sm:h-44 overflow-hidden pointer-events-none z-0">
         <svg viewBox="0 0 400 200" preserveAspectRatio="none" className="w-full h-full">
           <path d="M0,0 L400,0 L400,20 L180,120 L0,40 Z" fill="#b91c1c" /> {/* Dark Red */}
           <path d="M400,20 L400,80 L220,160 Z" fill="#ef4444" opacity="0.8" /> {/* Lighter Red */}
@@ -152,22 +204,22 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         </svg>
       </div>
 
-      <div className="flex-1 flex flex-col relative z-10 w-full pt-10 sm:pt-12 pb-4 sm:pb-6">
-        <div className="w-full flex justify-center mb-4 sm:mb-6">
+      <div className="id-card-body flex-1 flex flex-col relative z-10 w-full pt-10 sm:pt-12 pb-4 sm:pb-6 min-h-0">
+        <div className="id-card-logo-wrap w-full flex justify-center mb-4 sm:mb-6">
           <div className="bg-white/90 backdrop-blur-md p-2 rounded-xl shadow-sm h-[72px] sm:h-[90px] inline-flex items-center justify-center border border-white/50 relative z-20">
             <img src="/logo.png" alt="College Logo" className="h-full w-auto object-contain max-w-[140px] sm:max-w-none" />
           </div>
         </div>
 
-        <div className="px-4 sm:px-6 flex flex-col flex-1">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start w-full gap-4 sm:gap-5">
-            <div className="flex flex-col items-center shrink-0 sm:mt-2">
-              <div className="w-[96px] h-[124px] sm:w-[124px] sm:h-[160px] rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex items-center justify-center relative z-10">
+        <div className="id-card-content px-4 sm:px-6 flex flex-col flex-1 min-h-0">
+          <div className="id-card-main-row flex flex-col sm:flex-row items-center sm:items-start w-full gap-4 sm:gap-5">
+            <div className="id-card-photo-wrap flex flex-col items-center shrink-0 sm:mt-2">
+              <div className="id-card-photo w-[96px] h-[124px] sm:w-[124px] sm:h-[160px] rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex items-center justify-center relative z-10">
                 {photoUrl ? (
                   <img
                     src={photoUrl}
                     alt={name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-top"
                     onError={(e) => {
                       e.target.style.display = 'none';
                       const next = e.target.nextElementSibling;
@@ -182,7 +234,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
             </div>
 
             {/* Right: Primary Info */}
-            <div className="flex flex-col space-y-2 flex-1 min-w-0 w-full sm:mt-2">
+            <div className="id-card-fields flex flex-col space-y-2 flex-1 min-w-0 w-full sm:mt-2">
               <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
                 <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
                 <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
@@ -214,17 +266,17 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
               <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
                 <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">STUDENT</span>
                 <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 break-all tabular-nums leading-snug">{studentMobile}</span>
+                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap overflow-hidden text-ellipsis">{studentMobile}</span>
               </div>
               <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
                 <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PARENT</span>
                 <span className="text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="flex-1 break-all tabular-nums">{parentMobile}</span>
+                <span className="flex-1 min-w-0 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">{parentMobile}</span>
               </div>
             </div>
           </div>
 
-          <div className="w-full flex flex-col sm:flex-row items-center sm:items-start justify-between mt-5 sm:mt-6 pt-3 border-t border-gray-200 border-dashed gap-4">
+          <div className="id-card-bottom-row w-full flex flex-col sm:flex-row items-center sm:items-start justify-between mt-5 sm:mt-6 pt-3 border-t border-gray-200 border-dashed gap-4 sm:mt-auto">
             <div className="flex flex-col text-[11px] flex-1 min-w-0 w-full sm:pr-2">
               <span className="font-bold text-gray-400 tracking-wider uppercase mb-1 text-[10px]">ADDRESS</span>
               <span className="font-semibold text-gray-700 leading-relaxed break-words">
@@ -232,7 +284,10 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
               </span>
             </div>
 
-            <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-shrink-0">
+            <div
+              className="digital-id-card-qr bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-shrink-0"
+              id={admissionNo ? `student-qr-${admissionNo}` : 'qr-id-card'}
+            >
               <QRCodeSVG
                 value={(() => {
                   const base = typeof window !== 'undefined' ? window.location.origin : '';
@@ -250,7 +305,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         </div>
       </div>
 
-      <div className="bg-[#b91c1c] py-3 px-3 sm:px-4 flex items-center justify-center z-20 shadow-lg border-t border-red-800 rounded-b-[1.5rem] sm:rounded-b-[2rem]">
+      <div className="id-card-footer shrink-0 bg-[#b91c1c] py-3 px-3 sm:px-4 flex items-center justify-center z-20 shadow-lg border-t border-red-800 rounded-b-[1.5rem] sm:rounded-b-[2rem]">
         <span className="text-white text-[10px] sm:text-xs font-bold tracking-wide uppercase text-center leading-snug break-words px-1">
           {college}
         </span>

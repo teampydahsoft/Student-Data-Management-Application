@@ -27,6 +27,7 @@ import CategoryReport from './pages/CategoryReport';
 import SmsReport from './pages/SmsReport';
 import ScholarshipReport from './pages/ScholarshipReport';
 import StudentPromotions from './pages/StudentPromotions';
+import PrintIdCards from './pages/PrintIdCards';
 import CollegeTransfer from './pages/CollegeTransfer';
 import TaskManagement from './pages/TaskManagement';
 import Announcements from './pages/Announcements';
@@ -219,6 +220,7 @@ function App() {
           <Route path="section-partition" element={<SectionPartition />} />
           <Route path="students/section-partition" element={<Navigate to="/section-partition" replace />} />
           <Route path="promotions" element={<StudentPromotions />} />
+          <Route path="students/print-id-cards" element={<PrintIdCards />} />
           <Route path="college-transfer" element={<CollegeTransfer />} />
           <Route path="courses" element={<Settings />} />
           <Route path="attendance" element={<Attendance />} />

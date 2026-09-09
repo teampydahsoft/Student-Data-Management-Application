@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import api, { getStaticFileUrlDirect } from '../../config/api';
-import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CreditCard, Download, X, CheckCircle } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CreditCard, Printer, X, CheckCircle } from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 import DigitalStudentCard from '../../components/DigitalStudentCard';
 import useAuthStore from '../../store/authStore';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import { toast } from 'react-hot-toast';
+import { printDigitalIdCard } from '../../utils/printDigitalIdCard';
 
 const Profile = () => {
     const { user } = useAuthStore();
@@ -18,9 +19,8 @@ const Profile = () => {
     const [newPassword, setNewPassword] = useState('');
     const [changePassLoading, setChangePassLoading] = useState(false);
 
-    // Digital Student ID Card: view modal and download
+    // Digital Student ID Card: view modal and print
     const [showIdCardModal, setShowIdCardModal] = useState(false);
-    const [idCardPdfLoading, setIdCardPdfLoading] = useState(false);
 
     const handleChangePassword = async (e) => {
         e.preventDefault();
@@ -74,175 +74,15 @@ const Profile = () => {
         return val !== undefined && val !== null && val !== '' ? val : fallback;
     }, [displayData]);
 
-    const handleDownloadIdCardPDF = useCallback(async () => {
+    const handlePrintIdCard = useCallback(() => {
         if (!displayData) return;
-        setIdCardPdfLoading(true);
         try {
-            const { jsPDF } = await import('jspdf');
-
-            // Same dimensions as DigitalStudentCard rendered at 380px wide
-            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [90, 140] });
-            const W = 90, H = 140;
-
-            // Helper field access
-            const get = (key) => displayData[key] || getStudentData(key) || '';
-            const name = get('student_name') || '—';
-            const pinNumber = get('pin_no') || get('admission_number') || '—';
-            const college = get('college') || '—';
-            const program = get('course') || '—';
-            const branch = get('branch') || '';
-            const batch = get('batch') || '—';
-            const studentMobile = get('student_mobile') || getStudentData('Student Mobile number') || '—';
-            const parentMobile = get('parent_mobile1') || getStudentData('Parent Mobile Number 1') || '—';
-            const addressParts = [get('student_address'), get('city_village'), get('district')].filter(Boolean);
-            const address = addressParts.join(', ') || '—';
-            const photo = displayData.student_photo;
-            const photoSrc = photo && (photo.startsWith('data:') || photo.startsWith('http')) ? photo : '';
-
-            // ── BACKGROUND ──
-            doc.setFillColor(248, 249, 250);
-            doc.rect(0, 0, W, H, 'F');
-
-            // ── RED TOP SHAPES (mirrors DigitalStudentCard SVG) ──
-            doc.setFillColor(185, 28, 28); // #b91c1c dark red
-            doc.triangle(0, 0, W, 0, W, 12, 'F');
-            doc.triangle(0, 0, W, 12, 45, 30, 'F');
-            doc.triangle(0, 0, 45, 30, 0, 10, 'F');
-            // lighter red accent triangle
-            doc.setFillColor(239, 68, 68); // #ef4444
-            doc.triangle(W, 12, W, 22, 55, 40, 'F');
-
-            // ── LOGO PILL ──
-            doc.setFillColor(255, 255, 255);
-            doc.roundedRect(W / 2 - 18, 5, 36, 22, 3, 3, 'F');
-            try {
-                const logoResp = await fetch('/logo.png');
-                const logoBlob = await logoResp.blob();
-                const logoDataUrl = await new Promise(res => {
-                    const r = new FileReader();
-                    r.onload = () => res(r.result);
-                    r.readAsDataURL(logoBlob);
-                });
-                doc.addImage(logoDataUrl, 'PNG', W / 2 - 16, 6, 32, 20, undefined, 'FAST');
-            } catch (_) { }
-
-            // ── PHOTO BOX (left side) ──
-            const photoX = 7, photoY = 40, photoW = 27, photoH = 36;
-            doc.setFillColor(248, 248, 248);
-            doc.setDrawColor(230, 230, 230);
-            doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'FD');
-            if (photoSrc) {
-                try {
-                    doc.addImage(photoSrc, 'JPEG', photoX, photoY, photoW, photoH, undefined, 'FAST');
-                } catch (_) {
-                    try { doc.addImage(photoSrc, 'PNG', photoX, photoY, photoW, photoH, undefined, 'FAST'); } catch (__) { }
-                }
-            }
-
-            // ── RIGHT COLUMN FIELDS ──
-            const infoX = photoX + photoW + 4;
-            const infoW = W - infoX - 4;
-            let iy = 42;
-            const fieldsToShow = [
-                ['NAME', name.toUpperCase()],
-                ['PROGRAM', program],
-                ...(branch ? [['BRANCH', branch]] : []),
-                ['PIN', pinNumber],
-                ['BATCH', batch],
-                ['STUDENT', studentMobile],
-                ['PARENT', parentMobile],
-            ];
-            doc.setFontSize(5.5);
-            fieldsToShow.forEach(([label, value]) => {
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(150, 150, 150);
-                doc.text(label, infoX, iy);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(30, 41, 59);
-                const lines = doc.splitTextToSize(String(value || '—'), infoW - 17);
-                doc.text(lines[0] || '—', infoX + 17, iy);
-                iy += 4.8;
-            });
-
-            // ── DASHED DIVIDER ──
-            const divY = Math.max(photoY + photoH + 3, iy + 2);
-            doc.setDrawColor(200, 200, 200);
-            doc.setLineDashPattern([1, 1], 0);
-            doc.line(7, divY, W - 7, divY);
-            doc.setLineDashPattern([], 0);
-
-            // ── ADDRESS TEXT ──
-            doc.setFontSize(5);
-            doc.setTextColor(120, 120, 120);
-            doc.setFont('helvetica', 'bold');
-            doc.text('ADDRESS', 9, divY + 5);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(70, 70, 70);
-            const addrLines = doc.splitTextToSize(address, 48);
-            addrLines.slice(0, 3).forEach((ln, i) => doc.text(ln, 9, divY + 9 + i * 3.8));
-
-            // ── QR CODE (from DOM or generate new vCard) ──
-            const qrX = W - 26, qrY = divY + 2, qrSize = 20;
-            doc.setFillColor(255, 255, 255);
-            doc.setDrawColor(210, 210, 210);
-            doc.roundedRect(qrX - 1, qrY - 1, qrSize + 2, qrSize + 2, 1, 1, 'FD');
-            try {
-                // Pull the QR SVG from the existing DigitalStudentCard in the modal
-                const qrEl = document.querySelector('.digital-id-card-qr svg') ||
-                    document.querySelector('[data-qr-admission] svg') ||
-                    document.querySelector('#qr-id-card svg');
-                if (qrEl) {
-                    const svgData = new XMLSerializer().serializeToString(qrEl);
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 100; canvas.height = 100;
-                    const ctx = canvas.getContext('2d');
-                    const img = new Image();
-                    await new Promise(resolve => {
-                        img.onload = () => { ctx.drawImage(img, 0, 0, 100, 100); resolve(); };
-                        img.onerror = () => resolve();
-                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-                    });
-                    doc.addImage(canvas.toDataURL(), 'PNG', qrX, qrY, qrSize, qrSize);
-                } else {
-                    // Render a QR via qrcode.react approach using canvas API
-                    const { QRCodeCanvas } = await import('qrcode.react').catch(() => ({}));
-                    if (!QRCodeCanvas) throw new Error('no qr');
-                    const tempDiv = document.createElement('div');
-                    tempDiv.style.position = 'fixed'; tempDiv.style.left = '-9999px';
-                    document.body.appendChild(tempDiv);
-                    const { createRoot } = await import('react-dom/client');
-                    const { createElement } = await import('react');
-                    const root = createRoot(tempDiv);
-                    const admNo = displayData.admission_number || displayData.admission_no || pinNumber;
-                    const qrValue = `${window.location.origin}/qr/${encodeURIComponent(admNo)}`;
-                    root.render(createElement(QRCodeCanvas, { value: qrValue, size: 100, id: '__pdf_qr_tmp__' }));
-                    await new Promise(r => setTimeout(r, 200));
-                    const canvasEl = tempDiv.querySelector('canvas');
-                    if (canvasEl) doc.addImage(canvasEl.toDataURL(), 'PNG', qrX, qrY, qrSize, qrSize);
-                    root.unmount();
-                    document.body.removeChild(tempDiv);
-                }
-            } catch (_) { }
-
-            // ── RED FOOTER BAR ──
-            doc.setFillColor(185, 28, 28);
-            doc.roundedRect(0, H - 9, W, 11, 3, 3, 'F');
-            doc.rect(0, H - 9, W, 5, 'F'); // flatten top rounded corners
-            doc.setFontSize(5.5);
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
-            const collegeTrunc = college.length > 48 ? college.substring(0, 45) + '...' : college;
-            doc.text(collegeTrunc.toUpperCase(), W / 2, H - 3, { align: 'center' });
-
-            doc.save(`ID_Card_${pinNumber || name}.pdf`);
-            toast.success('Digital student ID card downloaded');
+            printDigitalIdCard('.id-card-print-root');
         } catch (err) {
-            console.error('Failed to generate ID card PDF:', err);
-            toast.error('Failed to download PDF');
-        } finally {
-            setIdCardPdfLoading(false);
+            console.error(err);
+            toast.error(err.message || 'ID card is not ready to print');
         }
-    }, [displayData, getStudentData]);
+    }, [displayData]);
 
 
     if (loading) {
@@ -502,7 +342,7 @@ const Profile = () => {
                     </div>
                     <h3 className="text-2xl lg:text-3xl font-black tracking-tight text-slate-900">Academic Credential</h3>
                     <p className="text-sm text-gray-500 max-w-lg">
-                        Click <strong>View ID Card</strong> to see your digital student card, or download it as a PDF for offline access.
+                        Click <strong>View ID Card</strong> to see your digital student card, or print it directly to an Evolis CR80 printer.
                     </p>
                     <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-1">
                         <button
@@ -515,12 +355,14 @@ const Profile = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={handleDownloadIdCardPDF}
-                            disabled={idCardPdfLoading}
-                            className="inline-flex items-center gap-3 px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 transition-all hover:bg-slate-800 hover:-translate-y-1 active:scale-95 disabled:opacity-60"
+                            onClick={() => {
+                                setShowIdCardModal(true);
+                                setTimeout(() => handlePrintIdCard(), 400);
+                            }}
+                            className="inline-flex items-center gap-3 px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 transition-all hover:bg-slate-800 hover:-translate-y-1 active:scale-95"
                         >
-                            <Download size={18} />
-                            {idCardPdfLoading ? 'Transmitting…' : 'Export PDF'}
+                            <Printer size={18} />
+                            Generate Print
                         </button>
                     </div>
                 </div>
@@ -572,7 +414,7 @@ const Profile = () => {
                         <div className="flex justify-center">
                             <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
                         </div>
-                        <div className="mt-4 flex justify-end gap-2">
+                        <div className="mt-4 flex justify-end gap-2 no-print">
                             <button
                                 type="button"
                                 onClick={() => setShowIdCardModal(false)}
@@ -582,12 +424,11 @@ const Profile = () => {
                             </button>
                             <button
                                 type="button"
-                                onClick={async () => { await handleDownloadIdCardPDF(); setShowIdCardModal(false); }}
-                                disabled={idCardPdfLoading}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2"
+                                onClick={handlePrintIdCard}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 flex items-center gap-2"
                             >
-                                <Download size={16} />
-                                {idCardPdfLoading ? 'Downloading…' : 'Download PDF'}
+                                <Printer size={16} />
+                                Generate Print
                             </button>
                         </div>
                     </div>

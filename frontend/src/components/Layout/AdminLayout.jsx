@@ -42,6 +42,7 @@ import {
   PieChart,
   Tag,
   Award,
+  CreditCard,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -103,6 +104,12 @@ const NAV_ITEMS = [
         label: "Promotions",
         icon: TrendingUp,
         permission: FRONTEND_MODULES.PROMOTIONS,
+      },
+      {
+        path: "/students/print-id-cards",
+        label: "Print ID Cards",
+        icon: CreditCard,
+        permission: FRONTEND_MODULES.STUDENTS,
       },
     ],
   },

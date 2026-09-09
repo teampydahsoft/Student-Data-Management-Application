@@ -866,3 +866,452 @@ html.parent-portal #root {
     min-height: 100%;
 }
 
+/* ─── Direct print: Digital ID Card → Evolis CR80 ─── */
+#id-card-print-mount {
+    display: none;
+}
+
+@media print {
+    @page {
+        size: 54mm 85.6mm;
+        margin: 0;
+    }
+
+    /* height:auto so multi student front+back pages are not clipped */
+    html,
+    body {
+        width: 54mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    body.printing-id-card > *:not(#id-card-print-mount) {
+        display: none !important;
+    }
+
+    body.printing-id-card #id-card-print-mount {
+        display: block !important;
+        width: 54mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: transparent !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /*
+      CR80 vertical stack (54 × 85.6 mm):
+      header/logo → photo+fields (grows) → address+QR → footer
+    */
+    body.printing-id-card #id-card-print-mount .id-card-print-root {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 54mm !important;
+        height: 85.6mm !important;
+        min-height: 0 !important;
+        max-height: 85.6mm !important;
+        max-width: 54mm !important;
+        margin: 0 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+        background: #f8f9fa !important;
+        transform: none !important;
+        aspect-ratio: auto !important;
+        position: relative !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-header-graphic {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 16mm !important;
+        z-index: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-body {
+        position: relative !important;
+        z-index: 1 !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        /* Leave room for absolute footer at bottom */
+        padding: 4mm 0 8.5mm !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-logo-wrap {
+        flex: 0 0 auto !important;
+        margin: 0 0 4.5mm !important;
+        display: flex !important;
+        justify-content: center !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-logo-wrap > div {
+        height: 9.5mm !important;
+        padding: 0.6mm 2mm !important;
+        border-radius: 1.2mm !important;
+        background: #fff !important;
+        box-shadow: 0 0.3mm 1mm rgba(0, 0, 0, 0.1) !important;
+        border: 0.2mm solid rgba(255, 255, 255, 0.8) !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-logo-wrap img {
+        height: 100% !important;
+        width: auto !important;
+        max-width: 26mm !important;
+        object-fit: contain !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-content {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 0 2.5mm !important;
+        gap: 0 !important;
+        /* Start content below red header band */
+        margin-top: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-main-row {
+        flex: 1 1 auto !important;
+        min-height: 26mm !important;
+        max-height: 30mm !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch !important;
+        gap: 2.5mm !important;
+        margin: 0 !important;
+        /* Extra clearance from header swoosh */
+        padding-top: 1.5mm !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-photo-wrap {
+        flex: 0 0 16.5mm !important;
+        width: 16.5mm !important;
+        max-width: 16.5mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-self: stretch !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-photo {
+        flex: 1 1 auto !important;
+        width: 16.5mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: 28mm !important;
+        margin: 0 !important;
+        border: 0.5mm solid #fff !important;
+        border-radius: 1.2mm !important;
+        box-shadow: 0 0.35mm 1mm rgba(0, 0, 0, 0.12) !important;
+        overflow: hidden !important;
+        background: #e5e7eb !important;
+        position: relative !important;
+        display: block !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-photo img {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        object-position: center top !important;
+        display: block !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-photo > div {
+        position: absolute !important;
+        inset: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        align-self: stretch !important;
+        gap: 0 !important;
+        row-gap: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields > div {
+        display: flex !important;
+        align-items: flex-start !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 5.5pt !important;
+        line-height: 1.15 !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields > div > span:first-child {
+        width: 11mm !important;
+        flex-shrink: 0 !important;
+        font-size: 5pt !important;
+        color: #6b7280 !important;
+        text-transform: uppercase !important;
+        margin: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields > div > span:nth-child(2) {
+        flex-shrink: 0 !important;
+        margin: 0 0.6mm !important;
+        color: #d1d5db !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields > div > span:last-child {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        font-size: 5.5pt !important;
+        white-space: normal !important;
+        overflow: hidden !important;
+        word-break: break-word !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-fields > div:nth-last-child(-n+2) > span:last-child {
+        white-space: nowrap !important;
+        text-overflow: ellipsis !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-bottom-row {
+        flex: 0 0 auto !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: flex-start !important;
+        justify-content: space-between !important;
+        gap: 2.5mm !important;
+        margin: 3mm 0 0 !important;
+        padding: 2.5mm 0 0 !important;
+        border-top: 0.25mm dashed #d1d5db !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-bottom-row > div:first-child {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        font-size: 5pt !important;
+        padding-right: 1.5mm !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-bottom-row > div:first-child > span:first-child {
+        display: block !important;
+        font-size: 4.5pt !important;
+        font-weight: 700 !important;
+        color: #9ca3af !important;
+        letter-spacing: 0.04em !important;
+        margin-bottom: 1mm !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-bottom-row > div:first-child > span:last-child {
+        display: block !important;
+        overflow: hidden !important;
+        font-size: 5pt !important;
+        line-height: 1.65 !important;
+        font-weight: 600 !important;
+        color: #374151 !important;
+        max-height: 13mm !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .digital-id-card-qr {
+        flex: 0 0 14mm !important;
+        width: 14mm !important;
+        height: 14mm !important;
+        padding: 0.5mm !important;
+        margin: 0 !important;
+        border: 0.25mm solid #e5e7eb !important;
+        border-radius: 0.8mm !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .digital-id-card-qr svg {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-footer {
+        position: absolute !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        z-index: 30 !important;
+        flex: none !important;
+        width: 100% !important;
+        height: 7.5mm !important;
+        min-height: 7.5mm !important;
+        max-height: 7.5mm !important;
+        margin: 0 !important;
+        padding: 0 1.5mm !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #b91c1c !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-footer span {
+        font-size: 5.5pt !important;
+        font-weight: 700 !important;
+        line-height: 1.1 !important;
+        color: #fff !important;
+        text-transform: uppercase !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
+    }
+
+    /* Multi-page: front then back */
+    body.printing-id-card #id-card-print-mount .id-card-print-page {
+        display: block !important;
+        width: 54mm !important;
+        height: 85.6mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-print-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+    }
+
+    /* Back side — keep return-note + red footer inside CR80 (not clipped) */
+    body.printing-id-card #id-card-print-mount .id-card-back {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-body {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        padding: 3.5mm 0 8.5mm !important;
+        overflow: hidden !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-logo-wrap {
+        margin: 0 0 2.5mm !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-content {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        justify-content: flex-start !important;
+        overflow: hidden !important;
+        gap: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-title {
+        flex: 0 0 auto !important;
+        font-size: 6pt !important;
+        margin: 0 0 1.2mm !important;
+        letter-spacing: 0.12em !important;
+        color: #b91c1c !important;
+        text-align: center !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-instructions {
+        flex: 0 1 auto !important;
+        font-size: 4.5pt !important;
+        line-height: 1.35 !important;
+        gap: 0.7mm !important;
+        row-gap: 0.7mm !important;
+        padding-left: 3.2mm !important;
+        margin: 0 !important;
+        list-style-position: outside !important;
+        color: #334155 !important;
+        font-weight: 600 !important;
+        overflow: hidden !important;
+        max-height: 48mm !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-instructions li {
+        margin: 0 0 0.65mm !important;
+        padding: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-note {
+        flex: 0 0 auto !important;
+        margin-top: auto !important;
+        margin-bottom: 1mm !important;
+        padding-top: 1.2mm !important;
+        border-top: 0.25mm dashed #d1d5db !important;
+        text-align: center !important;
+        visibility: visible !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-note p:first-child {
+        font-size: 4pt !important;
+        color: #6b7280 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        margin: 0 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-back-note p:last-child {
+        font-size: 5pt !important;
+        color: #1e293b !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        margin: 0.4mm 0 0 !important;
+        line-height: 1.2 !important;
+    }
+
+    body.printing-id-card #id-card-print-mount .id-card-back .id-card-footer {
+        position: absolute !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        flex: none !important;
+        display: flex !important;
+        visibility: visible !important;
+    }
+}
