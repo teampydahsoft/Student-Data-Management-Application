@@ -46,7 +46,21 @@ sudo nginx -t
 sudo systemctl reload nginx
 
 echo "==> Health checks"
-sleep 2
+HEALTH_OK=0
+for i in $(seq 1 30); do
+  if curl -fsS --max-time 5 http://127.0.0.1:5000/health >/dev/null 2>&1; then
+    HEALTH_OK=1
+    break
+  fi
+  echo "Health attempt $i/30 — waiting for :5000 ..."
+  sleep 2
+done
+if [ "$HEALTH_OK" != "1" ]; then
+  echo "Backend did not become healthy"
+  pm2 list || true
+  pm2 logs sdbms --lines 80 --nostream || true
+  exit 1
+fi
 curl -s http://127.0.0.1:5000/health
 echo
 curl -sk -o /dev/null -w 'nginx_https:%{http_code}\n' https://127.0.0.1/ -H 'Host: sdms.pydah.edu.in'

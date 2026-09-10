@@ -9,6 +9,7 @@ import {
   Eye,
   X,
   Users,
+  Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -17,6 +18,8 @@ import DigitalStudentCard from '../components/DigitalStudentCard';
 import DigitalIdCardBack from '../components/DigitalIdCardBack';
 import { printIdCardFrontAndBack } from '../utils/printDigitalIdCard';
 import StudentAvatar from '../components/StudentAvatar';
+import useAuthStore from '../store/authStore';
+import { BACKEND_MODULES, hasPermission, isFullAccessRole } from '../constants/rbac';
 
 const emptyFilters = {
   college: '',
@@ -49,6 +52,14 @@ const studentKey = (s) => {
 };
 
 const PrintIdCards = () => {
+  const { user } = useAuthStore();
+
+  const hasAccess = useMemo(() => {
+    if (!user) return false;
+    if (isFullAccessRole(user.role)) return true;
+    return hasPermission(user.permissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'print_id_cards');
+  }, [user]);
+
   const [filters, setFilters] = useState(emptyFilters);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -312,6 +323,21 @@ const PrintIdCards = () => {
 
   const selectClass =
     'w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-400';
+
+  if (!hasAccess && user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] p-4 text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+          <Lock className="text-red-500" size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-gray-600 max-w-sm">
+          You do not have permission to print ID cards. Ask an admin to enable{' '}
+          <strong>Print ID Cards</strong> under Student Management.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-none flex flex-col gap-3 min-h-[calc(100vh-1rem)] -m-4 lg:-m-8 p-3 lg:p-4">

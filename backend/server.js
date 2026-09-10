@@ -386,9 +386,9 @@ const startServer = async () => {
   try {
     console.log("🔄 Starting server...");
 
-    // Start the server FIRST (before DB connection test)
-    const server = app.listen(PORT, () => {
-      console.log(`✅ Server running on: http://localhost:${PORT}`);
+    // Bind IPv4 explicitly so deploy health checks to 127.0.0.1:PORT succeed
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`✅ Server running on: http://127.0.0.1:${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
     });
 

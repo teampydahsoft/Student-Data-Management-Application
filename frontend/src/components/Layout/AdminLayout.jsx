@@ -110,6 +110,7 @@ const NAV_ITEMS = [
         label: "Print ID Cards",
         icon: CreditCard,
         permission: FRONTEND_MODULES.STUDENTS,
+        action: 'print_id_cards'
       },
     ],
   },

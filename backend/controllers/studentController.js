@@ -3358,8 +3358,9 @@ exports.getAllStudents = async (req, res) => {
     let hostelStudents = new Set();
     try {
       const hostelConn = require('../config/mongoConfig').getHostelConnection();
-      if (hostelConn && (admissionNumbers.length > 0 || pinNumbers.length > 0)) {
-        const collection = hostelConn.collection('users');
+      const hostelDb = hostelConn && hostelConn.readyState === 1 ? hostelConn.db : null;
+      if (hostelDb && (admissionNumbers.length > 0 || pinNumbers.length > 0)) {
+        const collection = hostelDb.collection('users');
         const query = {
           $or: [
             { admissionNumber: { $in: admissionNumbers } },

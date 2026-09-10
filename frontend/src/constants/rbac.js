@@ -41,7 +41,7 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'print_id_cards'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -54,7 +54,8 @@ export const MODULE_PERMISSIONS = {
       add_remarks: 'Add Remarks',
       manage_remarks: 'Manage Remarks (Edit/Delete)',
       view_merit_status: 'View Merit Status',
-      edit_merit_status: 'Edit Merit Status'
+      edit_merit_status: 'Edit Merit Status',
+      print_id_cards: 'Print ID Cards'
     }
   },
   [BACKEND_MODULES.PROMOTIONS]: {
