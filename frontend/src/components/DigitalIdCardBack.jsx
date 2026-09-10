@@ -17,10 +17,11 @@ const DigitalIdCardBack = ({
   college = 'PYDAH GROUP',
   instructions = DEFAULT_INSTRUCTIONS,
   className = '',
+  rotate180 = false,
 }) => {
   return (
     <div
-      className={`id-card-print-root id-card-back digital-id-card-back w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-200 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col ${className}`}
+      className={`id-card-print-root id-card-back digital-id-card-back w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-300 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col transition-transform duration-300 ${rotate180 ? 'rotate-180 rotate-back-180' : ''} ${className}`}
       style={{
         fontFamily: "'Inter', sans-serif",
         aspectRatio: '54 / 85.6',
@@ -44,11 +45,11 @@ const DigitalIdCardBack = ({
         </div>
 
         <div className="id-card-content px-4 sm:px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
-          <h3 className="id-card-back-title shrink-0 text-center text-[11px] sm:text-xs font-black uppercase tracking-widest text-[#b91c1c] mb-2 sm:mb-3">
+          <h3 className="id-card-back-title shrink-0 text-center text-[11px] sm:text-xs font-black uppercase tracking-widest text-[#991b1b] mb-2 sm:mb-3">
             Instructions
           </h3>
 
-          <ol className="id-card-back-instructions shrink min-h-0 overflow-hidden space-y-1.5 sm:space-y-2 text-[10px] sm:text-[11px] text-slate-700 font-semibold leading-snug list-decimal list-outside pl-4">
+          <ol className="id-card-back-instructions shrink min-h-0 overflow-hidden space-y-1.5 sm:space-y-2 text-[10px] sm:text-[11px] text-slate-950 font-bold leading-snug list-decimal list-outside pl-4">
             {instructions.map((line, idx) => (
               <li key={idx} className="pl-0.5">
                 {line}
@@ -56,11 +57,11 @@ const DigitalIdCardBack = ({
             ))}
           </ol>
 
-          <div className="id-card-back-note shrink-0 mt-auto pt-3 pb-1 border-t border-dashed border-gray-200 text-center">
-            <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+          <div className="id-card-back-note shrink-0 mt-auto pt-3 pb-1 border-t border-dashed border-gray-300 text-center">
+            <p className="text-[9px] sm:text-[10px] font-black text-slate-800 uppercase tracking-wide">
               If found, please return to
             </p>
-            <p className="text-[10px] sm:text-xs font-black text-slate-800 mt-1 uppercase leading-tight">
+            <p className="text-[10px] sm:text-xs font-black text-black mt-1 uppercase leading-tight">
               {college}
             </p>
           </div>
@@ -69,7 +70,7 @@ const DigitalIdCardBack = ({
 
       {/* Red footer — same as front, always at card bottom */}
       <div className="id-card-footer shrink-0 bg-[#b91c1c] py-3 px-3 sm:px-4 flex items-center justify-center z-20 shadow-lg border-t border-red-800 rounded-b-[1.5rem] sm:rounded-b-[2rem]">
-        <span className="text-white text-[10px] sm:text-xs font-bold tracking-wide uppercase text-center leading-snug break-words px-1">
+        <span className="text-white text-[10px] sm:text-xs font-black tracking-wide uppercase text-center leading-snug break-words px-1">
           {college}
         </span>
       </div>

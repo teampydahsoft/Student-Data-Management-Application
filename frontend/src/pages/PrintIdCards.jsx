@@ -80,6 +80,7 @@ const PrintIdCards = () => {
   const [previewKey, setPreviewKey] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [backOrientation, setBackOrientation] = useState('straight'); // 'straight' | 'rotate180'
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
@@ -299,7 +300,8 @@ const PrintIdCards = () => {
       try {
         const result = printIdCardFrontAndBack(
           '.id-card-batch-front',
-          '.id-card-batch-back'
+          '.id-card-batch-back',
+          { backOrientation }
         );
         if (result.students < selectedCount) {
           toast.error(
@@ -683,7 +685,7 @@ const PrintIdCards = () => {
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Front</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Front Side</p>
                 <DigitalStudentCard
                   className="id-card-print-front"
                   student={previewStudent}
@@ -691,29 +693,76 @@ const PrintIdCards = () => {
                 />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Back</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Back Side</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    backOrientation === 'straight' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {backOrientation === 'straight' ? 'Straight (0°)' : 'Rotated (180°)'}
+                  </span>
+                </div>
                 <DigitalIdCardBack
                   className="id-card-print-back"
                   college={collegeName}
+                  rotate180={backOrientation === 'rotate180'}
                 />
               </div>
             </div>
           )}
 
+          {/* Back Side Flip Orientation Selector */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 shrink-0 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-800">Back Side Flip Edge</span>
+              <span className="text-[10px] text-gray-500 font-semibold">
+                {backOrientation === 'straight' ? 'Straight (Upright)' : 'Rotate 180° (Flipped)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBackOrientation('straight')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  backOrientation === 'straight'
+                    ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                <span>Straight (0°)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBackOrientation('rotate180')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  backOrientation === 'rotate180'
+                    ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                <span>Rotate 180°</span>
+              </button>
+            </div>
+
+            <p className="text-[10px] text-gray-500 leading-normal">
+              <strong>Straight (Default):</strong> Card back prints upright. In system print dialog (under More settings → Two-sided), choose <strong>&apos;Flip on long edge&apos;</strong>. Use <strong>Rotate 180°</strong> only if your printer flipper reverses the card.
+            </p>
+          </div>
+
           <button
             type="button"
             disabled={!selectedCount || printing}
             onClick={handlePrintSelected}
-            className="w-full shrink-0 inline-flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full shrink-0 inline-flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
             {selectedCount > 1
               ? `Generate Print (${selectedCount} × Front + Back = ${selectedCount * 2} pages)`
               : 'Generate Print (Front + Back)'}
           </button>
-          <p className="text-[10px] text-gray-400 text-center leading-relaxed shrink-0">
-            Screen preview is single-student only. Print dialog should list {selectedCount || 0} × 2 CR80 pages.
-            Evolis · CR80 · Headers/footers off · Background graphics on.
+          <p className="text-[10px] text-gray-500 text-center leading-relaxed shrink-0">
+            Print dialog lists {selectedCount || 0} × 2 CR80 pages with crisp high-contrast dark text.<br />
+            Evolis · CR80 · Margins: None · Background graphics: On.
           </p>
         </div>
       </div>
@@ -737,6 +786,7 @@ const PrintIdCards = () => {
                 <DigitalIdCardBack
                   className="id-card-batch-back"
                   college={resolveCollege(s)}
+                  rotate180={backOrientation === 'rotate180'}
                 />
               </div>
             );

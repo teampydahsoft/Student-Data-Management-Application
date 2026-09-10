@@ -146,13 +146,13 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
   const fullAddress = buildAddressString();
 
   const FieldRow = ({ label, value, capitalize = false, mono = false }) => (
-    <div className="flex items-start gap-1 text-[11px] font-bold text-[#1e293b] w-full">
-      <span className="text-gray-500 w-[58px] sm:w-[64px] tracking-wide uppercase shrink-0 pt-0.5 text-[9px] sm:text-[10px]">
+    <div className="flex items-start gap-1 text-[11px] font-extrabold text-black w-full">
+      <span className="text-slate-800 font-extrabold w-[58px] sm:w-[64px] tracking-wide uppercase shrink-0 pt-0.5 text-[9px] sm:text-[10px]">
         {label}
       </span>
-      <span className="text-gray-300 shrink-0 pt-0.5">:</span>
+      <span className="text-slate-600 font-extrabold shrink-0 pt-0.5">:</span>
       <span
-        className={`flex-1 min-w-0 break-words leading-snug ${capitalize ? 'capitalize' : ''} ${mono ? 'break-all tabular-nums' : ''}`}
+        className={`flex-1 min-w-0 break-words leading-snug text-black font-extrabold ${capitalize ? 'capitalize' : ''} ${mono ? 'break-all tabular-nums' : ''}`}
         title={String(value)}
       >
         {value}
@@ -235,57 +235,57 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
 
             {/* Right: Primary Info */}
             <div className="id-card-fields flex flex-col space-y-2 flex-1 min-w-0 w-full sm:mt-2">
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
-                <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 break-words capitalize leading-snug" title={name}>{name.toLowerCase()}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 break-words capitalize leading-snug font-extrabold text-black" title={name}>{name.toLowerCase()}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PROGRAM</span>
-                <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 break-words leading-snug" title={program}>{program}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PROGRAM</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 break-words leading-snug font-extrabold text-black" title={program}>{program}</span>
               </div>
               {branch && branch !== '—' && (
-                <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                  <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BRANCH</span>
-                  <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
-                  <span className="flex-1 break-words leading-snug" title={branch}>{branch}</span>
+                <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                  <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BRANCH</span>
+                  <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
+                  <span className="flex-1 break-words leading-snug font-extrabold text-black" title={branch}>{branch}</span>
                 </div>
               )}
 
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b] pt-1">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PIN</span>
-                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="flex-1 break-words">{pinNumber}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black pt-1">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PIN</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0">:</span>
+                <span className="flex-1 break-words font-extrabold text-black">{pinNumber}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BATCH</span>
-                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="flex-1 break-words">{batch}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BATCH</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0">:</span>
+                <span className="flex-1 break-words font-extrabold text-black">{batch}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">STUDENT</span>
-                <span className="text-gray-300 mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap overflow-hidden text-ellipsis">{studentMobile}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">STUDENT</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap overflow-hidden text-ellipsis font-extrabold text-black">{studentMobile}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-bold text-[#1e293b]">
-                <span className="text-gray-500 w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PARENT</span>
-                <span className="text-gray-300 mx-0.5 shrink-0">:</span>
-                <span className="flex-1 min-w-0 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">{parentMobile}</span>
+              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PARENT</span>
+                <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
+                <span className="flex-1 min-w-0 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis font-extrabold text-black">{parentMobile}</span>
               </div>
             </div>
           </div>
 
-          <div className="id-card-bottom-row w-full flex flex-col sm:flex-row items-center sm:items-start justify-between mt-5 sm:mt-6 pt-3 border-t border-gray-200 border-dashed gap-4 sm:mt-auto">
+          <div className="id-card-bottom-row w-full flex flex-col sm:flex-row items-center sm:items-start justify-between mt-5 sm:mt-6 pt-3 border-t border-gray-300 border-dashed gap-4 sm:mt-auto">
             <div className="flex flex-col text-[11px] flex-1 min-w-0 w-full sm:pr-2">
-              <span className="font-bold text-gray-400 tracking-wider uppercase mb-1 text-[10px]">ADDRESS</span>
-              <span className="font-semibold text-gray-700 leading-relaxed break-words">
+              <span className="font-extrabold text-slate-800 tracking-wider uppercase mb-1 text-[10px]">ADDRESS</span>
+              <span className="font-bold text-black leading-relaxed break-words">
                 {fullAddress}
               </span>
             </div>
 
             <div
-              className="digital-id-card-qr bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-shrink-0"
+              className="digital-id-card-qr bg-white p-2 rounded-lg border border-gray-300 shadow-sm flex-shrink-0"
               id={admissionNo ? `student-qr-${admissionNo}` : 'qr-id-card'}
             >
               <QRCodeSVG
@@ -298,7 +298,7 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
                 size={92}
                 level="M"
                 includeMargin={true}
-                fgColor="#1f2937"
+                fgColor="#000000"
               />
             </div>
           </div>

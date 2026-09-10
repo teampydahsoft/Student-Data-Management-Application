@@ -72,12 +72,15 @@ export function printDigitalIdCard(rootSelector = '.id-card-print-root') {
  * Supports one student or many (N fronts + N backs → 2N pages).
  * @param {string} frontSelector
  * @param {string} backSelector
+ * @param {{ backOrientation?: 'straight' | 'rotate180' }} options
  * @returns {{ pages: number, students: number }}
  */
 export function printIdCardFrontAndBack(
   frontSelector = '.id-card-print-front',
-  backSelector = '.id-card-print-back'
+  backSelector = '.id-card-print-back',
+  options = {}
 ) {
+  const { backOrientation = 'straight' } = options;
   const fronts = Array.from(document.querySelectorAll(frontSelector));
   const backs = Array.from(document.querySelectorAll(backSelector));
   if (!fronts.length) {
@@ -103,7 +106,14 @@ export function printIdCardFrontAndBack(
     backPage.className = 'id-card-print-page';
     backPage.setAttribute('data-print-side', 'back');
     backPage.setAttribute('data-print-index', String(i + 1));
-    backPage.appendChild(cloneCard(backs[i]));
+    if (backOrientation === 'rotate180') {
+      backPage.classList.add('rotate-back-180');
+    }
+    const clonedBack = cloneCard(backs[i]);
+    if (backOrientation === 'rotate180') {
+      clonedBack.classList.add('rotate-back-180');
+    }
+    backPage.appendChild(clonedBack);
     mount.appendChild(backPage);
   }
 

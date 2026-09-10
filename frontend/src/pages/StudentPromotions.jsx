@@ -680,7 +680,6 @@ const StudentPromotions = () => {
           isCourseCompleted,
           hasAdditionalYearOption,
           additionalYearTarget,
-          issues,
           warnings,
           infoNotes,
           currentSemesterData,
