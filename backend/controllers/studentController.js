@@ -1410,6 +1410,8 @@ const buildCourseBranchIndex = async (collegeId = null) => {
       id: course.id,
       name: course.name,
       code: course.code,
+      collegeId: course.college_id,
+      college_id: course.college_id,
       normalizedKeys: buildNormalizedSet(course.name, course.code),
       branchLookup: new Map(),
       branches: []
@@ -1444,6 +1446,7 @@ const buildCourseBranchIndex = async (collegeId = null) => {
     const branchEntry = {
       id: branch.id,
       courseId: branch.course_id,
+      course_id: branch.course_id,
       name: branch.name,
       code: branch.code,
       normalizedKeys: buildNormalizedSet(branch.name, branch.code)
@@ -1534,6 +1537,10 @@ const validateCourseBranch = (payload, courseIndex) => {
 
   if (resolvedCourse) {
     payload.course = resolvedCourse.name;
+    payload.course_id = resolvedCourse.id;
+    if (resolvedCourse.collegeId) {
+      payload.college_id = resolvedCourse.collegeId;
+    }
     if (resolvedCourse.code) {
       payload.course_code = resolvedCourse.code;
     }
@@ -1541,6 +1548,7 @@ const validateCourseBranch = (payload, courseIndex) => {
 
   if (resolvedBranch) {
     payload.branch = resolvedBranch.name;
+    payload.branch_id = resolvedBranch.id;
     if (resolvedBranch.code) {
       payload.branch_code = resolvedBranch.code;
     }
@@ -2160,9 +2168,12 @@ exports.previewBulkUploadStudents = async (req, res) => {
         sanitized.admission_no = sanitized.admission_number;
       }
 
-      // Set college name from selected college if not already present in record
+      // Set college name and ID from selected college if not already present in record
       if (collegeName && !sanitized.college) {
         sanitized.college = collegeName;
+      }
+      if (collegeId && !sanitized.college_id) {
+        sanitized.college_id = parseInt(collegeId, 10);
       }
 
       const issues = [];
@@ -2197,6 +2208,21 @@ exports.previewBulkUploadStudents = async (req, res) => {
         issues.push(...courseValidation.issues);
       }
 
+      if (courseValidation.course) {
+        sanitized.course = courseValidation.course.name;
+        sanitized.course_id = courseValidation.course.id;
+        if (!sanitized.college_id && courseValidation.course.collegeId) {
+          sanitized.college_id = courseValidation.course.collegeId;
+        }
+      }
+      if (courseValidation.branch) {
+        sanitized.branch = courseValidation.branch.name;
+        sanitized.branch_id = courseValidation.branch.id;
+      }
+      if (sanitized.college_id && !sanitized.college && collegeName) {
+        sanitized.college = collegeName;
+      }
+
       const resultBase = {
         rowNumber: record.rowNumber,
         rawData: record.raw,
@@ -2206,6 +2232,12 @@ exports.previewBulkUploadStudents = async (req, res) => {
       if (issues.length === 0) {
         validRecords.push({
           ...resultBase,
+          college: sanitized.college_id
+            ? {
+              id: sanitized.college_id,
+              name: sanitized.college || collegeName || null
+            }
+            : null,
           course: courseValidation.course
             ? {
               id: courseValidation.course.id,
@@ -2492,9 +2524,30 @@ exports.commitBulkUploadStudents = async (req, res) => {
         sanitized.admission_no = sanitized.admission_number;
       }
 
-      // Set college name from selected college if not already present in record
-      if (collegeName && !sanitized.college) {
-        sanitized.college = collegeName;
+      // Resolve college
+      let resolvedCollegeId = collegeId ? parseInt(collegeId, 10) : (sanitized.college_id ? parseInt(sanitized.college_id, 10) : null);
+      let resolvedCollegeName = collegeName || sanitized.college || null;
+
+      if (!resolvedCollegeId && resolvedCollegeName) {
+        try {
+          const [colRows] = await connection.query(
+            'SELECT id, name FROM colleges WHERE name = ? OR code = ? LIMIT 1',
+            [resolvedCollegeName, resolvedCollegeName]
+          );
+          if (colRows && colRows.length > 0) {
+            resolvedCollegeId = colRows[0].id;
+            resolvedCollegeName = colRows[0].name;
+          }
+        } catch (e) {
+          console.warn('Error matching college by name:', e.message);
+        }
+      }
+
+      if (resolvedCollegeName && !sanitized.college) {
+        sanitized.college = resolvedCollegeName;
+      }
+      if (resolvedCollegeId) {
+        sanitized.college_id = resolvedCollegeId;
       }
 
       const normalizedAdmission = normalizeAdmissionNumber(sanitized.admission_number);
@@ -2516,11 +2569,9 @@ exports.commitBulkUploadStudents = async (req, res) => {
         );
       }
 
-      if (normalizedAdmission && existingAdmissions.has(normalizedAdmission)) {
-        errors.push('Admission number already exists in the master database');
-      }
+      const isExisting = normalizedAdmission && existingAdmissions.has(normalizedAdmission);
 
-      if (!sanitized.student_name) {
+      if (!sanitized.student_name && !isExisting) {
         errors.push('Student name is required');
       }
 
@@ -2528,6 +2579,47 @@ exports.commitBulkUploadStudents = async (req, res) => {
       if (courseValidation.issues.length > 0) {
         errors.push(...courseValidation.issues);
       }
+
+      let resolvedCourseId = courseValidation.course ? courseValidation.course.id : (sanitized.course_id ? parseInt(sanitized.course_id, 10) : null);
+      let resolvedCourseName = courseValidation.course ? courseValidation.course.name : sanitized.course;
+      let resolvedBranchId = courseValidation.branch ? courseValidation.branch.id : (sanitized.branch_id ? parseInt(sanitized.branch_id, 10) : null);
+      let resolvedBranchName = courseValidation.branch ? courseValidation.branch.name : sanitized.branch;
+
+      if (!resolvedCollegeId && courseValidation.course?.collegeId) {
+        resolvedCollegeId = courseValidation.course.collegeId;
+      }
+      if (!resolvedCollegeName && resolvedCollegeId) {
+        try {
+          const [colRows] = await connection.query(
+            'SELECT name FROM colleges WHERE id = ? LIMIT 1',
+            [resolvedCollegeId]
+          );
+          if (colRows && colRows.length > 0) {
+            resolvedCollegeName = colRows[0].name;
+          }
+        } catch (e) {
+          console.warn('Error fetching college name by id:', e.message);
+        }
+      }
+
+      sanitized.college = resolvedCollegeName || sanitized.college;
+      sanitized.college_id = resolvedCollegeId;
+      sanitized.course = resolvedCourseName || sanitized.course;
+      sanitized.course_id = resolvedCourseId;
+      sanitized.branch = resolvedBranchName || sanitized.branch;
+      sanitized.branch_id = resolvedBranchId;
+
+      sanitized._crm_managed_college_id = resolvedCollegeId ? String(resolvedCollegeId) : undefined;
+      sanitized._crm_managed_course_id = resolvedCourseId ? String(resolvedCourseId) : undefined;
+      sanitized._crm_managed_branch_id = resolvedBranchId ? String(resolvedBranchId) : undefined;
+      sanitized.courseInfo = {
+        college: sanitized.college,
+        collegeId: resolvedCollegeId ? String(resolvedCollegeId) : undefined,
+        course: resolvedCourseName,
+        courseId: resolvedCourseId ? String(resolvedCourseId) : undefined,
+        branch: resolvedBranchName,
+        branchId: resolvedBranchId ? String(resolvedBranchId) : undefined
+      };
 
       const rawYear = getFirstNonEmpty(
         sanitized.current_year,
@@ -2586,6 +2678,63 @@ exports.commitBulkUploadStudents = async (req, res) => {
         continue;
       }
 
+      if (isExisting) {
+        try {
+          const [existingRows] = await connection.query(
+            'SELECT id, student_data FROM students WHERE admission_number = ? LIMIT 1',
+            [sanitized.admission_number]
+          );
+          if (existingRows.length > 0) {
+            const existingRow = existingRows[0];
+            const existingData = cleanStudentMetadata(parseJSON(existingRow.student_data) || {});
+            const mergedData = { ...existingData, ...sanitized };
+            const mergedJson = JSON.stringify(mergedData);
+
+            await connection.query(
+              `UPDATE students 
+               SET college = COALESCE(?, college),
+                   college_id = COALESCE(?, college_id),
+                   course = COALESCE(?, course),
+                   course_id = COALESCE(?, course_id),
+                   branch = COALESCE(?, branch),
+                   branch_id = COALESCE(?, branch_id),
+                   current_year = COALESCE(?, current_year),
+                   current_semester = COALESCE(?, current_semester),
+                   student_data = ?
+               WHERE id = ?`,
+              [
+                sanitized.college || null,
+                sanitized.college_id || null,
+                sanitized.course || null,
+                sanitized.course_id || null,
+                sanitized.branch || null,
+                sanitized.branch_id || null,
+                resolvedStage ? resolvedStage.year : null,
+                resolvedStage ? resolvedStage.semester : null,
+                mergedJson,
+                existingRow.id
+              ]
+            );
+            successCount++;
+            successDetails.push({
+              rowNumber,
+              admissionNumber: sanitized.admission_number,
+              action: 'UPDATED'
+            });
+            continue;
+          }
+        } catch (updateErr) {
+          console.error('Error updating existing student during bulk upload:', updateErr.message);
+          failedCount++;
+          failedDetails.push({
+            rowNumber,
+            admissionNumber: sanitized.admission_number,
+            errors: [updateErr.message]
+          });
+          continue;
+        }
+      }
+
       applyStageToPayload(sanitized, resolvedStage);
 
       const studentDataJson = JSON.stringify(sanitized);
@@ -2597,7 +2746,44 @@ exports.commitBulkUploadStudents = async (req, res) => {
         resolvedStage.semester,
         studentDataJson
       ];
-      const updatedColumns = new Set(['admission_number', 'current_year', 'current_semester']);
+      const updatedColumns = new Set(['admission_number', 'current_year', 'current_semester', 'student_data']);
+
+      if (sanitized.college) {
+        insertColumns.push('college');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.college);
+        updatedColumns.add('college');
+      }
+      if (sanitized.college_id) {
+        insertColumns.push('college_id');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.college_id);
+        updatedColumns.add('college_id');
+      }
+      if (sanitized.course) {
+        insertColumns.push('course');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.course);
+        updatedColumns.add('course');
+      }
+      if (sanitized.course_id) {
+        insertColumns.push('course_id');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.course_id);
+        updatedColumns.add('course_id');
+      }
+      if (sanitized.branch) {
+        insertColumns.push('branch');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.branch);
+        updatedColumns.add('branch');
+      }
+      if (sanitized.branch_id) {
+        insertColumns.push('branch_id');
+        insertPlaceholders.push('?');
+        insertValues.push(sanitized.branch_id);
+        updatedColumns.add('branch_id');
+      }
 
       Object.entries(sanitized).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '' || value === '{}') {
@@ -2618,7 +2804,7 @@ exports.commitBulkUploadStudents = async (req, res) => {
 
         let finalColumnName = columnName;
         let finalValue = value;
-        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+        if (['college', 'course', 'branch'].includes(columnName) && /^\d+$/.test(String(finalValue).trim())) {
           finalColumnName = columnName + '_id';
           finalValue = parseInt(finalValue, 10);
         }
@@ -3968,7 +4154,7 @@ exports.updateStudent = async (req, res) => {
 
         let finalColumnName = columnName;
         let finalValue = convertedValue;
-        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+        if (['college', 'course', 'branch'].includes(columnName) && /^\d+$/.test(String(finalValue).trim())) {
           finalColumnName = columnName + '_id';
           finalValue = parseInt(finalValue, 10);
         }
@@ -4889,7 +5075,7 @@ exports.createStudent = async (req, res) => {
 
         let finalColumnName = columnName;
         let finalValue = value;
-        if (['college', 'course', 'branch'].includes(columnName) && /^\\d+$/.test(finalValue)) {
+        if (['college', 'course', 'branch'].includes(columnName) && /^\d+$/.test(String(finalValue).trim())) {
           finalColumnName = columnName + '_id';
           finalValue = parseInt(finalValue, 10);
         }
