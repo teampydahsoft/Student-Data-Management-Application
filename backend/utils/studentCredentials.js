@@ -57,13 +57,24 @@ function rankStudentCredentialMatch(row, username) {
  * Authenticate a student login when duplicate credential rows may exist.
  */
 async function authenticateStudentCredential(username, password) {
+  const cleanUsername = String(username || '').trim();
+  if (!cleanUsername) return null;
+
+  // Optimized UNION query using indexes on sc (username, admission_number) and s (admission_number, admission_no, pin_no)
+  // Avoids Cartesian full table scan on student_credentials
   const [credentials] = await masterPool.query(
     `SELECT sc.id, sc.student_id, sc.admission_number, sc.username, sc.password_hash, sc.updated_at,
             s.admission_number AS s_admission_number, s.admission_no, s.pin_no
      FROM student_credentials sc
      JOIN students s ON s.id = sc.student_id
-     WHERE sc.username = ? OR sc.admission_number = ? OR s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?`,
-    [username, username, username, username, username]
+     WHERE sc.username = ? OR sc.admission_number = ?
+     UNION
+     SELECT sc.id, sc.student_id, sc.admission_number, sc.username, sc.password_hash, sc.updated_at,
+            s.admission_number AS s_admission_number, s.admission_no, s.pin_no
+     FROM students s
+     JOIN student_credentials sc ON sc.student_id = s.id
+     WHERE s.admission_number = ? OR s.admission_no = ? OR s.pin_no = ?`,
+    [cleanUsername, cleanUsername, cleanUsername, cleanUsername, cleanUsername]
   );
 
   if (!credentials.length) {

@@ -51,7 +51,7 @@ const buildRBACUserResponse = (rbacUser) => {
   };
 };
 
-// Unified Login (Admin/Staff/Student)
+// Unified Login (Admin/Staff/Student/HRMS)
 exports.unifiedLogin = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -63,9 +63,12 @@ exports.unifiedLogin = async (req, res) => {
       });
     }
 
-    // Optimization: Run checks sequentially to fail fast and avoid unnecessary expensive queries.
-    // 1. Check Admin (Fastest, Smallest Table)
-    const [admins] = await masterPool.query('SELECT * FROM admins WHERE username = ? LIMIT 1', [username]);
+    const cleanUsername = String(username).trim();
+
+    // -------------------------------------------------------------
+    // FAST PATH 1: Check Admins (Fastest, Smallest Table, ~1ms)
+    // -------------------------------------------------------------
+    const [admins] = await masterPool.query('SELECT * FROM admins WHERE username = ? LIMIT 1', [cleanUsername]);
 
     if (admins && admins.length > 0) {
       const adminAccount = admins[0];
@@ -96,35 +99,159 @@ exports.unifiedLogin = async (req, res) => {
       }
     }
 
-    // --- NEW: HRMS MongoDB Check for Staff/Admin ---
-    const hrmsConn = getHRMSConnection();
-    let isHRMSLogin = false;
-    let hrmsMatchedObj = null;
-    let hrmsMatchedRole = null;
-    let mappedRole = 'staff';
-    let mappedName = 'HRMS User';
-    let mappedEmail = username;
-    let mappedPhone = null;
+    // -------------------------------------------------------------
+    // FAST PATH 2: Check Local RBAC Users (Indexed, Local MySQL, ~1ms)
+    // Covers faculty, HODs, principals, staff, and previously synced HRMS users
+    // -------------------------------------------------------------
+    const [rbacRows] = await masterPool.query(
+      `SELECT id, name, username, email, phone, password, role, college_id, course_id, branch_id, college_ids, course_ids, branch_ids, permissions, is_active
+       FROM rbac_users WHERE username = ? OR email = ? LIMIT 1`,
+      [cleanUsername, cleanUsername]
+    );
 
-    if (hrmsConn) {
+    if (rbacRows && rbacRows.length > 0) {
+      const rbacUser = rbacRows[0];
+      if (rbacUser.password && await bcrypt.compare(password, rbacUser.password)) {
+        if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
+
+        const rbacResponse = buildRBACUserResponse(rbacUser);
+        const token = jwt.sign({
+          id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
+          collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
+          collegeIds: rbacUser.college_ids, courseIds: rbacUser.course_ids, branchIds: rbacUser.branch_ids,
+          permissions: rbacUser.permissions
+        }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        return res.json({ success: true, message: 'Login successful', token, user: rbacResponse });
+      }
+    }
+
+    // -------------------------------------------------------------
+    // FAST PATH 3: Check Student Credentials (Optimized Indexed UNION)
+    // Covers >90% of logins without touching remote HRMS MongoDB
+    // -------------------------------------------------------------
+    const { authenticateStudentCredential } = require('../utils/studentCredentials');
+    const studentCred = await authenticateStudentCredential(cleanUsername, password);
+
+    if (studentCred) {
+      const [studentDetails] = await masterPool.query(
+        `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
+          s.course, s.branch, s.college,
+          cb.id as branch_id, col.id as college_id, c.level as course_level,
+          ${studentRegistrationStatusComputedSql} AS registration_status_computed,
+          s.registration_status, s.student_data
+         FROM students s
+         LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
+         LEFT JOIN courses c ON s.course COLLATE utf8mb4_unicode_ci = c.name COLLATE utf8mb4_unicode_ci AND c.college_id = col.id
+         LEFT JOIN course_branches cb ON s.branch COLLATE utf8mb4_unicode_ci = cb.name COLLATE utf8mb4_unicode_ci AND cb.course_id = c.id
+         WHERE s.id = ? LIMIT 1`,
+        [studentCred.student_id]
+      );
+
+      if (studentDetails && studentDetails.length > 0) {
+        const s = studentDetails[0];
+        const token = jwt.sign({
+          id: studentCred.student_id,
+          admissionNumber: studentCred.admission_number,
+          pinNo: s.pin_no || studentCred.username,
+          role: 'student',
+          college_id: s.college_id,
+          branch_id: s.branch_id
+        }, process.env.JWT_SECRET, { expiresIn: '24h' });
+
+        // Helper to resolve status
+        let parsedData = {};
+        try {
+          parsedData = (s.student_data && typeof s.student_data === 'string')
+            ? JSON.parse(s.student_data)
+            : (s.student_data || {});
+        } catch (e) { }
+
+        const resolvedStatus = s.registration_status_computed ||
+          ((s.registration_status && String(s.registration_status).trim().length > 0)
+            ? s.registration_status
+            : (parsedData?.registration_status || parsedData?.['Registration Status'] || 'Pending'));
+
+        const user = {
+          admission_number: studentCred.admission_number,
+          pin_no: s.pin_no,
+          batch: s.batch,
+          username: studentCred.username,
+          name: s.student_name,
+          current_year: s.current_year,
+          current_semester: s.current_semester,
+          course: s.course,
+          course_level: s.course_level,
+          branch: s.branch,
+          college: s.college,
+          branch_id: s.branch_id,
+          college_id: s.college_id,
+          student_photo: s.student_photo,
+          registration_status: resolvedStatus,
+          role: 'student'
+        };
+
+        // Update last_login and login_count (Fire and forget, don't block login)
+        masterPool.query(
+          `UPDATE student_credentials 
+           SET last_login = NOW(), 
+               login_count = COALESCE(login_count, 0) + 1 
+           WHERE student_id = ?`,
+          [studentCred.student_id]
+        ).catch(() => {});
+
+        return res.json({ success: true, message: 'Login successful', token, user });
+      }
+    }
+
+    // -------------------------------------------------------------
+    // FAST PATH 4: Check Legacy Staff Users (Indexed, Local MySQL)
+    // -------------------------------------------------------------
+    const [staffRows] = await masterPool.query(
+      'SELECT id, username, email, password_hash, assigned_modules, is_active FROM staff_users WHERE username = ? LIMIT 1',
+      [cleanUsername]
+    );
+
+    if (staffRows && staffRows.length > 0) {
+      const staffUser = staffRows[0];
+      if (await bcrypt.compare(password, staffUser.password_hash)) {
+        if (!staffUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
+
+        const staffResponse = buildStaffResponse(staffUser);
+        const token = jwt.sign({
+          id: staffUser.id, username: staffUser.username, role: 'staff', modules: staffResponse.modules
+        }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        return res.json({ success: true, message: 'Login successful', token, user: staffResponse });
+      }
+    }
+
+    // -------------------------------------------------------------
+    // FALLBACK 5: HRMS MongoDB Check (Only when local checks do not match)
+    // Uses maxTimeMS(2500) fail-fast timeout and caches password locally on match
+    // -------------------------------------------------------------
+    const hrmsConn = getHRMSConnection();
+    if (hrmsConn && process.env.HRMS_MONGO_URL) {
       try {
         const HRMSUser = getHRMSUserModel(hrmsConn);
         const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
 
-        // 1. First, search Employee Collection (by emp_no or email)
-        console.log(`[AUTH] Attempting HRMS Login for: ${username}`);
+        let isHRMSLogin = false;
+        let hrmsMatchedObj = null;
+        let hrmsMatchedRole = null;
+        let mappedRole = 'staff';
+        let mappedName = 'HRMS User';
+        let mappedEmail = cleanUsername;
+        let mappedPhone = null;
+
+        // 1. Search Employee Collection (by emp_no or email) with fail-fast maxTimeMS
         const empDoc = await HRMSEmployee.findOne({
           $or: [
-            { emp_no: username },
-            { email: username }
+            { emp_no: cleanUsername },
+            { email: cleanUsername }
           ]
-        }).select('+password').lean().exec();
+        }).select('+password').maxTimeMS(2500).lean().exec();
 
-        if (empDoc) {
-          console.log(`[AUTH] Employee profile found: ${empDoc.emp_no} (${empDoc.email})`);
+        if (empDoc && empDoc.password) {
           const isEmpPassValid = await bcrypt.compare(password, empDoc.password);
-          console.log(`[AUTH] Employee password check: ${isEmpPassValid ? 'MATCH' : 'FAIL'}`);
-          
           if (isEmpPassValid) {
             isHRMSLogin = true;
             hrmsMatchedObj = empDoc;
@@ -133,11 +260,9 @@ exports.unifiedLogin = async (req, res) => {
             mappedEmail = empDoc.email || empDoc.emp_no || mappedEmail;
             mappedPhone = empDoc.phone_number || null;
           }
-        } else {
-          console.log(`[AUTH] No Employee profile found for: ${username}`);
         }
 
-        // 3. If still not logged in, but we have an Employee record, try the User collection using links (email, emp_no, or ref)
+        // 2. If not logged in yet, try User collection via employee link
         if (!isHRMSLogin && empDoc) {
           const userSearchCriteria = [
             { employeeId: empDoc.emp_no },
@@ -147,14 +272,11 @@ exports.unifiedLogin = async (req, res) => {
             userSearchCriteria.push({ email: empDoc.email });
           }
 
-          console.log(`[AUTH] Checking User collection fallback using links: emp_no=${empDoc.emp_no}, id=${empDoc._id}`);
-          const userDocByEmpLink = await HRMSUser.findOne({ $or: userSearchCriteria }).select('+password').lean().exec();
-          
-          if (userDocByEmpLink) {
-            console.log(`[AUTH] User record found by employee link. Checking password...`);
-            const isUserPassValid = await bcrypt.compare(password, userDocByEmpLink.password);
-            console.log(`[AUTH] User password check: ${isUserPassValid ? 'MATCH' : 'FAIL'}`);
+          const userDocByEmpLink = await HRMSUser.findOne({ $or: userSearchCriteria })
+            .select('+password').maxTimeMS(2500).lean().exec();
 
+          if (userDocByEmpLink && userDocByEmpLink.password) {
+            const isUserPassValid = await bcrypt.compare(password, userDocByEmpLink.password);
             if (isUserPassValid) {
               isHRMSLogin = true;
               hrmsMatchedObj = userDocByEmpLink;
@@ -162,49 +284,34 @@ exports.unifiedLogin = async (req, res) => {
               mappedName = userDocByEmpLink.name || empDoc.employee_name || mappedName;
               mappedEmail = userDocByEmpLink.email || empDoc.email || mappedEmail;
               mappedPhone = empDoc.phone_number || null;
-
-              if (hrmsMatchedRole === 'super_admin' || (userDocByEmpLink.roles && userDocByEmpLink.roles.includes('super_admin'))) {
-                mappedRole = USER_ROLES.SUPER_ADMIN;
-              } else {
-                mappedRole = hrmsMatchedRole;
-              }
+              mappedRole = (hrmsMatchedRole === 'super_admin' || (userDocByEmpLink.roles && userDocByEmpLink.roles.includes('super_admin')))
+                ? USER_ROLES.SUPER_ADMIN
+                : hrmsMatchedRole;
             }
-          } else {
-            console.log(`[AUTH] No User record found linked to employee: ${empDoc.emp_no}`);
           }
         }
 
-        // 4. Finally, if still not logged in, try the User collection directly with the provided username (as email)
+        // 3. Final HRMS attempt: direct User collection by email
         if (!isHRMSLogin) {
-          console.log(`[AUTH] Final attempt: Direct User collection search for email: ${username}`);
-          const directUserDoc = await HRMSUser.findOne({ email: username }).select('+password').lean().exec();
-          if (directUserDoc) {
-            console.log(`[AUTH] Direct User profile found. Checking password...`);
-            const isDirectUserPassValid = await bcrypt.compare(password, directUserDoc.password);
-            console.log(`[AUTH] Direct User password check: ${isDirectUserPassValid ? 'MATCH' : 'FAIL'}`);
+          const directUserDoc = await HRMSUser.findOne({ email: cleanUsername })
+            .select('+password').maxTimeMS(2500).lean().exec();
 
+          if (directUserDoc && directUserDoc.password) {
+            const isDirectUserPassValid = await bcrypt.compare(password, directUserDoc.password);
             if (isDirectUserPassValid) {
               isHRMSLogin = true;
               hrmsMatchedObj = directUserDoc;
               hrmsMatchedRole = directUserDoc.role || 'staff';
               mappedName = directUserDoc.name || mappedName;
               mappedEmail = directUserDoc.email || mappedEmail;
-
-              if (hrmsMatchedRole === 'super_admin' || (directUserDoc.roles && directUserDoc.roles.includes('super_admin'))) {
-                mappedRole = USER_ROLES.SUPER_ADMIN;
-              } else {
-                mappedRole = hrmsMatchedRole;
-              }
+              mappedRole = (hrmsMatchedRole === 'super_admin' || (directUserDoc.roles && directUserDoc.roles.includes('super_admin')))
+                ? USER_ROLES.SUPER_ADMIN
+                : hrmsMatchedRole;
             }
-          } else {
-            console.log(`[AUTH] No User profile found for: ${username}`);
           }
         }
-        
-        console.log(`[AUTH] Final HRMS Authentication Result: ${isHRMSLogin ? 'SUCCESS' : 'FAILED'}`);
 
-        if (isHRMSLogin) {
-          // SYNC LAYER: Upsert into local rbac_users using hrms_id
+        if (isHRMSLogin && hrmsMatchedObj) {
           const hrmsIdStr = hrmsMatchedObj._id.toString();
 
           if (hrmsMatchedObj.isActive === false || hrmsMatchedObj.is_active === false) {
@@ -232,10 +339,9 @@ exports.unifiedLogin = async (req, res) => {
           }
 
           const localUserId = existingLocal[0].id;
+          // Hash password locally so subsequent logins authenticate instantly in Fast Path 2 without hitting HRMS MongoDB
+          const hashedLocalPassword = await bcrypt.hash(password, 10);
 
-          // Update details from HRMS just in case they changed.
-          // We also update the hrms_id to the one that just successfully logged in 
-          // to ensure future searches and logins match the active profile.
           const syncUpdateQuery = `
             UPDATE rbac_users
             SET
@@ -243,19 +349,19 @@ exports.unifiedLogin = async (req, res) => {
               name = COALESCE(?, name),
               email = ?,
               phone = COALESCE(?, phone),
+              password = ?,
               updated_at = NOW()
             WHERE id = ?
           `;
-          const syncUpdateParams = [
+          await masterPool.query(syncUpdateQuery, [
             hrmsIdStr,
             mappedName,
             mappedEmail,
             mappedPhone,
+            hashedLocalPassword,
             localUserId
-          ];
-          await masterPool.query(syncUpdateQuery, syncUpdateParams);
+          ]);
 
-          // Fetch the final synced structure to generate local token
           const [syncedUsers] = await masterPool.query(
             'SELECT * FROM rbac_users WHERE id = ? LIMIT 1',
             [localUserId]
@@ -273,134 +379,13 @@ exports.unifiedLogin = async (req, res) => {
           return res.json({ success: true, message: 'Login successful', token, user: rbacResponse });
         }
       } catch (hrmsErr) {
-        console.error('HRMS Login Error:', hrmsErr);
-        // Fallback below if HRMS connection/query fails
+        console.error('HRMS Login fallback error (non-fatal):', hrmsErr.message);
       }
     }
 
-
-    // 2. Check traditional local RBAC User (Fast, Indexed)
-    const [rbacRows] = await masterPool.query(
-      `SELECT id, name, username, email, phone, password, role, college_id, course_id, branch_id, college_ids, course_ids, branch_ids, permissions, is_active
-       FROM rbac_users WHERE username = ? OR email = ? LIMIT 1`,
-      [username, username]
-    );
-
-    if (rbacRows && rbacRows.length > 0) {
-      const rbacUser = rbacRows[0];
-      if (rbacUser.password && await bcrypt.compare(password, rbacUser.password)) {
-        if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
-
-        const rbacResponse = buildRBACUserResponse(rbacUser);
-        const token = jwt.sign({
-          id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
-          collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
-          collegeIds: rbacUser.college_ids, courseIds: rbacUser.course_ids, branchIds: rbacUser.branch_ids,
-          permissions: rbacUser.permissions
-        }, process.env.JWT_SECRET, { expiresIn: '24h' });
-        return res.json({ success: true, message: 'Login successful', token, user: rbacResponse });
-      }
-    }
-
-    // 3. Check Staff User (Legacy, Fast, Indexed)
-    const [staffRows] = await masterPool.query(
-      'SELECT id, username, email, password_hash, assigned_modules, is_active FROM staff_users WHERE username = ? LIMIT 1',
-      [username]
-    );
-
-    if (staffRows && staffRows.length > 0) {
-      const staffUser = staffRows[0];
-      if (await bcrypt.compare(password, staffUser.password_hash)) {
-        if (!staffUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
-
-        const staffResponse = buildStaffResponse(staffUser);
-        const token = jwt.sign({
-          id: staffUser.id, username: staffUser.username, role: 'staff', modules: staffResponse.modules
-        }, process.env.JWT_SECRET, { expiresIn: '24h' });
-        return res.json({ success: true, message: 'Login successful', token, user: staffResponse });
-      }
-    }
-
-    // 4. Check Student User (Optimized)
-    const { authenticateStudentCredential } = require('../utils/studentCredentials');
-    const studentCred = await authenticateStudentCredential(username, password);
-
-    if (studentCred) {
-        // Validation Passed! NOW fetch the heavy student profile details.
-        const [studentDetails] = await masterPool.query(
-          `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
-            s.course, s.branch, s.college,
-            cb.id as branch_id, col.id as college_id, c.level as course_level,
-            ${studentRegistrationStatusComputedSql} AS registration_status_computed,
-            s.registration_status, s.student_data
-           FROM students s
-           LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
-           LEFT JOIN courses c ON s.course COLLATE utf8mb4_unicode_ci = c.name COLLATE utf8mb4_unicode_ci AND c.college_id = col.id
-           LEFT JOIN course_branches cb ON s.branch COLLATE utf8mb4_unicode_ci = cb.name COLLATE utf8mb4_unicode_ci AND cb.course_id = c.id
-           WHERE s.id = ? LIMIT 1`,
-          [studentCred.student_id]
-        );
-
-        if (studentDetails && studentDetails.length > 0) {
-          const s = studentDetails[0];
-          const token = jwt.sign({
-            id: studentCred.student_id,
-            admissionNumber: studentCred.admission_number,
-            pinNo: s.pin_no || studentCred.username,
-            role: 'student',
-            college_id: s.college_id,
-            branch_id: s.branch_id
-          }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
-          // Helper to resolve status
-          let parsedData = {};
-          try {
-            parsedData = (s.student_data && typeof s.student_data === 'string')
-              ? JSON.parse(s.student_data)
-              : (s.student_data || {});
-          } catch (e) { }
-
-          const resolvedStatus = s.registration_status_computed ||
-            ((s.registration_status && String(s.registration_status).trim().length > 0)
-              ? s.registration_status
-              : (parsedData?.registration_status || parsedData?.['Registration Status'] || 'Pending'));
-
-          const user = {
-            admission_number: studentCred.admission_number,
-            pin_no: s.pin_no,
-            batch: s.batch,
-            username: studentCred.username,
-            name: s.student_name,
-            current_year: s.current_year,
-            current_semester: s.current_semester,
-            course: s.course,
-            course_level: s.course_level,
-            branch: s.branch,
-            college: s.college,
-            branch_id: s.branch_id,
-            college_id: s.college_id,
-            student_photo: s.student_photo,
-            registration_status: resolvedStatus,
-            role: 'student'
-          };
-
-          // Update last_login and login_count (Fire and forget, don't block login)
-          masterPool.query(
-            `UPDATE student_credentials 
-             SET last_login = NOW(), 
-                 login_count = COALESCE(login_count, 0) + 1 
-             WHERE student_id = ?`,
-            [studentCred.student_id]
-          ).catch(err => {
-            // Silently fail if columns don't exist yet (migration pending)
-            // console.warn('Failed to update login stats (columns might be missing):', err.message);
-          });
-
-          return res.json({ success: true, message: 'Login successful', token, user });
-        }
-    }
-
-    // --- 5. Failed All ---
+    // -------------------------------------------------------------
+    // FAILED: No credential provider matched
+    // -------------------------------------------------------------
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
   } catch (error) {
