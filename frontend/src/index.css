@@ -927,7 +927,7 @@ html.parent-portal #root {
         box-shadow: none !important;
         overflow: hidden !important;
         background: #f8f9fa !important;
-        transform: none !important;
+        transform: none;
         aspect-ratio: auto !important;
         position: relative !important;
         -webkit-print-color-adjust: exact !important;
@@ -1233,7 +1233,12 @@ html.parent-portal #root {
         break-after: auto !important;
     }
 
-    /* Back side — keep return-note + red footer inside CR80 (not clipped) */
+    /* Front side always straight */
+    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="front"] .id-card-print-root {
+        transform: none !important;
+    }
+
+    /* Back side default straight */
     body.printing-id-card #id-card-print-mount .id-card-back {
         display: flex !important;
         flex-direction: column !important;
@@ -1241,12 +1246,13 @@ html.parent-portal #root {
         transform: none !important;
     }
 
-    /* Support 180° rotation for duplex flippers when explicitly requested */
-    body.printing-id-card #id-card-print-mount .rotate-back-180,
-    body.printing-id-card #id-card-print-mount .id-card-back.rotate-back-180,
-    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="back"].rotate-back-180 .id-card-back {
+    /* Guaranteed 180° rotation when back side is inverted for short-edge duplex */
+    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="back"].rotate-back-180 .id-card-print-root,
+    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="back"].rotate-back-180 .id-card-back,
+    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="back"] .id-card-print-root.rotate-back-180,
+    body.printing-id-card #id-card-print-mount .id-card-print-page[data-print-side="back"] .id-card-back.rotate-back-180 {
         transform: rotate(180deg) !important;
-        transform-origin: center center !important;
+        transform-origin: 50% 50% !important;
     }
 
     body.printing-id-card #id-card-print-mount .id-card-back .id-card-body {

@@ -80,7 +80,22 @@ const PrintIdCards = () => {
   const [previewKey, setPreviewKey] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [backOrientation, setBackOrientation] = useState('straight'); // 'straight' | 'rotate180'
+  const [backOrientation, setBackOrientation] = useState(() => {
+    try {
+      return localStorage.getItem('id_card_back_orientation') || 'straight';
+    } catch {
+      return 'straight';
+    }
+  });
+
+  const handleOrientationChange = (val) => {
+    setBackOrientation(val);
+    try {
+      localStorage.setItem('id_card_back_orientation', val);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
@@ -310,8 +325,8 @@ const PrintIdCards = () => {
         } else {
           toast.success(
             result.students === 1
-              ? 'Print dialog: 2 pages (front + back)'
-              : `Print dialog: ${result.pages} pages (${result.students} students × front + back)`
+              ? `Print dialog: 2 pages (Front + Back [${backOrientation === 'rotate180' ? '180° Rotated' : 'Straight'}])`
+              : `Print dialog: ${result.pages} pages (${result.students} students × Front + Back [${backOrientation === 'rotate180' ? '180° Rotated' : 'Straight'}])`
           );
         }
       } catch (err) {
@@ -722,7 +737,7 @@ const PrintIdCards = () => {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setBackOrientation('straight')}
+                onClick={() => handleOrientationChange('straight')}
                 className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                   backOrientation === 'straight'
                     ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
@@ -733,7 +748,7 @@ const PrintIdCards = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setBackOrientation('rotate180')}
+                onClick={() => handleOrientationChange('rotate180')}
                 className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                   backOrientation === 'rotate180'
                     ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
@@ -757,8 +772,8 @@ const PrintIdCards = () => {
           >
             {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
             {selectedCount > 1
-              ? `Generate Print (${selectedCount} × Front + Back = ${selectedCount * 2} pages)`
-              : 'Generate Print (Front + Back)'}
+              ? `Generate Print (${selectedCount} Students · ${selectedCount * 2} Pages · Back: ${backOrientation === 'rotate180' ? '180°' : 'Straight'})`
+              : `Generate Print (Front + Back · Back: ${backOrientation === 'rotate180' ? '180°' : 'Straight'})`}
           </button>
           <p className="text-[10px] text-gray-500 text-center leading-relaxed shrink-0">
             Print dialog lists {selectedCount || 0} × 2 CR80 pages with crisp high-contrast dark text.<br />
