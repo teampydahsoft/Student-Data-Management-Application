@@ -51,7 +51,6 @@ import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 import StudentScholarshipHistoryTab from '../components/Students/StudentScholarshipHistoryTab';
 import StudentMeritStatusTab from '../components/Students/StudentMeritStatusTab';
 import StudentExportModal from '../components/Students/StudentExportModal';
-import BulkRollNumberModal from '../components/BulkRollNumberModal';
 import BulkUploadModal from '../components/BulkUploadModal';
 import ManualRollNumberModal from '../components/ManualRollNumberModal';
 import RejoinModal from '../components/RejoinModal';
@@ -397,7 +396,6 @@ const Students = () => {
     district: [],
     mandal_name: []
   });
-  const [showBulkRollNumber, setShowBulkRollNumber] = useState(false);
   const [showManualRollNumber, setShowManualRollNumber] = useState(false);
   const [showBulkStudentUpload, setShowBulkStudentUpload] = useState(false);
   const [editingRollNumber, setEditingRollNumber] = useState(false);
@@ -5982,12 +5980,6 @@ const Students = () => {
         totalCount={totalStudents}
       />
 
-      <BulkRollNumberModal
-        isOpen={showBulkRollNumber}
-        onClose={() => setShowBulkRollNumber(false)}
-        onUpdateComplete={() => refreshStudents()}
-      />
-
       <BulkUploadModal
         isOpen={showBulkStudentUpload}
         onClose={() => setShowBulkStudentUpload(false)}
@@ -6093,6 +6085,13 @@ const Students = () => {
         isOpen={showManualRollNumber}
         onClose={() => setShowManualRollNumber(false)}
         onUpdateComplete={() => refreshStudents()}
+        initialFilters={{
+          college: filters.college || '',
+          course: filters.course || '',
+          branch: filters.branch || '',
+        }}
+        colleges={colleges}
+        coursesWithLevels={coursesWithLevels}
       />
 
       {/* Rejoin Modal */}

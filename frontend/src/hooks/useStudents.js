@@ -20,6 +20,7 @@ export const studentKeys = {
  * @param {number} options.pageSize - Number of items per page
  * @param {Object} options.filters - Filter object
  * @param {string} options.search - Search term
+ * @param {boolean} options.lite - Skip heavy enrichment (PIN update UIs)
  * @param {boolean} options.enabled - Whether the query should run
  */
 export const useStudents = ({
@@ -29,10 +30,11 @@ export const useStudents = ({
   search = '',
   sortBy = '',
   sortOrder = 'asc',
+  lite = false,
   enabled = true
 } = {}) => {
   return useQuery({
-    queryKey: studentKeys.list({ page, pageSize, filters, search, sortBy, sortOrder }),
+    queryKey: studentKeys.list({ page, pageSize, filters, search, sortBy, sortOrder, lite }),
     queryFn: async () => {
       const queryParams = new URLSearchParams();
 
@@ -66,6 +68,10 @@ export const useStudents = ({
       if (sortBy && sortBy.trim()) {
         queryParams.append('sort_by', sortBy.trim());
         queryParams.append('sort_order', sortOrder === 'desc' ? 'desc' : 'asc');
+      }
+
+      if (lite) {
+        queryParams.append('lite', 'true');
       }
 
       queryParams.append('limit', pageSize.toString());

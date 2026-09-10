@@ -2822,8 +2822,12 @@ exports.getAllStudents = async (req, res) => {
       filter_course,
       filter_branch,
       filter_section,
+      lite,
       ...otherFilters
     } = req.query;
+
+    // Lite mode: skip hostel/transport/scholarship enrichment (PIN update UIs, exports helpers)
+    const isLiteMode = lite === '1' || lite === 'true' || lite === true;
 
     const fetchAll = !limit || limit === 'all';
     const pageSize = fetchAll ? null : Math.max(1, parseInt(limit, 10) || 25);
@@ -2907,6 +2911,7 @@ exports.getAllStudents = async (req, res) => {
         filter_course: normalizedFilterCourse,
         filter_branch: normalizedFilterBranch,
         filter_section: normalizedFilterSection,
+        lite: isLiteMode,
         filters: normalizedOtherFilters
       });
 
@@ -2991,11 +2996,11 @@ exports.getAllStudents = async (req, res) => {
       params.push(filter_dateTo);
     }
 
-    // PIN number status filter
+    // PIN number status filter (treat blank strings as unassigned)
     if (filter_pinNumberStatus === 'assigned') {
-      query += ' AND s.pin_no IS NOT NULL';
+      query += " AND s.pin_no IS NOT NULL AND TRIM(s.pin_no) <> ''";
     } else if (filter_pinNumberStatus === 'unassigned') {
-      query += ' AND s.pin_no IS NULL';
+      query += " AND (s.pin_no IS NULL OR TRIM(s.pin_no) = '')";
     }
 
     if (parsedFilterYear && !isNaN(parsedFilterYear)) {
@@ -3151,7 +3156,9 @@ exports.getAllStudents = async (req, res) => {
 
     const [students] = await masterPool.query(query, params);
 
-    await syncIneligibleQuotaScholarshipsForStudents(masterPool, students);
+    if (!isLiteMode) {
+      await syncIneligibleQuotaScholarshipsForStudents(masterPool, students);
+    }
 
     // Get total count
     let countQuery = 'SELECT COUNT(*) as total FROM students WHERE 1=1';
@@ -3184,9 +3191,9 @@ exports.getAllStudents = async (req, res) => {
     }
 
     if (filter_pinNumberStatus === 'assigned') {
-      countQuery += ' AND pin_no IS NOT NULL';
+      countQuery += " AND pin_no IS NOT NULL AND TRIM(pin_no) <> ''";
     } else if (filter_pinNumberStatus === 'unassigned') {
-      countQuery += ' AND pin_no IS NULL';
+      countQuery += " AND (pin_no IS NULL OR TRIM(pin_no) = '')";
     }
 
     if (parsedFilterYear && !isNaN(parsedFilterYear)) {
@@ -3298,6 +3305,30 @@ exports.getAllStudents = async (req, res) => {
 
     const [countResult] = await masterPool.query(countQuery, countParams);
 
+    let parsedStudents;
+
+    if (isLiteMode) {
+      // Fast path for PIN update / lightweight list UIs — skip hostel, transport, scholarship maps
+      parsedStudents = students.map((student) => {
+        const parsedData = parseJSON(student.student_data) || {};
+        return {
+          id: student.id,
+          admission_number: student.admission_number,
+          admission_no: student.admission_no,
+          pin_no: student.pin_no,
+          student_name: student.student_name || parsedData.student_name || parsedData['Student Name'] || null,
+          student_mobile: student.student_mobile,
+          college: student.college,
+          course: student.course,
+          branch: student.branch,
+          batch: student.batch,
+          current_year: student.current_year,
+          current_semester: student.current_semester,
+          student_status: student.student_status,
+          student_data: parsedData,
+        };
+      });
+    } else {
     const stageConfigForList = await loadRegistrationStageConfig();
     const [scholarshipMap, registrationStatusLabelMap, meritStatusMap] = await Promise.all([
       buildRegistrationScholarshipMap(masterPool, students),
@@ -3348,7 +3379,7 @@ exports.getAllStudents = async (req, res) => {
     }
 
     // Parse JSON fields
-    const parsedStudents = students.map(student => {
+    parsedStudents = students.map(student => {
       const parsedData = parseJSON(student.student_data) || {};
       const stage = resolveStageFromData(parsedData, {
         year: student.current_year || 1,
@@ -3406,6 +3437,7 @@ exports.getAllStudents = async (req, res) => {
         accommodation: accommodation
       };
     });
+    }
 
     const totalCount = countResult?.[0]?.total || 0;
     const totalPages = fetchAll ? 1 : (pageSize > 0 ? Math.ceil(totalCount / pageSize) : 1);
@@ -6111,7 +6143,16 @@ exports.bulkUpdatePinNumbers = async (req, res) => {
     for (const result of results) {
       const { row, data } = result;
       const admissionNumber = data.admission_number?.toString().trim();
-      const pinNumber = data.pin_number?.toString().trim();
+      // Accept common CSV column aliases used by the bulk PIN template/UI
+      const pinNumber = (
+        data.pin_number ||
+        data.pin_no ||
+        data['PIN Number'] ||
+        data['Pin Number'] ||
+        data.pin ||
+        data.roll_number ||
+        data.roll_no
+      )?.toString().trim();
 
       if (!admissionNumber) {
         errors.push({ row, message: 'Missing admission_number' });
@@ -6119,7 +6160,7 @@ exports.bulkUpdatePinNumbers = async (req, res) => {
       }
 
       if (!pinNumber) {
-        errors.push({ row, message: 'Missing pin_number' });
+        errors.push({ row, message: 'Missing pin_number / pin_no' });
         continue;
       }
 
