@@ -13,15 +13,35 @@ const checkAndSendBirthdayNotifications = async () => {
 
         // Find students whose birthday is today (by date in server timezone; scheduler runs in Asia/Kolkata)
         // dob: YYYY-MM-DD; use MONTH() and DAY() for today's birthdays
+        // Optimization: Fetch only IDs first to avoid loading off-page LONGTEXT columns (like student_photo)
+        // during the full table scan, which causes massive I/O burst on AWS instances.
+        const [idsResult] = await conn.query(`
+            SELECT id
+            FROM students
+            WHERE dob IS NOT NULL
+              AND dob != ''
+              AND MONTH(dob) = MONTH(CURRENT_DATE())
+              AND DAY(dob) = DAY(CURRENT_DATE())
+        `);
+
+        if (idsResult.length === 0) {
+            console.log('🎉 Found 0 students with birthdays today.');
+            return {
+                push: { sent: 0, failed: 0, noSubscription: 0 },
+                sms: { sent: 0, failed: 0, skipped: 0 }
+            };
+        }
+
+        const ids = idsResult.map(r => r.id);
+        
+        // Fetch full data only for the matching students
         const [students] = await conn.query(`
             SELECT id, student_name, dob, student_data, admission_number,
                    student_mobile, parent_mobile1, parent_mobile2,
                    current_year, current_semester
             FROM students
-            WHERE dob IS NOT NULL
-              AND MONTH(dob) = MONTH(CURRENT_DATE())
-              AND DAY(dob) = DAY(CURRENT_DATE())
-        `);
+            WHERE id IN (?)
+        `, [ids]);
 
         console.log(`🎉 Found ${students.length} students with birthdays today.`);
 
