@@ -233,6 +233,17 @@ const PrintIdCards = () => {
     return student.college || g('College') || g('college') || 'PYDAH GROUP';
   }, [getStudentData]);
 
+  const resolveCollegeSignature = useCallback((student) => {
+    if (!student || !colleges.length) return null;
+    const colName = String(resolveCollege(student) || '').trim().toLowerCase();
+    const colObj = colleges.find(c =>
+      (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
+      (c.name && c.name.trim().toLowerCase() === colName) ||
+      (c.code && c.code.trim().toLowerCase() === colName)
+    );
+    return colObj?.principal_signature_url || null;
+  }, [colleges, resolveCollege]);
+
   const collegeName = useMemo(
     () => resolveCollege(previewStudent),
     [previewStudent, resolveCollege]
@@ -698,14 +709,19 @@ const PrintIdCards = () => {
               </button>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-6 pr-1">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Front Side</p>
-                <DigitalStudentCard
-                  className="id-card-print-front"
-                  student={previewStudent}
-                  getStudentData={getStudentData(previewStudent)}
-                />
+                <div className="id-card-preview-scaler-box">
+                  <div className="id-card-preview-scaler">
+                    <DigitalStudentCard
+                      className="id-card-print-front"
+                      student={previewStudent}
+                      getStudentData={getStudentData(previewStudent)}
+                      principalSignatureUrl={resolveCollegeSignature(previewStudent)}
+                    />
+                  </div>
+                </div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -716,11 +732,15 @@ const PrintIdCards = () => {
                     {backOrientation === 'straight' ? 'Straight (0°)' : 'Rotated (180°)'}
                   </span>
                 </div>
-                <DigitalIdCardBack
-                  className="id-card-print-back"
-                  college={collegeName}
-                  rotate180={backOrientation === 'rotate180'}
-                />
+                <div className="id-card-preview-scaler-box">
+                  <div className="id-card-preview-scaler">
+                    <DigitalIdCardBack
+                      className="id-card-print-back"
+                      college={collegeName}
+                      rotate180={backOrientation === 'rotate180'}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -786,7 +806,7 @@ const PrintIdCards = () => {
       {selectedStudents.length > 0 && (
         <div
           id="id-card-batch-source"
-          className="fixed left-[-10000px] top-0 w-[380px] pointer-events-none opacity-0"
+          className="fixed left-[-10000px] top-0 w-[54mm] pointer-events-none opacity-0"
           aria-hidden="true"
         >
           {selectedStudents.map((s) => {
@@ -797,6 +817,7 @@ const PrintIdCards = () => {
                   className="id-card-batch-front"
                   student={s}
                   getStudentData={getStudentData(s)}
+                  principalSignatureUrl={resolveCollegeSignature(s)}
                 />
                 <DigitalIdCardBack
                   className="id-card-batch-back"

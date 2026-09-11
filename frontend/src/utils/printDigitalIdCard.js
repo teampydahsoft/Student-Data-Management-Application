@@ -19,9 +19,11 @@ function cloneCard(source) {
   const clone = source.cloneNode(true);
   clone.classList.add('id-card-print-root');
   clone.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
-  // Screen preview uses aspect-ratio + minHeight:520px — those clip the footer in CR80 print
   clone.style.removeProperty('min-height');
   clone.style.removeProperty('aspect-ratio');
+  clone.style.removeProperty('transform');
+  clone.style.removeProperty('box-shadow');
+  clone.style.removeProperty('border-radius');
   clone.style.height = '85.6mm';
   clone.style.width = '54mm';
   clone.style.maxWidth = '54mm';

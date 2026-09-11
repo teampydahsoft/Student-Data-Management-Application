@@ -411,8 +411,10 @@ const Profile = () => {
                             <CreditCard className="w-5 h-5 text-indigo-600" />
                             <h3 className="text-lg font-bold text-gray-900">Digital Student ID Card</h3>
                         </div>
-                        <div className="flex justify-center">
-                            <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
+                        <div className="id-card-preview-scaler-box">
+                            <div className="id-card-preview-scaler">
+                                <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
+                            </div>
                         </div>
                         <div className="mt-4 flex justify-end gap-2 no-print">
                             <button

@@ -21,14 +21,12 @@ const DigitalIdCardBack = ({
 }) => {
   return (
     <div
-      className={`id-card-print-root id-card-back digital-id-card-back w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-300 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col transition-transform duration-300 ${rotate180 ? 'rotate-180 rotate-back-180' : ''} ${className}`}
+      className={`id-card-print-root id-card-back digital-id-card-back relative flex flex-col transition-transform duration-300 ${rotate180 ? 'rotate-180 rotate-back-180' : ''} ${className}`}
       style={{
         fontFamily: "'Inter', sans-serif",
-        aspectRatio: '54 / 85.6',
-        minHeight: '520px',
       }}
     >
-      <div className="id-card-header-graphic absolute top-0 left-0 right-0 h-28 sm:h-36 overflow-hidden pointer-events-none z-0">
+      <div className="id-card-header-graphic absolute top-0 left-0 right-0 h-24 sm:h-28 overflow-hidden pointer-events-none z-0">
         <svg viewBox="0 0 400 200" preserveAspectRatio="none" className="w-full h-full">
           <path d="M0,0 L400,0 L400,20 L180,120 L0,40 Z" fill="#b91c1c" />
           <path d="M400,20 L400,80 L220,160 Z" fill="#ef4444" opacity="0.8" />
@@ -37,19 +35,19 @@ const DigitalIdCardBack = ({
       </div>
 
       {/* Body fills space ABOVE footer — footer stays pinned */}
-      <div className="id-card-body relative z-10 flex flex-col flex-1 min-h-0 w-full pt-10 sm:pt-12 pb-2 overflow-hidden">
-        <div className="id-card-logo-wrap w-full flex justify-center mb-3 sm:mb-4 shrink-0">
-          <div className="bg-white/95 backdrop-blur-md p-2 rounded-xl shadow-sm h-[72px] sm:h-[90px] inline-flex items-center justify-center border border-white/50">
+      <div className="id-card-body relative z-10 flex flex-col flex-1 min-h-0 w-full pt-4 sm:pt-5 pb-2 sm:pb-3 overflow-hidden">
+        <div className="id-card-logo-wrap w-full flex justify-center mb-2.5 sm:mb-3 shrink-0">
+          <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm h-[58px] sm:h-[66px] inline-flex items-center justify-center border border-white/50">
             <img src="/logo.png" alt="PYDAH GROUP" className="h-full w-auto object-contain max-w-[140px] sm:max-w-none" />
           </div>
         </div>
 
-        <div className="id-card-content px-4 sm:px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
-          <h3 className="id-card-back-title shrink-0 text-center text-[11px] sm:text-xs font-black uppercase tracking-widest text-[#991b1b] mb-2 sm:mb-3">
+        <div className="id-card-content px-4 sm:px-6 flex flex-col flex-1 justify-between min-h-0 overflow-hidden">
+          <h3 className="id-card-back-title shrink-0 text-center text-xs sm:text-sm font-black uppercase tracking-widest text-[#991b1b] mb-2 sm:mb-3">
             Instructions
           </h3>
 
-          <ol className="id-card-back-instructions shrink min-h-0 overflow-hidden space-y-1.5 sm:space-y-2 text-[10px] sm:text-[11px] text-slate-950 font-bold leading-snug list-decimal list-outside pl-4">
+          <ol className="id-card-back-instructions flex-1 min-h-0 flex flex-col justify-around space-y-1.5 sm:space-y-2.5 text-[11px] sm:text-[12.5px] text-slate-950 font-bold leading-relaxed list-decimal list-outside pl-4">
             {instructions.map((line, idx) => (
               <li key={idx} className="pl-0.5">
                 {line}
@@ -57,11 +55,11 @@ const DigitalIdCardBack = ({
             ))}
           </ol>
 
-          <div className="id-card-back-note shrink-0 mt-auto pt-3 pb-1 border-t border-dashed border-gray-300 text-center">
-            <p className="text-[9px] sm:text-[10px] font-black text-slate-800 uppercase tracking-wide">
+          <div className="id-card-back-note shrink-0 mt-auto pt-3 sm:pt-4 pb-1 border-t border-dashed border-gray-300 text-center">
+            <p className="text-[10px] sm:text-[11px] font-black text-slate-800 uppercase tracking-wide">
               If found, please return to
             </p>
-            <p className="text-[10px] sm:text-xs font-black text-black mt-1 uppercase leading-tight">
+            <p className="text-xs sm:text-sm font-black text-black mt-1 uppercase leading-tight">
               {college}
             </p>
           </div>

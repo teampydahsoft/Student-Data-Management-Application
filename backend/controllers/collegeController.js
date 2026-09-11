@@ -397,6 +397,130 @@ exports.getFooterImage = async (req, res) => {
 };
 
 /**
+ * POST /api/colleges/:id/upload-principal-signature
+ * Upload principal signature image for college (stores in database)
+ */
+exports.uploadPrincipalSignature = async (req, res) => {
+  try {
+    const collegeId = parseInt(req.params.id, 10);
+
+    if (!collegeId || Number.isNaN(collegeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid college ID'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const college = await collegeService.fetchCollegeById(collegeId);
+    if (!college) {
+      return res.status(404).json({
+        success: false,
+        message: 'College not found'
+      });
+    }
+
+    const imageBuffer = req.file.buffer;
+    const imageType = req.file.mimetype;
+
+    await masterPool.execute(
+      'UPDATE colleges SET principal_signature = ?, principal_signature_type = ? WHERE id = ?',
+      [imageBuffer, imageType, collegeId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Principal signature uploaded successfully',
+      imageUrl: `/api/colleges/${collegeId}/principal-signature`
+    });
+  } catch (error) {
+    console.error('uploadPrincipalSignature error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload principal signature'
+    });
+  }
+};
+
+/**
+ * GET /api/colleges/:id/principal-signature
+ * Get principal signature image for college
+ */
+exports.getPrincipalSignature = async (req, res) => {
+  try {
+    const collegeId = parseInt(req.params.id, 10);
+
+    if (!collegeId || Number.isNaN(collegeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid college ID'
+      });
+    }
+
+    const [rows] = await masterPool.execute(
+      'SELECT principal_signature, principal_signature_type FROM colleges WHERE id = ?',
+      [collegeId]
+    );
+
+    if (rows.length === 0 || !rows[0].principal_signature) {
+      return res.status(404).json({
+        success: false,
+        message: 'Principal signature not found'
+      });
+    }
+
+    res.set('Content-Type', rows[0].principal_signature_type || 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(rows[0].principal_signature);
+  } catch (error) {
+    console.error('getPrincipalSignature error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve principal signature'
+    });
+  }
+};
+
+/**
+ * DELETE /api/colleges/:id/principal-signature
+ * Remove principal signature image for college
+ */
+exports.deletePrincipalSignature = async (req, res) => {
+  try {
+    const collegeId = parseInt(req.params.id, 10);
+
+    if (!collegeId || Number.isNaN(collegeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid college ID'
+      });
+    }
+
+    await masterPool.execute(
+      'UPDATE colleges SET principal_signature = NULL, principal_signature_type = NULL WHERE id = ?',
+      [collegeId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Principal signature removed successfully'
+    });
+  } catch (error) {
+    console.error('deletePrincipalSignature error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove principal signature'
+    });
+  }
+};
+
+/**
  * POST /api/colleges
  * Create new college
  */

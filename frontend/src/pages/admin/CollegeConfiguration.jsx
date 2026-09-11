@@ -12,8 +12,11 @@ const CollegeConfiguration = () => {
     const [selectedCollege, setSelectedCollege] = useState(null);
     const [headerImage, setHeaderImage] = useState(null);
     const [footerImage, setFooterImage] = useState(null);
+    const [signatureImage, setSignatureImage] = useState(null);
     const [headerPreview, setHeaderPreview] = useState(null);
     const [footerPreview, setFooterPreview] = useState(null);
+    const [signaturePreview, setSignaturePreview] = useState(null);
+    const [removeSignature, setRemoveSignature] = useState(false);
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
@@ -40,25 +43,28 @@ const CollegeConfiguration = () => {
         // Reset images
         setHeaderImage(null);
         setFooterImage(null);
+        setSignatureImage(null);
+        setRemoveSignature(false);
 
         // Load existing images if available
-        // The URLs from backend are relative paths like /api/colleges/:id/header-image
-        // We need to prepend the base URL (without /api since the path already includes it)
+        const baseURL = (api.defaults.baseURL || 'http://localhost:5000/api').replace('/api', '');
+
         if (college.header_image_url) {
-            // Remove /api from baseURL since the image URL already includes /api
-            const baseURL = (api.defaults.baseURL || 'http://localhost:5000/api').replace('/api', '');
             setHeaderPreview(`${baseURL}${college.header_image_url}`);
-            console.log('Header image URL:', `${baseURL}${college.header_image_url}`);
         } else {
             setHeaderPreview(null);
         }
 
         if (college.footer_image_url) {
-            const baseURL = (api.defaults.baseURL || 'http://localhost:5000/api').replace('/api', '');
             setFooterPreview(`${baseURL}${college.footer_image_url}`);
-            console.log('Footer image URL:', `${baseURL}${college.footer_image_url}`);
         } else {
             setFooterPreview(null);
+        }
+
+        if (college.principal_signature_url) {
+            setSignaturePreview(`${baseURL}${college.principal_signature_url}`);
+        } else {
+            setSignaturePreview(null);
         }
     };
 
@@ -66,9 +72,13 @@ const CollegeConfiguration = () => {
         if (type === 'header') {
             setHeaderImage(file);
             setHeaderPreview(URL.createObjectURL(file));
-        } else {
+        } else if (type === 'footer') {
             setFooterImage(file);
             setFooterPreview(URL.createObjectURL(file));
+        } else if (type === 'signature') {
+            setSignatureImage(file);
+            setSignaturePreview(URL.createObjectURL(file));
+            setRemoveSignature(false);
         }
     };
 
@@ -100,6 +110,17 @@ const CollegeConfiguration = () => {
                 });
             }
 
+            // Upload signature if changed or remove if deleted
+            if (signatureImage) {
+                const formData = new FormData();
+                formData.append('signature', signatureImage);
+                await api.post(`/colleges/${selectedCollege.id}/upload-principal-signature`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else if (removeSignature) {
+                await api.delete(`/colleges/${selectedCollege.id}/principal-signature`);
+            }
+
             toast.dismiss(toastId);
             toast.success('College configuration saved successfully');
 
@@ -109,6 +130,8 @@ const CollegeConfiguration = () => {
             // Reset file inputs
             setHeaderImage(null);
             setFooterImage(null);
+            setSignatureImage(null);
+            setRemoveSignature(false);
         } catch (error) {
             console.error(error);
             toast.error('Failed to save configuration');
@@ -246,6 +269,49 @@ const CollegeConfiguration = () => {
                         )}
                     </div>
 
+                    {/* Principal Signature Section */}
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900">Principal Signature</h3>
+                                <p className="text-sm text-gray-500">Official signature of the college principal for certificates</p>
+                            </div>
+                        </div>
+
+                        {signaturePreview ? (
+                            <div className="relative flex items-center justify-center p-4 bg-gray-50 rounded-lg border">
+                                <img
+                                    src={signaturePreview}
+                                    alt="Principal Signature"
+                                    className="max-h-24 max-w-xs object-contain"
+                                />
+                                <button
+                                    onClick={() => {
+                                        setSignatureImage(null);
+                                        setSignaturePreview(null);
+                                        setRemoveSignature(true);
+                                    }}
+                                    className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-lg"
+                                    title="Remove signature"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 transition bg-gray-50">
+                                <Upload className="text-gray-400 mb-2" size={32} />
+                                <span className="text-sm text-gray-500 font-medium">Click to upload principal signature</span>
+                                <span className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP with transparent or white background</span>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="hidden"
+                                    onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'signature')}
+                                />
+                            </label>
+                        )}
+                    </div>
+
                     {/* Save Button */}
                     <div className="flex justify-end gap-3">
                         <button
@@ -256,7 +322,7 @@ const CollegeConfiguration = () => {
                         </button>
                         <button
                             onClick={handleSave}
-                            disabled={uploading || (!headerImage && !footerImage)}
+                            disabled={uploading || (!headerImage && !footerImage && !signatureImage && !removeSignature)}
                             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Save size={18} />

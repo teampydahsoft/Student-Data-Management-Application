@@ -1025,6 +1025,10 @@ exports.previewTemplate = async (req, res) => {
           collegeDetails.header_image = target.header_image;
         if (target.footer_image)
           collegeDetails.footer_image = target.footer_image;
+        if (target.principal_signature)
+          collegeDetails.principal_signature = target.principal_signature;
+        if (target.principal_signature_url)
+          collegeDetails.principal_signature_url = target.principal_signature_url;
       }
     } catch (e) {
       console.warn("Could not fetch college details for preview", e);

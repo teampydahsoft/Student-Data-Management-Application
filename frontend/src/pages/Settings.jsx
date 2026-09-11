@@ -1196,7 +1196,14 @@ const Settings = () => {
   const [editingCollegeId, setEditingCollegeId] = useState(null);
   const [savingCollegeId, setSavingCollegeId] = useState(null);
   const [creatingCollege, setCreatingCollege] = useState(false);
-  const [newCollege, setNewCollege] = useState({ name: '', code: '', address: '', isActive: true });
+  const [newCollege, setNewCollege] = useState({
+    name: '',
+    code: '',
+    address: '',
+    isActive: true,
+    principalSignatureFile: null,
+    principalSignaturePreview: null
+  });
   const [isAddCollegeModalOpen, setIsAddCollegeModalOpen] = useState(false);
   const [collegeDrafts, setCollegeDrafts] = useState({});
 
@@ -2406,7 +2413,17 @@ const Settings = () => {
 
   // College management functions
   const resetNewCollege = () => {
-    setNewCollege({ name: '', code: '', address: '', isActive: true });
+    if (newCollege.principalSignaturePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(newCollege.principalSignaturePreview);
+    }
+    setNewCollege({
+      name: '',
+      code: '',
+      address: '',
+      isActive: true,
+      principalSignatureFile: null,
+      principalSignaturePreview: null
+    });
     setIsAddCollegeModalOpen(false);
   };
 
@@ -2432,6 +2449,21 @@ const Settings = () => {
       });
 
       const createdCollege = response.data.data;
+
+      // Upload principal signature if provided
+      if (newCollege.principalSignatureFile && createdCollege?.id) {
+        try {
+          const sigFormData = new FormData();
+          sigFormData.append('signature', newCollege.principalSignatureFile);
+          await api.post(`/colleges/${createdCollege.id}/upload-principal-signature`, sigFormData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+        } catch (sigErr) {
+          console.error('Failed to upload principal signature for new college', sigErr);
+          toast.error('College created, but signature upload failed');
+        }
+      }
+
       toast.success('College created successfully');
       resetNewCollege();
       await fetchColleges({ silent: true });
@@ -2454,6 +2486,9 @@ const Settings = () => {
     setEditingCollegeId(null);
     setCollegeDrafts(prev => {
       const updated = { ...prev };
+      if (updated[collegeId]?.principalSignaturePreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(updated[collegeId].principalSignaturePreview);
+      }
       delete updated[collegeId];
       return updated;
     });
@@ -2482,6 +2517,18 @@ const Settings = () => {
       }
 
       await api.put(`/colleges/${collegeId}`, updates);
+
+      // Handle principal signature file upload or removal
+      if (draft.principalSignatureFile) {
+        const sigFormData = new FormData();
+        sigFormData.append('signature', draft.principalSignatureFile);
+        await api.post(`/colleges/${collegeId}/upload-principal-signature`, sigFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else if (draft.removePrincipalSignature) {
+        await api.delete(`/colleges/${collegeId}/principal-signature`);
+      }
+
       toast.success('College updated successfully');
       await fetchColleges({ silent: true });
       cancelEditCollege(collegeId);
@@ -2582,7 +2629,11 @@ const Settings = () => {
       [college.id]: {
         name: college.name,
         code: college.code || '',
-        address: college.address || ''
+        address: college.address || '',
+        principal_signature_url: college.principal_signature_url || null,
+        principalSignatureFile: null,
+        principalSignaturePreview: null,
+        removePrincipalSignature: false
       }
     }));
   };
@@ -6104,6 +6155,88 @@ const Settings = () => {
                     rows={3}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Principal Signature
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Upload official principal signature (used for certificates and official documents).
+                  </p>
+                  {(collegeDrafts[editingCollegeId]?.principalSignaturePreview ||
+                    (!collegeDrafts[editingCollegeId]?.removePrincipalSignature && collegeDrafts[editingCollegeId]?.principal_signature_url)) && (
+                    <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={
+                            collegeDrafts[editingCollegeId]?.principalSignaturePreview ||
+                            getApiAssetUrl(collegeDrafts[editingCollegeId]?.principal_signature_url)
+                          }
+                          alt="Principal signature preview"
+                          className="h-16 w-36 rounded border border-gray-200 bg-white object-contain p-1"
+                        />
+                        <div className="text-xs text-gray-500">
+                          {collegeDrafts[editingCollegeId]?.principalSignatureFile
+                            ? 'New signature selected. Click Save to apply.'
+                            : 'Current saved signature.'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const prevBlob = collegeDrafts[editingCollegeId]?.principalSignaturePreview;
+                          if (prevBlob?.startsWith('blob:')) URL.revokeObjectURL(prevBlob);
+                          setCollegeDrafts((prev) => ({
+                            ...prev,
+                            [editingCollegeId]: {
+                              ...prev[editingCollegeId],
+                              principalSignatureFile: null,
+                              principalSignaturePreview: null,
+                              removePrincipalSignature: true
+                            }
+                          }));
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100 transition-colors"
+                        title="Remove signature"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-600 transition-colors hover:border-blue-400 hover:bg-blue-50">
+                    <Upload size={16} className="text-blue-600" />
+                    <span>
+                      {collegeDrafts[editingCollegeId]?.principalSignaturePreview ||
+                      (!collegeDrafts[editingCollegeId]?.removePrincipalSignature && collegeDrafts[editingCollegeId]?.principal_signature_url)
+                        ? 'Replace Signature'
+                        : 'Upload Signature'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        if (!file.type.startsWith('image/')) {
+                          toast.error('Please upload an image file (PNG/JPG/WEBP)');
+                          return;
+                        }
+                        const prevBlob = collegeDrafts[editingCollegeId]?.principalSignaturePreview;
+                        if (prevBlob?.startsWith('blob:')) URL.revokeObjectURL(prevBlob);
+                        setCollegeDrafts((prev) => ({
+                          ...prev,
+                          [editingCollegeId]: {
+                            ...prev[editingCollegeId],
+                            principalSignatureFile: file,
+                            principalSignaturePreview: URL.createObjectURL(file),
+                            removePrincipalSignature: false
+                          }
+                        }));
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
@@ -7072,6 +7205,71 @@ const Settings = () => {
                   className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
                   rows={3}
                 />
+              </div>
+
+              {/* Principal Signature */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Principal Signature
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Upload official principal signature (optional)
+                </p>
+                {newCollege.principalSignaturePreview && (
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={newCollege.principalSignaturePreview}
+                        alt="Signature preview"
+                        className="h-16 w-36 rounded border border-gray-200 bg-white object-contain p-1"
+                      />
+                      <span className="text-xs text-gray-500">Signature ready to upload</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newCollege.principalSignaturePreview?.startsWith('blob:')) {
+                          URL.revokeObjectURL(newCollege.principalSignaturePreview);
+                        }
+                        setNewCollege((prev) => ({
+                          ...prev,
+                          principalSignatureFile: null,
+                          principalSignaturePreview: null
+                        }));
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100 transition-colors"
+                      title="Remove signature"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-600 transition-colors hover:border-blue-400 hover:bg-blue-50">
+                  <Upload size={16} className="text-blue-600" />
+                  <span>{newCollege.principalSignatureFile ? 'Change Signature' : 'Upload Signature'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        toast.error('Please upload an image file (PNG/JPG/WEBP)');
+                        return;
+                      }
+                      if (newCollege.principalSignaturePreview?.startsWith('blob:')) {
+                        URL.revokeObjectURL(newCollege.principalSignaturePreview);
+                      }
+                      setNewCollege((prev) => ({
+                        ...prev,
+                        principalSignatureFile: file,
+                        principalSignaturePreview: URL.createObjectURL(file)
+                      }));
+                    }}
+                  />
+                </label>
               </div>
 
               {/* Actions */}

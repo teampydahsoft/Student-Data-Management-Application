@@ -12,6 +12,7 @@ const serializeCollegeRow = (row) => ({
   metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
   header_image_url: row.header_image ? `/api/colleges/${row.id}/header-image` : null,
   footer_image_url: row.footer_image ? `/api/colleges/${row.id}/footer-image` : null,
+  principal_signature_url: row.principal_signature ? `/api/colleges/${row.id}/principal-signature` : null,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });

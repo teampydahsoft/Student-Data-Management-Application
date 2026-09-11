@@ -12,6 +12,7 @@ router.get('/public', collegeController.getPublicColleges);
 // Image retrieval routes - PUBLIC (no auth) so they can be embedded in img tags
 router.get('/:id/header-image', collegeController.getHeaderImage);
 router.get('/:id/footer-image', collegeController.getFooterImage);
+router.get('/:id/principal-signature', collegeController.getPrincipalSignature);
 
 // All routes below require admin authentication
 router.use(authMiddleware);
@@ -19,6 +20,8 @@ router.use(authMiddleware);
 // Image upload routes (require auth)
 router.post('/:id/upload-header', upload.single('header'), collegeController.uploadHeaderImage);
 router.post('/:id/upload-footer', upload.single('footer'), collegeController.uploadFooterImage);
+router.post('/:id/upload-principal-signature', upload.single('signature'), collegeController.uploadPrincipalSignature);
+router.delete('/:id/principal-signature', collegeController.deletePrincipalSignature);
 
 // Super admin dashboard stats (college-wise) — must be before /:collegeId
 router.get('/dashboard-stats', collegeController.getCollegeDashboardStats);

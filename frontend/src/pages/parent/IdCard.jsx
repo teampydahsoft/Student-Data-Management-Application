@@ -49,16 +49,19 @@ const ParentIdCard = () => {
         <p className="text-xs sm:text-sm text-gray-500 mt-1">Official student identification card (view only)</p>
       </div>
       <div className="flex-1 w-full flex justify-center px-2 sm:px-0 pb-4">
-        <DigitalStudentCard
-          className="w-full max-w-[380px]"
-          student={studentData}
-          getStudentData={(key, fallback = '') => {
-            const sd = studentData?.student_data || {};
-            const val = sd[key];
-            if (val !== undefined && val !== null && String(val).trim() !== '') return String(val);
-            return fallback;
-          }}
-        />
+        <div className="id-card-preview-scaler-box">
+          <div className="id-card-preview-scaler">
+            <DigitalStudentCard
+              student={studentData}
+              getStudentData={(key, fallback = '') => {
+                const sd = studentData?.student_data || {};
+                const val = sd[key];
+                if (val !== undefined && val !== null && String(val).trim() !== '') return String(val);
+                return fallback;
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

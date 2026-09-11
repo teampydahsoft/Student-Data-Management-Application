@@ -8,6 +8,9 @@ import api from '../config/api';
 const _qrTokenCache = {};
 // Module-level photo cache: admissionNumber → data URL / path
 const _photoCache = {};
+// Module-level signature cache: collegeIdentifier → principalSignatureUrl
+const _collegeSignatureCache = {};
+let _collegesFetchPromise = null;
 
 const resolvePhotoUrl = (raw) => {
   if (!raw || typeof raw !== 'string') return '';
@@ -19,14 +22,26 @@ const resolvePhotoUrl = (raw) => {
   return getStaticFileUrlDirect(trimmed);
 };
 
+const resolveImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http') || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  const baseUrl = (api.defaults.baseURL || '/api').replace(/\/api$/, '');
+  return `${baseUrl}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+};
+
 /**
  * Reusable Digital Student ID Card.
  * Accepts a student object (e.g. displayData, editData) and optional getStudentData helper for nested student_data.
  * compact=true renders a smaller inline version for the profile header.
  */
-const DigitalStudentCard = ({ student, getStudentData, className = '', compact = false }) => {
+const DigitalStudentCard = ({ student, getStudentData, className = '', compact = false, principalSignatureUrl }) => {
   const [qrToken, setQrToken] = useState(null);
   const [fetchedPhoto, setFetchedPhoto] = useState('');
+  const [internalSigUrl, setInternalSigUrl] = useState(null);
 
   const admNo = student?.admission_number || student?.admission_no || '';
 
@@ -139,6 +154,56 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
   const city = get('city_village', '') || get('city', '');
   const state = get('district', '') || get('state', '');
 
+  useEffect(() => {
+    if (principalSignatureUrl !== undefined) {
+      setInternalSigUrl(principalSignatureUrl);
+      return;
+    }
+    const rawCollege = student?.college || student?.college_name || college;
+    const colId = student?.college_id || student?.collegeId;
+    if ((!rawCollege || rawCollege === '—') && !colId) {
+      setInternalSigUrl(null);
+      return;
+    }
+
+    const keyName = rawCollege ? String(rawCollege).trim().toLowerCase() : null;
+    const keyId = colId ? String(colId).trim().toLowerCase() : null;
+
+    if (keyName && _collegeSignatureCache[keyName] !== undefined) {
+      setInternalSigUrl(_collegeSignatureCache[keyName]);
+      return;
+    }
+    if (keyId && _collegeSignatureCache[keyId] !== undefined) {
+      setInternalSigUrl(_collegeSignatureCache[keyId]);
+      return;
+    }
+
+    if (!_collegesFetchPromise) {
+      _collegesFetchPromise = api.get('/colleges?includeInactive=false')
+        .then((r) => {
+          if (r.data?.success && Array.isArray(r.data.data)) {
+            r.data.data.forEach((c) => {
+              if (c.id) _collegeSignatureCache[String(c.id).toLowerCase()] = c.principal_signature_url;
+              if (c.name) _collegeSignatureCache[c.name.trim().toLowerCase()] = c.principal_signature_url;
+              if (c.code) _collegeSignatureCache[c.code.trim().toLowerCase()] = c.principal_signature_url;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
+    let cancelled = false;
+    _collegesFetchPromise.finally(() => {
+      if (cancelled) return;
+      const found = (keyName ? _collegeSignatureCache[keyName] : null) || (keyId ? _collegeSignatureCache[keyId] : null);
+      setInternalSigUrl(found || null);
+    });
+
+    return () => { cancelled = true; };
+  }, [principalSignatureUrl, college, student?.college, student?.college_name, student?.college_id, student?.collegeId]);
+
+  const effectiveSignatureUrl = principalSignatureUrl !== undefined ? principalSignatureUrl : internalSigUrl;
+
   const buildAddressString = () => {
     const parts = [address, city, state].filter(p => p !== '');
     return parts.length > 0 ? parts.join(', ') : '—';
@@ -187,16 +252,14 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
 
   return (
     <div
-      className={`id-card-print-root digital-id-card w-full max-w-[380px] mx-auto rounded-[1.5rem] sm:rounded-[2rem] border border-gray-200 bg-[#f8f9fa] shadow-2xl overflow-hidden relative flex flex-col ${className}`}
+      className={`id-card-print-root digital-id-card relative flex flex-col ${className}`}
       style={{
         fontFamily: "'Inter', sans-serif",
-        aspectRatio: '54 / 85.6',
-        minHeight: '520px',
       }}
       data-qr-admission={admissionNo}
     >
       {/* Top Graphic Shapes (Red Theme) */}
-      <div className="id-card-header-graphic absolute top-0 left-0 right-0 h-36 sm:h-44 overflow-hidden pointer-events-none z-0">
+      <div className="id-card-header-graphic absolute top-0 left-0 right-0 h-24 sm:h-28 overflow-hidden pointer-events-none z-0">
         <svg viewBox="0 0 400 200" preserveAspectRatio="none" className="w-full h-full">
           <path d="M0,0 L400,0 L400,20 L180,120 L0,40 Z" fill="#b91c1c" /> {/* Dark Red */}
           <path d="M400,20 L400,80 L220,160 Z" fill="#ef4444" opacity="0.8" /> {/* Lighter Red */}
@@ -204,22 +267,22 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
         </svg>
       </div>
 
-      <div className="id-card-body flex-1 flex flex-col relative z-10 w-full pt-10 sm:pt-12 pb-4 sm:pb-6 min-h-0">
-        <div className="id-card-logo-wrap w-full flex justify-center mb-4 sm:mb-6">
-          <div className="bg-white/90 backdrop-blur-md p-2 rounded-xl shadow-sm h-[72px] sm:h-[90px] inline-flex items-center justify-center border border-white/50 relative z-20">
+      <div className="id-card-body flex-1 flex flex-col relative z-10 w-full pt-4 sm:pt-5 pb-0 min-h-0">
+        <div className="id-card-logo-wrap w-full flex justify-center mb-2.5 sm:mb-3">
+          <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm h-[58px] sm:h-[66px] inline-flex items-center justify-center border border-white/50 relative z-20">
             <img src="/logo.png" alt="College Logo" className="h-full w-auto object-contain max-w-[140px] sm:max-w-none" />
           </div>
         </div>
 
-        <div className="id-card-content px-4 sm:px-6 flex flex-col flex-1 min-h-0">
-          <div className="id-card-main-row flex flex-col sm:flex-row items-center sm:items-start w-full gap-4 sm:gap-5">
-            <div className="id-card-photo-wrap flex flex-col items-center shrink-0 sm:mt-2">
-              <div className="id-card-photo w-[96px] h-[124px] sm:w-[124px] sm:h-[160px] rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex items-center justify-center relative z-10">
+        <div className="id-card-content px-3 sm:px-4 flex flex-col flex-1 min-h-0 justify-between">
+          <div className="id-card-main-row flex flex-row items-stretch w-full gap-2.5 sm:gap-3 flex-1 min-h-0">
+            <div className="id-card-photo-wrap flex flex-col shrink-0 self-stretch w-[104px] sm:w-[116px]">
+              <div className="id-card-photo flex-1 w-full h-full min-h-[160px] rounded-xl border-4 border-white shadow-lg bg-gray-50 overflow-hidden flex items-center justify-center relative z-10">
                 {photoUrl ? (
                   <img
                     src={photoUrl}
                     alt={name}
-                    className="w-full h-full object-cover object-top"
+                    className="w-full h-full object-cover object-top absolute inset-0"
                     onError={(e) => {
                       e.target.style.display = 'none';
                       const next = e.target.nextElementSibling;
@@ -234,78 +297,97 @@ const DigitalStudentCard = ({ student, getStudentData, className = '', compact =
             </div>
 
             {/* Right: Primary Info */}
-            <div className="id-card-fields flex flex-col space-y-2 flex-1 min-w-0 w-full sm:mt-2">
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
+            <div className="id-card-fields flex flex-col justify-between flex-1 min-w-0 self-stretch w-full py-0.5">
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">NAME</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
                 <span className="flex-1 break-words capitalize leading-snug font-extrabold text-black" title={name}>{name.toLowerCase()}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PROGRAM</span>
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">PROGRAM</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
                 <span className="flex-1 break-words leading-snug font-extrabold text-black" title={program}>{program}</span>
               </div>
               {branch && branch !== '—' && (
-                <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                  <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BRANCH</span>
+                <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                  <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">BRANCH</span>
                   <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
                   <span className="flex-1 break-words leading-snug font-extrabold text-black" title={branch}>{branch}</span>
                 </div>
               )}
 
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black pt-1">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PIN</span>
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">PIN</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0">:</span>
                 <span className="flex-1 break-words font-extrabold text-black">{pinNumber}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">BATCH</span>
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">BATCH</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0">:</span>
                 <span className="flex-1 break-words font-extrabold text-black">{batch}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">STUDENT</span>
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">STUDENT</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap overflow-hidden text-ellipsis font-extrabold text-black">{studentMobile}</span>
+                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap font-extrabold text-black">{studentMobile}</span>
               </div>
-              <div className="flex items-start text-[10px] sm:text-[11px] font-extrabold text-black">
-                <span className="text-slate-800 font-extrabold w-[60px] tracking-wide uppercase shrink-0 mt-[1px]">PARENT</span>
+              <div className="flex items-start text-[10px] sm:text-[10.5px] font-extrabold text-black">
+                <span className="text-slate-800 font-extrabold w-[52px] sm:w-[56px] tracking-wide uppercase shrink-0 mt-[1px]">PARENT</span>
                 <span className="text-slate-600 font-extrabold mx-0.5 shrink-0 mt-[1px]">:</span>
-                <span className="flex-1 min-w-0 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis font-extrabold text-black">{parentMobile}</span>
+                <span className="flex-1 min-w-0 tabular-nums leading-snug whitespace-nowrap font-extrabold text-black">{parentMobile}</span>
               </div>
             </div>
           </div>
 
-          <div className="id-card-bottom-row w-full flex flex-col sm:flex-row items-center sm:items-start justify-between mt-5 sm:mt-6 pt-3 border-t border-gray-300 border-dashed gap-4 sm:mt-auto">
-            <div className="flex flex-col text-[11px] flex-1 min-w-0 w-full sm:pr-2">
-              <span className="font-extrabold text-slate-800 tracking-wider uppercase mb-1 text-[10px]">ADDRESS</span>
-              <span className="font-bold text-black leading-relaxed break-words">
+          <div className="id-card-bottom-row w-full flex flex-row items-stretch justify-between shrink-0 pt-2 sm:pt-2.5 mt-2 sm:mt-2.5 border-t border-gray-300 border-dashed gap-2.5 sm:gap-3 mb-0">
+            <div className="flex flex-col text-[10.5px] sm:text-[11px] flex-1 min-w-0 pr-1">
+              <span className="font-extrabold text-slate-800 tracking-wider uppercase mb-0.5 text-[9px] sm:text-[10px]">ADDRESS</span>
+              <span className="font-bold text-black leading-snug break-words">
                 {fullAddress}
               </span>
             </div>
 
-            <div
-              className="digital-id-card-qr bg-white p-2 rounded-lg border border-gray-300 shadow-sm flex-shrink-0"
-              id={admissionNo ? `student-qr-${admissionNo}` : 'qr-id-card'}
-            >
-              <QRCodeSVG
-                value={(() => {
-                  const base = typeof window !== 'undefined' ? window.location.origin : '';
-                  if (qrToken) return `${base}/qr/${qrToken}`;
-                  const admNo = student.admission_number || student.admission_no || get('admission_number') || get('admission_no');
-                  return admNo ? `${base}/qr/${encodeURIComponent(admNo)}` : base;
-                })()}
-                size={92}
-                level="M"
-                includeMargin={true}
-                fgColor="#000000"
-              />
+            <div className="id-card-qr-signature-col flex flex-col items-center justify-between shrink-0 self-stretch w-[82px] sm:w-[92px]">
+              <div
+                className="digital-id-card-qr bg-white p-1 sm:p-1.5 rounded-lg border border-gray-300 shadow-sm shrink-0 flex items-center justify-center"
+                id={admissionNo ? `student-qr-${admissionNo}` : 'qr-id-card'}
+              >
+                <QRCodeSVG
+                  value={(() => {
+                    const base = typeof window !== 'undefined' ? window.location.origin : '';
+                    if (qrToken) return `${base}/qr/${qrToken}`;
+                    const admNo = student.admission_number || student.admission_no || get('admission_number') || get('admission_no');
+                    return admNo ? `${base}/qr/${encodeURIComponent(admNo)}` : base;
+                  })()}
+                  size={72}
+                  level="M"
+                  includeMargin={true}
+                  fgColor="#000000"
+                />
+              </div>
+
+              {/* Principal Signature below QR: signature image above, Principal label below */}
+              <div className="id-card-principal-signature-wrap flex flex-col items-center justify-center mt-auto pt-1 w-full text-center">
+                {effectiveSignatureUrl ? (
+                  <img
+                    src={resolveImageUrl(effectiveSignatureUrl)}
+                    alt="Principal Signature"
+                    className="id-card-principal-sig-img h-5 sm:h-6 max-w-[76px] sm:max-w-[88px] object-contain mb-0.5"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="id-card-principal-sig-placeholder h-3 sm:h-4 w-12 sm:w-16 border-b border-gray-400 border-dotted mb-0.5" />
+                )}
+                <span className="id-card-principal-label text-[8px] sm:text-[8.5px] font-black text-slate-800 uppercase tracking-wider leading-none">
+                  Principal
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="id-card-footer shrink-0 bg-[#b91c1c] py-3 px-3 sm:px-4 flex items-center justify-center z-20 shadow-lg border-t border-red-800 rounded-b-[1.5rem] sm:rounded-b-[2rem]">
+      <div className="id-card-footer shrink-0 bg-[#b91c1c] py-2.5 sm:py-3 px-3 sm:px-4 flex items-center justify-center z-20 shadow-lg border-t border-red-800 rounded-b-[1.5rem] sm:rounded-b-[2rem]">
         <span className="text-white text-[10px] sm:text-xs font-bold tracking-wide uppercase text-center leading-snug break-words px-1">
           {college}
         </span>

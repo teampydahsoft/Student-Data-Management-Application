@@ -4914,8 +4914,8 @@ const Students = () => {
                               </div>
                             </div>
                           ) : (
-                            <div className="relative w-full" style={{ maxWidth: '380px' }}>
-                              <div className="transform sm:scale-100 scale-95 origin-top">
+                            <div className="relative w-full flex justify-center">
+                              <div className="id-card-preview-scaler">
                                 <DigitalStudentCard
                                   student={selectedStudent}
                                   getStudentData={getStudentDataForCard}
