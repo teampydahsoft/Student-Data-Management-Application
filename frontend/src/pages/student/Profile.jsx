@@ -1,12 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import api, { getStaticFileUrlDirect } from '../../config/api';
-import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CreditCard, Printer, X, CheckCircle } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CheckCircle } from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';
-import DigitalStudentCard from '../../components/DigitalStudentCard';
 import useAuthStore from '../../store/authStore';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import { toast } from 'react-hot-toast';
-import { printDigitalIdCard } from '../../utils/printDigitalIdCard';
 
 const Profile = () => {
     const { user } = useAuthStore();
@@ -19,8 +17,6 @@ const Profile = () => {
     const [newPassword, setNewPassword] = useState('');
     const [changePassLoading, setChangePassLoading] = useState(false);
 
-    // Digital Student ID Card: view modal and print
-    const [showIdCardModal, setShowIdCardModal] = useState(false);
 
     const handleChangePassword = async (e) => {
         e.preventDefault();
@@ -74,15 +70,6 @@ const Profile = () => {
         return val !== undefined && val !== null && val !== '' ? val : fallback;
     }, [displayData]);
 
-    const handlePrintIdCard = useCallback(() => {
-        if (!displayData) return;
-        try {
-            printDigitalIdCard('.id-card-print-root');
-        } catch (err) {
-            console.error(err);
-            toast.error(err.message || 'ID card is not ready to print');
-        }
-    }, [displayData]);
 
 
     if (loading) {
@@ -224,7 +211,7 @@ const Profile = () => {
                         </div>
 
                         {/* Actions — always one horizontal row */}
-                        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full min-w-0 border-t border-slate-100 pt-4 sm:pt-5">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full min-w-0 border-t border-slate-100 pt-4 sm:pt-5">
                             <button
                                 type="button"
                                 onClick={() => setShowVerifyProfile(true)}
@@ -232,14 +219,6 @@ const Profile = () => {
                             >
                                 <CheckCircle size={16} className="shrink-0 sm:w-5 sm:h-5" />
                                 <span className="truncate">Authenticate</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowIdCardModal(true)}
-                                className={`${profileActionBtn} bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200/80`}
-                            >
-                                <CreditCard size={16} className="shrink-0 sm:w-5 sm:h-5" />
-                                <span className="truncate">Digital ID</span>
                             </button>
                             <button
                                 type="button"
@@ -332,110 +311,6 @@ const Profile = () => {
                 </div>
             </div>
 
-            {/* Digital ID Card CTA */}
-            <div className="bg-white rounded-[3rem] shadow-2xl shadow-indigo-100/50 border border-indigo-100/50 p-10 flex flex-col md:flex-row items-center justify-between gap-10 mb-10 w-full max-w-full overflow-hidden relative">
-                <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl"></div>
-
-                <div className="flex-1 space-y-4 text-center md:text-left relative z-10">
-                    <div className="inline-flex items-center justify-center p-4 bg-indigo-600 text-white rounded-[1.5rem] shadow-lg shadow-indigo-200 shrink-0 mx-auto md:mx-0">
-                        <CreditCard size={32} />
-                    </div>
-                    <h3 className="text-2xl lg:text-3xl font-black tracking-tight text-slate-900">Academic Credential</h3>
-                    <p className="text-sm text-gray-500 max-w-lg">
-                        Click <strong>View ID Card</strong> to see your digital student card, or print it directly to an Evolis CR80 printer.
-                    </p>
-                    <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-1">
-                        <button
-                            type="button"
-                            onClick={() => setShowIdCardModal(true)}
-                            className="inline-flex items-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-200 transition-all hover:bg-indigo-700 hover:-translate-y-1 active:scale-95"
-                        >
-                            <CreditCard size={18} />
-                            Inspect Credential
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setShowIdCardModal(true);
-                                setTimeout(() => handlePrintIdCard(), 400);
-                            }}
-                            className="inline-flex items-center gap-3 px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 transition-all hover:bg-slate-800 hover:-translate-y-1 active:scale-95"
-                        >
-                            <Printer size={18} />
-                            Generate Print
-                        </button>
-                    </div>
-                </div>
-
-                {/* Mini card preview illustration */}
-                <div className="shrink-0 hidden lg:flex items-center justify-center relative z-10">
-                    <div className="w-32 h-44 rounded-3xl bg-white border-2 border-indigo-50 shadow-2xl rotate-3 group-hover:rotate-0 transition-all duration-700 overflow-white relative">
-                        {/* Indigo top */}
-                        <div className="absolute top-0 left-0 right-0 h-14 bg-indigo-600" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 50% 100%, 0 60%)' }} />
-                        {/* Logo dot */}
-                        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-7 bg-white rounded-lg shadow-sm flex items-center justify-center">
-                            <img src="/logo.png" alt="" className="h-5 w-auto object-contain" />
-                        </div>
-                        {/* Photo placeholder */}
-                        <div className="absolute top-14 left-2 w-9 h-11 rounded-lg bg-gray-200 border border-white flex items-center justify-center overflow-hidden">
-                            {displayData.student_photo
-                                ? <img src={displayData.student_photo} alt="" className="w-full h-full object-cover" />
-                                : <User size={16} className="text-gray-400" />}
-                        </div>
-                        {/* Lines */}
-                        <div className="absolute top-14 left-13 right-2 space-y-1" style={{ left: '46px' }}>
-                            {[70, 60, 50, 40].map((w, i) => (
-                                <div key={i} className="h-1.5 bg-gray-200 rounded-full" style={{ width: `${w}%` }} />
-                            ))}
-                        </div>
-                        {/* Indigo footer */}
-                        <div className="absolute bottom-0 left-0 right-0 h-6 bg-indigo-600 flex items-center justify-center">
-                            <div className="h-1 w-20 bg-white/50 rounded-full" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* View Digital Student ID Card Modal */}
-            {showIdCardModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in duration-200 border border-gray-100">
-                        <button
-                            onClick={() => setShowIdCardModal(false)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors bg-gray-100 hover:bg-gray-200 rounded-full p-1.5 z-10"
-                            aria-label="Close"
-                        >
-                            <X size={20} />
-                        </button>
-                        <div className="flex items-center gap-2 mb-4">
-                            <CreditCard className="w-5 h-5 text-indigo-600" />
-                            <h3 className="text-lg font-bold text-gray-900">Digital Student ID Card</h3>
-                        </div>
-                        <div className="id-card-preview-scaler-box">
-                            <div className="id-card-preview-scaler">
-                                <DigitalStudentCard student={displayData} getStudentData={getStudentData} />
-                            </div>
-                        </div>
-                        <div className="mt-4 flex justify-end gap-2 no-print">
-                            <button
-                                type="button"
-                                onClick={() => setShowIdCardModal(false)}
-                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50"
-                            >
-                                Close
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handlePrintIdCard}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 flex items-center gap-2"
-                            >
-                                <Printer size={16} />
-                                Generate Print
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Change Password Modal */}
             {showChangePassModal && (
