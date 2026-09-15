@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut } from 'lucide-react';
+import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut, ChevronRight } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import useAuthStore from '../../store/authStore';
@@ -1048,305 +1048,262 @@ const Dashboard = () => {
 
             {/* REMOVED STANDALONE CLUB PAYMENT ALERT */}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 w-full">
-                {/* Student Clubs Section */}
-                <div className="lg:col-span-8 flex flex-col gap-4 lg:gap-5">
-                    {/* Club Section */}
-                    {/* Club Section */}
-                    {isEnabled('clubs') && (() => {
-                        const myClubs = clubs.filter(c => c.userStatus === 'approved' || c.userStatus === 'pending');
+            {/* Clubs (One side) & Channel Updates (Other side) - 2 Columns */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:gap-5 w-full mb-4 lg:mb-5 lg:items-stretch">
+                {/* Left Column: Clubs (One side, reduced content) */}
+                {isEnabled('clubs') && (() => {
+                    const myClubs = clubs.filter(c => c.userStatus === 'approved' || c.userStatus === 'pending');
+                    const hasJoinedClubs = myClubs.length > 0;
 
-                        if (myClubs.length > 0) {
-                            return (
-                                <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-5 relative z-10 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-amber-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 transition-opacity duration-700"></div>
-                                    <div className="flex items-center justify-between mb-4 lg:mb-5 relative z-10">
-                                        <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                            <div className="p-1.5 sm:p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shadow-sm">
-                                                <Users size={16} />
-                                            </div>
-                                            Your Communities
-                                        </h3>
-                                        <Link to="/student/clubs" className="text-[10px] sm:text-[11px] font-black text-sky-700 hover:text-sky-700-dark transition-colors uppercase tracking-widest pl-2 sm:pl-4 flex items-center gap-2">
-                                            Active Clusters <ArrowRight size={14} />
-                                        </Link>
-                                    </div>
+                    return (
+                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-2.5 sm:p-4 lg:p-5 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg overflow-hidden h-full">
+                            <div className="absolute top-0 right-0 w-36 h-36 bg-amber-50 rounded-full -mr-20 -mt-20 blur-2xl opacity-60 pointer-events-none"></div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4 relative z-10">
-                                        {myClubs.map((club) => {
+                            <div>
+                                {/* Header */}
+                                <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
+                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] flex items-center gap-1.5 sm:gap-2 min-w-0">
+                                        <div className="p-1 sm:p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 shadow-sm shrink-0">
+                                            <Users size={13} className="sm:w-3.5 sm:h-3.5" />
+                                        </div>
+                                        <span className="truncate">{hasJoinedClubs ? 'My Clubs' : 'Clubs'}</span>
+                                    </h3>
+                                    <Link
+                                        to="/student/clubs"
+                                        className="text-[9px] sm:text-[10px] font-black text-sky-700 hover:text-sky-800 transition-colors uppercase tracking-wider flex items-center gap-0.5 shrink-0"
+                                    >
+                                        <span>All</span>
+                                        <ArrowRight size={11} />
+                                    </Link>
+                                </div>
+
+                                {/* Club Items: 2 on mobile, 3 on desktop */}
+                                <div className="space-y-1.5 sm:space-y-2 relative z-10">
+                                    {(hasJoinedClubs ? myClubs : clubs).length > 0 ? (
+                                        (hasJoinedClubs ? myClubs.slice(0, 3) : clubs.slice(0, 3)).map((club) => {
                                             const isPaymentDue = club.payment_status === 'payment_due';
                                             return (
-                                                <div key={club.id} className={`rounded-xl lg:rounded-2xl p-4 border transition-all duration-200 h-full flex flex-col group/card lg:hover:shadow-md ${isPaymentDue ? 'bg-orange-50/30 border-orange-100' : 'bg-slate-50 border-slate-100/50 hover:bg-white'}`}>
-                                                    <div className="flex items-start justify-between mb-5">
-                                                        <div className="flex items-center gap-3 sm:gap-4">
-                                                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-white overflow-hidden border border-slate-100 flex-shrink-0 shadow-sm group-hover/card:scale-110 transition-transform duration-500">
-                                                                {club.image_url ? (
-                                                                    <img src={club.image_url} alt={club.name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-slate-300"><Users size={24} /></div>
-                                                                )}
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <h4 className="text-[15px] sm:text-[17px] font-black text-slate-800 line-clamp-1 tracking-tight">{club.name}</h4>
-                                                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                                                    {club.userStatus === 'approved' && (
-                                                                        <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-lg border border-emerald-100 uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} /> Active</span>
-                                                                    )}
-                                                                    {club.userStatus === 'pending' && (
-                                                                        <span className="bg-amber-50 text-amber-600 text-[9px] font-black px-2 py-0.5 rounded-lg border border-amber-100 uppercase tracking-widest flex items-center gap-1"><Clock size={10} /> Pending</span>
-                                                                    )}
-
-                                                                    {isPaymentDue && (
-                                                                        <span className="text-[9px] text-rose-600 font-black flex items-center gap-1 animate-pulse uppercase tracking-widest"><AlertCircle size={10} /> Action Required</span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Activity Feed for this club - abbreviated for grid */}
-                                                    <div className="flex-1 mb-5">
-                                                        {club.userStatus === 'approved' && club.activities && club.activities.length > 0 ? (
-                                                            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-slate-100 hover:border-sky-500/30 transition-all cursor-pointer flex gap-3 shadow-sm" onClick={() => navigate('/student/clubs')}>
-                                                                {club.activities[0].image_url && (
-                                                                    <div className="h-10 w-10 rounded-xl overflow-hidden relative flex-shrink-0">
-                                                                        <img src={club.activities[0].image_url} alt="" className="w-full h-full object-cover" />
-                                                                    </div>
-                                                                )}
-                                                                <div className="flex-1 min-w-0">
-                                                                    <h5 className="font-black text-slate-800 line-clamp-1 text-[11px] mb-0.5">{club.activities[0].title}</h5>
-                                                                    <p className="text-[10px] text-slate-400 font-bold line-clamp-1 italic">{club.activities[0].description}</p>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="h-16 flex items-center justify-center border border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                                                                No Recent Pulse
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="mt-auto">
-                                                        {isPaymentDue ? (
-                                                            <button
-                                                                onClick={() => navigate('/student/clubs')}
-                                                                className="w-full py-2 lg:py-2.5 bg-rose-600 text-white rounded-lg text-[10px] font-black hover:bg-rose-700 transition-colors shadow-md uppercase tracking-widest"
-                                                            >
-                                                                Settle Dues
-                                                            </button>
-                                                        ) : (
-                                                            <Link
-                                                                to="/student/clubs"
-                                                                className="w-full block text-center py-2 lg:py-2.5 bg-white border border-slate-100 text-slate-500 rounded-lg text-[10px] font-black hover:bg-sky-500/5 hover:text-sky-700 hover:border-sky-500/20 transition-colors uppercase tracking-widest"
-                                                            >
-                                                                Open Portal
-                                                            </Link>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        } else {
-                            // SHOW EXPLORE CLUBS LIST
-                            return (
-                                <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-5 relative z-10 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-accent-light/40 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                                    <div className="flex items-center justify-between mb-4 lg:mb-5 relative z-10">
-                                        <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                            <div className="p-1.5 sm:p-2 bg-sky-500/5 text-sky-700 rounded-xl border border-sky-500/20 shadow-sm">
-                                                <Users size={16} />
-                                            </div>
-                                            Explore Clubs
-                                        </h3>
-                                        <Link to="/student/clubs" className="text-[10px] sm:text-[11px] font-black text-sky-700 hover:text-sky-700-dark transition-colors uppercase tracking-widest">
-                                            View All
-                                        </Link>
-                                    </div>
-
-                                    {clubs.length > 0 ? (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 relative z-10">
-                                            {clubs.slice(0, 3).map(club => (
-                                                <div key={club.id} className="bg-slate-50/80 rounded-2xl border border-slate-100 overflow-hidden hover:shadow-lg transition-all duration-300 group/card flex flex-col h-full hover:-translate-y-1">
-                                                    <div className="h-24 sm:h-28 bg-white flex items-center justify-center relative overflow-hidden">
+                                                <div
+                                                    key={club.id}
+                                                    onClick={() => navigate('/student/clubs')}
+                                                    className="flex items-center gap-1.5 sm:gap-2.5 p-1.5 sm:p-2 rounded-xl bg-slate-50/90 border border-slate-100/80 hover:bg-sky-50/50 hover:border-sky-200/50 transition-all cursor-pointer group/item"
+                                                >
+                                                    <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-white overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center shadow-xs">
                                                         {club.image_url ? (
-                                                            <img src={club.image_url} alt={club.name} className="w-full h-full object-cover transition-transform group-hover/card:scale-105" />
+                                                            <img src={club.image_url} alt={club.name} className="w-full h-full object-cover group-hover/item:scale-105 transition-transform" />
                                                         ) : (
-                                                            <Users size={32} className="text-slate-300" />
-                                                        )}
-                                                        {club.userStatus === 'pending' && (
-                                                            <div className="absolute top-2 right-2">
-                                                                <span className="bg-amber-50 text-amber-600 text-[9px] font-black px-2 py-0.5 rounded-lg border border-amber-100 uppercase tracking-widest flex items-center gap-1"><Clock size={10} /> Pending</span>
-                                                            </div>
+                                                            <Users size={14} className="text-slate-300" />
                                                         )}
                                                     </div>
-                                                    <div className="p-3 sm:p-4 flex-1 flex flex-col">
-                                                        <h4 className="font-black text-slate-800 text-sm mb-2 truncate tracking-tight">{club.name}</h4>
-                                                        <div className="mt-auto">
-                                                            {club.userStatus === 'pending' ? (
-                                                                <div className="text-[10px] text-slate-400 font-black block text-center bg-white py-2.5 rounded-xl border border-slate-100 uppercase tracking-widest cursor-not-allowed">
-                                                                    Request Sent
-                                                                </div>
-                                                            ) : (
-                                                                <Link to="/student/clubs" className="text-[10px] text-white bg-sky-500 hover:bg-sky-700 font-black block text-center py-2.5 rounded-xl shadow-lg shadow-sky-500/15 transition-all uppercase tracking-widest">
-                                                                    Join Club
-                                                                </Link>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/item:text-sky-700 transition-colors">
+                                                            {club.name}
+                                                        </h4>
+                                                        <div className="flex items-center gap-1 mt-0.5">
+                                                            {club.userStatus === 'approved' && (
+                                                                <span className="text-[8px] sm:text-[9px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-0.5 truncate">
+                                                                    <CheckCircle size={8} /> Active
+                                                                </span>
+                                                            )}
+                                                            {club.userStatus === 'pending' && (
+                                                                <span className="text-[8px] sm:text-[9px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-0.5 truncate">
+                                                                    <Clock size={8} /> Pending
+                                                                </span>
+                                                            )}
+                                                            {isPaymentDue && (
+                                                                <span className="text-[8px] sm:text-[9px] font-bold text-rose-600 uppercase tracking-wider truncate">
+                                                                    Due
+                                                                </span>
+                                                            )}
+                                                            {!club.userStatus && (
+                                                                <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                                                                    Active
+                                                                </span>
                                                             )}
                                                         </div>
                                                     </div>
+                                                    <div className="shrink-0">
+                                                        {!club.userStatus ? (
+                                                            <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-sky-500 text-white text-[8px] sm:text-[9px] font-black rounded uppercase tracking-wider shadow-xs hover:bg-sky-600 transition-colors">
+                                                                Join
+                                                            </span>
+                                                        ) : (
+                                                            <ChevronRight size={13} className="text-slate-300 group-hover/item:text-sky-600 group-hover/item:translate-x-0.5 transition-all" />
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            );
+                                        })
                                     ) : (
-                                        <div className="text-center py-8 sm:py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 relative z-10">
-                                            <p className="text-slate-500 text-sm font-bold">No clubs available.</p>
-                                            <Link to="/student/clubs" className="text-sky-700 text-[10px] font-black mt-2 inline-block uppercase tracking-widest hover:text-sky-700-dark">Explore Clubs</Link>
+                                        <div className="py-3 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
+                                            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400">No clubs yet</p>
                                         </div>
                                     )}
                                 </div>
-                            );
-                        }
-                    })()}
-
-                    {/* Feed Section - COMPACTED */}
-                    {isEnabled('announcements') && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-5 flex flex-col flex-1 relative z-10 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-rose-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                            <div className="flex items-center justify-between mb-4 lg:mb-5 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                    <div className="p-1.5 sm:p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 shadow-sm">
-                                        <FileText size={16} />
-                                    </div>
-                                    Channel Updates
-                                </h3>
-                                <button
-                                    onClick={refreshFeed}
-                                    disabled={isRefreshingFeed}
-                                    className="p-1.5 hover:bg-sky-500/5 text-slate-500 rounded-xl transition-colors flex items-center justify-center shrink-0"
-                                    title="Refresh Feed"
-                                >
-                                    <RefreshCw size={16} className={isRefreshingFeed ? "animate-spin" : ""} />
-                                </button>
                             </div>
 
-                            <div className="space-y-3 flex-1">
+                            {/* Bottom Quick Link */}
+                            <div className="mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-slate-100 relative z-10">
+                                <Link
+                                    to="/student/clubs"
+                                    className="w-full block text-center py-1 sm:py-1.5 bg-slate-50 hover:bg-sky-50 text-slate-600 hover:text-sky-700 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-wider transition-colors border border-slate-100 truncate"
+                                >
+                                    {hasJoinedClubs ? 'My Clubs' : 'Join Clubs'}
+                                </Link>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* Right Column: Channel Updates (Other side, reduced content) */}
+                {isEnabled('announcements') && (
+                    <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-2.5 sm:p-4 lg:p-5 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg overflow-hidden h-full">
+                        <div className="absolute top-0 right-0 w-36 h-36 bg-rose-50 rounded-full -mr-20 -mt-20 blur-2xl opacity-60 pointer-events-none"></div>
+
+                        <div>
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] flex items-center gap-1.5 sm:gap-2 min-w-0">
+                                    <div className="p-1 sm:p-1.5 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 shadow-sm shrink-0">
+                                        <FileText size={13} className="sm:w-3.5 sm:h-3.5" />
+                                    </div>
+                                    <span className="truncate">Updates</span>
+                                </h3>
+                                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                                    <button
+                                        onClick={refreshFeed}
+                                        disabled={isRefreshingFeed}
+                                        className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors"
+                                        title="Refresh Feed"
+                                    >
+                                        <RefreshCw size={11} className={isRefreshingFeed ? "animate-spin" : ""} />
+                                    </button>
+                                    <Link
+                                        to="/student/announcements"
+                                        className="text-[9px] sm:text-[10px] font-black text-sky-700 hover:text-sky-800 transition-colors uppercase tracking-wider flex items-center gap-0.5"
+                                    >
+                                        <span>All</span>
+                                        <ArrowRight size={11} />
+                                    </Link>
+                                </div>
+                            </div>
+
+                            {/* Update Items: 2 on mobile, 3 on desktop */}
+                            <div className="space-y-1.5 sm:space-y-2 relative z-10">
                                 {loading ? (
-                                    <div className="text-center py-8 text-gray-500">Loading updates...</div>
+                                    <div className="py-3 text-center text-slate-400 text-[9px] sm:text-[10px] font-bold">
+                                        Loading...
+                                    </div>
                                 ) : feedItems.length > 0 ? (
-                                    feedItems.slice(0, 4).map((item, index) => { // Limited to 4 items
+                                    feedItems.slice(0, 3).map((item) => {
                                         if (item.type === 'poll') {
                                             const poll = item.data;
                                             return (
-                                                <div key={`poll-${poll.id}`} className="p-4 rounded-lg bg-purple-50 border border-purple-100 hover:border-purple-200 transition-colors relative">
-                                                    <div className="absolute top-3 right-3 text-purple-200">
-                                                        <Vote size={32} className="opacity-20" />
+                                                <div
+                                                    key={`poll-${poll.id}`}
+                                                    onClick={() => navigate('/student/announcements')}
+                                                    className="p-1.5 sm:p-2 rounded-xl bg-purple-50/70 border border-purple-100 hover:border-purple-200 transition-all cursor-pointer group/poll"
+                                                >
+                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                                        <span className="px-1 py-0.2 bg-purple-200/80 text-purple-700 text-[8px] font-black rounded uppercase tracking-wider">
+                                                            Poll
+                                                        </span>
+                                                        <span className="text-[8px] text-purple-500 font-bold">
+                                                            {poll.has_voted ? 'Voted' : 'Vote'}
+                                                        </span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="px-1.5 py-0.5 rounded-full bg-purple-200 text-purple-700 text-[10px] font-bold uppercase tracking-wide">Active Poll</span>
-                                                        <span className="text-[10px] text-gray-500">{new Date(poll.created_at).toLocaleDateString()}</span>
-                                                    </div>
-                                                    <h4 className="font-bold text-gray-900 text-sm mb-1">{poll.question}</h4>
-                                                    <p className="text-xs text-gray-600 mb-2">{poll.total_votes} students have voted</p>
-
-                                                    {/* Show Vote Status or Action */}
-                                                    {poll.has_voted ? (
-                                                        <div className="flex items-center gap-1 text-xs text-purple-700 font-medium bg-purple-100 px-2 py-1 rounded inline-flex">
-                                                            <CheckCircle size={12} /> Voted
-                                                        </div>
-                                                    ) : (
-                                                        <Link
-                                                            to="/student/announcements"
-                                                            className="bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-purple-700 inline-block"
-                                                        >
-                                                            Vote Now
-                                                        </Link>
-                                                    )}
+                                                    <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/poll:text-purple-700 transition-colors">
+                                                        {poll.question}
+                                                    </h4>
                                                 </div>
                                             );
                                         } else {
-                                            // Announcement
                                             const ann = item.data;
                                             return (
                                                 <div
                                                     key={`ann-${ann.id}`}
-                                                    className="p-4 rounded-2xl bg-slate-50/80 border border-slate-100 hover:shadow-md hover:border-sky-500/20 hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
                                                     onClick={() => {
                                                         setCurrentAnnouncement(ann);
                                                         setShowAnnouncement(true);
                                                     }}
+                                                    className="p-1.5 sm:p-2 rounded-xl bg-slate-50/90 border border-slate-100/80 hover:bg-sky-50/50 hover:border-sky-200/50 transition-all cursor-pointer group/item"
                                                 >
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <h4 className="font-black text-slate-800 text-sm group-hover:text-sky-700 transition-colors line-clamp-1">{ann.title}</h4>
-                                                        <span className="text-[10px] text-slate-400 whitespace-nowrap ml-2 font-bold">{new Date(ann.created_at).toLocaleDateString()}</span>
+                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                                        <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/item:text-sky-700 transition-colors flex-1 min-w-0">
+                                                            {ann.title}
+                                                        </h4>
+                                                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold shrink-0 ml-1">
+                                                            {ann.created_at ? new Date(ann.created_at).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : ''}
+                                                        </span>
                                                     </div>
-                                                    <p className="text-xs text-slate-500 line-clamp-2 mb-2">{ann.content}</p>
-                                                    <span className="text-[10px] text-sky-700 font-black uppercase tracking-widest flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                                        Read More <ArrowRight size={10} />
-                                                    </span>
+                                                    <p className="text-[9px] sm:text-[10px] text-slate-500 font-medium line-clamp-1">
+                                                        {ann.content}
+                                                    </p>
                                                 </div>
                                             );
                                         }
                                     })
                                 ) : (
-                                    <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                        <div className="inline-flex p-3 bg-sky-500/5 rounded-full text-sky-700 mb-2">
-                                            <FileText size={20} />
-                                        </div>
-                                        <p className="text-slate-500 text-xs font-bold">No recent updates.</p>
+                                    <div className="py-3 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
+                                        <p className="text-[9px] sm:text-[11px] font-bold text-slate-400">No updates</p>
                                     </div>
                                 )}
-
-                                <div className="text-center pt-2">
-                                    <Link to="/student/announcements" className="text-[10px] sm:text-xs font-black text-slate-400 hover:text-sky-700 transition-colors uppercase tracking-widest">
-                                        View All Announcements & Polls
-                                    </Link>
-                                </div>
                             </div>
                         </div>
-                    )}
-                </div>
 
-                {/* Right Column: Events & Services (4col) */}
-                <div className="lg:col-span-4 flex flex-col gap-4 lg:gap-5">
+                        {/* Bottom Quick Link */}
+                        <div className="mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-slate-100 relative z-10">
+                            <Link
+                                to="/student/announcements"
+                                className="w-full block text-center py-1 sm:py-1.5 bg-slate-50 hover:bg-sky-50 text-slate-600 hover:text-sky-700 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-wider transition-colors border border-slate-100 truncate"
+                            >
+                                View Stream
+                            </Link>
+                        </div>
+                    </div>
+                )}
+            </div>
 
+            {/* Events, Help Desk & Digital Services */}
+            {(isEnabled('events') || isEnabled('my-tickets') || isEnabled('services')) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5 w-full">
                     {/* Upcoming Events Section */}
                     {isEnabled('events') && upcomingEvents.length > 0 && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-5 sm:p-6 relative z-10 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                            <div className="flex items-center justify-between mb-6 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                    <div className="p-1.5 sm:p-2 bg-fuchsia-50 text-fuchsia-600 rounded-xl border border-fuchsia-100 shadow-sm">
-                                        <Calendar size={16} />
+                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
+                            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
+                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <div className="p-1.5 bg-fuchsia-50 text-fuchsia-600 rounded-xl border border-fuchsia-100 shadow-sm">
+                                        <Calendar size={15} />
                                     </div>
                                     Campus Events
                                 </h3>
                                 <Link
                                     to="/student/events"
                                     state={{ initialDate: upcomingEvents.length > 0 ? upcomingEvents[0].event_date : new Date() }}
-                                    className="text-[10px] lg:text-xs text-sky-700 hover:text-sky-700-dark font-medium whitespace-nowrap"
+                                    className="text-[10px] text-sky-700 hover:text-sky-800 font-bold uppercase tracking-wider"
                                 >
-                                    View Calendar
+                                    Calendar
                                 </Link>
                             </div>
 
-                            <div className="space-y-2 lg:space-y-3 max-h-[250px] lg:max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
-                                {upcomingEvents.slice(0, 4).map((event) => (
+                            <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                                {upcomingEvents.slice(0, 3).map((event) => (
                                     <div
                                         key={event.id}
                                         onClick={() => {
                                             setSelectedEvent(event);
                                             setShowEventModal(true);
                                         }}
-                                        className="flex items-center gap-3 p-2 lg:p-3 rounded-2xl hover:bg-sky-500/5 border border-transparent hover:border-sky-500/20 transition-all cursor-pointer group"
+                                        className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-sky-50/50 border border-transparent hover:border-sky-100 transition-all cursor-pointer group"
                                     >
-                                        <div className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 bg-sky-500/5 text-sky-700 rounded-xl flex flex-col items-center justify-center border border-sky-500/20 group-hover:bg-white group-hover:shadow-sm transition-all">
-                                            <span className="text-[8px] lg:text-[10px] font-bold uppercase">{new Date(event.event_date).toLocaleString('default', { month: 'short' })}</span>
-                                            <span className="text-sm lg:text-lg font-bold leading-none">{new Date(event.event_date).getDate()}</span>
+                                        <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-sky-50 text-sky-700 rounded-xl flex flex-col items-center justify-center border border-sky-100">
+                                            <span className="text-[8px] font-bold uppercase">{new Date(event.event_date).toLocaleString('default', { month: 'short' })}</span>
+                                            <span className="text-xs sm:text-sm font-bold leading-none">{new Date(event.event_date).getDate()}</span>
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="text-xs lg:text-sm font-black text-slate-800 truncate group-hover:text-sky-700">{event.title}</h4>
-                                            <p className="text-[10px] lg:text-xs text-slate-500 truncate font-bold">{event.description || 'No details'}</p>
+                                            <h4 className="text-xs font-black text-slate-800 truncate group-hover:text-sky-700">{event.title}</h4>
+                                            <p className="text-[10px] text-slate-400 truncate font-medium">{event.description || 'No details'}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -1356,84 +1313,82 @@ const Dashboard = () => {
 
                     {/* Ticket Support Widget */}
                     {isEnabled('my-tickets') && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-5 sm:p-6 flex flex-col h-fit relative z-10 mb-0 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-500/5 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                            <div className="flex items-center justify-between mb-6 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                    <div className="p-1.5 sm:p-2 bg-sky-500/5 text-sky-700 rounded-xl border border-sky-500/20 shadow-sm">
-                                        <Users size={16} />
-                                    </div>
-                                    Help Desk
-                                </h3>
-                                <a href={ticketAppUrl} className="text-sky-700 hover:bg-sky-500/5 p-1 rounded">
-                                    <ArrowRight size={16} />
-                                </a>
-                            </div>
+                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-6 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
+                            <div>
+                                <div className="flex items-center justify-between mb-3 relative z-10">
+                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <div className="p-1.5 bg-sky-50 text-sky-700 rounded-xl border border-sky-100 shadow-sm">
+                                            <Users size={15} />
+                                        </div>
+                                        Help Desk
+                                    </h3>
+                                    <a href={ticketAppUrl} className="text-sky-700 hover:bg-sky-50 p-1 rounded-lg">
+                                        <ArrowRight size={14} />
+                                    </a>
+                                </div>
 
-                            <div className="flex flex-col items-center justify-center py-3 lg:py-2 text-center text-slate-500 mb-2">
-                                <p className="text-sm font-bold">Need help?</p>
-                                <p className="text-xs text-slate-400 mt-0.5">Raise a ticket for issues or support.</p>
+                                <div className="py-2 lg:py-4 text-slate-500">
+                                    <p className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">Need Assistance?</p>
+                                    <p className="text-[10px] sm:text-xs lg:text-sm text-slate-400 mt-0.5 lg:mt-1.5">Submit a ticket for technical or campus support. Our team is available to help you resolve any issue quickly.</p>
+                                </div>
                             </div>
 
                             <a
                                 href={ticketAppUrl}
-                                className="w-full py-2 lg:py-2.5 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-700 transition shadow-md text-xs lg:text-sm uppercase tracking-widest"
+                                className="w-full mt-2 py-1.5 sm:py-2 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-600 transition shadow-xs text-[10px] sm:text-xs uppercase tracking-widest"
                             >
-                                Go to Support
+                                Open Ticket
                             </a>
                         </div>
                     )}
 
                     {/* Services Widget */}
                     {isEnabled('services') && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-5 sm:p-6 flex flex-col h-fit relative z-10 transition-all duration-500 lg:hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-500/5 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                            <div className="flex items-center justify-between mb-6 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                    <div className="p-1.5 sm:p-2 bg-sky-500/5 text-sky-700 rounded-xl border border-sky-500/20 shadow-sm">
-                                        <FileText size={16} />
-                                    </div>
-                                    Digital Services
-                                </h3>
-                                <Link to="/student/services" className="text-sky-700 hover:bg-sky-500/5 p-1 rounded">
-                                    <ArrowRight size={16} />
-                                </Link>
-                            </div>
+                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-6 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
+                            <div>
+                                <div className="flex items-center justify-between mb-3 relative z-10">
+                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <div className="p-1.5 bg-sky-50 text-sky-700 rounded-xl border border-sky-100 shadow-sm">
+                                            <FileText size={15} />
+                                        </div>
+                                        Digital Services
+                                    </h3>
+                                    <Link to="/student/services" className="text-sky-700 hover:bg-sky-50 p-1 rounded-lg">
+                                        <ArrowRight size={14} />
+                                    </Link>
+                                </div>
 
-                            {/* Active Requests List */}
-                            {serviceRequests.length > 0 ? (
-                                <div className="flex-1 space-y-3 mb-4 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
-                                    {serviceRequests.map(req => (
-                                        <div key={req.id} className="p-3 bg-slate-50/80 rounded-2xl border border-slate-100 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="font-black text-xs text-slate-800 line-clamp-1">{req.service_name}</span>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getStatusColor(req.status)}`}>
+                                {serviceRequests.length > 0 ? (
+                                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
+                                        {serviceRequests.slice(0, 2).map(req => (
+                                            <div key={req.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
+                                                <span className="font-bold text-[11px] text-slate-800 truncate flex-1 min-w-0 mr-2">{req.service_name}</span>
+                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${getStatusColor(req.status)}`}>
                                                     {req.status === 'ready_to_collect' ? 'Ready' : req.status.replace('_', ' ')}
                                                 </span>
                                             </div>
-                                            <div className="text-[10px] text-slate-400 font-bold">{new Date(req.request_date).toLocaleDateString()}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl mb-4">
-                                    <p className="text-sm">No active requests</p>
-                                </div>
-                            )}
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="py-2 lg:py-4 text-slate-500">
+                                        <p className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">Online Requests</p>
+                                        <p className="text-[10px] sm:text-xs lg:text-sm text-slate-400 mt-0.5 lg:mt-1.5">Apply for Study, Custodian or NOC certificates. Track your request status in real-time.</p>
+                                    </div>
+                                )}
+                            </div>
 
-                            <p className="text-xs text-slate-500 mb-4 leading-relaxed font-bold">
-                                Apply for Study or Custodian Certificates online.
-                            </p>
                             <Link
                                 to="/student/services"
-                                className="w-full py-2 lg:py-2.5 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-700 transition shadow-md text-xs lg:text-sm uppercase tracking-widest"
+                                className="w-full mt-2 py-1.5 sm:py-2 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-600 transition shadow-xs text-[10px] sm:text-xs uppercase tracking-widest"
                             >
                                 New Request
                             </Link>
                         </div>
                     )}
                 </div>
-            </div>
+            )}
         </div >
     );
 };

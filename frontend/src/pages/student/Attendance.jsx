@@ -129,7 +129,7 @@ const pctColors = (pct) => {
 
 // ─── Circular Progress Ring ───────────────────────────────────────────────────
 
-const CircularRing = ({ pct, size = 140 }) => {
+const CircularRing = ({ pct, size, inverted = false }) => {
     const radius = 54;
     const circumference = 2 * Math.PI * radius;
     const clampedPct = Math.min(100, Math.max(0, pct));
@@ -137,13 +137,16 @@ const CircularRing = ({ pct, size = 140 }) => {
     const colors = pctColors(clampedPct);
 
     return (
-        <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-            <svg width={size} height={size} viewBox="0 0 120 120" className="-rotate-90">
-                <circle cx="60" cy="60" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="10" />
+        <div
+            className={`relative flex items-center justify-center shrink-0 ${size ? '' : 'w-[96px] h-[96px] sm:w-[120px] sm:h-[120px] lg:w-[130px] lg:h-[130px]'}`}
+            style={size ? { width: size, height: size } : undefined}
+        >
+            <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                <circle cx="60" cy="60" r={radius} fill="none" stroke={inverted ? 'rgba(255,255,255,0.2)' : '#f1f5f9'} strokeWidth="10" />
                 <circle
                     cx="60" cy="60" r={radius}
                     fill="none"
-                    stroke={colors.ring}
+                    stroke={inverted ? '#ffffff' : colors.ring}
                     strokeWidth="10"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
@@ -152,8 +155,8 @@ const CircularRing = ({ pct, size = 140 }) => {
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-2xl font-extrabold ${colors.text}`}>{clampedPct.toFixed(1)}%</span>
-                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mt-0.5">Attendance</span>
+                <span className={`text-lg sm:text-2xl font-extrabold ${inverted ? 'text-white' : colors.text}`}>{clampedPct.toFixed(1)}%</span>
+                <span className={`text-[8px] sm:text-[10px] font-medium uppercase tracking-wide mt-0.5 ${inverted ? 'text-emerald-100/80' : 'text-gray-400'}`}>Attendance</span>
             </div>
         </div>
     );
@@ -242,65 +245,100 @@ const WeeklyTab = ({ weekly, semesterSeries }) => {
     }, [weekly]);
 
     return (
-        <div className="space-y-6">
-            {/* Hero Card */}
-            <div className="bg-white rounded-[2.5rem] p-8 md:p-10 shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:-translate-y-1 group mb-8">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-50/50 rounded-full -mr-48 -mt-48 blur-3xl group-hover:bg-emerald-100/50 transition-all duration-1000 pointer-events-none"></div>
-                <div className="flex flex-col lg:flex-row items-center gap-12 relative z-10">
-                    <CircularRing pct={pct} size={180} />
-                    <div className="flex-1 space-y-6 text-center lg:text-left">
-                        <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Weekly Performance Index</p>
+        <div className="space-y-4 sm:space-y-6">
+            {/* Hero Card - Stats beside Percentage Ring, Content below */}
+            <div className="bg-white rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-6 lg:p-7 shadow-md border border-slate-100 relative overflow-hidden transition-all group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50/40 rounded-full -mr-32 -mt-32 blur-2xl group-hover:bg-emerald-100/40 transition-all pointer-events-none"></div>
+
+                <div className="relative z-10 space-y-4 sm:space-y-5">
+                    {/* Top Row: Percentage ring on the left, 4 Stats beside it on the right */}
+                    <div className="flex items-center gap-4 sm:gap-7">
+                        <CircularRing pct={pct} />
+
+                        {/* 4 Stats Grid: 2x2 on mobile, 4 columns on tablet/desktop */}
+                        <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                            <div className="bg-emerald-50/60 border border-emerald-100/80 rounded-xl py-2.5 px-3 text-center">
+                                <p className="text-[9px] sm:text-[10px] text-emerald-700 uppercase font-black tracking-wider truncate">Present</p>
+                                <p className="text-sm sm:text-xl font-black text-emerald-600 tracking-tight mt-0.5">{present}</p>
+                            </div>
+                            <div className="bg-rose-50/60 border border-rose-100/80 rounded-xl py-2.5 px-3 text-center">
+                                <p className="text-[9px] sm:text-[10px] text-rose-700 uppercase font-black tracking-wider truncate">Absent</p>
+                                <p className="text-sm sm:text-xl font-black text-rose-600 tracking-tight mt-0.5">{absent}</p>
+                            </div>
+                            <div className="bg-amber-50/60 border border-amber-100/80 rounded-xl py-2.5 px-3 text-center">
+                                <p className="text-[9px] sm:text-[10px] text-amber-700 uppercase font-black tracking-wider truncate">Holiday</p>
+                                <p className="text-sm sm:text-xl font-black text-amber-600 tracking-tight mt-0.5">{holidays}</p>
+                            </div>
+                            <div className="bg-slate-50 border border-slate-100 rounded-xl py-2.5 px-3 text-center">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-black tracking-wider truncate">Pending</p>
+                                <p className="text-sm sm:text-xl font-black text-slate-400 tracking-tight mt-0.5">{unmarked}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom Row: Weekly Performance Index Content */}
+                    <div className="pt-3.5 sm:pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2">
+                        <div className="min-w-0">
+                            <p className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">Weekly Performance Index</p>
                             {weekly?.startDate && weekly?.endDate && (
-                                <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-                                    {formatShortDate(weekly.startDate)} <span className="text-slate-200 mx-2">—</span> {formatShortDate(weekly.endDate)}
+                                <h2 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight truncate mt-0.5">
+                                    {formatShortDate(weekly.startDate)} <span className="text-slate-300 mx-1.5">—</span> {formatShortDate(weekly.endDate)}
                                 </h2>
                             )}
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <StatCard label="Present" value={present} colorClass="text-emerald-600" />
-                            <StatCard label="Absent" value={absent} colorClass="text-rose-600" />
-                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-600" />
-                            <StatCard label="Pending" value={unmarked} colorClass="text-slate-300" />
-                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500 font-semibold truncate">
+                            {present} Present • {absent} Absent • {holidays} Holiday
+                        </p>
                     </div>
                 </div>
             </div>
 
             {/* Day-by-Day List */}
             {days.length > 0 && (
-                <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
-                    <h3 className="text-sm font-black text-slate-900 mb-8 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                            <Calendar size={20} />
-                        </div>
-                        Chronicle of Attendance
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 shadow-md">
+                    <div className="flex items-center justify-between mb-3.5 sm:mb-4">
+                        <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                                <Calendar size={14} className="sm:w-4 sm:h-4" />
+                            </div>
+                            Daily Attendance Record
+                        </h3>
+                        <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">{days.length} Days</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
                         {days.map(entry => {
                             const effectiveStatus = entry.isHoliday ? 'holiday' : (entry.status || 'pending');
                             return (
                                 <div
                                     key={entry.date}
-                                    className={`flex items-center justify-between px-6 py-5 rounded-[1.8rem] border-2 transition-all duration-500 hover:scale-[1.01] hover:shadow-lg ${statusBg(effectiveStatus)} border-opacity-50 group/item`}
+                                    className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border transition-all ${statusBg(effectiveStatus)} border-opacity-70 flex flex-col justify-between min-h-[92px] sm:min-h-[105px] shadow-sm`}
                                 >
-                                    <div className="flex items-center gap-5">
-                                        <div className={`w-1.5 h-12 rounded-full ${statusDot(effectiveStatus)} shadow-lg scale-y-75 group-hover/item:scale-y-100 transition-transform`} />
-                                        <div>
-                                            <p className="text-[15px] font-black text-slate-900 tracking-tight">{formatShortDate(entry.date)}</p>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                                {entry.isHoliday
-                                                    ? getHolidayLabel(entry.holiday)
-                                                    : effectiveStatus === 'present'
-                                                        ? 'Presence Verified'
-                                                        : effectiveStatus === 'absent'
-                                                            ? 'Absence Recorded'
-                                                            : 'Awaiting Transmission'}
-                                            </p>
-                                        </div>
+                                    <div className="flex items-center justify-between gap-1">
+                                        <span className="text-xs sm:text-sm font-black text-slate-800 tracking-tight">
+                                            {formatShortDate(entry.date).split(',')[0]}
+                                        </span>
+                                        <StatusIcon status={effectiveStatus} size={15} />
                                     </div>
-                                    <div className="p-2 bg-white rounded-xl shadow-sm">
-                                        <StatusIcon status={effectiveStatus} size={22} />
+                                    <div className="my-1.5">
+                                        <p className="text-xs sm:text-sm font-bold text-slate-700">
+                                            {formatShortDate(entry.date).split(',')[1] || entry.date}
+                                        </p>
+                                    </div>
+                                    <div className="pt-1.5 border-t border-slate-200/50 flex items-center justify-between">
+                                        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider truncate ${
+                                            effectiveStatus === 'present' ? 'text-emerald-700' :
+                                            effectiveStatus === 'absent' ? 'text-rose-700' :
+                                            effectiveStatus === 'holiday' ? 'text-amber-700' : 'text-slate-400'
+                                        }`}>
+                                            {entry.isHoliday
+                                                ? (getHolidayLabel(entry.holiday) || 'Holiday')
+                                                : effectiveStatus === 'present'
+                                                    ? 'Present'
+                                                    : effectiveStatus === 'absent'
+                                                        ? 'Absent'
+                                                        : 'Pending'}
+                                        </span>
                                     </div>
                                 </div>
                             );
@@ -325,20 +363,11 @@ const MonthlyTab = ({ monthly, semesterSeries, attendanceStartDate }) => {
     const monthInitialized = React.useRef(false);
 
     useEffect(() => {
-        // on the very first render with valid data set the cursor; after that
-        // keep whatever month the user has navigated to, even if `monthly`
-        // changes due to a refresh.  This stops Refresh from snapping the view
-        // back to the current month.
         if (!monthInitialized.current) {
             setMonthCursor(initialMonth);
             monthInitialized.current = true;
         }
     }, [initialMonth]);
-
-    // No need to re-fetch when the month cursor changes; the parent
-    // already returns the entire semester series, so we can derive any
-    // month's data locally. Keeping historyData local is more efficient and
-    // eliminates strange refresh loops.
 
     const { monthLabel, startOfMonth, days, totals, pct, colors } = useMemo(() => {
         const start = new Date(monthCursor);
@@ -423,69 +452,122 @@ const MonthlyTab = ({ monthly, semesterSeries, attendanceStartDate }) => {
     const unmarked = totals.unmarked;
 
     return (
-        <div className="space-y-6">
-            <div className={`bg-emerald-600 rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-emerald-500 relative overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:-translate-y-1.5 group mb-6`}>
-                <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -mr-40 -mt-40 blur-3xl group-hover:bg-white/20 transition-all duration-500 pointer-events-none"></div>
-                <div className="flex flex-col sm:flex-row items-center gap-8 relative z-10">
-                    <CircularRing pct={pct} size={140} />
-                    <div className="flex-1 space-y-4 text-center sm:text-left">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <div>
-                                <p className="text-[10px] font-black text-emerald-100 uppercase tracking-[0.2em] mb-1 opacity-80">Monthly Attendance</p>
-                                <h2 className="text-2xl font-black text-white heading-font">{monthLabel}</h2>
+        <div className="space-y-4 sm:space-y-6">
+            {/* Hero Card - Spacious, balanced layout */}
+            <div className="bg-emerald-600 rounded-2xl sm:rounded-[2.5rem] py-5 px-4 sm:py-6 sm:px-6 shadow-md border border-emerald-500 relative overflow-hidden transition-all group shrink-0 text-white">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-2xl group-hover:bg-white/20 transition-all pointer-events-none"></div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 relative z-10">
+                    <div className="flex items-center gap-4 sm:gap-5 w-full sm:w-auto">
+                        <CircularRing pct={pct} inverted={true} />
+                        <div className="flex-1 sm:hidden min-w-0 pl-1.5 flex flex-col justify-center py-1">
+                            <p className="text-[10px] font-black text-emerald-100 uppercase tracking-widest">Monthly Index</p>
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                                <h2 className="text-sm font-black text-white tracking-tight truncate">{monthLabel}</h2>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        onClick={goToPrevMonth}
+                                        className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+                                        aria-label="Previous Month"
+                                    >
+                                        <ChevronLeft size={14} />
+                                    </button>
+                                    <button
+                                        onClick={goToNextMonth}
+                                        className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+                                        aria-label="Next Month"
+                                    >
+                                        <ChevronRight size={14} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center justify-center sm:justify-end gap-3">
+                            <p className="text-[11px] text-emerald-100 font-semibold mt-1 truncate">
+                                {present} Present • {absent} Absent • {holidays} Holiday
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 w-full space-y-3 sm:space-y-3.5 text-center sm:text-left">
+                        <div className="hidden sm:flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-black text-emerald-100 uppercase tracking-[0.2em] mb-0.5 opacity-90">Monthly Attendance</p>
+                                <h2 className="text-base sm:text-xl font-black text-white heading-font">{monthLabel}</h2>
+                            </div>
+                            <div className="flex items-center gap-2">
                                 <button
                                     onClick={goToPrevMonth}
-                                    className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 text-white hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
+                                    className="w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+                                    aria-label="Previous Month"
                                 >
-                                    <ChevronLeft size={20} />
+                                    <ChevronLeft size={16} />
                                 </button>
                                 <button
                                     onClick={goToNextMonth}
-                                    className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 text-white hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
+                                    className="w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+                                    aria-label="Next Month"
                                 >
-                                    <ChevronRight size={20} />
+                                    <ChevronRight size={16} />
                                 </button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                            <StatCard label="Present" value={present} colorClass="text-emerald-300" bgClass="bg-white/10" borderClass="border-white/20" />
-                            <StatCard label="Absent" value={absent} colorClass="text-rose-300" bgClass="bg-white/10" borderClass="border-white/20" />
-                            <StatCard label="Holidays" value={holidays} colorClass="text-amber-300" bgClass="bg-white/10" borderClass="border-white/20" />
-                            <StatCard label="Pending" value={unmarked} colorClass="text-white/60" bgClass="bg-white/10" borderClass="border-white/20" />
+
+                        {/* 4 Stats Grid */}
+                        <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
+                            <div className="bg-white/15 border border-white/20 rounded-xl py-2.5 px-1 sm:p-2.5 text-center">
+                                <p className="text-[8px] sm:text-[9px] text-emerald-200 uppercase font-black tracking-wider truncate">Present</p>
+                                <p className="text-sm sm:text-lg font-black text-white tracking-tight mt-0.5">{present}</p>
+                            </div>
+                            <div className="bg-white/15 border border-white/20 rounded-xl py-2.5 px-1 sm:p-2.5 text-center">
+                                <p className="text-[8px] sm:text-[9px] text-rose-200 uppercase font-black tracking-wider truncate">Absent</p>
+                                <p className="text-sm sm:text-lg font-black text-rose-200 tracking-tight mt-0.5">{absent}</p>
+                            </div>
+                            <div className="bg-white/15 border border-white/20 rounded-xl py-2.5 px-1 sm:p-2.5 text-center">
+                                <p className="text-[8px] sm:text-[9px] text-amber-200 uppercase font-black tracking-wider truncate">Holiday</p>
+                                <p className="text-sm sm:text-lg font-black text-amber-200 tracking-tight mt-0.5">{holidays}</p>
+                            </div>
+                            <div className="bg-white/15 border border-white/20 rounded-xl py-2.5 px-1 sm:p-2.5 text-center">
+                                <p className="text-[8px] sm:text-[9px] text-emerald-100 uppercase font-black tracking-wider truncate">Pending</p>
+                                <p className="text-sm sm:text-lg font-black text-white/80 tracking-tight mt-0.5">{unmarked}</p>
+                            </div>
                         </div>
-                        <p className="text-[10px] font-black text-emerald-100/60 uppercase tracking-widest">
-                            Based on {present + absent} marked days
-                        </p>
                     </div>
                 </div>
             </div>
 
-            {/* Calendar Grid */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
-                <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <Calendar size={16} className="text-blue-500" />
-                    Monthly Calendar
-                </h3>
-                <div className="grid grid-cols-7 gap-1 text-center text-[9px] sm:text-[10px] font-semibold text-gray-400 mb-2">
+            {/* Calendar Grid Card */}
+            <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 shadow-md">
+                <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+                    <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+                            <Calendar size={14} className="sm:w-4 sm:h-4" />
+                        </div>
+                        Monthly Calendar
+                    </h3>
+                    <div className="flex items-center gap-2 text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Present</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Absent</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Holiday</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1.5 text-center text-[10px] sm:text-xs font-black text-slate-400 py-1">
                     {weekdayLabels.map(label => (
-                        <div key={label} className="py-1 uppercase tracking-wide">
+                        <div key={label} className="uppercase tracking-wider">
                             {label}
                         </div>
                     ))}
                 </div>
-                <div className="grid grid-cols-7 gap-1 text-[10px] sm:text-xs">
+
+                <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
                     {calendarCells.map((cell, idx) => {
-                        if (!cell) return <div key={idx} className="h-14 sm:h-16 rounded-xl" />;
+                        if (!cell) return <div key={idx} className="rounded-lg sm:rounded-xl" />;
                         if (cell.isBeforeStart) {
                             return (
                                 <div
                                     key={cell.dateKey}
-                                    className="h-14 sm:h-16 rounded-xl border border-gray-100 bg-gray-50 flex flex-col items-start justify-between p-1.5 sm:p-2"
+                                    className="rounded-lg sm:rounded-xl border border-gray-100 bg-gray-50 flex flex-col items-center sm:items-start justify-between p-1.5 min-h-[46px] sm:min-h-[58px]"
                                 >
-                                    <span className="text-[11px] font-bold text-gray-300">{cell.dayNumber}</span>
-                                    <span className="text-[8px] sm:text-[9px] text-gray-300">Before joining</span>
+                                    <span className="text-[10px] sm:text-xs font-bold text-gray-300">{cell.dayNumber}</span>
                                 </div>
                             );
                         }
@@ -494,29 +576,29 @@ const MonthlyTab = ({ monthly, semesterSeries, attendanceStartDate }) => {
                         return (
                             <div
                                 key={cell.dateKey}
-                                className={`h-14 sm:h-16 rounded-xl border ${baseClasses} flex flex-col items-start justify-between p-1.5 sm:p-2`}
+                                className={`rounded-lg sm:rounded-xl border ${baseClasses} flex flex-col items-center sm:items-start justify-between p-1.5 min-h-[46px] sm:min-h-[58px] transition-all shadow-sm`}
                             >
                                 <div className="flex items-center justify-between w-full">
-                                    <span className="text-[11px] sm:text-[11px] font-bold text-gray-900">
+                                    <span className="text-xs sm:text-sm font-bold text-slate-900 leading-none">
                                         {cell.dayNumber}
                                     </span>
                                     <span className={`w-2 h-2 rounded-full ${statusDot(effectiveStatus)}`} />
                                 </div>
-                                <div className="w-full text-[8px] sm:text-[9px] text-gray-500 capitalize line-clamp-1">
+                                <div className="w-full text-[7px] sm:text-[8px] text-gray-500 capitalize line-clamp-1 hidden sm:block">
                                     {cell.isHoliday
-                                        ? getHolidayLabel(cell.holiday)
+                                        ? (getHolidayLabel(cell.holiday) || 'Holiday')
                                         : effectiveStatus === 'present'
                                             ? 'Present'
                                             : effectiveStatus === 'absent'
                                                 ? 'Absent'
-                                                : 'Pending / Unmarked'}
+                                                : ''}
                                 </div>
                             </div>
                         );
                     })}
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 };
 
@@ -799,29 +881,29 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
     }
 
     return (
-        <div className="space-y-6 animate-fade-in w-full max-w-[1920px] mx-auto px-4 md:px-6 pb-10">
+        <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 pb-20 sm:pb-12">
 
             {/* ── Header ── */}
-            <header className="flex items-center justify-between">
+            <header className="flex items-center justify-between shrink-0">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-gray-900 heading-font">My Attendance</h1>
-                    <p className="text-xs md:text-sm text-gray-500 mt-0.5">Track your comprehensive attendance overview</p>
+                    <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 heading-font">My Attendance</h1>
+                    <p className="text-[11px] sm:text-xs md:text-sm text-gray-500 mt-0.5">Track your comprehensive attendance overview</p>
                 </div>
                 {/* refresh only shown outside monthly tab; monthly data auto-fetches on navigation */}
                 {activeTab !== 'monthly' && (
                     <button
                         onClick={() => fetchAttendanceHistory(true)}
                         disabled={loading}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm"
+                        className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-xs sm:text-sm"
                     >
-                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                         Refresh
                     </button>
                 )}
             </header>
 
             {/* ── Tabs ── */}
-            <div className="flex items-center gap-1 sm:gap-1.5 bg-gray-100/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl w-full sm:w-fit">
+            <div className="flex items-center gap-1 sm:gap-1.5 bg-gray-100/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl w-full sm:w-fit shrink-0">
                 {TABS.map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -829,12 +911,12 @@ const Attendance = ({ apiPath = '/attendance/student', logParentView = false }) 
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex flex-1 sm:flex-none justify-center items-center gap-1.5 sm:gap-2 px-2 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${isActive
+                            className={`flex flex-1 sm:flex-none justify-center items-center gap-1 sm:gap-2 px-2 sm:px-5 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${isActive
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-800 hover:bg-white/50'
                                 }`}
                         >
-                            <Icon size={14} className="sm:w-[15px] sm:h-[15px]" />
+                            <Icon size={13} className="sm:w-[15px] sm:h-[15px]" />
                             {tab.label}
                         </button>
                     );
