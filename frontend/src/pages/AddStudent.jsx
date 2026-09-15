@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, FileText } from 'lucide-react';
+import { ArrowLeft, Save, FileText, Camera, Upload } from 'lucide-react';
 import api from '../config/api';
 import toast from 'react-hot-toast';
 import LoadingAnimation from '../components/LoadingAnimation';
 import SearchableSelect from '../components/SearchableSelect';
 import ManagePreviousCollegesModal from '../components/ManagePreviousCollegesModal';
+import StudentPhotoUploadModal from '../components/Students/StudentPhotoUploadModal';
 import { addressData } from '../data/addressData';
 import { getCourseType, getCertificatesForCourse as getCertificatesForCourseShared } from '../config/certificateConfig';
 import useStudentQuotas from '../hooks/useStudentQuotas';
@@ -55,6 +56,7 @@ const AddStudent = () => {
   const [isAdmissionNumberManual, setIsAdmissionNumberManual] = useState(false);
   const [frozenBatches, setFrozenBatches] = useState({});
   const [frozenBatchesLoading, setFrozenBatchesLoading] = useState(true);
+  const [showPhotoUploadModal, setShowPhotoUploadModal] = useState(false);
 
 
   const [studentData, setStudentData] = useState({
@@ -1726,83 +1728,61 @@ const AddStudent = () => {
                 <label className="block text-sm font-medium text-text-primary mb-2">
                   Student Photo
                 </label>
-                <div className="border-2 border-dashed border-border-light rounded-lg p-6 text-center hover:border-primary-400 transition-colors bg-input-bg">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        try {
-                          // Validate file type
-                          if (!file.type.startsWith('image/')) {
-                            toast.error('Please select a valid image file');
-                            return;
-                          }
-
-                          // Validate file size (5MB limit)
-                          if (file.size > 5 * 1024 * 1024) {
-                            toast.error('File size should be less than 5MB');
-                            return;
-                          }
-
-                          // Convert to base64 and store locally (will be sent with student creation)
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            const base64Data = reader.result;
-                            setStudentData(prev => ({
-                              ...prev,
-                              student_photo: base64Data
-                            }));
-                            toast.success('Photo selected successfully');
-                          };
-                          reader.onerror = () => {
-                            toast.error('Failed to read photo file');
-                          };
-                          reader.readAsDataURL(file);
-                        } catch (error) {
-                          console.error('Photo selection error:', error);
-                          toast.error('Failed to select photo');
-                        }
-                      }
-                    }}
-                    className="hidden"
-                    id="photo-upload"
-                  />
-                  <label
-                    htmlFor="photo-upload"
-                    className="cursor-pointer flex flex-col items-center gap-2"
-                  >
-                    {studentData.student_photo && studentData.student_photo.startsWith('data:') ? (
+                <div
+                  onClick={() => setShowPhotoUploadModal(true)}
+                  className="border-2 border-dashed border-border-light rounded-xl p-6 text-center hover:border-indigo-400 hover:bg-indigo-50/20 transition-all cursor-pointer bg-input-bg flex flex-col items-center justify-center gap-3"
+                >
+                  {studentData.student_photo && studentData.student_photo.startsWith('data:') ? (
+                    <div className="relative group">
                       <img
                         src={studentData.student_photo}
                         alt="Student preview"
-                        className="w-24 h-24 object-cover rounded-lg border-2 border-primary-300"
+                        className="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-2xl border-2 border-indigo-500 shadow-md"
                       />
-                    ) : (
-                      <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
+                      <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
+                        Change Photo
                       </div>
-                    )}
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-text-primary">
-                        {studentData.student_photo ? 'Change Photo' : 'Upload Photo'}
-                      </p>
-                      <p className="text-xs text-text-secondary mt-1">
-                        PNG, JPG up to 5MB
-                      </p>
                     </div>
-                  </label>
+                  ) : (
+                    <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-xs">
+                      <Camera size={26} />
+                    </div>
+                  )}
+
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-gray-800">
+                      {studentData.student_photo ? 'Change Student Photo' : 'Upload or Take Student Photo'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Choose from Camera or File Upload (PNG, JPG up to 5MB)
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPhotoUploadModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Camera size={13} />
+                    {studentData.student_photo ? 'Retake / Change' : 'Capture / Upload'}
+                  </button>
+
                   {studentData.student_photo && (
-                    <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                      <div className="flex items-center gap-2 text-green-700">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm font-medium">Photo selected - will be saved with student</span>
-                      </div>
+                    <div className="mt-2 p-2 px-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-center gap-2 text-emerald-700 text-xs font-semibold">
+                      <span>✓ Photo ready to be saved with student record</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStudentData((prev) => ({ ...prev, student_photo: '' }));
+                        }}
+                        className="text-rose-600 hover:text-rose-800 underline text-[11px] ml-1"
+                      >
+                        Remove
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1906,6 +1886,18 @@ const AddStudent = () => {
             }
           };
           fetchPreviousColleges();
+        }}
+      />
+
+      <StudentPhotoUploadModal
+        isOpen={showPhotoUploadModal}
+        onClose={() => setShowPhotoUploadModal(false)}
+        student={{
+          student_name: studentData.student_name || 'New Student',
+          admission_number: studentData.admission_number || ''
+        }}
+        onSelectPhoto={(base64Data) => {
+          setStudentData((prev) => ({ ...prev, student_photo: base64Data }));
         }}
       />
     </div>

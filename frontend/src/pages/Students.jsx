@@ -37,7 +37,8 @@ import {
   MapPin,
   Phone,
   Copy,
-  Check
+  Check,
+  Camera
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -49,6 +50,7 @@ import ParentEngagementPanel from '../components/Students/ParentEngagementPanel'
 import StudentSmsTab from '../components/Students/StudentSmsTab';
 import toast from 'react-hot-toast';
 import MobileVerificationModal from '../components/Students/MobileVerificationModal';
+import StudentPhotoUploadModal from '../components/Students/StudentPhotoUploadModal';
 import StudentRemarksModal from '../components/Students/StudentRemarksModal';
 import StudentRemarksContent from '../components/Students/StudentRemarksContent';
 import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
@@ -404,6 +406,7 @@ const Students = () => {
   const [showBulkStudentUpload, setShowBulkStudentUpload] = useState(false);
   const [editingRollNumber, setEditingRollNumber] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [showPhotoUploadModal, setShowPhotoUploadModal] = useState(false);
   const [tempRollNumber, setTempRollNumber] = useState('');
   const [savingPinNumber, setSavingPinNumber] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -4119,7 +4122,18 @@ const Students = () => {
                   <div className="flex flex-row lg:flex-col items-center gap-4 lg:gap-6">
                     {canViewField('student_photo') && (
                       <div className="relative shrink-0">
-                        <div className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-36 lg:h-36 rounded-2xl lg:rounded-[2.5rem] bg-gray-50 border-2 border-gray-100 overflow-hidden flex items-center justify-center shadow-inner relative ${editMode && !photoUploading ? 'cursor-pointer hover:border-indigo-400 p-1' : ''}`}>
+                        <div
+                          onClick={() => {
+                            if (editMode || canEditField('student_photo')) {
+                              setShowPhotoUploadModal(true);
+                            }
+                          }}
+                          className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-36 lg:h-36 rounded-2xl lg:rounded-[2.5rem] bg-gray-50 border-2 border-gray-100 overflow-hidden flex items-center justify-center shadow-inner relative group ${
+                            (editMode || canEditField('student_photo')) && !photoUploading
+                              ? 'cursor-pointer hover:border-indigo-400 p-1'
+                              : ''
+                          }`}
+                        >
                           {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
                             <img
                               src={getStaticFileUrlDirect(editData.student_photo)}
@@ -4133,8 +4147,9 @@ const Students = () => {
                             </div>
                           )}
 
-                          {editMode && (
-                            <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-black text-white uppercase tracking-widest backdrop-blur-sm">
+                          {(editMode || canEditField('student_photo')) && (
+                            <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-black text-white uppercase tracking-widest backdrop-blur-sm opacity-90 group-hover:opacity-100 flex items-center justify-center gap-1">
+                              <Camera size={12} />
                               Change
                             </div>
                           )}
@@ -4145,30 +4160,16 @@ const Students = () => {
                             </div>
                           )}
                         </div>
-                        {editMode && (
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={async (e) => {
-                              const file = e.target.files[0];
-                              if (file) {
-                                if (file.size > 5 * 1024 * 1024) return toast.error('Max 5MB allowed');
-                                setPhotoUploading(true);
-                                try {
-                                  const formData = new FormData();
-                                  formData.append('photo', file);
-                                  formData.append('admissionNumber', selectedStudent.admission_number);
-                                  const res = await api.post('/students/upload-photo', formData);
-                                  if (res.data.success) {
-                                    updateEditField('student_photo', res.data.data.photo_url);
-                                    toast.success('Uploaded');
-                                  }
-                                } catch (err) { toast.error('Failed'); }
-                                finally { setPhotoUploading(false); }
-                              }
-                            }}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                          />
+
+                        {(editMode || canEditField('student_photo')) && (
+                          <button
+                            type="button"
+                            onClick={() => setShowPhotoUploadModal(true)}
+                            className="absolute -bottom-1 -right-1 p-2 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-110 active:scale-95 z-10"
+                            title="Take Photo with Camera or Upload File"
+                          >
+                            <Camera size={14} />
+                          </button>
                         )}
                       </div>
                     )}
@@ -6324,6 +6325,17 @@ const Students = () => {
         onClose={() => setShowVerificationModal(false)}
         student={selectedStudent}
         onVerificationComplete={handleVerificationComplete}
+      />
+
+      <StudentPhotoUploadModal
+        isOpen={showPhotoUploadModal}
+        onClose={() => setShowPhotoUploadModal(false)}
+        student={selectedStudent}
+        onSuccess={(photoUrl) => {
+          updateEditField('student_photo', photoUrl);
+          setSelectedStudent((prev) => (prev ? { ...prev, student_photo: photoUrl } : prev));
+          invalidateStudents();
+        }}
       />
     </div >
   );
