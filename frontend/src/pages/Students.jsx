@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileText,
   Eye,
+  EyeOff,
   RefreshCw,
   Book,
   Calendar,
@@ -318,6 +319,7 @@ const Students = () => {
   const canEditStudentsReal = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_student');
   // User can edit if they have either edit_details or edit_student permission
   const canEditStudents = canEditDetails || canEditStudentsReal;
+  const canEditStudentDetails = canEditStudents || user?.role === 'admin' || user?.role === 'super_admin';
   const canDeleteStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'delete_student');
   const canUpdatePin = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'update_pin');
   const canExportStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'export');
@@ -407,6 +409,15 @@ const Students = () => {
   const [editingRollNumber, setEditingRollNumber] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [showPhotoUploadModal, setShowPhotoUploadModal] = useState(false);
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [photoUploadTab, setPhotoUploadTab] = useState('file');
+  const [revealedMobiles, setRevealedMobiles] = useState({});
+  const toggleRevealMobile = useCallback((fieldKey) => {
+    setRevealedMobiles((prev) => ({
+      ...prev,
+      [fieldKey]: !prev[fieldKey]
+    }));
+  }, []);
   const [tempRollNumber, setTempRollNumber] = useState('');
   const [savingPinNumber, setSavingPinNumber] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -4124,15 +4135,26 @@ const Students = () => {
                       <div className="relative shrink-0">
                         <div
                           onClick={() => {
-                            if (editMode || canEditField('student_photo')) {
+                            const hasPhoto = editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '';
+                            if (hasPhoto) {
+                              setShowPhotoViewer(true);
+                            } else if (editMode || canEditField('student_photo')) {
+                              setPhotoUploadTab('file');
                               setShowPhotoUploadModal(true);
                             }
                           }}
                           className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-36 lg:h-36 rounded-2xl lg:rounded-[2.5rem] bg-gray-50 border-2 border-gray-100 overflow-hidden flex items-center justify-center shadow-inner relative group ${
-                            (editMode || canEditField('student_photo')) && !photoUploading
+                            editData.student_photo || (editMode || canEditField('student_photo'))
                               ? 'cursor-pointer hover:border-indigo-400 p-1'
                               : ''
                           }`}
+                          title={
+                            editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== ''
+                              ? 'Click to view full photo'
+                              : editMode || canEditField('student_photo')
+                              ? 'Click to upload photo'
+                              : ''
+                          }
                         >
                           {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
                             <img
@@ -4147,10 +4169,15 @@ const Students = () => {
                             </div>
                           )}
 
-                          {(editMode || canEditField('student_photo')) && (
+                          {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
+                            <div className="absolute inset-x-0 bottom-0 bg-slate-900/80 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-bold text-white uppercase tracking-wider backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                              <Eye size={12} />
+                              View Photo
+                            </div>
+                          ) : (editMode || canEditField('student_photo')) && (
                             <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-black text-white uppercase tracking-widest backdrop-blur-sm opacity-90 group-hover:opacity-100 flex items-center justify-center gap-1">
-                              <Camera size={12} />
-                              Change
+                              <Upload size={12} />
+                              Upload
                             </div>
                           )}
 
@@ -4164,9 +4191,13 @@ const Students = () => {
                         {(editMode || canEditField('student_photo')) && (
                           <button
                             type="button"
-                            onClick={() => setShowPhotoUploadModal(true)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhotoUploadTab('file');
+                              setShowPhotoUploadModal(true);
+                            }}
                             className="absolute -bottom-1 -right-1 p-2 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-110 active:scale-95 z-10"
-                            title="Take Photo with Camera or Upload File"
+                            title="Upload Photo or Take with Camera"
                           >
                             <Camera size={14} />
                           </button>
@@ -5101,15 +5132,29 @@ const Students = () => {
                                 ) : (
                                   <div className="flex items-center justify-between">
                                     <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {maskMobileNumber(editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')}
+                                      {revealedMobiles['parent_mobile1']
+                                        ? (editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')
+                                        : maskMobileNumber(editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')}
                                     </p>
-                                    {(editData.parent_mobile1 || selectedStudent?.parent_mobile1) && (
-                                      <a
-                                        href={`tel:${editData.parent_mobile1 || selectedStudent?.parent_mobile1}`}
-                                        className="text-xs text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 hover:underline"
+                                    {(canEditStudentDetails || canEditField('parent_mobile1')) && (editData.parent_mobile1 || selectedStudent?.parent_mobile1) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRevealMobile('parent_mobile1')}
+                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-orange-600 hover:text-orange-700 hover:bg-orange-100/60 border border-orange-200/80 transition-all shadow-xs"
+                                        title={revealedMobiles['parent_mobile1'] ? "Hide full mobile number" : "View full mobile number"}
                                       >
-                                        <Phone size={12} /> Call
-                                      </a>
+                                        {revealedMobiles['parent_mobile1'] ? (
+                                          <>
+                                            <EyeOff size={13} />
+                                            <span>Hide</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Eye size={13} />
+                                            <span>View</span>
+                                          </>
+                                        )}
+                                      </button>
                                     )}
                                   </div>
                                 )}
@@ -5133,15 +5178,29 @@ const Students = () => {
                                 ) : (
                                   <div className="flex items-center justify-between">
                                     <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {maskMobileNumber(editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')}
+                                      {revealedMobiles['parent_mobile2']
+                                        ? (editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')
+                                        : maskMobileNumber(editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')}
                                     </p>
-                                    {(editData.parent_mobile2 || selectedStudent?.parent_mobile2) && (
-                                      <a
-                                        href={`tel:${editData.parent_mobile2 || selectedStudent?.parent_mobile2}`}
-                                        className="text-xs text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 hover:underline"
+                                    {(canEditStudentDetails || canEditField('parent_mobile2')) && (editData.parent_mobile2 || selectedStudent?.parent_mobile2) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRevealMobile('parent_mobile2')}
+                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-orange-600 hover:text-orange-700 hover:bg-orange-100/60 border border-orange-200/80 transition-all shadow-xs"
+                                        title={revealedMobiles['parent_mobile2'] ? "Hide full mobile number" : "View full mobile number"}
                                       >
-                                        <Phone size={12} /> Call
-                                      </a>
+                                        {revealedMobiles['parent_mobile2'] ? (
+                                          <>
+                                            <EyeOff size={13} />
+                                            <span>Hide</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Eye size={13} />
+                                            <span>View</span>
+                                          </>
+                                        )}
+                                      </button>
                                     )}
                                   </div>
                                 )}
@@ -5394,15 +5453,29 @@ const Students = () => {
                                 ) : (
                                   <div className="flex items-center justify-between">
                                     <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {maskMobileNumber(editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')}
+                                      {revealedMobiles['student_mobile']
+                                        ? (editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')
+                                        : maskMobileNumber(editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')}
                                     </p>
-                                    {(editData.student_mobile || selectedStudent?.student_mobile) && (
-                                      <a
-                                        href={`tel:${editData.student_mobile || selectedStudent?.student_mobile}`}
-                                        className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 hover:underline"
+                                    {(canEditStudentDetails || canEditField('student_mobile')) && (editData.student_mobile || selectedStudent?.student_mobile) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRevealMobile('student_mobile')}
+                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 border border-blue-200/80 transition-all shadow-xs"
+                                        title={revealedMobiles['student_mobile'] ? "Hide full mobile number" : "View full mobile number"}
                                       >
-                                        <Phone size={12} /> Call
-                                      </a>
+                                        {revealedMobiles['student_mobile'] ? (
+                                          <>
+                                            <EyeOff size={13} />
+                                            <span>Hide</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Eye size={13} />
+                                            <span>View</span>
+                                          </>
+                                        )}
+                                      </button>
                                     )}
                                   </div>
                                 )}
@@ -6327,10 +6400,85 @@ const Students = () => {
         onVerificationComplete={handleVerificationComplete}
       />
 
+      {/* Student Photo Full Viewer Modal */}
+      {showPhotoViewer && editData.student_photo && editData.student_photo !== '{}' && (
+        <div
+          className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowPhotoViewer(false)}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-indigo-50/40">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-xs">
+                  <Eye size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Student Photo</h3>
+                  <p className="text-xs text-slate-500 font-medium truncate max-w-[200px]">
+                    {editData.student_name || selectedStudent?.student_name || 'Student'}
+                    {(editData.admission_number || selectedStudent?.admission_number) && ` • ${editData.admission_number || selectedStudent?.admission_number}`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPhotoViewer(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Photo Display */}
+            <div className="p-6 flex flex-col items-center justify-center bg-slate-950/5">
+              <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-xl border-4 border-white bg-slate-900 flex items-center justify-center">
+                <img
+                  src={getStaticFileUrlDirect(editData.student_photo)}
+                  alt={editData.student_name || 'Student Photo'}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+
+            {/* Action Footer */}
+            <div className="p-4 border-t border-gray-100 bg-slate-50/60 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPhotoViewer(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-white text-slate-700 text-xs font-bold transition-all shadow-xs"
+              >
+                Close
+              </button>
+
+              {(editMode || canEditField('student_photo')) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPhotoViewer(false);
+                    setPhotoUploadTab('file');
+                    setShowPhotoUploadModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all"
+                >
+                  <Camera size={14} />
+                  Change Photo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <StudentPhotoUploadModal
         isOpen={showPhotoUploadModal}
         onClose={() => setShowPhotoUploadModal(false)}
         student={selectedStudent}
+        initialTab={photoUploadTab}
         onSuccess={(photoUrl) => {
           updateEditField('student_photo', photoUrl);
           setSelectedStudent((prev) => (prev ? { ...prev, student_photo: photoUrl } : prev));

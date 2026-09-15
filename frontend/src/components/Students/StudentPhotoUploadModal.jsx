@@ -10,9 +10,10 @@ export default function StudentPhotoUploadModal({
   onClose,
   student,
   onSuccess,
-  onSelectPhoto
+  onSelectPhoto,
+  initialTab = 'file'
 }) {
-  const [activeTab, setActiveTab] = useState('camera'); // 'camera' | 'file'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'file' | 'camera'
   const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
   const [cameraError, setCameraError] = useState(null);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
@@ -167,14 +168,11 @@ export default function StudentPhotoUploadModal({
     }
   });
 
-  // Handle modal visibility and active tab changes
+  // Sync activeTab when modal opens with initialTab or closes
   useEffect(() => {
     if (isOpen) {
-      if (activeTab === 'camera' && !previewUrl) {
-        startCamera(facingModeRef.current);
-      } else {
-        stopCamera();
-      }
+      setActiveTab(initialTab);
+      setCameraError(null);
     } else {
       stopCamera();
       setSelectedFile(null);
@@ -183,7 +181,16 @@ export default function StudentPhotoUploadModal({
         setPreviewUrl(null);
       }
       setCameraError(null);
-      setActiveTab('camera');
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab, stopCamera]);
+
+  // Handle camera start/stop when activeTab, modal open state, or previewUrl changes
+  useEffect(() => {
+    if (isOpen && activeTab === 'camera' && !previewUrl) {
+      startCamera(facingModeRef.current);
+    } else {
+      stopCamera();
     }
 
     return () => {
