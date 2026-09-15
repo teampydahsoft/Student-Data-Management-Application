@@ -48,14 +48,26 @@ const findStudentsByParentMobile = async (mobileNumber) => {
   const normalized = normalizeMobile(mobileNumber);
   if (!normalized) return [];
 
-  const likePattern = `%${normalized}`;
+  // Fast Path 1: Exact indexed match by 10-digit number or raw input
+  const [exactRows] = await masterPool.query(
+    `SELECT ${STUDENT_SELECT_FIELDS}
+     FROM students
+     WHERE parent_mobile1 = ? OR parent_mobile2 = ?
+        OR parent_mobile1 = ? OR parent_mobile2 = ? LIMIT 10`,
+    [normalized, normalized, mobileNumber, mobileNumber]
+  );
 
+  if (exactRows && exactRows.length > 0) {
+    return exactRows;
+  }
+
+  // Fast Path 2: Suffix match if number has prefix/spaces
+  const likePattern = `%${normalized}`;
   const [rows] = await masterPool.query(
     `SELECT ${STUDENT_SELECT_FIELDS}
      FROM students
-     WHERE parent_mobile1 LIKE ? OR parent_mobile2 LIKE ?
-        OR parent_mobile1 LIKE ? OR parent_mobile2 LIKE ?`,
-    [likePattern, likePattern, normalized, normalized]
+     WHERE parent_mobile1 LIKE ? OR parent_mobile2 LIKE ? LIMIT 20`,
+    [likePattern, likePattern]
   );
 
   const matched = rows.filter((row) =>

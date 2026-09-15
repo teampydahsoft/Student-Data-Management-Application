@@ -137,7 +137,6 @@ exports.unifiedLogin = async (req, res) => {
         `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
           cb.id as branch_id, col.id as college_id, c.level as course_level,
-          ${studentRegistrationStatusComputedSql} AS registration_status_computed,
           s.registration_status, s.student_data
          FROM students s
          LEFT JOIN colleges col ON s.college COLLATE utf8mb4_unicode_ci = col.name COLLATE utf8mb4_unicode_ci
@@ -166,10 +165,9 @@ exports.unifiedLogin = async (req, res) => {
             : (s.student_data || {});
         } catch (e) { }
 
-        const resolvedStatus = s.registration_status_computed ||
-          ((s.registration_status && String(s.registration_status).trim().length > 0)
-            ? s.registration_status
-            : (parsedData?.registration_status || parsedData?.['Registration Status'] || 'Pending'));
+        const resolvedStatus = ((s.registration_status && String(s.registration_status).trim().length > 0)
+          ? s.registration_status
+          : (parsedData?.registration_status || parsedData?.['Registration Status'] || 'Pending'));
 
         const user = {
           admission_number: studentCred.admission_number,
@@ -226,10 +224,10 @@ exports.unifiedLogin = async (req, res) => {
 
     // -------------------------------------------------------------
     // FALLBACK 5: HRMS MongoDB Check (Only when local checks do not match)
-    // Uses maxTimeMS(2500) fail-fast timeout and caches password locally on match
+    // Uses maxTimeMS(1500) fail-fast timeout and caches password locally on match
     // -------------------------------------------------------------
     const hrmsConn = getHRMSConnection();
-    if (hrmsConn && process.env.HRMS_MONGO_URL) {
+    if (hrmsConn && hrmsConn.readyState === 1 && process.env.HRMS_MONGO_URL) {
       try {
         const HRMSUser = getHRMSUserModel(hrmsConn);
         const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
@@ -425,7 +423,8 @@ exports.createSSOSession = async (req, res) => {
       const verifyRes = await fetch(`${CRM_BACKEND_URL}/auth/verify-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encryptedToken: ssoToken })
+        body: JSON.stringify({ encryptedToken: ssoToken }),
+        signal: AbortSignal.timeout(4000)
       });
       const text = await verifyRes.text();
       if (!text || !text.trim()) {

@@ -51,6 +51,7 @@ export const getStaticFileUrlDirect = (filename) => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
 });
 
 // Request interceptor to add token

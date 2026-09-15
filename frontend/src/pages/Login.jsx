@@ -53,9 +53,9 @@ const Login = () => {
   };
 
   // SSO state
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(() => !!searchParams.get('token'));
   const [ssoError, setSsoError] = useState(null);
-  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [showLoginForm, setShowLoginForm] = useState(() => !searchParams.get('token'));
 
   // Forgot Password State
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -116,12 +116,16 @@ const Login = () => {
   const handleSSOLogin = useCallback(async (encryptedToken) => {
     setIsVerifying(true);
     setSsoError(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     try {
       const verifyRes = await fetch(`${CRM_BACKEND_URL}/auth/verify-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ encryptedToken }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       const text = await verifyRes.text();
       if (!text || !text.trim()) {
         throw new Error(`CRM verify-token returned empty response`);
@@ -165,6 +169,7 @@ const Login = () => {
       toast.error(msg);
       setSearchParams({});
     } finally {
+      clearTimeout(timeoutId);
       setIsVerifying(false);
     }
   }, [navigate, loginFromSSO, setSearchParams]);

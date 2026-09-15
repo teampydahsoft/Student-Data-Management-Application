@@ -1,95 +1,95 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useAuthStore from './store/authStore';
 
-// Pages
+// Critical Direct Import for Instant Login Load
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import AuthCallback from './pages/AuthCallback';
-import Forms from './pages/Forms';
-import FormBuilder from './pages/FormBuilder';
-import FeedbackForms from './pages/FeedbackForms';
-import FeedbackFormBuilder from './pages/FeedbackFormBuilder';
-import Submissions from './pages/Submissions';
-import Students from './pages/Students';
-import AddStudent from './pages/AddStudent';
-import Settings from './pages/Settings';
-import PublicForm from './pages/PublicForm';
-import Attendance from './pages/Attendance';
-import GetStarted from './pages/GetStarted';
-import QrStudentView from './pages/QrStudentView';
 
-import UserManagement from './pages/UserManagement';
-import StudentFieldPermissions from './pages/StudentFieldPermissions';
-import Reports from './pages/Reports';
-import CategoryReport from './pages/CategoryReport';
-import SmsReport from './pages/SmsReport';
-import ScholarshipReport from './pages/ScholarshipReport';
-import StudentPromotions from './pages/StudentPromotions';
-import PrintIdCards from './pages/PrintIdCards';
-import CollegeTransfer from './pages/CollegeTransfer';
-import TaskManagement from './pages/TaskManagement';
-import Announcements from './pages/Announcements';
-import StudentHistory from './pages/StudentHistory';
-import SectionPartition from './pages/SectionPartition';
-import ServicesConfig from './pages/ServicesConfig';
-import ServiceRequests from './pages/ServiceRequests';
-import CertificateDesigner from './pages/admin/CertificateDesigner';
-import CollegeConfiguration from './pages/admin/CollegeConfiguration';
-import AddServiceWizard from './pages/admin/AddServiceWizard';
-import FacultyManagement from './pages/admin/FacultyManagement';
-import AttendanceMonitoring from './pages/admin/AttendanceMonitoring';
-import Profile from './pages/Profile';
-import ProfileChangeRequests from './pages/admin/ProfileChangeRequests';
-import Clubs from './pages/Clubs';
-import InternshipAdmin from './internship/InternshipAdmin';
-import CertificateBorrowManagement from './pages/admin/CertificateBorrowManagement';
+// Pages (Lazy Loaded for Fast Route Splitting)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const Forms = lazy(() => import('./pages/Forms'));
+const FormBuilder = lazy(() => import('./pages/FormBuilder'));
+const FeedbackForms = lazy(() => import('./pages/FeedbackForms'));
+const FeedbackFormBuilder = lazy(() => import('./pages/FeedbackFormBuilder'));
+const Submissions = lazy(() => import('./pages/Submissions'));
+const Students = lazy(() => import('./pages/Students'));
+const AddStudent = lazy(() => import('./pages/AddStudent'));
+const Settings = lazy(() => import('./pages/Settings'));
+const PublicForm = lazy(() => import('./pages/PublicForm'));
+const Attendance = lazy(() => import('./pages/Attendance'));
+const GetStarted = lazy(() => import('./pages/GetStarted'));
+const QrStudentView = lazy(() => import('./pages/QrStudentView'));
 
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const StudentFieldPermissions = lazy(() => import('./pages/StudentFieldPermissions'));
+const Reports = lazy(() => import('./pages/Reports'));
+const CategoryReport = lazy(() => import('./pages/CategoryReport'));
+const SmsReport = lazy(() => import('./pages/SmsReport'));
+const ScholarshipReport = lazy(() => import('./pages/ScholarshipReport'));
+const StudentPromotions = lazy(() => import('./pages/StudentPromotions'));
+const PrintIdCards = lazy(() => import('./pages/PrintIdCards'));
+const CollegeTransfer = lazy(() => import('./pages/CollegeTransfer'));
+const TaskManagement = lazy(() => import('./pages/TaskManagement'));
+const Announcements = lazy(() => import('./pages/Announcements'));
+const StudentHistory = lazy(() => import('./pages/StudentHistory'));
+const SectionPartition = lazy(() => import('./pages/SectionPartition'));
+const ServicesConfig = lazy(() => import('./pages/ServicesConfig'));
+const ServiceRequests = lazy(() => import('./pages/ServiceRequests'));
+const CertificateDesigner = lazy(() => import('./pages/admin/CertificateDesigner'));
+const CollegeConfiguration = lazy(() => import('./pages/admin/CollegeConfiguration'));
+const AddServiceWizard = lazy(() => import('./pages/admin/AddServiceWizard'));
+const FacultyManagement = lazy(() => import('./pages/admin/FacultyManagement'));
+const AttendanceMonitoring = lazy(() => import('./pages/admin/AttendanceMonitoring'));
+const Profile = lazy(() => import('./pages/Profile'));
+const ProfileChangeRequests = lazy(() => import('./pages/admin/ProfileChangeRequests'));
+const Clubs = lazy(() => import('./pages/Clubs'));
+const InternshipAdmin = lazy(() => import('./internship/InternshipAdmin'));
+const CertificateBorrowManagement = lazy(() => import('./pages/admin/CertificateBorrowManagement'));
 
-// Student Pages
-import StudentDashboard from './pages/student/Dashboard';
-import StudentProfile from './pages/student/Profile';
-import SemesterRegistration from './pages/student/SemesterRegistration';
+// Student Pages (Lazy Loaded)
+const StudentDashboard = lazy(() => import('./pages/student/Dashboard'));
+const StudentProfile = lazy(() => import('./pages/student/Profile'));
+const SemesterRegistration = lazy(() => import('./pages/student/SemesterRegistration'));
 
-import TicketAppRedirect from './components/student/TicketAppRedirect';
-import StudentAnnouncements from './pages/student/StudentAnnouncements';
-import StudentFeedback from './pages/student/StudentFeedback';
-import StudentAttendance from './pages/student/Attendance';
-import StudentServices from './pages/student/Services';
-import StudentClubs from './pages/student/StudentClubs';
-import FeeManagement from './pages/student/FeeManagement';
-import StudentScholarship from './pages/student/StudentScholarship';
-import Transport from './pages/student/Transport';
-import InternshipStudent from './internship/InternshipStudent';
-import MyProfileRequests from './pages/student/MyProfileRequests';
-import MyDocuments from './pages/student/MyDocuments';
-import StudentVersantTests from './pages/student/VersantTests';
+const TicketAppRedirect = lazy(() => import('./components/student/TicketAppRedirect'));
+const StudentAnnouncements = lazy(() => import('./pages/student/StudentAnnouncements'));
+const StudentFeedback = lazy(() => import('./pages/student/StudentFeedback'));
+const StudentAttendance = lazy(() => import('./pages/student/Attendance'));
+const StudentServices = lazy(() => import('./pages/student/Services'));
+const StudentClubs = lazy(() => import('./pages/student/StudentClubs'));
+const FeeManagement = lazy(() => import('./pages/student/FeeManagement'));
+const StudentScholarship = lazy(() => import('./pages/student/StudentScholarship'));
+const Transport = lazy(() => import('./pages/student/Transport'));
+const InternshipStudent = lazy(() => import('./internship/InternshipStudent'));
+const MyProfileRequests = lazy(() => import('./pages/student/MyProfileRequests'));
+const MyDocuments = lazy(() => import('./pages/student/MyDocuments'));
+const StudentVersantTests = lazy(() => import('./pages/student/VersantTests'));
 
+// Faculty Pages (v2.0, Lazy Loaded)
+const FacultyLayout = lazy(() => import('./components/Layout/FacultyLayout'));
+const FacultyDashboard = lazy(() => import('./pages/faculty/Dashboard'));
+const PostAttendance = lazy(() => import('./pages/faculty/PostAttendance'));
+const ContentManage = lazy(() => import('./pages/faculty/ContentManage'));
+const FacultyAnnouncements = lazy(() => import('./pages/faculty/Announcements'));
+const FacultyStudents = lazy(() => import('./pages/faculty/Students'));
+const FacultyChats = lazy(() => import('./pages/faculty/Chats'));
+const FacultyTimetable = lazy(() => import('./pages/faculty/FacultyTimetable'));
 
-// Faculty Pages (v2.0)
-import FacultyLayout from './components/Layout/FacultyLayout';
-import FacultyDashboard from './pages/faculty/Dashboard';
-import PostAttendance from './pages/faculty/PostAttendance';
-import ContentManage from './pages/faculty/ContentManage';
-import FacultyAnnouncements from './pages/faculty/Announcements';
-import FacultyStudents from './pages/faculty/Students';
-import FacultyChats from './pages/faculty/Chats';
-import FacultyTimetable from './pages/faculty/FacultyTimetable';
+// Event Pages (Lazy Loaded)
+const EventCalendar = lazy(() => import('./pages/admin/EventCalendar'));
+const StudentCalendar = lazy(() => import('./pages/student/StudentCalendar'));
+const StudentTimetable = lazy(() => import('./pages/student/StudentTimetable'));
 
-// Event Pages
-import EventCalendar from './pages/admin/EventCalendar';
-import StudentCalendar from './pages/student/StudentCalendar';
-import StudentTimetable from './pages/student/StudentTimetable';
-
-// Layout
-import AdminLayout from './components/Layout/AdminLayout';
-import StudentLayout from './components/Layout/StudentLayout';
-import ParentLayout from './components/Layout/ParentLayout';
-import ParentDashboard from './pages/parent/Dashboard';
-import ParentProfile from './pages/parent/Profile';
-import ParentAttendance from './pages/parent/Attendance';
-import ParentIdCard from './pages/parent/IdCard';
+// Layout (Lazy Loaded)
+const AdminLayout = lazy(() => import('./components/Layout/AdminLayout'));
+const StudentLayout = lazy(() => import('./components/Layout/StudentLayout'));
+const ParentLayout = lazy(() => import('./components/Layout/ParentLayout'));
+const ParentDashboard = lazy(() => import('./pages/parent/Dashboard'));
+const ParentProfile = lazy(() => import('./pages/parent/Profile'));
+const ParentAttendance = lazy(() => import('./pages/parent/Attendance'));
+const ParentIdCard = lazy(() => import('./pages/parent/IdCard'));
 
 // Protected Route Component for Admin
 const ProtectedRoute = ({ children }) => {
@@ -129,6 +129,15 @@ const ProtectedFacultyRoute = ({ children }) => {
 };
 
 import { registerServiceWorker, subscribeUser } from './services/pushService';
+
+const RouteLoader = () => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-10 h-10 border-[3px] border-teal-200 border-t-teal-600 rounded-full animate-spin" />
+      <span className="text-sm font-medium text-slate-500">Loading...</span>
+    </div>
+  </div>
+);
 
 function App() {
   const { isAuthenticated, userType } = useAuthStore();
@@ -179,150 +188,152 @@ function App() {
         }}
       />
 
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/student/login" element={<Login />} />
-        <Route path="/parent/login" element={<Login />} />
-        <Route path="/auth-callback" element={<AuthCallback />} />
-        <Route path="/form/:formId" element={<PublicForm />} />
-        <Route path="/qr/:qrToken" element={<QrStudentView />} />
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/student/login" element={<Login />} />
+          <Route path="/parent/login" element={<Login />} />
+          <Route path="/auth-callback" element={<AuthCallback />} />
+          <Route path="/form/:formId" element={<PublicForm />} />
+          <Route path="/qr/:qrToken" element={<QrStudentView />} />
 
-        {/* Protected Admin Routes */}
-        <Route
-          path="/"
-          element={
-            isAuthenticated ? (
-              userType === 'parent' ? (
-                <Navigate to="/parent/profile" replace />
-              ) : userType === 'student' ? (
-                <Navigate to="/student/dashboard" replace />
+          {/* Protected Admin Routes */}
+          <Route
+            path="/"
+            element={
+              isAuthenticated ? (
+                userType === 'parent' ? (
+                  <Navigate to="/parent/profile" replace />
+                ) : userType === 'student' ? (
+                  <Navigate to="/student/dashboard" replace />
+                ) : (
+                  <AdminLayout />
+                )
               ) : (
-                <AdminLayout />
+                <GetStarted />
               )
-            ) : (
-              <GetStarted />
-            )
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="forms" element={<Forms />} />
-          <Route path="forms/new" element={<FormBuilder />} />
-          <Route path="forms/edit/:formId" element={<FormBuilder />} />
-          <Route path="feedback-forms" element={<FeedbackForms />} />
-          <Route path="feedback-forms/new" element={<FeedbackFormBuilder />} />
-          <Route path="feedback-forms/edit/:formId" element={<FeedbackFormBuilder />} />
-          <Route path="students" element={<Students />} />
-          <Route path="students/add" element={<AddStudent />} />
-          <Route path="students/self-registration" element={<Submissions />} />
-          <Route path="students/profile-change-requests" element={<ProfileChangeRequests />} />
-          <Route path="section-partition" element={<SectionPartition />} />
-          <Route path="students/section-partition" element={<Navigate to="/section-partition" replace />} />
-          <Route path="promotions" element={<StudentPromotions />} />
-          <Route path="students/print-id-cards" element={<PrintIdCards />} />
-          <Route path="college-transfer" element={<CollegeTransfer />} />
-          <Route path="courses" element={<Settings />} />
-          <Route path="attendance" element={<Attendance />} />
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="forms" element={<Forms />} />
+            <Route path="forms/new" element={<FormBuilder />} />
+            <Route path="forms/edit/:formId" element={<FormBuilder />} />
+            <Route path="feedback-forms" element={<FeedbackForms />} />
+            <Route path="feedback-forms/new" element={<FeedbackFormBuilder />} />
+            <Route path="feedback-forms/edit/:formId" element={<FeedbackFormBuilder />} />
+            <Route path="students" element={<Students />} />
+            <Route path="students/add" element={<AddStudent />} />
+            <Route path="students/self-registration" element={<Submissions />} />
+            <Route path="students/profile-change-requests" element={<ProfileChangeRequests />} />
+            <Route path="section-partition" element={<SectionPartition />} />
+            <Route path="students/section-partition" element={<Navigate to="/section-partition" replace />} />
+            <Route path="promotions" element={<StudentPromotions />} />
+            <Route path="students/print-id-cards" element={<PrintIdCards />} />
+            <Route path="college-transfer" element={<CollegeTransfer />} />
+            <Route path="courses" element={<Settings />} />
+            <Route path="attendance" element={<Attendance />} />
 
-          <Route path="users" element={<UserManagement />} />
-          <Route path="users/field-permissions/:userId" element={<StudentFieldPermissions />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="reports/attendance" element={<Reports />} />
-          <Route path="reports/day-end" element={<Reports />} />
-          <Route path="reports/category" element={<CategoryReport />} />
-          <Route path="reports/sms" element={<SmsReport />} />
-          <Route path="reports/scholarship" element={<ScholarshipReport />} />
-          <Route path="tickets" element={<TicketAppRedirect redirectPath="/task-management" />} />
-          <Route path="task-management" element={<TaskManagement />} />
-          <Route path="announcements" element={<Announcements />} />
-          <Route path="student-history" element={<StudentHistory />} />
-          <Route path="events" element={<EventCalendar />} />
-          <Route path="services/config" element={<ServicesConfig />} />
-          <Route path="services/add" element={<AddServiceWizard />} />
-          <Route path="services/edit/:id" element={<AddServiceWizard />} />
-          <Route path="services/design/:serviceId" element={<CertificateDesigner />} />
-          <Route path="college-configuration" element={<CollegeConfiguration />} />
-          <Route path="services/requests" element={<ServiceRequests />} />
-          <Route path="clubs" element={<Clubs />} />
-          <Route path="faculty-management" element={<FacultyManagement />} />
-          <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
-          <Route path="internship-management" element={<InternshipAdmin />} />
-          <Route path="services/borrow-management" element={<CertificateBorrowManagement />} />
-        </Route>
+            <Route path="users" element={<UserManagement />} />
+            <Route path="users/field-permissions/:userId" element={<StudentFieldPermissions />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="reports/attendance" element={<Reports />} />
+            <Route path="reports/day-end" element={<Reports />} />
+            <Route path="reports/category" element={<CategoryReport />} />
+            <Route path="reports/sms" element={<SmsReport />} />
+            <Route path="reports/scholarship" element={<ScholarshipReport />} />
+            <Route path="tickets" element={<TicketAppRedirect redirectPath="/task-management" />} />
+            <Route path="task-management" element={<TaskManagement />} />
+            <Route path="announcements" element={<Announcements />} />
+            <Route path="student-history" element={<StudentHistory />} />
+            <Route path="events" element={<EventCalendar />} />
+            <Route path="services/config" element={<ServicesConfig />} />
+            <Route path="services/add" element={<AddServiceWizard />} />
+            <Route path="services/edit/:id" element={<AddServiceWizard />} />
+            <Route path="services/design/:serviceId" element={<CertificateDesigner />} />
+            <Route path="college-configuration" element={<CollegeConfiguration />} />
+            <Route path="services/requests" element={<ServiceRequests />} />
+            <Route path="clubs" element={<Clubs />} />
+            <Route path="faculty-management" element={<FacultyManagement />} />
+            <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
+            <Route path="internship-management" element={<InternshipAdmin />} />
+            <Route path="services/borrow-management" element={<CertificateBorrowManagement />} />
+          </Route>
 
 
-        {/* Protected Student Routes */}
-        <Route
-          path="/student"
-          element={
-            <ProtectedStudentRoute>
-              <StudentLayout />
-            </ProtectedStudentRoute>
-          }
-        >
-          <Route index element={<Navigate to="/student/dashboard" replace />} />
-          <Route path="dashboard" element={<StudentDashboard />} />
-          <Route path="profile" element={<StudentProfile />} />
+          {/* Protected Student Routes */}
+          <Route
+            path="/student"
+            element={
+              <ProtectedStudentRoute>
+                <StudentLayout />
+              </ProtectedStudentRoute>
+            }
+          >
+            <Route index element={<Navigate to="/student/dashboard" replace />} />
+            <Route path="dashboard" element={<StudentDashboard />} />
+            <Route path="profile" element={<StudentProfile />} />
 
-          <Route path="semester-registration" element={<SemesterRegistration />} />
-          <Route path="raise-ticket" element={<TicketAppRedirect />} />
-          <Route path="my-tickets" element={<TicketAppRedirect />} />
-          <Route path="announcements" element={<StudentAnnouncements />} />
-          <Route path="events" element={<StudentCalendar />} />
-          <Route path="attendance" element={<StudentAttendance />} />
-          <Route path="timetable" element={<StudentTimetable />} />
-          <Route path="services" element={<StudentServices />} />
-          <Route path="clubs" element={<StudentClubs />} />
-          <Route path="fees" element={<FeeManagement />} />
-          <Route path="scholarship" element={<StudentScholarship />} />
+            <Route path="semester-registration" element={<SemesterRegistration />} />
+            <Route path="raise-ticket" element={<TicketAppRedirect />} />
+            <Route path="my-tickets" element={<TicketAppRedirect />} />
+            <Route path="announcements" element={<StudentAnnouncements />} />
+            <Route path="events" element={<StudentCalendar />} />
+            <Route path="attendance" element={<StudentAttendance />} />
+            <Route path="timetable" element={<StudentTimetable />} />
+            <Route path="services" element={<StudentServices />} />
+            <Route path="clubs" element={<StudentClubs />} />
+            <Route path="fees" element={<FeeManagement />} />
+            <Route path="scholarship" element={<StudentScholarship />} />
 
-          <Route path="transport" element={<Transport />} />
-          <Route path="internship" element={<InternshipStudent />} />
-          <Route path="feedback" element={<StudentFeedback />} />
-          <Route path="profile-requests" element={<MyProfileRequests />} />
-          <Route path="my-documents" element={<MyDocuments />} />
-          <Route path="versant-tests" element={<StudentVersantTests />} />
-        </Route>
+            <Route path="transport" element={<Transport />} />
+            <Route path="internship" element={<InternshipStudent />} />
+            <Route path="feedback" element={<StudentFeedback />} />
+            <Route path="profile-requests" element={<MyProfileRequests />} />
+            <Route path="my-documents" element={<MyDocuments />} />
+            <Route path="versant-tests" element={<StudentVersantTests />} />
+          </Route>
 
-        {/* Protected Parent Routes */}
-        <Route
-          path="/parent"
-          element={
-            <ProtectedParentRoute>
-              <ParentLayout />
-            </ProtectedParentRoute>
-          }
-        >
-          <Route index element={<Navigate to="/parent/dashboard" replace />} />
-          <Route path="dashboard" element={<ParentDashboard />} />
-          <Route path="profile" element={<ParentProfile />} />
-          <Route path="attendance" element={<ParentAttendance />} />
-          <Route path="id-card" element={<ParentIdCard />} />
-        </Route>
+          {/* Protected Parent Routes */}
+          <Route
+            path="/parent"
+            element={
+              <ProtectedParentRoute>
+                <ParentLayout />
+              </ProtectedParentRoute>
+            }
+          >
+            <Route index element={<Navigate to="/parent/dashboard" replace />} />
+            <Route path="dashboard" element={<ParentDashboard />} />
+            <Route path="profile" element={<ParentProfile />} />
+            <Route path="attendance" element={<ParentAttendance />} />
+            <Route path="id-card" element={<ParentIdCard />} />
+          </Route>
 
-        {/* Protected Faculty Routes (v2.0) */}
-        <Route
-          path="/faculty"
-          element={
-            <ProtectedFacultyRoute>
-              <FacultyLayout />
-            </ProtectedFacultyRoute>
-          }
-        >
-          <Route index element={<Navigate to="/faculty/dashboard" replace />} />
-          <Route path="dashboard" element={<FacultyDashboard />} />
-          <Route path="attendance" element={<PostAttendance />} />
-          <Route path="timetable" element={<FacultyTimetable />} />
-          <Route path="content" element={<ContentManage />} />
-          <Route path="announcements" element={<FacultyAnnouncements />} />
-          <Route path="students" element={<FacultyStudents />} />
-          <Route path="chats" element={<FacultyChats />} />
-        </Route>
+          {/* Protected Faculty Routes (v2.0) */}
+          <Route
+            path="/faculty"
+            element={
+              <ProtectedFacultyRoute>
+                <FacultyLayout />
+              </ProtectedFacultyRoute>
+            }
+          >
+            <Route index element={<Navigate to="/faculty/dashboard" replace />} />
+            <Route path="dashboard" element={<FacultyDashboard />} />
+            <Route path="attendance" element={<PostAttendance />} />
+            <Route path="timetable" element={<FacultyTimetable />} />
+            <Route path="content" element={<ContentManage />} />
+            <Route path="announcements" element={<FacultyAnnouncements />} />
+            <Route path="students" element={<FacultyStudents />} />
+            <Route path="chats" element={<FacultyChats />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

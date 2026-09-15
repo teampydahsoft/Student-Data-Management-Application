@@ -81,6 +81,17 @@ app.use(
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 
+// Gracefully handle malformed JSON request bodies without crashing or printing stack traces
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && (err.status === 400 || err.statusCode === 400) && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      message: "Malformed JSON payload in request body",
+    });
+  }
+  next(err);
+});
+
 // Serve static files from uploads directory
 app.use("/uploads", express.static("uploads"));
 
@@ -352,8 +363,11 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error("Error:", err);
-  res.status(err.status || 500).json({
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) {
+    console.error("Server Error:", err);
+  }
+  res.status(status).json({
     success: false,
     message: err.message || "Internal server error",
   });
