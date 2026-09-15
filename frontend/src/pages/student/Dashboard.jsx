@@ -816,46 +816,46 @@ const Dashboard = () => {
                         else if (status === 'absent') bgClass = 'student-stat-today--absent';
                         else if (status === 'holiday' || status === 'no class work') bgClass = 'student-stat-today--holiday';
 
-                        return `rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-center min-h-[7.5rem] lg:min-h-[7.5rem] group overflow-hidden relative ${bgClass}`;
+                        return `rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-between min-h-[7.5rem] lg:min-h-[7.5rem] group overflow-hidden relative ${bgClass}`;
                     })()}>
-                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700"></div>
-                        <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em] mb-3 lg:mb-3 relative z-10">Today's Attendance</h3>
-                        <div className="flex items-center gap-2.5 sm:gap-3 relative z-10">
-                            {(() => {
-                                let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
-                                if (status === 'not marked yet') status = 'not marked';
-                                const isSunday = new Date().getDay() === 0;
-                                if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700 pointer-events-none"></div>
+                        {(() => {
+                            let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
+                            if (status === 'not marked yet') status = 'not marked';
+                            const isSunday = new Date().getDay() === 0;
+                            if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
 
-                                let Icon = CheckCircle;
-                                let label = 'Present Today';
+                            let Icon = CheckCircle;
+                            let label = 'Present Today';
 
-                                if (status === 'absent') {
-                                    Icon = ShieldAlert;
-                                    label = 'Absent Today';
-                                } else if (status === 'holiday' || status === 'no class work') {
-                                    Icon = Calendar;
-                                    label = 'Campus Holiday';
-                                } else if (status === 'not marked') {
-                                    Icon = Clock;
-                                    label = 'Active Session';
-                                }
+                            if (status === 'absent') {
+                                Icon = ShieldAlert;
+                                label = 'Absent Today';
+                            } else if (status === 'holiday' || status === 'no class work') {
+                                Icon = Calendar;
+                                label = 'Campus Holiday';
+                            } else if (status === 'not marked') {
+                                Icon = Clock;
+                                label = 'Active Session';
+                            }
 
-                                return (
-                                    <>
-                                        <div className="p-2 sm:p-2.5 rounded-lg lg:rounded-xl bg-white/20 text-white shrink-0">
+                            return (
+                                <>
+                                    <div className="flex items-start justify-between mb-2 lg:mb-3 relative z-10 gap-2">
+                                        <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Today's Attendance</h3>
+                                        <div className="p-1.5 sm:p-2 rounded-lg lg:rounded-xl bg-white/20 text-white shrink-0">
                                             <Icon size={18} className="sm:w-5 sm:h-5" />
                                         </div>
-                                        <div className="min-w-0">
-                                            <p className="text-white font-black text-sm sm:text-base lg:text-lg leading-tight tracking-tight truncate">{label}</p>
-                                            <p className="text-white/60 text-[9px] sm:text-xs font-bold mt-0.5 sm:mt-1 uppercase tracking-widest italic">
-                                                {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
-                                            </p>
-                                        </div>
-                                    </>
-                                );
-                            })()}
-                        </div>
+                                    </div>
+                                    <div className="relative z-10 min-w-0">
+                                        <p className="text-white font-black text-sm sm:text-base lg:text-lg leading-tight tracking-tight truncate">{label}</p>
+                                        <p className="text-white/60 text-[9px] sm:text-xs font-bold mt-0.5 sm:mt-1 uppercase tracking-widest italic">
+                                            {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+                                        </p>
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 )}
 

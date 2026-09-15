@@ -65,7 +65,6 @@ const Transport = lazy(() => import('./pages/student/Transport'));
 const InternshipStudent = lazy(() => import('./internship/InternshipStudent'));
 const MyProfileRequests = lazy(() => import('./pages/student/MyProfileRequests'));
 const MyDocuments = lazy(() => import('./pages/student/MyDocuments'));
-const StudentVersantTests = lazy(() => import('./pages/student/VersantTests'));
 
 // Faculty Pages (v2.0, Lazy Loaded)
 const FacultyLayout = lazy(() => import('./components/Layout/FacultyLayout'));
@@ -162,7 +161,7 @@ function App() {
   }, [isAuthenticated, userType]);
 
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -292,7 +291,6 @@ function App() {
             <Route path="feedback" element={<StudentFeedback />} />
             <Route path="profile-requests" element={<MyProfileRequests />} />
             <Route path="my-documents" element={<MyDocuments />} />
-            <Route path="versant-tests" element={<StudentVersantTests />} />
           </Route>
 
           {/* Protected Parent Routes */}

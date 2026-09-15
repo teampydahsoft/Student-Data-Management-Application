@@ -601,6 +601,8 @@ const StudentScholarshipHistoryTab = ({
   );
 
   const scheduleApplicationIdCheck = useCallback((studentYear, appId) => {
+    if (readOnly || isEditingDisabled) return;
+
     if (remoteAppIdTimersRef.current[studentYear]) {
       clearTimeout(remoteAppIdTimersRef.current[studentYear]);
     }
@@ -730,11 +732,12 @@ const StudentScholarshipHistoryTab = ({
   );
 
   useEffect(() => {
+    if (readOnly || isEditingDisabled) return;
     years.forEach((year) => {
       const appId = normalizeApplicationIdInput(year.application_id);
       scheduleApplicationIdCheck(year.student_year, appId);
     });
-  }, [years, scheduleApplicationIdCheck]);
+  }, [years, scheduleApplicationIdCheck, readOnly, isEditingDisabled]);
 
   useEffect(() => () => {
     Object.values(remoteAppIdTimersRef.current).forEach((timerId) => clearTimeout(timerId));
@@ -1281,32 +1284,34 @@ const StudentScholarshipHistoryTab = ({
           to complete registration.
         </div>
       )}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-pink-50 text-pink-600">
-            <GraduationCap size={20} />
+      {!readOnly && !hideHeader && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-pink-50 text-pink-600">
+              <GraduationCap size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Student Scholarship</h3>
+              <p className="text-xs text-gray-500">
+                {meta?.student?.student_name || student?.student_name || admissionNumber}
+                {meta?.firstAcademicYear ? ` · First academic year ${meta.firstAcademicYear}` : ''}
+                {meta?.totalYears ? ` · ${meta.totalYears} year(s)` : ''}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Student Scholarship</h3>
-            <p className="text-xs text-gray-500">
-              {meta?.student?.student_name || student?.student_name || admissionNumber}
-              {meta?.firstAcademicYear ? ` · First academic year ${meta.firstAcademicYear}` : ''}
-              {meta?.totalYears ? ` · ${meta.totalYears} year(s)` : ''}
-            </p>
-          </div>
+          {!isEditingDisabled && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || hasApplicationIdErrors}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save Scholarship
+            </button>
+          )}
         </div>
-        {!isEditingDisabled && (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || hasApplicationIdErrors}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-60"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Scholarship
-          </button>
-        )}
-      </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-wrap items-end gap-4">
         <div className="flex flex-col gap-1 min-w-[180px]">
@@ -1348,31 +1353,177 @@ const StudentScholarshipHistoryTab = ({
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Year-wise Scholarship Summary</h4>
         </div>
-        <div className="overflow-x-auto">
+        {/* Mobile View (< sm) */}
+        <div className="block sm:hidden divide-y divide-gray-100">
+          {summaryYears.map((year, yearIndex) => {
+            const semesters = year.semesters?.length
+              ? year.semesters
+              : buildDefaultSemesters(
+                getScholarshipSemestersForYear(meta, year.student_year),
+                year.eligible || ''
+              );
+            const yearEditingDisabled = !isYearEditable(year.student_year);
+
+            return (
+              <div key={`mobile-summary-${year.student_year}`} className="p-3.5 space-y-3">
+                {/* Header & App ID & History */}
+                <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-xl border border-gray-100 gap-2">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-bold text-gray-900 text-xs">Year {year.student_year}</span>
+                    {yearEditingDisabled && !isEditingDisabled && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-200/60 px-1.5 py-0.5 rounded">
+                        Locked
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-center px-1">
+                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-tight">App ID</span>
+                    {yearEditingDisabled ? (
+                      <span className="text-xs font-mono text-gray-700 font-semibold block">{year.application_id || '—'}</span>
+                    ) : (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={SCHOLARSHIP_APPLICATION_ID_LENGTH}
+                        value={year.application_id || ''}
+                        onChange={(e) => updateYearField(yearIndex, 'application_id', e.target.value)}
+                        className="w-24 px-1 py-0.5 border rounded text-xs text-center font-mono"
+                        placeholder={`${SCHOLARSHIP_APPLICATION_ID_LENGTH}-digit`}
+                      />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryYear(year.student_year)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-bold hover:bg-amber-100 border border-amber-200 shrink-0"
+                    title={`View archived scholarship history for Year ${year.student_year}`}
+                  >
+                    <History size={12} />
+                    History
+                  </button>
+                </div>
+
+                {/* Financial Overview Grid — 3 columns inline */}
+                <div className="grid grid-cols-3 gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
+                  <div>
+                    <span className="text-[9px] text-gray-500 uppercase font-bold block leading-tight">{sanctionedColumnLabel}</span>
+                    <span className="font-bold text-gray-900 text-xs">
+                      {year.financialTracking
+                        ? (year.tuitionFeeMode ? formatCurrency(0) : formatCurrency(year.display_sanctioned_amount ?? year.effective_sanctioned_amount ?? year.sanctioned_amount))
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[9px] text-emerald-600 uppercase font-bold block leading-tight">RTF Released</span>
+                    <span className="font-bold text-emerald-700 text-xs">
+                      {year.releasesEligible ? formatCurrency(year.released_amount) : '—'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[9px] text-pink-600 uppercase font-bold block leading-tight">RTF Due</span>
+                    <span className={`font-bold text-xs ${(year.due_amount ?? 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
+                      {(year.releasesEligible || year.tuitionFeeMode || year.feeOnlyMode) && (year.due_amount ?? 0) >= 0
+                        ? formatCurrency(year.due_amount ?? 0)
+                        : '—'}
+                    </span>
+                  </div>
+
+                  {hasAnyAdvance && (
+                    <div>
+                      <span className="text-[9px] text-violet-600 uppercase font-bold block leading-tight">Advance</span>
+                      <span className="font-bold text-violet-700 text-xs">
+                        {year.releasesEligible && year.advance_amount > 0 ? formatCurrency(year.advance_amount) : '—'}
+                      </span>
+                    </div>
+                  )}
+
+                  {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && (
+                    <>
+                      <div>
+                        <span className="text-[9px] text-blue-600 uppercase font-bold block leading-tight">Paid</span>
+                        <span className="font-bold text-blue-700 text-xs">
+                          {year.showPaidAmount ? formatCurrency(year.paid_amount) : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-amber-600 uppercase font-bold block leading-tight">Fee Due</span>
+                        <span className={`font-bold text-xs ${year.fee_due_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                          {year.financialTracking ? formatCurrency(year.fee_due_amount) : '—'}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Semesters & Eligible Status — Side by Side */}
+                <div className="bg-gray-50/50 p-2.5 rounded-xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Semesters</span>
+                  <div className="flex items-center justify-between gap-2">
+                    {semesters.map((semester, semesterIndex) => (
+                      <div key={`mobile-sem-${year.student_year}-${semester.student_semester}`} className="flex items-center gap-1.5 text-xs bg-white px-2 py-1.5 rounded-lg border border-gray-100 flex-1 justify-between min-w-0">
+                        <span className="text-gray-600 font-medium shrink-0">Sem {semester.student_semester}</span>
+                        {yearEditingDisabled ? (
+                          <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[11px] shrink-0">
+                            {getScholarshipStatusDropdownLabel(semester.eligible) || '—'}
+                          </span>
+                        ) : (
+                          <select
+                            value={normalizeScholarshipStatusValue(semester.eligible) || ''}
+                            onChange={(e) => updateSemesterField(yearIndex, semesterIndex, e.target.value)}
+                            className="px-1 py-0.5 border border-gray-200 rounded text-xs text-gray-800 bg-white shrink-0"
+                          >
+                            {ELIGIBLE_OPTIONS.map((option) => (
+                              <option key={option.value || 'blank'} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Remarks if present */}
+                {semesters.some((s) => s.remark) && (
+                  <div className="text-[11px] text-gray-500 pt-0.5 truncate">
+                    Remark: {semesters.map((s) => s.remark).filter(Boolean).join(', ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop View (sm and above) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Year</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Application ID</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap">Sem</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap">Eligible</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight">Year</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">APPLICATION</span><span className="block text-[10px] text-gray-400">ID</span></th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight">Sem</th>
+                <th className="px-2 py-2.5 font-bold leading-tight">Eligible</th>
                 {showFeePaidColumn && (
-                  <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Fee Paid</th>
+                  <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">FEE</span><span className="block text-[10px] text-emerald-600">PAID</span></th>
                 )}
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{sanctionedColumnLabel}</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight">{sanctionedColumnLabel}</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">RTF</span><span className="block text-[10px] text-emerald-600">RELEASED</span></th>
                 {hasAnyAdvance && (
-                  <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_ADVANCE_LABEL}</th>
+                  <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">ADVANCE</span></th>
                 )}
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_RTF_DUE_LABEL}</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">RTF</span><span className="block text-[10px] text-pink-600">DUE</span></th>
                 {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && (
                   <>
-                    <th className="px-2 py-3 font-bold whitespace-nowrap text-center">Paid</th>
-                    <th className="px-2 py-3 font-bold whitespace-nowrap text-center">{SCHOLARSHIP_FEE_DUE_LABEL}</th>
+                    <th className="px-2 py-2.5 font-bold text-center leading-tight">Paid</th>
+                    <th className="px-2 py-2.5 font-bold text-center leading-tight"><span className="block">FEE</span><span className="block text-[10px] text-amber-600">DUE</span></th>
                   </>
                 )}
-                <th className="px-2 py-3 font-bold whitespace-nowrap">Remarks</th>
-                <th className="px-2 py-3 font-bold whitespace-nowrap text-center">History</th>
+                <th className="px-2 py-2.5 font-bold leading-tight">Remarks</th>
+                <th className="px-2 py-2.5 font-bold text-center leading-tight">History</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1671,19 +1822,21 @@ const StudentScholarshipHistoryTab = ({
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_RTF_RELEASED_TRANSACTIONS_TITLE}</h4>
-          <p className="text-[11px] text-gray-400 mt-1">
-            Shown only for years with every semester marked Eligible.
-            {hasAnyAdvance && isCollegeAccount() && (
-              <span className="ml-1">
-                When college fee is fully paid manually, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
-              </span>
-            )}
+          <div className="text-[11px] text-gray-400 mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+            <span>
+              Shown only for years with every semester marked Eligible.
+              {hasAnyAdvance && isCollegeAccount() && (
+                <span className="ml-1">
+                  When college fee is fully paid manually, {SCHOLARSHIP_RTF_DUE_LABEL} is not applicable — {SCHOLARSHIP_RTF_RELEASED_LABEL} entries count as {SCHOLARSHIP_ADVANCE_LABEL}.
+                </span>
+              )}
+            </span>
             {isCollegeAccount() && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0 w-fit">
                 College Account — Paid Transactions auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL}
               </span>
             )}
-          </p>
+          </div>
         </div>
 
         {releaseTransactionYears.length === 0 ? (
@@ -1738,13 +1891,13 @@ const StudentScholarshipHistoryTab = ({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">RTF Remitted Date</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_RELEASED_LABEL} Amount</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">
-                        {SCHOLARSHIP_RTF_DUE_LABEL}
+                      <th className="px-2 py-2 font-bold leading-tight"><span className="block">ACADEMIC</span><span className="block">YEAR</span></th>
+                      <th className="px-2 py-2 font-bold leading-tight"><span className="block">RTF REMITTED</span><span className="block">DATE</span></th>
+                      <th className="px-2 py-2 font-bold text-right leading-tight"><span className="block">RTF RELEASED</span><span className="block">AMOUNT</span></th>
+                      <th className="px-2 py-2 font-bold text-right leading-tight">
+                        <span className="block">RTF</span><span className="block">DUE</span>
                       </th>
-                      {!isEditingDisabled && <th className="px-2 py-2 font-bold whitespace-nowrap text-center w-20">Actions</th>}
+                      {!isEditingDisabled && <th className="px-2 py-2 font-bold text-center w-20">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -1867,19 +2020,21 @@ const StudentScholarshipHistoryTab = ({
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">{SCHOLARSHIP_PAID_TRANSACTIONS_TITLE}</h4>
-          <p className="text-[11px] text-gray-400 mt-1">
-            Fee paid to college — add a row for each payment.
+          <div className="text-[11px] text-gray-400 mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+            <span>
+              Fee paid to college — add a row for each payment.
+            </span>
             {isCollegeAccount() && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0 w-fit">
                 College Account — auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL} when Eligible; manual entry for other statuses
               </span>
             )}
             {!isCollegeAccount() && selectedCaste && casteAccountTypes[selectedCaste] !== undefined && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0 w-fit">
                 Mother Account — enter paid amount and date manually
               </span>
             )}
-          </p>
+          </div>
         </div>
 
         {displayPaidTransactionYears.length === 0 ? (
@@ -1931,14 +2086,15 @@ const StudentScholarshipHistoryTab = ({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">Academic Year</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap">{paidDateLabel}</th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">
-                        {tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'Paid Amount'}
+                      <th className="px-2 py-2 font-bold leading-tight"><span className="block">ACADEMIC</span><span className="block">YEAR</span></th>
+                      <th className="px-2 py-2 font-bold leading-tight"><span className="block">PAID</span><span className="block">DATE</span></th>
+                      <th className="px-2 py-2 font-bold text-right leading-tight">
+                        <span className="block">{tuitionFeeMode ? SCHOLARSHIP_TUITION_FEE_PAID_LABEL : 'PAID'}</span>
+                        {!tuitionFeeMode && <span className="block">AMOUNT</span>}
                       </th>
-                      <th className="px-2 py-2 font-bold whitespace-nowrap text-right">{feeDueLabel}</th>
+                      <th className="px-2 py-2 font-bold text-right leading-tight"><span className="block">FEE</span><span className="block">DUE</span></th>
                       {!yearPaidEditingDisabled && (
-                        <th className="px-2 py-2 font-bold whitespace-nowrap text-center">Actions</th>
+                        <th className="px-2 py-2 font-bold text-center">Actions</th>
                       )}
                     </tr>
                   </thead>
@@ -2082,14 +2238,14 @@ const StudentScholarshipHistoryTab = ({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                  <th className="px-3 py-2 font-bold whitespace-nowrap text-center">Year</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap text-center">Sem</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap">Status</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap">App ID</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">Sanctioned</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap text-right">{SCHOLARSHIP_RTF_RELEASED_LABEL}</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap">Source</th>
-                  <th className="px-3 py-2 font-bold whitespace-nowrap">Archived On</th>
+                  <th className="px-3 py-2 font-bold text-center leading-tight">Year</th>
+                  <th className="px-3 py-2 font-bold text-center leading-tight">Sem</th>
+                  <th className="px-3 py-2 font-bold leading-tight">Status</th>
+                  <th className="px-3 py-2 font-bold leading-tight"><span className="block">APP</span><span className="block">ID</span></th>
+                  <th className="px-3 py-2 font-bold text-right leading-tight">Sanctioned</th>
+                  <th className="px-3 py-2 font-bold text-right leading-tight"><span className="block">RTF</span><span className="block">RELEASED</span></th>
+                  <th className="px-3 py-2 font-bold leading-tight">Source</th>
+                  <th className="px-3 py-2 font-bold leading-tight"><span className="block">ARCHIVED</span><span className="block">ON</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
