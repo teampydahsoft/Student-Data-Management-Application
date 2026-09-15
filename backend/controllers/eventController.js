@@ -1,10 +1,19 @@
 const { masterPool } = require('../config/database');
 const { sendNotificationToUser } = require('./pushController');
 const { createBroadcastNotification } = require('../services/notificationService');
+const { parseTargetsFromRow, matchesStudent } = require('../services/targetingService');
 
 const serializeTarget = (target) => {
     if (Array.isArray(target) && target.length > 0) {
-        return JSON.stringify(target);
+        return JSON.stringify(target.filter(Boolean));
+    }
+    if (typeof target === 'string' && target.trim()) {
+        try {
+            const parsed = JSON.parse(target);
+            if (Array.isArray(parsed)) return JSON.stringify(parsed.filter(Boolean));
+        } catch {
+            return JSON.stringify([target.trim()]);
+        }
     }
     return null;
 };
@@ -139,38 +148,19 @@ exports.getStudentEvents = async (req, res) => {
 
         const student = studentRows[0];
 
-        const query = `
-            SELECT * FROM events
-            WHERE is_active = 1
-            AND (
-                (event_type = 'holiday') -- Show all holidays (logic can be refined if holidays are college specific)
-                OR
-                (
-                    (target_college IS NULL OR JSON_CONTAINS(target_college, JSON_QUOTE(?)))
-                    AND (target_batch IS NULL OR JSON_CONTAINS(target_batch, JSON_QUOTE(?)))
-                    AND (target_course IS NULL OR JSON_CONTAINS(target_course, JSON_QUOTE(?)))
-                    AND (target_branch IS NULL OR JSON_CONTAINS(target_branch, JSON_QUOTE(?)))
-                    AND (target_year IS NULL OR JSON_CONTAINS(target_year, JSON_QUOTE(?)))
-                    AND (target_semester IS NULL OR JSON_CONTAINS(target_semester, JSON_QUOTE(?)))
-                )
-            )
-            ORDER BY event_date ASC
-        `;
+        const [rows] = await masterPool.query(
+            'SELECT * FROM events WHERE is_active = 1 ORDER BY event_date ASC'
+        );
 
-        const params = [
-            student.college || '',
-            student.batch || '',
-            student.course || '',
-            student.branch || '',
-            String(student.current_year || ''),
-            String(student.current_semester || '')
-        ];
-
-        const [rows] = await masterPool.query(query, params);
+        const matchedEvents = rows.filter(event => {
+            if (event.event_type === 'holiday') return true;
+            const targets = parseTargetsFromRow(event);
+            return matchesStudent(student, targets);
+        });
 
         res.json({
             success: true,
-            data: rows
+            data: matchedEvents
         });
 
     } catch (error) {

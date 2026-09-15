@@ -3697,7 +3697,11 @@ exports.getStudentByAdmission = async (req, res) => {
       });
     }
 
-    await syncIneligibleQuotaScholarshipForStudent(masterPool, students[0]);
+    setImmediate(() => {
+      syncIneligibleQuotaScholarshipForStudent(masterPool, students[0]).catch((err) => {
+        console.warn('Background quota sync error:', err.message);
+      });
+    });
 
     const parsedData = parseJSON(students[0].student_data) || {};
     const stage = resolveStageFromData(parsedData, {
@@ -6553,7 +6557,11 @@ exports.getStudentByAdmission = async (req, res) => {
 
     const student = students[0];
 
-    await syncIneligibleQuotaScholarshipForStudent(masterPool, student);
+    setImmediate(() => {
+      syncIneligibleQuotaScholarshipForStudent(masterPool, student).catch((err) => {
+        console.warn('Background quota sync error:', err.message);
+      });
+    });
 
     // Parse JSON student_data and resolve current stage
     const parsedData = parseJSON(student.student_data) || {};

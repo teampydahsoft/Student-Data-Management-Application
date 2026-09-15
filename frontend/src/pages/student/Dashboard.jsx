@@ -22,7 +22,7 @@ const Dashboard = () => {
     };
 
     const ticketAppUrl = useMemo(() => getTicketAppUrl('/student/my-tickets'), [token]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!user?.admission_number);
 
     // Additional Data States
     const [attendanceHistory, setAttendanceHistory] = useState(null);
@@ -122,124 +122,149 @@ const Dashboard = () => {
         hasCheckedAnnouncements.current = false;
 
         const fetchAllData = async () => {
-            try {
-                if (!user?.admission_number) return;
+            if (!user?.admission_number) return;
 
-                const [profileRes, announcementsRes, pollsRes, attendanceRes, servicesRes, eventsRes, clubsRes, hourlyRes, contentRes, marksRes, timetableRes, periodSlotsRes, layoutRes] = await Promise.allSettled([
-                    api.get(`/students/${user.admission_number}`),
-                    api.get('/announcements/student?limit=5'),
-                    api.get('/polls/student'),
-                    api.get('/attendance/student', { params: { _t: Date.now() } }),
-                    serviceService.getRequests(),
-                    api.get('/events/student'),
-                    clubService.getClubs(),
-                    api.get('/hourly-attendance/student-summary'),
-                    api.get('/academic-content'),
-                    api.get('/internal-marks/student/me'),
-                    api.get('/timetable', { params: { branch_id: user.branch_id, year: user.current_year, semester: user.current_semester || 1 } }),
-                    api.get('/period-slots', { params: { college_id: user.college_id } }),
-                    api.get('/settings/student-layout')
-                ]);
+            // Tier 1: Fast Critical Data (Profile, Attendance, Layout Settings)
+            // Immediately completes the initial screen loading without waiting for secondary widgets
+            const fetchTier1 = async () => {
+                try {
+                    const [profileRes, attendanceRes, layoutRes] = await Promise.allSettled([
+                        api.get(`/students/${user.admission_number}`),
+                        api.get('/attendance/student', { params: { _t: Date.now() } }),
+                        api.get('/settings/student-layout')
+                    ]);
 
-                // Handle Profile
-                if (profileRes.status === 'fulfilled' && profileRes.value.data.success) {
-                    setStudentData(profileRes.value.data.data);
-                }
-
-                // Handle Announcements
-                if (announcementsRes.status === 'fulfilled' && announcementsRes.value.data.success) {
-                    const allAnnouncements = announcementsRes.value.data.data;
-
-                    // Sort announcements by date descending (latest first)
-                    const sortedAnnouncements = [...allAnnouncements].sort((a, b) =>
-                        new Date(b.created_at) - new Date(a.created_at)
-                    );
-
-                    setAnnouncements(sortedAnnouncements);
-
-                    // Show latest unseen announcement popup (only check once per session)
-                    if (!hasCheckedAnnouncements.current && !showAnnouncement && sortedAnnouncements.length > 0) {
-                        hasCheckedAnnouncements.current = true;
-
-                        // We only care about the absolute latest announcement
-                        const latestAnnouncement = sortedAnnouncements[0];
-                        const seenIds = JSON.parse(localStorage.getItem('seen_announcements') || '[]');
-                        const seenIdsStr = seenIds.map(id => String(id));
-
-                        // Only show popup if the ABSOLUTE LATEST announcement is unseen
-                        if (!seenIdsStr.includes(String(latestAnnouncement.id))) {
-                            setCurrentAnnouncement(latestAnnouncement);
-                            setShowAnnouncement(true);
-                        }
+                    // Handle Profile
+                    if (profileRes.status === 'fulfilled' && profileRes.value.data.success) {
+                        setStudentData(profileRes.value.data.data);
                     }
-                }
 
-                // Handle Polls
-                if (pollsRes.status === 'fulfilled' && pollsRes.value.data.success) {
-                    setPolls(pollsRes.value.data.data);
-                }
+                    // Handle Attendance
+                    if (attendanceRes.status === 'fulfilled' && attendanceRes.value.data.success) {
+                        setAttendanceHistory(attendanceRes.value.data.data);
+                    } else if (attendanceRes.status === 'rejected') {
+                        console.error('Failed to fetch attendance:', attendanceRes.reason);
+                    }
 
-                // Handle Attendance
-                if (attendanceRes.status === 'fulfilled' && attendanceRes.value.data.success) {
-                    setAttendanceHistory(attendanceRes.value.data.data);
-                } else if (attendanceRes.status === 'rejected') {
-                    console.error('Failed to fetch attendance:', attendanceRes.reason);
+                    // Handle Layout Settings
+                    if (layoutRes && layoutRes.status === 'fulfilled' && layoutRes.value.data?.success) {
+                        setLayoutSettings(layoutRes.value.data.data);
+                    }
+                } catch (error) {
+                    console.error('Error fetching critical student data:', error);
+                } finally {
+                    setLoading(false);
                 }
+            };
 
-                // Handle Services
-                if (servicesRes.status === 'fulfilled' && servicesRes.value.data) {
-                    setServiceRequests(servicesRes.value.data);
-                }
+            // Tier 2: Non-blocking Secondary Data (Render each widget independently as soon as it arrives)
+            const fetchTier2 = () => {
+                // 1. Announcements (renders immediately within ~100ms)
+                api.get('/announcements/student?limit=5')
+                    .then(res => {
+                        if (res.data?.success && Array.isArray(res.data.data)) {
+                            const sortedAnnouncements = [...res.data.data].sort((a, b) =>
+                                new Date(b.created_at) - new Date(a.created_at)
+                            );
+                            setAnnouncements(sortedAnnouncements);
 
-                // Handle Events
-                if (eventsRes.status === 'fulfilled' && eventsRes.value.data.success) {
-                    setEvents(eventsRes.value.data.data);
-                }
+                            if (!hasCheckedAnnouncements.current && !showAnnouncement && sortedAnnouncements.length > 0) {
+                                hasCheckedAnnouncements.current = true;
+                                const latestAnnouncement = sortedAnnouncements[0];
+                                const seenIds = JSON.parse(localStorage.getItem('seen_announcements') || '[]');
+                                const seenIdsStr = seenIds.map(id => String(id));
+                                if (!seenIdsStr.includes(String(latestAnnouncement.id))) {
+                                    setCurrentAnnouncement(latestAnnouncement);
+                                    setShowAnnouncement(true);
+                                }
+                            }
+                        }
+                    })
+                    .catch(err => console.error('Failed to load announcements:', err));
 
-                // Handle Clubs
-                if (clubsRes.status === 'fulfilled' && clubsRes.value.success) {
-                    setClubs(clubsRes.value.data || []);
-                }
-                if (hourlyRes.status === 'fulfilled' && hourlyRes.value.data?.success && hourlyRes.value.data?.data) {
-                    setHourlySummary(hourlyRes.value.data.data);
-                }
-                if (contentRes.status === 'fulfilled' && contentRes.value.data?.success && Array.isArray(contentRes.value.data?.data)) {
-                    const list = contentRes.value.data.data;
-                    const now = new Date().toISOString().slice(0, 10);
-                    setAcademicContent({
-                        tests: list.filter((c) => c.type === 'test' && (!c.due_date || c.due_date >= now)).length,
-                        notes: list.filter((c) => c.type === 'note').length,
-                    });
-                }
-                if (marksRes.status === 'fulfilled' && marksRes.value.data?.success && Array.isArray(marksRes.value.data?.data)) {
-                    setInternalMarksCount(marksRes.value.data.data.length);
-                }
+                // 2. Clubs (renders immediately without waiting for other widgets)
+                clubService.getClubs()
+                    .then(res => {
+                        if (res?.success) {
+                            setClubs(res.data || []);
+                        }
+                    })
+                    .catch(err => console.error('Failed to load clubs:', err));
 
-                if (timetableRes.status === 'fulfilled' && timetableRes.value.data?.success && periodSlotsRes.status === 'fulfilled' && periodSlotsRes.value.data?.success) {
-                    const allTimetable = timetableRes.value.data.data;
-                    const allSlots = periodSlotsRes.value.data.data;
-                    const dayMap = ['SUN', 'MON', 'TUE', 'WED', 'THUR', 'FRI', 'SAT'];
-                    const currentDay = dayMap[new Date().getDay()];
+                // 3. Polls
+                api.get('/polls/student')
+                    .then(res => {
+                        if (res.data?.success) setPolls(res.data.data || []);
+                    })
+                    .catch(err => console.error('Failed to load polls:', err));
 
-                    const todayEntries = allTimetable.filter(item => item.day_of_week === currentDay);
-                    // Merge entry with slot info
-                    const merged = allSlots.map(slot => {
-                        const entry = todayEntries.find(e => e.period_slot_id === slot.id);
-                        return { ...slot, entry };
-                    });
-                    setTodayTimetable(merged);
-                }
+                // 4. Events
+                api.get('/events/student')
+                    .then(res => {
+                        if (res.data?.success) setEvents(res.data.data || []);
+                    })
+                    .catch(err => console.error('Failed to load events:', err));
 
-                // Handle Layout Settings
-                if (layoutRes && layoutRes.status === 'fulfilled' && layoutRes.value.data?.success) {
-                    setLayoutSettings(layoutRes.value.data.data);
-                }
+                // 5. Service Requests
+                serviceService.getRequests()
+                    .then(res => {
+                        if (res?.data) setServiceRequests(res.data);
+                    })
+                    .catch(err => console.error('Failed to load service requests:', err));
 
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-            } finally {
-                setLoading(false);
-            }
+                // 6. Hourly Summary
+                api.get('/hourly-attendance/student-summary')
+                    .then(res => {
+                        if (res.data?.success && res.data?.data) setHourlySummary(res.data.data);
+                    })
+                    .catch(err => console.error('Failed to load hourly summary:', err));
+
+                // 7. Academic Content
+                api.get('/academic-content')
+                    .then(res => {
+                        if (res.data?.success && Array.isArray(res.data?.data)) {
+                            const list = res.data.data;
+                            const now = new Date().toISOString().slice(0, 10);
+                            setAcademicContent({
+                                tests: list.filter((c) => c.type === 'test' && (!c.due_date || c.due_date >= now)).length,
+                                notes: list.filter((c) => c.type === 'note').length,
+                            });
+                        }
+                    })
+                    .catch(err => console.error('Failed to load academic content:', err));
+
+                // 8. Internal Marks
+                api.get('/internal-marks/student/me')
+                    .then(res => {
+                        if (res.data?.success && Array.isArray(res.data?.data)) {
+                            setInternalMarksCount(res.data.data.length);
+                        }
+                    })
+                    .catch(err => console.error('Failed to load internal marks:', err));
+
+                // 9. Timetable & Period Slots
+                Promise.allSettled([
+                    api.get('/timetable', { params: { branch_id: user.branch_id, year: user.current_year, semester: user.current_semester || 1 } }),
+                    api.get('/period-slots', { params: { college_id: user.college_id } })
+                ]).then(([timetableRes, periodSlotsRes]) => {
+                    if (timetableRes.status === 'fulfilled' && timetableRes.value.data?.success && periodSlotsRes.status === 'fulfilled' && periodSlotsRes.value.data?.success) {
+                        const allTimetable = timetableRes.value.data.data;
+                        const allSlots = periodSlotsRes.value.data.data;
+                        const dayMap = ['SUN', 'MON', 'TUE', 'WED', 'THUR', 'FRI', 'SAT'];
+                        const currentDay = dayMap[new Date().getDay()];
+                        const todayEntries = allTimetable.filter(item => item.day_of_week === currentDay);
+                        const merged = allSlots.map(slot => {
+                            const entry = todayEntries.find(e => e.period_slot_id === slot.id);
+                            return { ...slot, entry };
+                        });
+                        setTodayTimetable(merged);
+                    }
+                }).catch(err => console.error('Failed to load timetable:', err));
+            };
+
+            // Run Tier 1 and Tier 2 concurrently
+            fetchTier1();
+            fetchTier2();
         };
 
         fetchAllData();
@@ -474,12 +499,12 @@ const Dashboard = () => {
     if (loading) {
         return (
             <div className="space-y-4 sm:space-y-5 lg:space-y-5 w-full animate-pulse relative z-0 pb-8">
-                <div className="rounded-2xl p-4 sm:p-5 lg:p-6 bg-sky-500/10 border border-sky-500/10 h-28 sm:h-32 lg:h-36">
-                    <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-                        <SkeletonBox height="h-20 w-20 sm:h-24 sm:w-24 lg:h-28 lg:w-28" className="rounded-xl lg:rounded-2xl shrink-0" />
-                        <div className="flex-1 w-full space-y-3">
-                            <SkeletonBox height="h-8 sm:h-10" width="w-3/4 max-w-xs sm:max-w-md mx-auto sm:mx-0" />
-                            <SkeletonBox height="h-4" width="w-1/2 max-w-[200px] mx-auto sm:mx-0" />
+                <div className="rounded-2xl p-4 sm:p-5 lg:p-6 bg-sky-500/10 border border-sky-500/10 min-h-[5.5rem] sm:h-32 lg:h-36 flex items-center">
+                    <div className="flex items-center gap-3.5 sm:gap-5 w-full">
+                        <SkeletonBox height="h-16 w-16 sm:h-20 sm:w-20 lg:h-[4.5rem] lg:w-[4.5rem]" className="rounded-xl lg:rounded-2xl shrink-0" />
+                        <div className="flex-1 space-y-2">
+                            <SkeletonBox height="h-6 sm:h-8" width="w-48 max-w-xs" />
+                            <SkeletonBox height="h-3 sm:h-4" width="w-32 max-w-[160px]" />
                         </div>
                     </div>
                 </div>
@@ -697,67 +722,74 @@ const Dashboard = () => {
                 <div className={`absolute top-0 right-0 w-48 lg:w-64 h-48 lg:h-64 rounded-full -mr-16 lg:-mr-24 -mt-16 lg:-mt-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-white/10' : (isProfileVerified ? 'bg-emerald-500/10' : 'bg-white/10')}`}></div>
                 <div className={`absolute bottom-0 left-0 w-32 lg:w-48 h-32 lg:h-48 rounded-full -ml-16 lg:-ml-24 -mb-16 lg:-mb-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-black/5' : (isProfileVerified ? 'bg-emerald-500/5' : 'bg-black/5')}`}></div>
 
-                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-5">
-                    {/* Profile Photo with Status Badge */}
-                    <div className="relative group shrink-0">
-                        <div className={`h-16 w-16 sm:h-20 sm:w-20 lg:h-[4.5rem] lg:w-[4.5rem] rounded-xl lg:rounded-2xl p-1 transition-all duration-300 shadow-lg ${isBirthday ? 'bg-white/30' : 'bg-white/20'}`}>
-                            <div className="h-full w-full rounded-lg lg:rounded-xl overflow-hidden shadow-inner bg-white">
-                                {displayData?.student_photo || user?.student_photo ? (
-                                    <img
-                                        src={displayData?.student_photo || user?.student_photo}
-                                        alt="Profile"
-                                        className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
-                                    />
-                                ) : (
-                                    <div className="h-full w-full flex items-center justify-center bg-gray-50 text-gray-400">
-                                        <User className="w-8 h-8 sm:w-10 sm:h-10" />
-                                    </div>
-                                )}
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
+                        {/* Profile Photo with Status Badge */}
+                        <div className="relative group shrink-0 w-fit">
+                            <div className={`h-16 w-16 sm:h-20 sm:w-20 lg:h-[4.5rem] lg:w-[4.5rem] rounded-xl lg:rounded-2xl p-1 transition-all duration-300 shadow-lg ${isBirthday ? 'bg-white/30' : 'bg-white/20'}`}>
+                                <div className="h-full w-full rounded-lg lg:rounded-xl overflow-hidden shadow-inner bg-white">
+                                    {displayData?.student_photo || user?.student_photo ? (
+                                        <img
+                                            src={displayData?.student_photo || user?.student_photo}
+                                            alt="Profile"
+                                            className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                        />
+                                    ) : (
+                                        <div className="h-full w-full flex items-center justify-center bg-gray-50 text-gray-400">
+                                            <User className="w-8 h-8 sm:w-10 sm:h-10" />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
+                            {isProfileVerified ? (
+                                <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white ring-2 ring-emerald-400/30">
+                                    <BadgeCheck className="text-white w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
+                                </div>
+                            ) : (
+                                <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white ring-2 ring-amber-400/30">
+                                    <ShieldAlert className="text-white w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
+                                </div>
+                            )}
                         </div>
-                        {isProfileVerified ? (
-                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white">
-                                <BadgeCheck className="text-white w-5 h-5 lg:w-6 lg:h-6" />
-                            </div>
-                        ) : (
-                            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-xl lg:rounded-2xl shadow-2xl border-2 border-white">
-                                <ShieldAlert className="text-white w-4 h-4 lg:w-5 lg:h-5" />
-                            </div>
-                        )}
-                    </div>
 
-                    {/* Text Content */}
-                    <div className="flex-1 min-w-0 text-center md:text-left">
-                        <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-2 mb-2">
-                            <h1 className="text-2xl sm:text-3xl lg:text-[1.75rem] font-black tracking-tight leading-tight text-white">
-                                {isBirthday ? 'Happy Birthday, ' : 'Welcome back, '}<span className={isBirthday ? 'text-amber-100' : 'text-white/90'}>{displayData?.student_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Student'}</span>!
-                            </h1>
-                            {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-8 h-8" />}
-                        </div>
-                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-x-4 gap-y-1">
-                            <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.15em] px-1 text-white/80">{displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}</span>
-                        </div>
-                        {isProfileVerified && (
-                            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-full">
-                                <BadgeCheck size={12} className="text-emerald-400" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-400">Verified Account</span>
+                        {/* Text Content */}
+                        <div className="flex-1 min-w-0 text-left">
+                            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-white/80 block leading-tight">
+                                {isBirthday ? 'Happy Birthday,' : 'Welcome back,'}
+                            </span>
+                            <div className="flex items-center gap-1.5 min-w-0 my-0.5 sm:my-1">
+                                <h1 className="text-xl sm:text-2xl lg:text-[1.75rem] font-black tracking-tight leading-tight text-white truncate">
+                                    {displayData?.student_name || user?.name || 'Student'}
+                                </h1>
+                                {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-5 h-5 shrink-0" />}
                             </div>
-                        )}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-white/80">
+                                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider truncate">
+                                    {displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}
+                                </span>
+                            </div>
+                            {!isProfileVerified && (
+                                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 backdrop-blur-md border border-amber-400/30 rounded-full">
+                                    <ShieldAlert size={12} className="text-amber-300" />
+                                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-amber-200">Action Required</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Right-side action */}
-                    <div className="shrink-0 w-full sm:w-auto flex justify-end sm:self-center">
+                    <div className="shrink-0 flex items-center justify-end sm:self-center">
                         {isProfileVerified ? (
-                            <div className={`hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur-md ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'}`}>
-                                <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-500'}`} />
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-500'}`}>Synced</span>
+                            <div className={`hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur-md ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
+                                <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-400'}`} />
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-400'}`}>Synced</span>
                             </div>
                         ) : (
                             <button
                                 onClick={() => setShowVerifyProfile(true)}
-                                className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-xs active:scale-[0.98] shadow-lg uppercase tracking-widest whitespace-nowrap transition-colors ${isBirthday ? 'bg-white text-orange-600 hover:bg-orange-50' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
+                                className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-xs active:scale-[0.98] shadow-lg uppercase tracking-widest whitespace-nowrap transition-all ${isBirthday ? 'bg-white text-orange-600 hover:bg-orange-50' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
                             >
-                                <RefreshCw className="w-4 h-4 shrink-0" />
+                                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
                                 Verify Profile
                             </button>
                         )}

@@ -45,6 +45,12 @@ export const getStaticFileUrlDirect = (filename) => {
   // If it's already a full HTTP URL, return as-is
   if (filename.startsWith('http')) return filename;
 
+  // If it's an API route, prefix with server root
+  if (filename.startsWith('/api')) {
+    const root = rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : '';
+    return `${root}${filename}`;
+  }
+
   return `${rawApiUrl ? rawApiUrl.replace(/\/api$/, '') : ''}/uploads/${filename}`;
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import api, { getStaticFileUrlDirect } from '../../config/api';
 import { User, Mail, Phone, MapPin, Calendar, Book, Hash, Lock, Shield, Clock, CheckCircle } from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';

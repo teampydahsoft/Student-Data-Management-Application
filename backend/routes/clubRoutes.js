@@ -17,6 +17,7 @@ const isStudent = (req, res, next) => {
 
 // Public/Shared
 router.get('/', verifyToken, clubController.getClubs);
+router.get('/:clubId/image', clubController.getClubImage);
 router.get('/:clubId', verifyToken, clubController.getClubDetails);
 
 // Student

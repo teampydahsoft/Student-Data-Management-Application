@@ -1,4 +1,5 @@
 const { masterPool } = require('../config/database');
+const { parseTargetsFromRow, matchesStudent } = require('../services/targetingService');
 
 const smsService = require('../services/smsService');
 const pushController = require('./pushController');
@@ -173,7 +174,7 @@ exports.getStudentAnnouncements = async (req, res) => {
         // Debug log removed
 
         const [studentRows] = await masterPool.query(
-            'SELECT college, course, branch, batch, current_year, current_semester, student_status FROM students WHERE admission_number = ? OR admission_no = ?',
+            'SELECT college, course, branch, batch, current_year, current_semester, student_status FROM students WHERE admission_number = ? OR admission_no = ? LIMIT 1',
             [studentAdmNum, studentAdmNum]
         );
 
@@ -187,44 +188,29 @@ exports.getStudentAnnouncements = async (req, res) => {
         // "Regular Only" Constraint: Check student_status
         // DB stores 'Regular' (Title Case)
         if (!student.student_status || student.student_status !== 'Regular') {
-            // console.log(`Student ${studentAdmNum} status is '${student.student_status}', not 'Regular'. returning empty.`);
             return res.json({ success: true, data: [], hasMore: false });
         }
 
-        // Match Logic:
-        // Use JSON_CONTAINS to check if student's attribute exists in the target array
-        // Schema uses TEXT columns for targets, storing JSON strings e.g., '["CSE","ECE"]'
+        // Fetch active announcements (WITHOUT loading the multi-megabyte image_url text)
+        const [rows] = await masterPool.query(
+            'SELECT id, title, content, (image_url IS NOT NULL AND image_url != "") as has_image, created_at, is_active, target_college, target_batch, target_course, target_branch, target_year, target_semester FROM announcements WHERE is_active = 1 ORDER BY created_at DESC'
+        );
 
-        const query = `
-            SELECT * FROM announcements
-            WHERE is_active = 1
-            AND (target_college IS NULL OR JSON_CONTAINS(target_college, JSON_QUOTE(?)))
-            AND (target_batch IS NULL OR JSON_CONTAINS(target_batch, JSON_QUOTE(?)))
-            AND (target_course IS NULL OR JSON_CONTAINS(target_course, JSON_QUOTE(?)))
-            AND (target_branch IS NULL OR JSON_CONTAINS(target_branch, JSON_QUOTE(?)))
-            AND (target_year IS NULL OR JSON_CONTAINS(target_year, JSON_QUOTE(?)))
-            AND (target_semester IS NULL OR JSON_CONTAINS(target_semester, JSON_QUOTE(?)))
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-        `;
+        const matchedAnnouncements = rows.filter(ann => {
+            const targets = parseTargetsFromRow(ann);
+            return matchesStudent(student, targets);
+        });
 
-        const params = [
-            student.college || '',
-            student.batch || '',
-            student.course || '',
-            student.branch || '',
-            String(student.current_year || ''),
-            String(student.current_semester || ''),
-            limit,
-            offset
-        ];
-
-        const [rows] = await masterPool.query(query, params);
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const pagedData = matchedAnnouncements.slice(offset, offset + limit).map(ann => ({
+            ...ann,
+            image_url: ann.has_image ? `${baseUrl}/api/announcements/${ann.id}/image` : null
+        }));
 
         res.json({
             success: true,
-            data: rows,
-            hasMore: rows.length === limit
+            data: pagedData,
+            hasMore: matchedAnnouncements.length > offset + limit
         });
 
     } catch (error) {
@@ -624,5 +610,40 @@ exports.sendSMSAnnouncement = async (req, res) => {
         if (!res.headersSent) {
             res.status(500).json({ success: false, message: 'Failed to process SMS announcement' });
         }
+    }
+};
+
+exports.getAnnouncementImage = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await masterPool.query(
+            'SELECT image_url FROM announcements WHERE id = ?',
+            [id]
+        );
+
+        if (rows.length === 0 || !rows[0].image_url) {
+            return res.status(404).send('Image not found');
+        }
+
+        const raw = rows[0].image_url;
+        if (typeof raw === 'string' && raw.startsWith('data:')) {
+            const matches = raw.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+                const contentType = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return res.send(buffer);
+            }
+        }
+
+        if (typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))) {
+            return res.redirect(raw);
+        }
+
+        return res.status(404).send('Invalid image format');
+    } catch (err) {
+        console.error('Error serving announcement image:', err);
+        res.status(500).send('Error serving image');
     }
 };

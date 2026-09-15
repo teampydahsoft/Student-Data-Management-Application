@@ -13,94 +13,107 @@ const getClubs = async (req, res) => {
         const { role, id } = req.user;
         const isAdmin = ['admin', 'super_admin'].includes(role);
 
-        // Fetch clubs
-        let query = 'SELECT * FROM clubs';
+        // Fetch clubs without transferring large base64 image strings in list JSON
+        let query = 'SELECT id, name, description, membership_fee, fee_type, (image_url IS NOT NULL AND image_url != "") as has_image, activities, form_fields, is_active, created_at FROM clubs';
         if (!isAdmin) {
             query += ' WHERE is_active = TRUE';
         }
         query += ' ORDER BY created_at DESC';
 
-        const [clubs] = await masterPool.query(query);
+        // Run clubs query and member counts query in parallel
+        const promises = [
+            masterPool.query(query),
+            masterPool.query('SELECT club_id, COUNT(*) as count FROM club_members WHERE status = "approved" GROUP BY club_id')
+        ];
 
-        // Parse JSON fields (activities, form_fields) - members is no longer JSON here
+        if (role === 'student' && id) {
+            promises.push(
+                masterPool.query('SELECT club_id, status, payment_status FROM club_members WHERE student_id = ?', [id])
+            );
+        }
+
+        const results = await Promise.all(promises);
+        const [clubs] = results[0];
+        const [memberCounts] = results[1];
+        const [memberships] = (results[2] && results[2][0]) ? results[2] : [[]];
+
+        const memberCountMap = {};
+        for (const row of memberCounts) {
+            memberCountMap[row.club_id] = row.count;
+        }
+
+        const membershipMap = {};
+        for (const row of memberships) {
+            membershipMap[row.club_id] = row;
+        }
+
+        // Parse JSON fields (activities, form_fields)
         const safeParse = (val) => {
             try { return typeof val === 'string' ? JSON.parse(val) : (val || []); } catch (e) { return []; }
         };
 
-        let enrichedClubs = [];
+        // If student is approved for any club with a fee, fetch transactions once
+        let studentTransactions = [];
+        const hasApprovedPaidClub = role === 'student' && clubs.some(c => {
+            const m = membershipMap[c.id];
+            return m && m.status === 'approved' && Number(c.membership_fee) > 0;
+        });
 
-        // Fetch members count and check status
-        for (const club of clubs) {
-            const [memberCount] = await masterPool.query('SELECT COUNT(*) as count FROM club_members WHERE club_id = ? AND status = "approved"', [club.id]);
-            const count = memberCount[0].count;
+        if (hasApprovedPaidClub) {
+            try {
+                const [sRow] = await masterPool.query('SELECT admission_number FROM students WHERE id = ?', [id]);
+                if (sRow.length > 0 && sRow[0].admission_number) {
+                    studentTransactions = await Transaction.find({
+                        studentId: sRow[0].admission_number,
+                        transactionType: 'DEBIT'
+                    }).lean();
+                }
+            } catch (syncErr) {
+                console.error('Error syncing club payment status:', syncErr);
+            }
+        }
 
-            let userStatus = null;
-            let paymentStatus = null;
-            if (role === 'student') {
-                const [membership] = await masterPool.query('SELECT status, payment_status FROM club_members WHERE club_id = ? AND student_id = ?', [club.id, id]);
-                if (membership.length > 0) {
-                    userStatus = membership[0].status;
-                    paymentStatus = membership[0].payment_status;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-                    // --- SYNC CHECK: Check total paid in MongoDB ---
-                    // Even if approved/paid, let's calculate exact paid amount for UI
-                    if (userStatus === 'approved') {
-                        try {
-                            const [sRow] = await masterPool.query('SELECT admission_number FROM students WHERE id = ?', [id]);
-                            if (sRow.length > 0) {
-                                const admNum = sRow[0].admission_number;
+        const enrichedClubs = clubs.map(club => {
+            const count = memberCountMap[club.id] || 0;
+            const membership = membershipMap[club.id];
+            const userStatus = membership ? membership.status : null;
+            let paymentStatus = membership ? membership.payment_status : null;
 
-                                // Fetch ALL matching transactions (Partial Payments Support)
-                                const txs = await Transaction.find({
-                                    studentId: admNum,
-                                    transactionType: 'DEBIT',
-                                    remarks: { $regex: new RegExp(club.name, 'i') }
-                                });
+            let paid_amount = 0;
+            const requiredFee = Number(club.membership_fee) || 0;
+            let balance_due = requiredFee;
 
-                                const totalPaid = txs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
-                                const requiredFee = Number(club.membership_fee) || 0;
+            if (userStatus === 'approved' && studentTransactions.length > 0) {
+                const clubRegex = new RegExp(club.name, 'i');
+                const matchingTxs = studentTransactions.filter(tx => tx.remarks && clubRegex.test(tx.remarks));
+                paid_amount = matchingTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+                balance_due = Math.max(0, requiredFee - paid_amount);
 
-                                // Expose for Frontend
-                                club.paid_amount = totalPaid;
-                                club.balance_due = Math.max(0, requiredFee - totalPaid);
-
-                                // Auto-Update Status to PAID if fully paid
-                                if (paymentStatus === 'payment_due' && totalPaid >= requiredFee && requiredFee > 0) {
-                                    console.log(`[SYNC] Fully paid club fee for ${admNum}, Club: ${club.name}. Updating SQL.`);
-                                    await masterPool.query('UPDATE club_members SET payment_status = ? WHERE club_id = ? AND student_id = ?', ['paid', club.id, id]);
-                                    paymentStatus = 'paid';
-                                }
-                            }
-                        } catch (syncErr) {
-                            console.error('Error syncing club payment status:', syncErr);
-                        }
-                    }
-                    // -------------------------------------------------------------
+                if (paymentStatus === 'payment_due' && paid_amount >= requiredFee && requiredFee > 0) {
+                    paymentStatus = 'paid';
+                    // Asynchronously update status in background without delaying response
+                    masterPool.query('UPDATE club_members SET payment_status = ? WHERE club_id = ? AND student_id = ?', ['paid', club.id, id])
+                        .catch(err => console.error('Error updating club payment status:', err));
                 }
             }
 
-            // Only show activities if approved (student) or admin
             const activities = (role === 'admin' || userStatus === 'approved') ? safeParse(club.activities) : [];
 
-            enrichedClubs.push({
+            return {
                 ...club,
+                image_url: club.has_image ? `${baseUrl}/api/clubs/${club.id}/image` : null,
                 form_fields: safeParse(club.form_fields),
-                members: [], // List view doesn't need full member list, just count
-                memberCount: count, // Using a new field or overriding members.length concept
-                // For compatibility with frontend that checks members.length, let's mock it or just use memberCount
-                // Frontend check: (club.members || []).length
-                // So we can attach a dummy array of length 'count' or update frontend. 
-                // Let's perform a lightweight fetch of just IDs if we want to preserve exact structure, 
-                // or better: let's populate 'members' with a dummy array of partial objects to satisfy .length logic without fetching full objects.
-                // Actually, let's just fetch IDs.
                 members: new Array(count).fill({}),
+                memberCount: count,
                 activities,
                 userStatus,
-                payment_status: paymentStatus, // Exposed for frontend checks
-                paid_amount: club.paid_amount || 0,
-                balance_due: club.balance_due !== undefined ? club.balance_due : (Number(club.membership_fee) || 0)
-            });
-        }
+                payment_status: paymentStatus,
+                paid_amount,
+                balance_due
+            };
+        });
 
         res.json({ success: true, data: enrichedClubs });
     } catch (error) {
@@ -543,9 +556,45 @@ const toggleClubStatus = async (req, res) => {
     }
 };
 
+const getClubImage = async (req, res) => {
+    try {
+        const targetId = req.params.id || req.params.clubId;
+        const [rows] = await masterPool.query(
+            'SELECT image_url FROM clubs WHERE id = ?',
+            [targetId]
+        );
+
+        if (rows.length === 0 || !rows[0].image_url) {
+            return res.status(404).send('Image not found');
+        }
+
+        const raw = rows[0].image_url;
+        if (typeof raw === 'string' && raw.startsWith('data:')) {
+            const matches = raw.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+                const contentType = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return res.send(buffer);
+            }
+        }
+
+        if (typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))) {
+            return res.redirect(raw);
+        }
+
+        return res.status(404).send('Invalid image format');
+    } catch (err) {
+        console.error('Error serving club image:', err);
+        res.status(500).send('Error serving image');
+    }
+};
+
 module.exports = {
     createClub,
     getClubs,
+    getClubImage,
     joinClub,
     updateMembershipStatus,
     createActivity,

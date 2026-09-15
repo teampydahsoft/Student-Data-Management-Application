@@ -8,11 +8,17 @@ const multer = require('multer');
 const upload = require('../config/multer.js');
 const { verifyPermission } = require('../middleware/rbac');
 
-// Public/Student Routes (Authenticated)
+// Public/Student Routes
 router.get(
     '/student',
     authMiddleware,
     announcementController.getStudentAnnouncements
+);
+
+// Public Announcement Image Route (Cached)
+router.get(
+    '/:id/image',
+    announcementController.getAnnouncementImage
 );
 
 // Admin Routes (RBAC Protected)
