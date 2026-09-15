@@ -13,10 +13,10 @@ export default function StudentPhotoUploadModal({
   onSelectPhoto
 }) {
   const [activeTab, setActiveTab] = useState('camera'); // 'camera' | 'file'
-  const [cameraStream, setCameraStream] = useState(null);
   const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
   const [cameraError, setCameraError] = useState(null);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
+  const [hasActiveStream, setHasActiveStream] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -25,74 +25,158 @@ export default function StudentPhotoUploadModal({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  const streamRef = useRef(null);
 
-  // Stop active camera stream
+  const facingModeRef = useRef(facingMode);
+  facingModeRef.current = facingMode;
+
+  // Stop active camera stream safely without triggering state re-renders
   const stopCamera = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      } catch (err) {
+        console.warn('Error stopping camera track:', err);
+      }
+      streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, [cameraStream]);
+    setHasActiveStream(false);
+    setIsCameraStarting(false);
+  }, []);
 
-  // Start camera stream
-  const startCamera = useCallback(async (facing = facingMode) => {
-    stopCamera();
+  // Start camera stream with robust fallbacks
+  const startCamera = useCallback(async (facingOverride) => {
+    const facing = facingOverride || facingModeRef.current;
+
+    // Clean up any existing stream first
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        console.warn('Error clearing previous track:', err);
+      }
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
     setCameraError(null);
     setIsCameraStarting(true);
+    setHasActiveStream(false);
 
     try {
-      if (!navigator?.mediaDevices?.getUserMedia) {
-        throw new Error('Camera access is not supported by your browser or connection.');
+      // Check for secure context (getUserMedia requires HTTPS or localhost)
+      if (
+        typeof window !== 'undefined' &&
+        !window.isSecureContext &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+      ) {
+        throw new Error(
+          'Camera access requires a secure connection (HTTPS) or localhost. Please use File Upload or access via localhost.'
+        );
       }
 
-      const constraints = {
-        video: {
-          facingMode: facing,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      };
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access is not supported by your browser. Please use File Upload.');
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setCameraStream(stream);
+      let stream = null;
+
+      // 1. First attempt: Try with requested facingMode and ideal resolution
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing ? { ideal: facing } : 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+      } catch (firstErr) {
+        console.warn('First camera attempt failed, retrying with flexible constraints...', firstErr);
+
+        // 2. Second attempt: Try simple video constraint without resolution constraints
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: facing ? { facingMode: facing } : true,
+            audio: false
+          });
+        } catch (secondErr) {
+          console.warn('Second camera attempt failed, retrying with basic { video: true }...', secondErr);
+
+          // 3. Third attempt: Absolute fallback to any available video device
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Could not obtain camera stream.');
+      }
+
+      streamRef.current = stream;
+      setHasActiveStream(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch {
-          // auto-play catch
-        }
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play().catch((playErr) => {
+              console.warn('Video play() auto-play error:', playErr);
+            });
+          }
+        };
+        videoRef.current.play().catch(() => {});
       }
     } catch (err) {
       console.error('Camera access error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera permission was denied. Please allow camera access in browser settings or switch to File Upload.');
+        setCameraError(
+          'Camera permission was denied. Please allow camera permissions in your browser address bar and click Retry.'
+        );
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setCameraError('No camera device was detected on your device.');
+        setCameraError('No camera device was detected on your computer.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCameraError(
+          'Camera is currently in use by another application (e.g. Zoom, Teams, or another tab). Please close it and retry.'
+        );
+      } else if (err.name === 'OverconstrainedError') {
+        setCameraError('Camera resolution constraints could not be satisfied by your device.');
       } else {
-        setCameraError(err.message || 'Unable to access camera. Please check your camera connection.');
+        setCameraError(err.message || 'Unable to access camera.');
       }
     } finally {
       setIsCameraStarting(false);
     }
-  }, [facingMode, stopCamera]);
+  }, []);
+
+  // Ensure video element receives the active stream whenever re-rendered
+  useEffect(() => {
+    if (videoRef.current && streamRef.current && videoRef.current.srcObject !== streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  });
 
   // Handle modal visibility and active tab changes
   useEffect(() => {
     if (isOpen) {
       if (activeTab === 'camera' && !previewUrl) {
-        startCamera(facingMode);
+        startCamera(facingModeRef.current);
       } else {
         stopCamera();
       }
     } else {
       stopCamera();
-      // Reset state on close
       setSelectedFile(null);
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
@@ -111,6 +195,7 @@ export default function StudentPhotoUploadModal({
   const toggleFacingMode = () => {
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
     setFacingMode(nextMode);
+    facingModeRef.current = nextMode;
     if (!previewUrl && activeTab === 'camera') {
       startCamera(nextMode);
     }
@@ -121,6 +206,11 @@ export default function StudentPhotoUploadModal({
     if (!videoRef.current) return;
 
     const video = videoRef.current;
+    if (video.readyState < 2) {
+      toast.error('Camera is still loading. Please wait a moment.');
+      return;
+    }
+
     const canvas = canvasRef.current || document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
@@ -480,7 +570,7 @@ export default function StudentPhotoUploadModal({
                     <button
                       type="button"
                       onClick={capturePhoto}
-                      disabled={isCameraStarting || !cameraStream}
+                      disabled={isCameraStarting || !hasActiveStream}
                       className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-white border-4 border-indigo-600 shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Capture Photo"
                     >
