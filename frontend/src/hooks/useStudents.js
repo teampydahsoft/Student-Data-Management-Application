@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import api from '../config/api';
 import toast from 'react-hot-toast';
@@ -90,11 +90,76 @@ export const useStudents = ({
         },
       };
     },
+    placeholderData: keepPreviousData,
     enabled,
     // Keep data fresh for 5 minutes, cache for 30 minutes
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000, // Keep cached pages for 30 minutes
   });
+};
+
+/**
+ * Hook to prefetch adjacent student pages (page + 1, page - 1)
+ */
+export const usePrefetchAdjacentStudents = () => {
+  const queryClient = useQueryClient();
+
+  return useCallback(({ page, pageSize = 25, totalPages, filters = {}, search = '', sortBy = '', sortOrder = 'asc', lite = false }) => {
+    const fetchPage = async (p) => {
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          if (key === 'batch') queryParams.append('filter_batch', value);
+          else if (key === 'course') queryParams.append('filter_course', value);
+          else if (key === 'branch') queryParams.append('filter_branch', value);
+          else if (key === 'section') queryParams.append('filter_section', value);
+          else if (key === 'year') queryParams.append('filter_year', value);
+          else if (key === 'semester') queryParams.append('filter_semester', value);
+          else if (key === 'dateFrom') queryParams.append('filter_dateFrom', value);
+          else if (key === 'dateTo') queryParams.append('filter_dateTo', value);
+          else if (key === 'pinNumberStatus') queryParams.append('filter_pinNumberStatus', value);
+          else if (key.startsWith('filter_')) queryParams.append(key, value);
+          else if (key.startsWith('field_')) queryParams.append(`filter_field_${key.replace('field_', '')}`, value);
+          else queryParams.append(`filter_${key}`, value);
+        }
+      });
+      if (search && search.trim()) queryParams.append('search', search.trim());
+      if (sortBy && sortBy.trim()) {
+        queryParams.append('sort_by', sortBy.trim());
+        queryParams.append('sort_order', sortOrder === 'desc' ? 'desc' : 'asc');
+      }
+      if (lite) queryParams.append('lite', 'true');
+      queryParams.append('limit', pageSize.toString());
+      queryParams.append('offset', Math.max(0, (p - 1) * pageSize).toString());
+
+      const response = await api.get(`/students?${queryParams.toString()}`);
+      return {
+        students: response.data?.data || [],
+        pagination: {
+          total: response.data?.pagination?.total || 0,
+          limit: response.data?.pagination?.limit || pageSize,
+          offset: response.data?.pagination?.offset || 0,
+          totalPages: response.data?.pagination?.totalPages || Math.ceil((response.data?.pagination?.total || 0) / pageSize),
+        },
+      };
+    };
+
+    if (totalPages && page < totalPages) {
+      queryClient.prefetchQuery({
+        queryKey: studentKeys.list({ page: page + 1, pageSize, filters, search, sortBy, sortOrder, lite }),
+        queryFn: () => fetchPage(page + 1),
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+
+    if (page > 1) {
+      queryClient.prefetchQuery({
+        queryKey: studentKeys.list({ page: page - 1, pageSize, filters, search, sortBy, sortOrder, lite }),
+        queryFn: () => fetchPage(page - 1),
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+  }, [queryClient]);
 };
 
 /**

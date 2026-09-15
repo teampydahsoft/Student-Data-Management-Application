@@ -3342,8 +3342,13 @@ exports.getAllStudents = async (req, res) => {
 
     const [students] = await masterPool.query(query, params);
 
-    if (!isLiteMode) {
-      await syncIneligibleQuotaScholarshipsForStudents(masterPool, students);
+    if (!isLiteMode && students.length > 0) {
+      // Run sync in the background so it doesn't block paginated read requests
+      setImmediate(() => {
+        syncIneligibleQuotaScholarshipsForStudents(masterPool, students).catch(err => {
+          console.warn('Background syncIneligibleQuotaScholarshipsForStudents warning:', err.message);
+        });
+      });
     }
 
     // Get total count
@@ -3515,55 +3520,66 @@ exports.getAllStudents = async (req, res) => {
         };
       });
     } else {
-    const stageConfigForList = await loadRegistrationStageConfig();
-    const [scholarshipMap, registrationStatusLabelMap, meritStatusMap] = await Promise.all([
-      buildRegistrationScholarshipMap(masterPool, students),
-      buildRegistrationStatusLabelMap(masterPool, students, stageConfigForList),
-      buildCurrentMeritStatusMap(students)
-    ]);
-
     const admissionNumbers = students.map(s => s.admission_number).filter(Boolean);
     const pinNumbers = students.map(s => s.pin_no).filter(Boolean);
-    
-    // Fetch Transport status from MySQL transport_requests table
-    let transportStudents = new Set();
-    if (admissionNumbers.length > 0) {
-      try {
-        const adNumPlaceholders = admissionNumbers.map(() => '?').join(',');
-        const [transReqs] = await masterPool.query(
-          `SELECT admission_number FROM transport_requests WHERE status = 'approved' AND admission_number IN (${adNumPlaceholders})`,
-          [...admissionNumbers]
-        );
-        transReqs.forEach(req => transportStudents.add(req.admission_number));
-      } catch (err) {
-        console.error('Error fetching transport requests:', err);
-      }
-    }
 
-    // Fetch Hostel status from Hostel MongoDB users collection
-    let hostelStudents = new Set();
-    try {
-      const hostelConn = require('../config/mongoConfig').getHostelConnection();
-      const hostelDb = hostelConn && hostelConn.readyState === 1 ? hostelConn.db : null;
-      if (hostelDb && (admissionNumbers.length > 0 || pinNumbers.length > 0)) {
-        const collection = hostelDb.collection('users');
-        const query = {
-          $or: [
-            { admissionNumber: { $in: admissionNumbers } },
-            { rollNumber: { $in: pinNumbers } }
-          ],
-          hostelStatus: 'Active'
-        };
-        const hostelUsers = await collection.find(query).toArray();
-        
-        hostelUsers.forEach(user => {
-          if (user.admissionNumber) hostelStudents.add(user.admissionNumber);
-          if (user.rollNumber) hostelStudents.add(user.rollNumber);
-        });
+    // Parallelize stage config, scholarship map, merit status, transport, and hostel queries
+    const stageConfigPromise = loadRegistrationStageConfig();
+    const scholarshipPromise = buildRegistrationScholarshipMap(masterPool, students);
+    const meritPromise = buildCurrentMeritStatusMap(students);
+
+    const transportPromise = (async () => {
+      const set = new Set();
+      if (admissionNumbers.length > 0) {
+        try {
+          const adNumPlaceholders = admissionNumbers.map(() => '?').join(',');
+          const [transReqs] = await masterPool.query(
+            `SELECT admission_number FROM transport_requests WHERE status = 'approved' AND admission_number IN (${adNumPlaceholders})`,
+            [...admissionNumbers]
+          );
+          transReqs.forEach(req => set.add(req.admission_number));
+        } catch (err) {
+          console.error('Error fetching transport requests:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error fetching hostel users:', err);
-    }
+      return set;
+    })();
+
+    const hostelPromise = (async () => {
+      const set = new Set();
+      try {
+        const hostelConn = require('../config/mongoConfig').getHostelConnection();
+        const hostelDb = hostelConn && hostelConn.readyState === 1 ? hostelConn.db : null;
+        if (hostelDb && (admissionNumbers.length > 0 || pinNumbers.length > 0)) {
+          const collection = hostelDb.collection('users');
+          const query = {
+            $or: [
+              { admissionNumber: { $in: admissionNumbers } },
+              { rollNumber: { $in: pinNumbers } }
+            ],
+            hostelStatus: 'Active'
+          };
+          const hostelUsers = await collection.find(query).toArray();
+          hostelUsers.forEach(user => {
+            if (user.admissionNumber) set.add(user.admissionNumber);
+            if (user.rollNumber) set.add(user.rollNumber);
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching hostel users:', err);
+      }
+      return set;
+    })();
+
+    const [stageConfigForList, scholarshipMap, meritStatusMap, transportStudents, hostelStudents] = await Promise.all([
+      stageConfigPromise,
+      scholarshipPromise,
+      meritPromise,
+      transportPromise,
+      hostelPromise
+    ]);
+
+    const registrationStatusLabelMap = await buildRegistrationStatusLabelMap(masterPool, students, stageConfigForList);
 
     // Parse JSON fields
     parsedStudents = students.map(student => {
