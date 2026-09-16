@@ -398,6 +398,7 @@ const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
 const StudentScholarshipHistoryTab = ({
   student,
   readOnly = false,
+  hideHeader = false,
   registrationOptionalStages = [],
   onUpdated
 }) => {
