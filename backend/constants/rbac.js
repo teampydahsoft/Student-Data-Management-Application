@@ -102,7 +102,7 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'print_id_cards'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'view_scholarship', 'edit_scholarship', 'print_id_cards'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -118,6 +118,8 @@ const MODULE_PERMISSIONS = {
       manage_remarks: 'Manage Remarks (Edit/Delete)',
       view_merit_status: 'View Merit Status',
       edit_merit_status: 'Edit Merit Status',
+      view_scholarship: 'View Scholarship Info',
+      edit_scholarship: 'Edit Scholarship Info',
       print_id_cards: 'Print ID Cards'
     }
   },
@@ -579,6 +581,18 @@ const parsePermissions = (permissionsJson) => {
           if (hasGranularKeys) {
             // New format - individual permissions
             moduleDef.permissions.forEach(perm => {
+              if (module === MODULES.STUDENT_MANAGEMENT) {
+                if (perm === 'view_scholarship' && parsed[module]?.view_scholarship === undefined) {
+                  // Default to same as before: enabled if user has view or edit student permission
+                  permissions[module][perm] = !!(parsed[module]?.view || parsed[module]?.edit_student);
+                  return;
+                }
+                if (perm === 'edit_scholarship' && parsed[module]?.edit_scholarship === undefined) {
+                  // Default to same as before: enabled if user has edit_student permission
+                  permissions[module][perm] = !!parsed[module]?.edit_student;
+                  return;
+                }
+              }
               permissions[module][perm] = !!parsed[module]?.[perm];
             });
 

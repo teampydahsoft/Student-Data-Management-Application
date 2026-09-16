@@ -48,11 +48,21 @@ const StudentViewDialogSubPagesSection = ({
   permissions = {},
   onToggleViewSms,
   onToggleViewMerit,
-  onToggleEditMerit
+  onToggleEditMerit,
+  onToggleViewScholarship,
+  onToggleEditScholarship
 }) => {
   const viewSmsEnabled = permissions.view_sms === true;
   const viewMeritEnabled = permissions.view_merit_status === true;
   const editMeritEnabled = permissions.edit_merit_status === true;
+  // Defaults to enabled (same as before) unless explicitly configured as false
+  const hasStudentAccess = permissions.view === true || permissions.edit_student === true;
+  const viewScholarshipEnabled = permissions.view_scholarship !== undefined
+    ? permissions.view_scholarship === true
+    : hasStudentAccess;
+  const editScholarshipEnabled = permissions.edit_scholarship !== undefined
+    ? permissions.edit_scholarship === true
+    : permissions.edit_student === true;
 
   return (
     <div className="mt-5 pt-5 border-t border-slate-200">
@@ -108,6 +118,33 @@ const StudentViewDialogSubPagesSection = ({
               {editMeritEnabled ? <Check size={10} /> : <X size={10} />}
             </span>
             {editMeritEnabled ? 'On' : 'Off'}
+          </button>
+        </div>
+
+        <div className={`${SUBPAGE_GRID_CLASS} rounded-lg px-3 py-2.5 bg-slate-50 border border-slate-200`}>
+          <div className="min-w-0 pr-2">
+            <span className="text-xs font-medium text-slate-700">Scholarship Info</span>
+            <p className="text-[10px] text-slate-500 leading-snug">Scholarship & RTF tracking tab inside student view dialog</p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleViewScholarship}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${viewScholarshipEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${viewScholarshipEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {viewScholarshipEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {viewScholarshipEnabled ? 'On' : 'Off'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleEditScholarship}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${editScholarshipEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${editScholarshipEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {editScholarshipEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {editScholarshipEnabled ? 'On' : 'Off'}
           </button>
         </div>
       </div>
@@ -3286,6 +3323,34 @@ const UserManagement = () => {
                             toggleOne('edit_merit_status');
                             if (!editEnabled && !viewEnabled) toggleOne('view_merit_status');
                           }}
+                          onToggleViewScholarship={() => {
+                            const currentView = permsForRole.view_scholarship !== undefined
+                              ? permsForRole.view_scholarship === true
+                              : (permsForRole.view === true || permsForRole.edit_student === true);
+                            const nextView = !currentView;
+                            setRoleConfigModalPermissions(prev => ({
+                              ...prev,
+                              [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
+                                ...(prev[BACKEND_MODULES.STUDENT_MANAGEMENT] || {}),
+                                view_scholarship: nextView,
+                                ...(!nextView ? { edit_scholarship: false } : {})
+                              }
+                            }));
+                          }}
+                          onToggleEditScholarship={() => {
+                            const currentEdit = permsForRole.edit_scholarship !== undefined
+                              ? permsForRole.edit_scholarship === true
+                              : permsForRole.edit_student === true;
+                            const nextEdit = !currentEdit;
+                            setRoleConfigModalPermissions(prev => ({
+                              ...prev,
+                              [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
+                                ...(prev[BACKEND_MODULES.STUDENT_MANAGEMENT] || {}),
+                                edit_scholarship: nextEdit,
+                                ...(nextEdit ? { view_scholarship: true } : {})
+                              }
+                            }));
+                          }}
                         />
                       )}
                     </div>
@@ -3474,6 +3539,53 @@ const UserManagement = () => {
                                   !(
                                     prev.permissions?.[effectiveModuleKey]?.[permKey]
                                   ),
+                              },
+                            },
+                          }
+                          : prev
+                      );
+                    };
+
+                    const setSinglePermissionValue = (permKey, val) => {
+                      setModuleAccessUser((prev) => {
+                        if (!prev) return prev;
+                        const currentPerms = prev.permissions || {};
+                        const moduleEntry = currentPerms[effectiveModuleKey] || {};
+                        const updatedModuleEntry = {
+                          ...moduleEntry,
+                          [permKey]: val,
+                        };
+                        const updatedPermissions = {
+                          ...currentPerms,
+                          [effectiveModuleKey]: updatedModuleEntry,
+                        };
+                        return { ...prev, permissions: updatedPermissions };
+                      });
+                      setUsers((prevUsers) =>
+                        prevUsers.map((u) =>
+                          u.id === moduleAccessUser.id
+                            ? {
+                              ...u,
+                              permissions: {
+                                ...u.permissions,
+                                [effectiveModuleKey]: {
+                                  ...(u.permissions?.[effectiveModuleKey] || {}),
+                                  [permKey]: val,
+                                },
+                              },
+                            }
+                            : u
+                        )
+                      );
+                      setEditForm((prev) =>
+                        prev && prev.id === moduleAccessUser.id
+                          ? {
+                            ...prev,
+                            permissions: {
+                              ...prev.permissions,
+                              [effectiveModuleKey]: {
+                                ...(prev.permissions?.[effectiveModuleKey] || {}),
+                                [permKey]: val,
                               },
                             },
                           }
@@ -3711,6 +3823,26 @@ const UserManagement = () => {
                                 const editEnabled = permsForUser.edit_merit_status === true;
                                 toggleSinglePermission('edit_merit_status');
                                 if (!editEnabled && !viewEnabled) toggleSinglePermission('view_merit_status');
+                              }}
+                              onToggleViewScholarship={() => {
+                                const currentView = permsForUser.view_scholarship !== undefined
+                                  ? permsForUser.view_scholarship === true
+                                  : (permsForUser.view === true || permsForUser.edit_student === true);
+                                const nextView = !currentView;
+                                setSinglePermissionValue('view_scholarship', nextView);
+                                if (!nextView) {
+                                  setSinglePermissionValue('edit_scholarship', false);
+                                }
+                              }}
+                              onToggleEditScholarship={() => {
+                                const currentEdit = permsForUser.edit_scholarship !== undefined
+                                  ? permsForUser.edit_scholarship === true
+                                  : permsForUser.edit_student === true;
+                                const nextEdit = !currentEdit;
+                                setSinglePermissionValue('edit_scholarship', nextEdit);
+                                if (nextEdit) {
+                                  setSinglePermissionValue('view_scholarship', true);
+                                }
                               }}
                             />
                           )}

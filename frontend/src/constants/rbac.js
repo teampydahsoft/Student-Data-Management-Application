@@ -41,7 +41,7 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'print_id_cards'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'view_scholarship', 'edit_scholarship', 'print_id_cards'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -55,6 +55,8 @@ export const MODULE_PERMISSIONS = {
       manage_remarks: 'Manage Remarks (Edit/Delete)',
       view_merit_status: 'View Merit Status',
       edit_merit_status: 'Edit Merit Status',
+      view_scholarship: 'View Scholarship Info',
+      edit_scholarship: 'Edit Scholarship Info',
       print_id_cards: 'Print ID Cards'
     }
   },
@@ -464,7 +466,9 @@ export const isFullAccessRole = (role) => {
 export const STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS = [
   'view_sms',
   'view_merit_status',
-  'edit_merit_status'
+  'edit_merit_status',
+  'view_scholarship',
+  'edit_scholarship'
 ];
 
 /** @deprecated Use STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS */

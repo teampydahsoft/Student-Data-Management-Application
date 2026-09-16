@@ -328,6 +328,14 @@ const Students = () => {
   const canViewSms = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_sms');
   const canViewMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_merit_status') || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
   const canEditMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
+  const smPerms = userPermissions?.[BACKEND_MODULES.STUDENT_MANAGEMENT];
+  // Shows by default (same as before) unless explicitly disabled (false) on the role or user
+  const canViewScholarship = user?.role === 'super_admin' || user?.role === 'admin' || (
+    canViewStudents && (smPerms?.view_scholarship !== false || smPerms?.edit_scholarship === true)
+  );
+  const canEditScholarship = user?.role === 'super_admin' || user?.role === 'admin' || (
+    canEditStudents && smPerms?.edit_scholarship !== false
+  );
   // Table column: show for anyone who can open the Students list (seeded values must be visible)
   const showMeritColumn = canViewStudents && !isCashier;
   // Check if user has access to Attendance module
@@ -836,7 +844,7 @@ const Students = () => {
   }, [canViewMeritStatus]);
 
   const fetchScholarshipForStudent = useCallback(async (admissionNumber) => {
-    if (!admissionNumber) {
+    if (!admissionNumber || !canViewScholarship) {
       setScholarshipData(null);
       return null;
     }
@@ -859,7 +867,7 @@ const Students = () => {
       setScholarshipLoading(false);
     }
     return null;
-  }, []);
+  }, [canViewScholarship]);
 
   // Fetch certificate settings and forms on mount
   useEffect(() => {
@@ -2082,7 +2090,11 @@ const Students = () => {
     setTempRollNumber(student.pin_no || '');
     setViewingPassword(false);
     setStudentPassword(null);
-    setActiveStudentTab(initialTab);
+    let targetTab = initialTab;
+    if (targetTab === 'scholarship' && !canViewScholarship) targetTab = 'details';
+    if (targetTab === 'merit_status' && !canViewMeritStatus) targetTab = 'details';
+    if (targetTab === 'sms_tracking' && !canViewSms) targetTab = 'details';
+    setActiveStudentTab(targetTab);
 
     // Prepare all possible fields including hidden ones
     const allFields = {
@@ -4499,12 +4511,14 @@ const Students = () => {
                         <MessageSquare size={16} /> <span className="whitespace-nowrap">SMS</span>
                       </button>
                     )}
-                    <button
-                      onClick={() => setActiveStudentTab('scholarship')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'scholarship' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
-                    </button>
+                    {canViewScholarship && (
+                      <button
+                        onClick={() => setActiveStudentTab('scholarship')}
+                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'scholarship' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                      >
+                        <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
+                      </button>
+                    )}
                     {canViewMeritStatus && (
                       <button
                         onClick={() => setActiveStudentTab('merit_status')}
@@ -4828,9 +4842,10 @@ const Students = () => {
                     <StudentSmsTab student={selectedStudent} />
                   )}
 
-                  {activeStudentTab === 'scholarship' && (
+                  {activeStudentTab === 'scholarship' && canViewScholarship && (
                     <StudentScholarshipHistoryTab
                       student={selectedStudent}
+                      readOnly={isCashier || !canEditScholarship}
                       registrationOptionalStages={regOptionalStages}
                       onUpdated={(data) => {
                         setScholarshipData(data);
