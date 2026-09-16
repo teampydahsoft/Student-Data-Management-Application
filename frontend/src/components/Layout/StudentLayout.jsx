@@ -70,6 +70,7 @@ const StudentLayout = ({ children }) => {
     const [registrationStageConfig, setRegistrationStageConfig] = useState({});
     const [moreMenuOpen, setMoreMenuOpen] = useState(false); // New: For mobile "More" menu
     const [hasInternship, setHasInternship] = useState(false);
+    const [hasTransportPass, setHasTransportPass] = useState(false);
     const [layoutSettings, setLayoutSettings] = useState(null);
 
     const navigate = useNavigate();
@@ -158,6 +159,24 @@ const StudentLayout = ({ children }) => {
         };
         checkInternship();
     }, []);
+
+    // Check Transport Pass Active State (from Transport DB directly, NOT student accommodation)
+    useEffect(() => {
+        const checkTransportStatus = async () => {
+            if (!user?.admission_number) return;
+            try {
+                const res = await api.get('/transport/my-details');
+                if (res.data?.success && res.data?.hasActivePass) {
+                    setHasTransportPass(true);
+                } else {
+                    setHasTransportPass(false);
+                }
+            } catch (error) {
+                setHasTransportPass(false);
+            }
+        };
+        checkTransportStatus();
+    }, [user?.admission_number]);
 
     // Fetch Layout Settings
     useEffect(() => {
@@ -355,6 +374,7 @@ const StudentLayout = ({ children }) => {
         { icon: RiFolderLine, activeIcon: RiFolderFill, label: 'My Documents', path: '/student/my-documents' }
     ].filter(item => {
         if (item.label === 'Internship' && !hasInternship) return false;
+        if (item.label === 'Transport' && !hasTransportPass) return false;
 
         if (layoutSettings) {
             const key = item.path.replace('/student/', '');

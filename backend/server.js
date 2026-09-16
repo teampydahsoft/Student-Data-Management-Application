@@ -203,6 +203,8 @@ app.use("/api/push", require("./routes/pushRoutes")); // Renaming old /notificat
 app.use("/api/web-notifications", require("./routes/notificationRoutes"));
 app.use("/api/clubs", require("./routes/clubRoutes"));
 app.use("/api/transport", require("./routes/transportRoutes"));
+app.use("/api/gps", require("./routes/gpsRoutes"));
+app.use("/gps", require("./routes/gpsRoutes"));
 app.use("/api/payments", paymentRoutes);
 app.use("/api/previous-colleges", require("./routes/previousCollegeRoutes"));
 app.use("/api/quotas", require("./routes/quotaRoutes"));

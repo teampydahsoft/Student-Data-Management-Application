@@ -15,6 +15,16 @@ const transportService = {
 
     getMyRequests: () => {
         return api.get('/transport/my-requests');
+    },
+
+    getMyTransportDetails: (admissionNumber) => {
+        const query = admissionNumber ? `?admission_number=${encodeURIComponent(admissionNumber)}` : '';
+        return api.get(`/transport/my-details${query}`);
+    },
+
+    getLiveBusLocation: (busNumber) => {
+        const cleanKey = busNumber ? `/${encodeURIComponent(busNumber)}` : '';
+        return api.get(`/transport/gps/live-location${cleanKey}`);
     }
 };
 
