@@ -7,15 +7,12 @@ const BIRTHDAY_WISH = 'May this year bring success, happiness, and good health. 
 
 const checkAndSendBirthdayNotifications = async () => {
     console.log('🎂 Checking for birthdays (12 AM IST)...');
-    let conn = null;
     try {
-        conn = await masterPool.getConnection();
-
         // Find students whose birthday is today (by date in server timezone; scheduler runs in Asia/Kolkata)
         // dob: YYYY-MM-DD; use MONTH() and DAY() for today's birthdays
         // Optimization: Fetch only IDs first to avoid loading off-page LONGTEXT columns (like student_photo)
         // during the full table scan, which causes massive I/O burst on AWS instances.
-        const [idsResult] = await conn.query(`
+        const [idsResult] = await masterPool.query(`
             SELECT id
             FROM students
             WHERE dob IS NOT NULL
@@ -35,7 +32,7 @@ const checkAndSendBirthdayNotifications = async () => {
         const ids = idsResult.map(r => r.id);
         
         // Fetch full data only for the matching students
-        const [students] = await conn.query(`
+        const [students] = await masterPool.query(`
             SELECT id, student_name, dob, student_data, admission_number,
                    student_mobile, parent_mobile1, parent_mobile2,
                    current_year, current_semester
@@ -101,8 +98,6 @@ const checkAndSendBirthdayNotifications = async () => {
     } catch (error) {
         console.error('Error in birthday check:', error);
         throw error;
-    } finally {
-        if (conn) conn.release();
     }
 };
 

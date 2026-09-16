@@ -439,6 +439,14 @@ const startServer = async () => {
         console.log("✅ Process terminated");
       });
     });
+
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("⚠️ Unhandled Promise Rejection:", reason);
+    });
+
+    process.on("uncaughtException", (error) => {
+      console.error("❌ Uncaught Exception:", error);
+    });
   } catch (error) {
     console.error("❌ Failed to start server:", error);
     console.error("❌ Error details:", error.message);

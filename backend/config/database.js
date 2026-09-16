@@ -45,8 +45,6 @@ const sharedPoolOptions = {
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000, // TCP keepalive after 10s idle
-  idleTimeout: 30000, // Drop idle pool connections before server wait_timeout
-  maxIdle: 5,
   multipleStatements: false,
   timezone: '+05:30',
 };
