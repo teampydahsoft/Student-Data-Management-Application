@@ -59,9 +59,27 @@ function MapViewController({ targetCoords, zoom, bounds }) {
     return null;
 }
 
-// Scheduled Commencement Timing Constants
+// Scheduled Commencement & Terminus Timing Constants
 const MORNING_ORIGIN_START_TIME = '07:00 AM';
+const MORNING_CAMPUS_END_TIME = '08:15 AM';
 const EVENING_CAMPUS_START_TIME = '04:30 PM';
+const EVENING_ORIGIN_END_TIME = '05:45 PM';
+
+// Helper to determine trip direction automatically based on current clock time
+// Before 1:00 PM (hour < 13): Morning (Kesavaram -> Campus)
+// From 1:00 PM onwards (hour >= 13): Evening (Campus -> Kesavaram)
+const getAutoTripDirection = () => {
+    const currentHour = new Date().getHours();
+    return currentHour < 13 ? 'morning' : 'evening';
+};
+
+// Helper to calculate compass direction label from degrees
+const getCompassDirection = (deg) => {
+    if (deg == null || isNaN(deg) || deg < 0) return '';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const index = Math.round(((deg % 360) + 360) % 360 / 45) % 8;
+    return directions[index];
+};
 
 // Helper to add minutes to a standard time string like "07:00 AM" or "04:30 PM"
 const addMinutesToTimeStr = (baseTimeStr, minutesToAdd) => {
@@ -99,8 +117,13 @@ const Transport = () => {
     const [routeDistanceKm, setRouteDistanceKm] = useState(null);
     const [showFullRouteModal, setShowFullRouteModal] = useState(false);
 
-    // Trip Direction: 'morning' (Start -> Campus) vs 'evening' (Campus -> Start)
-    const [tripDirection, setTripDirection] = useState('morning');
+    // Trip Direction: Auto-selected based on current clock time ('morning' before 1 PM, 'evening' from 1 PM)
+    const [tripDirection, setTripDirection] = useState(getAutoTripDirection());
+    const [isAutoDirection, setIsAutoDirection] = useState(true);
+    const [currentTimeStr, setCurrentTimeStr] = useState(() => {
+        return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
     // Stop Times Display: false = clean minimal points (no clutter), true = show times above points
     const [showStopTimesOnMap, setShowStopTimesOnMap] = useState(false);
 
@@ -172,6 +195,17 @@ const Transport = () => {
         }, 3000);
         return () => clearInterval(timer);
     }, []);
+
+    // Auto-update current time string & trip direction if in auto mode
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTimeStr(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            if (isAutoDirection) {
+                setTripDirection(getAutoTripDirection());
+            }
+        }, 15000);
+        return () => clearInterval(timer);
+    }, [isAutoDirection]);
 
     // Live Speed & Ignition Status
     const liveSpeed = liveBusData?.location?.speed != null ? Number(liveBusData.location.speed) : 0;
@@ -366,6 +400,102 @@ const Transport = () => {
             eveningMins: metrics.eveningTravelTimeStr
         };
     }, [activePass, routeDistanceKm]);
+
+    // Resolve Origin Start Coordinates
+    const originCoords = useMemo(() => {
+        if (allRouteStages.length > 0 && allRouteStages[0].latitude && allRouteStages[0].longitude) {
+            return [Number(allRouteStages[0].latitude), Number(allRouteStages[0].longitude)];
+        }
+        return [16.992222, 81.936667]; // Kesavaram
+    }, [allRouteStages]);
+
+    // Active Target Destination based on direction
+    const targetDestination = useMemo(() => {
+        if (tripDirection === 'morning') {
+            return {
+                title: 'Campus Arrival',
+                name: 'PYDAH COLLEGE',
+                coords: campusCoords,
+                scheduledTime: MORNING_CAMPUS_END_TIME
+            };
+        }
+        return {
+            title: 'Terminus Arrival',
+            name: activePass?.routeDetails?.startPoint || 'KESAVARAM',
+            coords: originCoords,
+            scheduledTime: EVENING_ORIGIN_END_TIME
+        };
+    }, [tripDirection, campusCoords, originCoords, activePass]);
+
+    // Distance from live bus to target destination (Haversine in KM)
+    const distanceBusToDestination = useMemo(() => {
+        if (!busCoords || !targetDestination?.coords) return null;
+        const [lat1, lon1] = busCoords;
+        const [lat2, lon2] = targetDestination.coords;
+        const R = 6371;
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (R * c).toFixed(1);
+    }, [busCoords, targetDestination]);
+
+    // Live ETA to Target Destination
+    const etaToDestination = useMemo(() => {
+        if (!distanceBusToDestination) return null;
+        const dist = parseFloat(distanceBusToDestination);
+        if (isNaN(dist)) return null;
+
+        const effectiveSpeed = liveSpeed >= 15 ? liveSpeed : 35;
+        const minutes = Math.max(1, Math.round((dist / effectiveSpeed) * 60));
+
+        const arrivalDate = new Date(Date.now() + minutes * 60000);
+        const hours = arrivalDate.getHours();
+        const mins = arrivalDate.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const formattedHours = hours % 12 || 12;
+        const formattedMins = mins < 10 ? `0${mins}` : mins;
+        const etaClock = `${formattedHours}:${formattedMins} ${ampm}`;
+
+        return {
+            minutes,
+            formattedTime: minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`,
+            etaClock
+        };
+    }, [distanceBusToDestination, liveSpeed]);
+
+    // Active scheduled commute details (Start Time, Your Stop Time, End Time)
+    const activeSchedule = useMemo(() => {
+        if (tripDirection === 'morning') {
+            return {
+                startTitle: 'Commences',
+                startPlace: activePass?.routeDetails?.startPoint || 'KESAVARAM',
+                startTime: MORNING_ORIGIN_START_TIME,
+                stopTitle: 'Your Pickup',
+                stopPlace: activePass?.stopName || 'THOSSIPUDI',
+                stopTime: studentStopMetrics.morningTime,
+                stopMins: studentStopMetrics.morningMins,
+                endTitle: 'Campus Arrival',
+                endPlace: 'PYDAH COLLEGE',
+                endTime: MORNING_CAMPUS_END_TIME
+            };
+        }
+        return {
+            startTitle: 'Campus Dispersal',
+            startPlace: 'PYDAH COLLEGE',
+            startTime: EVENING_CAMPUS_START_TIME,
+            stopTitle: 'Your Drop',
+            stopPlace: activePass?.stopName || 'THOSSIPUDI',
+            stopTime: studentStopMetrics.eveningTime,
+            stopMins: studentStopMetrics.eveningMins,
+            endTitle: 'Terminus Arrival',
+            endPlace: activePass?.routeDetails?.startPoint || 'KESAVARAM',
+            endTime: EVENING_ORIGIN_END_TIME
+        };
+    }, [tripDirection, activePass, studentStopMetrics]);
 
     // Leaflet Custom Icons
     // 1. Live GPS Bus Marker (High Visibility Movement Radar)
@@ -583,55 +713,183 @@ const Transport = () => {
                             </button>
                         </div>
 
-                        {/* Direction Selector & Schedule Timings Strip (Cleanly displayed above the map) */}
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100 space-y-2">
-                            {/* Tabs */}
-                            <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-slate-200/80 shadow-sm text-xs">
-                                <button
-                                    onClick={() => setTripDirection('morning')}
-                                    className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                        tripDirection === 'morning'
-                                            ? 'bg-blue-600 text-white shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                    }`}
-                                >
-                                    <RiSunLine size={14} className={tripDirection === 'morning' ? 'text-amber-300' : 'text-amber-500'} />
-                                    <span>Morning: Start ➔ Campus</span>
-                                </button>
-                                <button
-                                    onClick={() => setTripDirection('evening')}
-                                    className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                        tripDirection === 'evening'
-                                            ? 'bg-indigo-600 text-white shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                    }`}
-                                >
-                                    <RiMoonLine size={14} className={tripDirection === 'evening' ? 'text-indigo-200' : 'text-indigo-500'} />
-                                    <span>Evening: Campus ➔ Start</span>
-                                </button>
+                        {/* Direction Selector & Auto-Selected Schedule Timings Strip */}
+                        <div className="bg-slate-50/90 p-2.5 sm:p-3 rounded-xl border border-slate-200/80 space-y-2.5">
+                            {/* Direction Tabs with Auto Indicator */}
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-1 bg-white p-1 rounded-lg border border-slate-200/80 shadow-xs text-xs">
+                                    <button
+                                        onClick={() => {
+                                            setTripDirection('morning');
+                                            setIsAutoDirection(false);
+                                        }}
+                                        className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                            tripDirection === 'morning'
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        <RiSunLine size={14} className={tripDirection === 'morning' ? 'text-amber-300' : 'text-amber-500'} />
+                                        <span>Morning: Start ➔ Campus</span>
+                                        {isAutoDirection && tripDirection === 'morning' && (
+                                            <span className="text-[9px] bg-white/20 px-1.5 py-0.2 rounded font-mono font-bold">Auto</span>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setTripDirection('evening');
+                                            setIsAutoDirection(false);
+                                        }}
+                                        className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                            tripDirection === 'evening'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        <RiMoonLine size={14} className={tripDirection === 'evening' ? 'text-indigo-200' : 'text-indigo-500'} />
+                                        <span>Evening: Campus ➔ Start</span>
+                                        {isAutoDirection && tripDirection === 'evening' && (
+                                            <span className="text-[9px] bg-white/20 px-1.5 py-0.2 rounded font-mono font-bold">Auto</span>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {!isAutoDirection ? (
+                                    <button
+                                        onClick={() => {
+                                            setIsAutoDirection(true);
+                                            setTripDirection(getAutoTripDirection());
+                                        }}
+                                        className="px-2.5 py-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 shrink-0 transition-all flex items-center gap-1 active:scale-95"
+                                        title="Auto-select based on current time"
+                                    >
+                                        <span>⚡ Reset Auto</span>
+                                    </button>
+                                ) : (
+                                    <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 shrink-0">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        <span>Auto-Selected ({currentTimeStr})</span>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Schedule Summary */}
-                            <div className="flex items-center justify-between text-xs px-1">
-                                <div>
-                                    <span className="text-gray-400 text-[10px] uppercase font-bold block">
-                                        {tripDirection === 'morning' ? '🚩 Bus Commences (Kesavaram)' : '🏁 Bus Departs (Campus)'}
-                                    </span>
-                                    <span className="font-mono font-black text-gray-800 text-sm">
-                                        {tripDirection === 'morning' ? MORNING_ORIGIN_START_TIME : EVENING_CAMPUS_START_TIME}
-                                    </span>
+                            {/* 3-Step Journey Timeline: Start Time -> Stop Pickup/Drop -> End Time */}
+                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-xs">
+                                {/* Step 1: Start Time */}
+                                <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate flex items-center gap-1">
+                                        <span>🚩 Start Time</span>
+                                    </div>
+                                    <div className="font-mono font-black text-gray-900 text-sm sm:text-base mt-0.5">
+                                        {activeSchedule.startTime}
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-gray-500 truncate mt-0.5" title={activeSchedule.startPlace}>
+                                        {activeSchedule.startPlace}
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-emerald-600 text-[10px] uppercase font-bold block">
-                                        {tripDirection === 'morning' ? '⭐ Expected Pickup' : '⭐ Expected Drop'}
-                                    </span>
-                                    <span className="font-mono font-black text-emerald-700 text-sm">
-                                        ~{tripDirection === 'morning' ? studentStopMetrics.morningTime : studentStopMetrics.eveningTime}
-                                        <span className="text-[10px] font-medium text-gray-500 ml-1">
-                                            ({tripDirection === 'morning' ? `+${studentStopMetrics.morningMins}` : `+${studentStopMetrics.eveningMins}`})
-                                        </span>
-                                    </span>
+
+                                {/* Step 2: Student Stop (Pickup/Drop) */}
+                                <div className="bg-emerald-50/80 p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-xs flex flex-col justify-between">
+                                    <div className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider truncate flex items-center gap-1">
+                                        <span>⭐ {activeSchedule.stopTitle}</span>
+                                    </div>
+                                    <div className="font-mono font-black text-emerald-800 text-sm sm:text-base mt-0.5">
+                                        ~{activeSchedule.stopTime}
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-emerald-700 truncate mt-0.5" title={`${activeSchedule.stopPlace} (+${activeSchedule.stopMins})`}>
+                                        {activeSchedule.stopPlace} (+{activeSchedule.stopMins})
+                                    </div>
                                 </div>
+
+                                {/* Step 3: End Time (Final Destination Arrival) */}
+                                <div className="bg-purple-50/80 p-2 sm:p-2.5 rounded-xl border border-purple-200/80 shadow-xs flex flex-col justify-between">
+                                    <div className="text-[9px] font-bold text-purple-700 uppercase tracking-wider truncate flex items-center gap-1">
+                                        <span>🏁 End Time</span>
+                                    </div>
+                                    <div className="font-mono font-black text-purple-800 text-sm sm:text-base mt-0.5">
+                                        ~{activeSchedule.endTime}
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-purple-700 truncate mt-0.5" title={activeSchedule.endPlace}>
+                                        {activeSchedule.endPlace}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* LIVE BUS MOVEMENT & REAL-TIME DYNAMIC TIMINGS BAR */}
+                        <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
+                            isMoving
+                                ? 'bg-gradient-to-r from-slate-950 via-emerald-950 to-slate-950 text-white border-emerald-500/50 shadow-md'
+                                : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                        isMoving
+                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                            : 'bg-slate-200 text-slate-600'
+                                    }`}>
+                                        <RiBusFill size={18} className={isMoving ? 'animate-pulse' : ''} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-black uppercase tracking-wider ${
+                                                isMoving
+                                                    ? 'bg-emerald-500 text-white animate-pulse'
+                                                    : 'bg-amber-100 text-amber-800'
+                                            }`}>
+                                                {isMoving ? 'LIVE IN MOTION' : 'BUS STATIONARY'}
+                                            </span>
+                                            <span className="font-mono font-bold text-xs">
+                                                {isMoving ? `${liveSpeed} km/h` : '0 km/h'}
+                                            </span>
+                                            {busHeading > 0 && isMoving && (
+                                                <span className="text-[10px] font-semibold text-emerald-300">
+                                                    • {getCompassDirection(busHeading)} ({busHeading}°)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className={`text-xs font-bold truncate mt-0.5 ${isMoving ? 'text-slate-200' : 'text-slate-600'}`}>
+                                            {isMoving
+                                                ? `En route towards ${activePass.stopName || 'your stop'}`
+                                                : `Parked / Idle • Engine ${ignitionActive ? 'ON' : 'OFF'}`
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Dynamic Real-Time Timings Countdown */}
+                                <div className="text-right shrink-0">
+                                    {etaToStop ? (
+                                        <>
+                                            <div className={`font-mono font-black text-sm sm:text-base leading-none ${isMoving ? 'text-emerald-400' : 'text-slate-900'}`}>
+                                                ETA: ~{etaToStop.etaClock}
+                                            </div>
+                                            <div className={`text-[10px] font-semibold mt-0.5 ${isMoving ? 'text-slate-300' : 'text-slate-500'}`}>
+                                                {etaToStop.formattedTime} ({distanceBusToStop || '--'} km)
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <span className="text-xs text-gray-400 font-medium">Calculating...</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Sub-bar: Final Destination ETA & Vehicle Telemetry */}
+                            <div className={`mt-2 pt-1.5 border-t flex items-center justify-between text-[10px] ${
+                                isMoving ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'
+                            }`}>
+                                <span>
+                                    Bus: <strong className={isMoving ? 'text-slate-200' : 'text-slate-700'}>{activePass.busId || 'AP-39-VA-1853'}</strong>
+                                </span>
+                                {etaToDestination && (
+                                    <span>
+                                        🏁 {targetDestination.title}: <strong className={isMoving ? 'text-emerald-300' : 'text-indigo-600'}>~{etaToDestination.etaClock}</strong>
+                                    </span>
+                                )}
+                                <span>
+                                    Telemetry: <strong className={isMoving ? 'text-slate-200' : 'text-slate-700'}>{lastPingTime}</strong>
+                                </span>
                             </div>
                         </div>
 
@@ -699,6 +957,11 @@ const Transport = () => {
                                                 <span className="font-mono text-emerald-400 font-bold text-xs">
                                                     {liveSpeed} km/h
                                                 </span>
+                                                {busHeading > 0 && (
+                                                    <span className="text-[10px] text-emerald-300 font-semibold hidden sm:inline">
+                                                        ({getCompassDirection(busHeading)} {busHeading}°)
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-xs font-bold text-slate-100 truncate mt-0.5">
                                                 En Route to {activePass.stopName}
@@ -708,18 +971,20 @@ const Transport = () => {
 
                                     <div className="text-right shrink-0">
                                         <div className="text-base sm:text-lg font-black text-emerald-400 font-mono leading-none">
-                                            ~{etaToStop?.etaClock || '1:45 PM'}
+                                            ~{etaToStop?.etaClock || '--'}
                                         </div>
                                         <div className="text-[10px] text-slate-300 font-semibold mt-0.5">
-                                            {etaToStop?.formattedTime || '42 min'} ({distanceBusToStop || '24.7'} km)
+                                            {etaToStop?.formattedTime || '--'} ({distanceBusToStop || '--'} km)
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Sub-bar with Telemetry details */}
+                                {/* Sub-bar with Telemetry details & Final Destination ETA */}
                                 <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-[9px] text-slate-400">
                                     <span>Bus: <strong>{activePass.busId || 'AP-39-VA-1853'}</strong></span>
-                                    {busHeading > 0 && <span>Heading: <strong>{busHeading}°</strong></span>}
+                                    {etaToDestination && (
+                                        <span>🏁 {targetDestination.title}: <strong className="text-emerald-300">~{etaToDestination.etaClock}</strong></span>
+                                    )}
                                     <span>Telemetry: <strong>{lastPingTime}</strong></span>
                                 </div>
                             </div>
