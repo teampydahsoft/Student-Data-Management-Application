@@ -8,41 +8,33 @@ import {
     RiRouteFill,
     RiCrosshair2Line,
     RiBuilding2Fill,
-    RiNavigationFill,
     RiCloseLine,
     RiFocus3Line,
-    RiSpeedUpLine,
-    RiTimeLine,
-    RiDashboard3Line,
-    RiSignalTowerFill,
-    RiCompass3Fill,
     RiSunLine,
-    RiMoonLine,
-    RiEyeLine,
-    RiEyeOffLine
+    RiMoonLine
 } from 'react-icons/ri';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, LayersControl, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Leaflet custom marker and tooltip CSS
+// Leaflet custom marker and tooltip CSS (Clean Light Portal Theme)
 const customMapStyles = `
   .clean-leaflet-marker {
     background: transparent !important;
     border: none !important;
   }
   .stage-tooltip {
-    background: #0f172a !important;
-    color: #ffffff !important;
-    font-size: 11px !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
-    border: 1px solid rgba(255,255,255,0.2) !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 8px !important;
-    padding: 4px 9px !important;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important;
+    padding: 6px 12px !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
   }
   .stage-tooltip:before {
-    border-top-color: #0f172a !important;
+    border-top-color: #ffffff !important;
   }
 `;
 
@@ -64,14 +56,6 @@ const MORNING_ORIGIN_START_TIME = '07:00 AM';
 const MORNING_CAMPUS_END_TIME = '08:15 AM';
 const EVENING_CAMPUS_START_TIME = '04:30 PM';
 const EVENING_ORIGIN_END_TIME = '05:45 PM';
-
-// Helper to determine trip direction automatically based on current clock time
-// Before 1:00 PM (hour < 13): Morning (Kesavaram -> Campus)
-// From 1:00 PM onwards (hour >= 13): Evening (Campus -> Kesavaram)
-const getAutoTripDirection = () => {
-    const currentHour = new Date().getHours();
-    return currentHour < 13 ? 'morning' : 'evening';
-};
 
 // Helper to calculate compass direction label from degrees
 const getCompassDirection = (deg) => {
@@ -116,16 +100,6 @@ const Transport = () => {
     const [routeDuration, setRouteDuration] = useState(null);
     const [routeDistanceKm, setRouteDistanceKm] = useState(null);
     const [showFullRouteModal, setShowFullRouteModal] = useState(false);
-
-    // Trip Direction: Auto-selected based on current clock time ('morning' before 1 PM, 'evening' from 1 PM)
-    const [tripDirection, setTripDirection] = useState(getAutoTripDirection());
-    const [isAutoDirection, setIsAutoDirection] = useState(true);
-    const [currentTimeStr, setCurrentTimeStr] = useState(() => {
-        return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    });
-
-    // Stop Times Display: false = clean minimal points (no clutter), true = show times above points
-    const [showStopTimesOnMap, setShowStopTimesOnMap] = useState(false);
 
     // Initial fetch of transport details
     useEffect(() => {
@@ -196,57 +170,11 @@ const Transport = () => {
         return () => clearInterval(timer);
     }, []);
 
-    // Auto-update current time string & trip direction if in auto mode
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentTimeStr(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            if (isAutoDirection) {
-                setTripDirection(getAutoTripDirection());
-            }
-        }, 15000);
-        return () => clearInterval(timer);
-    }, [isAutoDirection]);
-
     // Live Speed & Ignition Status
     const liveSpeed = liveBusData?.location?.speed != null ? Number(liveBusData.location.speed) : 0;
     const isMoving = liveBusData?.location?.status === 'Moving' || liveSpeed > 0;
     const ignitionActive = Boolean(liveBusData?.location?.ignition);
     const busHeading = liveBusData?.location?.heading || 0;
-
-    // Resolve Student Boarding Stop Coordinates
-    const stopCoords = useMemo(() => {
-        if (activePass?.stopDetails?.latitude && activePass?.stopDetails?.longitude) {
-            return [Number(activePass.stopDetails.latitude), Number(activePass.stopDetails.longitude)];
-        }
-        if (activePass?.routeDetails?.stages) {
-            const targetName = (activePass.stopName || '').trim().toLowerCase();
-            const found = activePass.routeDetails.stages.find(
-                s => s.stageName && s.stageName.trim().toLowerCase() === targetName
-            );
-            if (found && found.latitude && found.longitude) {
-                return [Number(found.latitude), Number(found.longitude)];
-            }
-        }
-        return [16.924471, 82.011247]; // Thossipudi
-    }, [activePass]);
-
-    // Resolve Real-Time Live Bus Coordinates from GPS API
-    const busCoords = useMemo(() => {
-        if (liveBusData?.location?.latitude && liveBusData?.location?.longitude) {
-            return [Number(liveBusData.location.latitude), Number(liveBusData.location.longitude)];
-        }
-        return [16.838217, 82.224991]; // Patavala campus
-    }, [liveBusData]);
-
-    // Resolve College Campus Final Destination Coordinates
-    const campusCoords = useMemo(() => {
-        if (activePass?.routeDetails?.destination?.latitude && activePass?.routeDetails?.destination?.longitude) {
-            return [Number(activePass.routeDetails.destination.latitude), Number(activePass.routeDetails.destination.longitude)];
-        }
-        return [16.839036, 82.225011]; // Pydah College Campus
-    }, [activePass]);
-
-    const campusRadius = activePass?.routeDetails?.destination?.radius || 200;
 
     // Extract all stages along the route including origin, stops, and campus destination
     const allRouteStages = useMemo(() => {
@@ -256,6 +184,19 @@ const Transport = () => {
         return activePass.routeDetails.stages.filter(s => s.latitude && s.longitude);
     }, [activePass]);
 
+    // Find student's stage object dynamically
+    const studentStage = useMemo(() => {
+        if (activePass?.stopDetails && activePass.stopDetails.latitude && activePass.stopDetails.longitude) {
+            return activePass.stopDetails;
+        }
+        if (activePass?.stopName && allRouteStages.length > 0) {
+            const target = activePass.stopName.trim().toLowerCase();
+            const found = allRouteStages.find(s => s.stageName && s.stageName.trim().toLowerCase() === target);
+            if (found) return found;
+        }
+        return activePass?.stopDetails || null;
+    }, [activePass, allRouteStages]);
+
     // Find student's stage index
     const studentStageIndex = useMemo(() => {
         if (!activePass?.stopName || !allRouteStages.length) return null;
@@ -263,6 +204,53 @@ const Transport = () => {
         const idx = allRouteStages.findIndex(s => s.stageName && s.stageName.trim().toLowerCase() === target);
         return idx !== -1 ? idx + 1 : null;
     }, [activePass, allRouteStages]);
+
+    // Resolve Student Boarding Stop Coordinates dynamically
+    const stopCoords = useMemo(() => {
+        if (studentStage?.latitude && studentStage?.longitude) {
+            return [Number(studentStage.latitude), Number(studentStage.longitude)];
+        }
+        if (allRouteStages.length > 0 && allRouteStages[0]?.latitude && allRouteStages[0]?.longitude) {
+            return [Number(allRouteStages[0].latitude), Number(allRouteStages[0].longitude)];
+        }
+        return null;
+    }, [studentStage, allRouteStages]);
+
+    // Resolve Real-Time Live Bus Coordinates from GPS API
+    const busCoords = useMemo(() => {
+        if (liveBusData?.location?.latitude && liveBusData?.location?.longitude) {
+            return [Number(liveBusData.location.latitude), Number(liveBusData.location.longitude)];
+        }
+        return stopCoords;
+    }, [liveBusData, stopCoords]);
+
+    // Resolve College Campus Final Destination Coordinates dynamically
+    const campusCoords = useMemo(() => {
+        if (activePass?.routeDetails?.destination?.latitude && activePass?.routeDetails?.destination?.longitude) {
+            return [Number(activePass.routeDetails.destination.latitude), Number(activePass.routeDetails.destination.longitude)];
+        }
+        const campusStage = allRouteStages.find(s => s.isCampusDestination || (s.stageName && s.stageName.toUpperCase().includes('PYDAH')));
+        if (campusStage?.latitude && campusStage?.longitude) {
+            return [Number(campusStage.latitude), Number(campusStage.longitude)];
+        }
+        if (allRouteStages.length > 0) {
+            const last = allRouteStages[allRouteStages.length - 1];
+            if (last?.latitude && last?.longitude) {
+                return [Number(last.latitude), Number(last.longitude)];
+            }
+        }
+        return null;
+    }, [activePass, allRouteStages]);
+
+    // Resolve Origin Start Coordinates dynamically
+    const originCoords = useMemo(() => {
+        if (allRouteStages.length > 0 && allRouteStages[0]?.latitude && allRouteStages[0]?.longitude) {
+            return [Number(allRouteStages[0].latitude), Number(allRouteStages[0].longitude)];
+        }
+        return null;
+    }, [allRouteStages]);
+
+    const campusRadius = activePass?.routeDetails?.destination?.radius || 200;
 
     // Stage Coordinates for OSRM Road Routing
     const stagePolyline = useMemo(() => {
@@ -304,8 +292,9 @@ const Transport = () => {
 
     // Bounds covering bus, stops, and route
     const allBounds = useMemo(() => {
-        if (activePolyline.length > 0) return activePolyline;
-        return [busCoords, stopCoords, campusCoords];
+        if (activePolyline.length > 1) return activePolyline;
+        const valid = [busCoords, stopCoords, campusCoords].filter(Boolean);
+        return valid.length > 1 ? valid : null;
     }, [activePolyline, busCoords, stopCoords, campusCoords]);
 
     // Distance from live bus to student's boarding stop (Haversine in KM)
@@ -348,24 +337,24 @@ const Transport = () => {
         };
     }, [distanceBusToStop, liveSpeed]);
 
-    // Stage Timing Engine for BOTH SIDES (Start -> Destination & Destination -> Start)
+    // Dynamic Stage Timing Engine for BOTH SIDES
     const getStageMetrics = (stage) => {
-        const totalDistance = routeDistanceKm ? parseFloat(routeDistanceKm) : 66.8;
+        const totalDistance = routeDistanceKm
+            ? parseFloat(routeDistanceKm)
+            : (Number(activePass?.routeDetails?.totalDistance) ||
+               (allRouteStages.length > 0 && allRouteStages[allRouteStages.length - 1]?.distanceFromStart ? Number(allRouteStages[allRouteStages.length - 1].distanceFromStart) : 0) ||
+               (stage.distanceFromStart ? Number(stage.distanceFromStart) * 1.5 : 30));
         const distFromStart = Number(stage.distanceFromStart) || 0;
         const distToCampus = stage.distanceToDestination != null
             ? Number(stage.distanceToDestination)
             : Math.max(0, totalDistance - distFromStart);
 
-        // 1. Morning Trip: Start -> Destination (KESAVARAM -> PYDAH COLLEGE)
-        // Bus starts at 07:00 AM from origin
         const morningTravelMins = Math.round((distFromStart / 35) * 60);
         const morningScheduledTime = addMinutesToTimeStr(MORNING_ORIGIN_START_TIME, morningTravelMins);
         const morningTravelTimeStr = morningTravelMins >= 60
             ? `${Math.floor(morningTravelMins / 60)}h ${morningTravelMins % 60}m`
             : `${morningTravelMins}m`;
 
-        // 2. Evening Trip: Destination -> Start (PYDAH COLLEGE -> KESAVARAM)
-        // Bus starts at 04:30 PM from campus
         const eveningTravelMins = Math.round((distToCampus / 35) * 60);
         const eveningScheduledTime = addMinutesToTimeStr(EVENING_CAMPUS_START_TIME, eveningTravelMins);
         const eveningTravelTimeStr = eveningTravelMins >= 60
@@ -382,127 +371,31 @@ const Transport = () => {
         };
     };
 
-    // Calculate Student's Own Scheduled Timings for Both Sides
+    // Calculate Student's Own Scheduled Timings for Both Sides dynamically
     const studentStopMetrics = useMemo(() => {
-        if (!activePass?.stopDetails) {
+        if (!studentStage) {
             return {
-                morningTime: '7:29 AM',
-                morningMins: '29m',
-                eveningTime: '5:12 PM',
-                eveningMins: '42m'
+                morningTime: '--',
+                morningMins: '',
+                eveningTime: '--',
+                eveningMins: ''
             };
         }
-        const metrics = getStageMetrics(activePass.stopDetails);
+        const metrics = getStageMetrics(studentStage);
         return {
             morningTime: metrics.morningScheduledTime,
             morningMins: metrics.morningTravelTimeStr,
             eveningTime: metrics.eveningScheduledTime,
             eveningMins: metrics.eveningTravelTimeStr
         };
-    }, [activePass, routeDistanceKm]);
+    }, [studentStage, routeDistanceKm, allRouteStages]);
 
-    // Resolve Origin Start Coordinates
-    const originCoords = useMemo(() => {
-        if (allRouteStages.length > 0 && allRouteStages[0].latitude && allRouteStages[0].longitude) {
-            return [Number(allRouteStages[0].latitude), Number(allRouteStages[0].longitude)];
-        }
-        return [16.992222, 81.936667]; // Kesavaram
-    }, [allRouteStages]);
-
-    // Active Target Destination based on direction
-    const targetDestination = useMemo(() => {
-        if (tripDirection === 'morning') {
-            return {
-                title: 'Campus Arrival',
-                name: 'PYDAH COLLEGE',
-                coords: campusCoords,
-                scheduledTime: MORNING_CAMPUS_END_TIME
-            };
-        }
-        return {
-            title: 'Terminus Arrival',
-            name: activePass?.routeDetails?.startPoint || 'KESAVARAM',
-            coords: originCoords,
-            scheduledTime: EVENING_ORIGIN_END_TIME
-        };
-    }, [tripDirection, campusCoords, originCoords, activePass]);
-
-    // Distance from live bus to target destination (Haversine in KM)
-    const distanceBusToDestination = useMemo(() => {
-        if (!busCoords || !targetDestination?.coords) return null;
-        const [lat1, lon1] = busCoords;
-        const [lat2, lon2] = targetDestination.coords;
-        const R = 6371;
-        const dLat = (lat2 - lat1) * (Math.PI / 180);
-        const dLon = (lon2 - lon1) * (Math.PI / 180);
-        const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return (R * c).toFixed(1);
-    }, [busCoords, targetDestination]);
-
-    // Live ETA to Target Destination
-    const etaToDestination = useMemo(() => {
-        if (!distanceBusToDestination) return null;
-        const dist = parseFloat(distanceBusToDestination);
-        if (isNaN(dist)) return null;
-
-        const effectiveSpeed = liveSpeed >= 15 ? liveSpeed : 35;
-        const minutes = Math.max(1, Math.round((dist / effectiveSpeed) * 60));
-
-        const arrivalDate = new Date(Date.now() + minutes * 60000);
-        const hours = arrivalDate.getHours();
-        const mins = arrivalDate.getMinutes();
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        const formattedHours = hours % 12 || 12;
-        const formattedMins = mins < 10 ? `0${mins}` : mins;
-        const etaClock = `${formattedHours}:${formattedMins} ${ampm}`;
-
-        return {
-            minutes,
-            formattedTime: minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`,
-            etaClock
-        };
-    }, [distanceBusToDestination, liveSpeed]);
-
-    // Active scheduled commute details (Start Time, Your Stop Time, End Time)
-    const activeSchedule = useMemo(() => {
-        if (tripDirection === 'morning') {
-            return {
-                startTitle: 'Commences',
-                startPlace: activePass?.routeDetails?.startPoint || 'KESAVARAM',
-                startTime: MORNING_ORIGIN_START_TIME,
-                stopTitle: 'Your Pickup',
-                stopPlace: activePass?.stopName || 'THOSSIPUDI',
-                stopTime: studentStopMetrics.morningTime,
-                stopMins: studentStopMetrics.morningMins,
-                endTitle: 'Campus Arrival',
-                endPlace: 'PYDAH COLLEGE',
-                endTime: MORNING_CAMPUS_END_TIME
-            };
-        }
-        return {
-            startTitle: 'Campus Dispersal',
-            startPlace: 'PYDAH COLLEGE',
-            startTime: EVENING_CAMPUS_START_TIME,
-            stopTitle: 'Your Drop',
-            stopPlace: activePass?.stopName || 'THOSSIPUDI',
-            stopTime: studentStopMetrics.eveningTime,
-            stopMins: studentStopMetrics.eveningMins,
-            endTitle: 'Terminus Arrival',
-            endPlace: activePass?.routeDetails?.startPoint || 'KESAVARAM',
-            endTime: EVENING_ORIGIN_END_TIME
-        };
-    }, [tripDirection, activePass, studentStopMetrics]);
-
-    // Leaflet Custom Icons
+    // Leaflet Custom Icons (Clean Light Portal Theme)
     // 1. Live GPS Bus Marker (High Visibility Movement Radar)
     const busIcon = useMemo(() => {
         const speed = liveSpeed;
         const heading = busHeading;
-        const busNum = activePass?.busId || liveBusData?.busNumber || 'AP-39-VA-1853';
+        const busNum = activePass?.busId || liveBusData?.busNumber || activePass?.busDetails?.busNumber || 'Assigned Bus';
 
         return L.divIcon({
             className: 'clean-leaflet-marker',
@@ -510,31 +403,31 @@ const Transport = () => {
                 <div style="position:relative;width:56px;height:56px;display:flex;align-items:center;justify-content:center;">
                     <!-- Concentric Radar Pulse Waves when in Movement -->
                     ${isMoving ? `
-                    <div style="position:absolute;inset:-8px;border-radius:50%;background:#10b981;opacity:0.4;animation:ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-                    <div style="position:absolute;inset:-3px;border-radius:50%;background:#2563eb;opacity:0.3;animation:ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+                    <div style="position:absolute;inset:-8px;border-radius:50%;background:#10b981;opacity:0.35;animation:ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+                    <div style="position:absolute;inset:-3px;border-radius:50%;background:#3b82f6;opacity:0.25;animation:ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
                     ` : `
-                    <div style="position:absolute;inset:-4px;border-radius:50%;background:#3b82f6;opacity:0.25;animation:pulse 2s infinite;"></div>
+                    <div style="position:absolute;inset:-4px;border-radius:50%;background:#3b82f6;opacity:0.2;animation:pulse 2s infinite;"></div>
                     `}
 
                     <!-- Main Bus Round Icon -->
-                    <div style="position:relative;width:40px;height:40px;border-radius:50%;background:${isMoving ? '#059669' : '#1e3a8a'};color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.45);border:2.5px solid #ffffff;">
+                    <div style="position:relative;width:40px;height:40px;border-radius:50%;background:${isMoving ? '#059669' : '#2563eb'};color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25);border:2.5px solid #ffffff;">
                         <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>
 
                         <!-- Heading Compass Direction Pointer -->
                         ${heading > 0 ? `
-                        <div style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#0284c7;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg);box-shadow:0 2px 5px rgba(0,0,0,0.3);">
+                        <div style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#0284c7;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg);box-shadow:0 2px 5px rgba(0,0,0,0.2);">
                             <svg width="10" height="10" fill="#fff" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
                         </div>` : ''}
                     </div>
 
                     <!-- Top Speed & Movement Badge -->
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:${isMoving ? '#064e3b' : '#0f172a'};color:${isMoving ? '#6ee7b7' : '#fbbf24'};font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid ${isMoving ? '#10b981' : 'rgba(255,255,255,0.2)'};display:flex;align-items:center;gap:3px;">
+                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:${isMoving ? '#059669' : '#d97706'};font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid ${isMoving ? '#10b981' : '#f59e0b'};display:flex;align-items:center;gap:3px;">
                         <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${isMoving ? '#10b981' : '#f59e0b'};${isMoving ? 'animation:ping 1s infinite;' : ''}"></span>
                         <span>${isMoving ? `MOVING • ${speed} km/h` : `STOPPED • 0 km/h`}</span>
                     </div>
 
                     <!-- Bottom Plate Badge -->
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#0f172a;color:#ffffff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.15);">
+                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0f172a;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #cbd5e1;">
                         ${busNum}
                     </div>
                 </div>
@@ -547,23 +440,20 @@ const Transport = () => {
 
     // 2. Student Boarding Stop Beacon (Emerald with Circular Point & Timings)
     const stopIcon = useMemo(() => {
-        const stopName = activePass?.stopName || 'THOSSIPUDI';
-        const scheduledText = tripDirection === 'morning'
-            ? `Pickup ~${studentStopMetrics.morningTime}`
-            : `Drop ~${studentStopMetrics.eveningTime}`;
+        const stopName = activePass?.stopName || studentStage?.stageName || 'Boarding Stop';
 
         return L.divIcon({
             className: 'clean-leaflet-marker',
             html: `
                 <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center;">
-                    <div style="position:absolute;inset:-6px;border-radius:50%;background:#10b981;opacity:0.4;animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
-                    <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#059669;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.4);border:2.5px solid #ffffff;">
+                    <div style="position:absolute;inset:-6px;border-radius:50%;background:#10b981;opacity:0.35;animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
+                    <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#059669;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25);border:2.5px solid #ffffff;">
                         <svg width="19" height="19" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                     </div>
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#064e3b;color:#6ee7b7;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid #10b981;display:flex;align-items:center;gap:3px;">
-                        <span>⭐ ${scheduledText}</span>
+                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:#059669;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #10b981;display:flex;align-items:center;gap:3px;">
+                        <span>⭐ Pickup ~${studentStopMetrics.morningTime} • Drop ~${studentStopMetrics.eveningTime}</span>
                     </div>
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#064e3b;color:#ffffff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);">
+                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#064e3b;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1.5px solid #10b981;">
                         ${stopName} (Your Stop)
                     </div>
                 </div>
@@ -572,26 +462,24 @@ const Transport = () => {
             iconAnchor: [23, 23],
             popupAnchor: [0, -25]
         });
-    }, [activePass, tripDirection, studentStopMetrics]);
+    }, [activePass, studentStage, studentStopMetrics]);
 
     // 3. Final Destination: College Campus Icon
     const campusIcon = useMemo(() => {
-        const campusTiming = tripDirection === 'morning'
-            ? 'Arrives ~8:15 AM'
-            : 'Departs: 4:30 PM';
+        const campusName = activePass?.routeDetails?.destination?.name || 'Campus Gate';
 
         return L.divIcon({
             className: 'clean-leaflet-marker',
             html: `
                 <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center;">
-                    <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.4);border:2.5px solid #ffffff;">
+                    <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25);border:2.5px solid #ffffff;">
                         <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
                     </div>
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#4c1d95;color:#c4b5fd;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid #8b5cf6;">
-                        🏁 ${campusTiming}
+                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:#7c3aed;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #8b5cf6;">
+                        🏁 ~8:15 AM • Departs 4:30 PM
                     </div>
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#4c1d95;color:#ffffff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.2);">
-                        PYDAH COLLEGE (Campus)
+                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#4c1d95;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1.5px solid #8b5cf6;">
+                        ${campusName}
                     </div>
                 </div>
             `,
@@ -599,26 +487,23 @@ const Transport = () => {
             iconAnchor: [23, 23],
             popupAnchor: [0, -25]
         });
-    }, [tripDirection]);
+    }, [activePass]);
 
     // 4. Origin Start Stop Icon
     const originIcon = useMemo(() => {
-        const originName = activePass?.routeDetails?.startPoint || 'KESAVARAM';
-        const originTiming = tripDirection === 'morning'
-            ? 'Starts: 7:00 AM'
-            : 'Terminus ~5:45 PM';
+        const originName = activePass?.routeDetails?.startPoint || allRouteStages[0]?.stageName || 'Route Origin';
 
         return L.divIcon({
             className: 'clean-leaflet-marker',
             html: `
                 <div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
-                    <div style="position:relative;width:30px;height:30px;border-radius:50%;background:#0284c7;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.35);border:2px solid #ffffff;">
+                    <div style="position:relative;width:30px;height:30px;border-radius:50%;background:#0284c7;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.22);border:2px solid #ffffff;">
                         <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                     </div>
-                    <div style="position:absolute;top:-19px;left:50%;transform:translateX(-50%);background:#0c4a6e;color:#bae6fd;font-size:8.5px;font-weight:900;padding:1.5px 6px;border-radius:8px;white-space:nowrap;border:1px solid rgba(255,255,255,0.2);">
-                        🚩 ${originTiming}
+                    <div style="position:absolute;top:-19px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0284c7;font-size:8.5px;font-weight:900;padding:1.5px 6px;border-radius:8px;white-space:nowrap;border:1.5px solid #0284c7;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                        🚩 Starts 7:00 AM • ~5:45 PM
                     </div>
-                    <div style="position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);background:#0c4a6e;color:#ffffff;font-size:9px;font-weight:900;padding:1px 6px;border-radius:5px;white-space:nowrap;border:1px solid rgba(255,255,255,0.2);">
+                    <div style="position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0369a1;font-size:9px;font-weight:900;padding:1px 6px;border-radius:5px;white-space:nowrap;border:1.5px solid #0284c7;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
                         ${originName}
                     </div>
                 </div>
@@ -627,21 +512,19 @@ const Transport = () => {
             iconAnchor: [19, 19],
             popupAnchor: [0, -20]
         });
-    }, [activePass, tripDirection]);
+    }, [activePass, allRouteStages]);
 
-    // 5. Clean Circular Milestone Pin (Pristine circular nodes as shown before, uncluttered on mobile)
-    const createStagePointIcon = (stageNumber, metrics, direction, showTimeBadge) => {
-        const timeText = direction === 'morning' ? metrics.morningScheduledTime : metrics.eveningScheduledTime;
-
+    // 5. Clean Circular Milestone Pin (Pristine circular nodes, uncluttered on mobile)
+    const createStagePointIcon = (stageNumber, metrics, showTimeBadge) => {
         return L.divIcon({
             className: 'clean-leaflet-marker',
             html: `
                 <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
                     ${showTimeBadge ? `
-                    <div style="background:#0f172a;color:#38bdf8;font-size:8px;font-weight:900;padding:1px 4.5px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);margin-bottom:2px;">
-                        ${timeText}
+                    <div style="background:#ffffff;color:#2563eb;font-size:8px;font-weight:900;padding:1px 4.5px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1px solid #93c5fd;margin-bottom:2px;">
+                        ${metrics.morningScheduledTime}
                     </div>` : ''}
-                    <div style="width:23px;height:23px;border-radius:50%;background:#2563eb;color:#ffffff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.32);border:2px solid #ffffff;">
+                    <div style="width:23px;height:23px;border-radius:50%;background:#2563eb;color:#ffffff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);border:2px solid #ffffff;">
                         ${stageNumber}
                     </div>
                 </div>
@@ -697,11 +580,13 @@ const Transport = () => {
                         {/* Route Corridor Ribbon */}
                         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100 text-xs">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="px-2 py-0.5 rounded bg-indigo-600 text-white font-black text-[11px] shrink-0">
-                                    {activePass.routeId || 'R20'}
-                                </span>
-                                <span className="font-bold text-gray-800 truncate text-xs sm:text-sm" title={activePass.routeName}>
-                                    {activePass.routeName || 'Kesavaram Via Anaparthi, Sampara'}
+                                {activePass.routeId && (
+                                    <span className="px-2 py-0.5 rounded bg-indigo-600 text-white font-black text-[11px] shrink-0">
+                                        {activePass.routeId}
+                                    </span>
+                                )}
+                                <span className="font-bold text-gray-800 truncate text-xs sm:text-sm" title={activePass.routeName || activePass.routeDetails?.routeName}>
+                                    {activePass.routeName || activePass.routeDetails?.routeName || (activePass.routeId ? `Route ${activePass.routeId}` : 'Assigned Route')}
                                 </span>
                             </div>
                             <button
@@ -713,145 +598,75 @@ const Transport = () => {
                             </button>
                         </div>
 
-                        {/* Direction Selector & Auto-Selected Schedule Timings Strip */}
-                        <div className="bg-slate-50/90 p-2.5 sm:p-3 rounded-xl border border-slate-200/80 space-y-2.5">
-                            {/* Direction Tabs with Auto Indicator */}
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 flex-1 bg-white p-1 rounded-lg border border-slate-200/80 shadow-xs text-xs">
-                                    <button
-                                        onClick={() => {
-                                            setTripDirection('morning');
-                                            setIsAutoDirection(false);
-                                        }}
-                                        className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                            tripDirection === 'morning'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-600 hover:text-gray-900'
-                                        }`}
-                                    >
-                                        <RiSunLine size={14} className={tripDirection === 'morning' ? 'text-amber-300' : 'text-amber-500'} />
-                                        <span>Morning: Start ➔ Campus</span>
-                                        {isAutoDirection && tripDirection === 'morning' && (
-                                            <span className="text-[9px] bg-white/20 px-1.5 py-0.2 rounded font-mono font-bold">Auto</span>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setTripDirection('evening');
-                                            setIsAutoDirection(false);
-                                        }}
-                                        className={`flex-1 py-1.5 px-2 rounded-md font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                            tripDirection === 'evening'
-                                                ? 'bg-indigo-600 text-white shadow-sm'
-                                                : 'text-gray-600 hover:text-gray-900'
-                                        }`}
-                                    >
-                                        <RiMoonLine size={14} className={tripDirection === 'evening' ? 'text-indigo-200' : 'text-indigo-500'} />
-                                        <span>Evening: Campus ➔ Start</span>
-                                        {isAutoDirection && tripDirection === 'evening' && (
-                                            <span className="text-[9px] bg-white/20 px-1.5 py-0.2 rounded font-mono font-bold">Auto</span>
-                                        )}
-                                    </button>
+                        {/* COMMUTE SCHEDULE CARDS (SIDE-BY-SIDE WITH TIMINGS ONLY) */}
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                            {/* Morning Pickup */}
+                            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center gap-2 sm:gap-2.5 shadow-xs">
+                                <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    <RiSunLine size={16} />
                                 </div>
-
-                                {!isAutoDirection ? (
-                                    <button
-                                        onClick={() => {
-                                            setIsAutoDirection(true);
-                                            setTripDirection(getAutoTripDirection());
-                                        }}
-                                        className="px-2.5 py-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 shrink-0 transition-all flex items-center gap-1 active:scale-95"
-                                        title="Auto-select based on current time"
-                                    >
-                                        <span>⚡ Reset Auto</span>
-                                    </button>
-                                ) : (
-                                    <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 shrink-0">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                        <span>Auto-Selected ({currentTimeStr})</span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider truncate">
+                                        Morning Pickup
                                     </div>
-                                )}
+                                    <div className="font-mono font-black text-amber-950 text-sm sm:text-base leading-tight mt-0.5">
+                                        ~{studentStopMetrics.morningTime}
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* 3-Step Journey Timeline: Start Time -> Stop Pickup/Drop -> End Time */}
-                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-xs">
-                                {/* Step 1: Start Time */}
-                                <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate flex items-center gap-1">
-                                        <span>🚩 Start Time</span>
-                                    </div>
-                                    <div className="font-mono font-black text-gray-900 text-sm sm:text-base mt-0.5">
-                                        {activeSchedule.startTime}
-                                    </div>
-                                    <div className="text-[10px] font-semibold text-gray-500 truncate mt-0.5" title={activeSchedule.startPlace}>
-                                        {activeSchedule.startPlace}
-                                    </div>
+                            {/* Evening Drop */}
+                            <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-center gap-2 sm:gap-2.5 shadow-xs">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    <RiMoonLine size={16} />
                                 </div>
-
-                                {/* Step 2: Student Stop (Pickup/Drop) */}
-                                <div className="bg-emerald-50/80 p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-xs flex flex-col justify-between">
-                                    <div className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider truncate flex items-center gap-1">
-                                        <span>⭐ {activeSchedule.stopTitle}</span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider truncate">
+                                        Evening Drop
                                     </div>
-                                    <div className="font-mono font-black text-emerald-800 text-sm sm:text-base mt-0.5">
-                                        ~{activeSchedule.stopTime}
-                                    </div>
-                                    <div className="text-[10px] font-semibold text-emerald-700 truncate mt-0.5" title={`${activeSchedule.stopPlace} (+${activeSchedule.stopMins})`}>
-                                        {activeSchedule.stopPlace} (+{activeSchedule.stopMins})
-                                    </div>
-                                </div>
-
-                                {/* Step 3: End Time (Final Destination Arrival) */}
-                                <div className="bg-purple-50/80 p-2 sm:p-2.5 rounded-xl border border-purple-200/80 shadow-xs flex flex-col justify-between">
-                                    <div className="text-[9px] font-bold text-purple-700 uppercase tracking-wider truncate flex items-center gap-1">
-                                        <span>🏁 End Time</span>
-                                    </div>
-                                    <div className="font-mono font-black text-purple-800 text-sm sm:text-base mt-0.5">
-                                        ~{activeSchedule.endTime}
-                                    </div>
-                                    <div className="text-[10px] font-semibold text-purple-700 truncate mt-0.5" title={activeSchedule.endPlace}>
-                                        {activeSchedule.endPlace}
+                                    <div className="font-mono font-black text-indigo-950 text-sm sm:text-base leading-tight mt-0.5">
+                                        ~{studentStopMetrics.eveningTime}
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* LIVE BUS MOVEMENT & REAL-TIME DYNAMIC TIMINGS BAR */}
-                        <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
+                        {/* LIVE BUS MOVEMENT & REAL-TIME DYNAMIC TIMINGS BAR (CLEAN LIGHT PORTAL THEME) */}
+                        <div className={`p-3 rounded-xl border transition-all ${
                             isMoving
-                                ? 'bg-gradient-to-r from-slate-950 via-emerald-950 to-slate-950 text-white border-emerald-500/50 shadow-md'
-                                : 'bg-slate-50 border-slate-200 text-slate-800'
+                                ? 'bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-emerald-50/90 border-emerald-200 shadow-xs'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
                         }`}>
                             <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
                                         isMoving
-                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                            ? 'bg-emerald-600 text-white'
                                             : 'bg-slate-200 text-slate-600'
                                     }`}>
-                                        <RiBusFill size={18} className={isMoving ? 'animate-pulse' : ''} />
+                                        <RiBusFill size={19} className={isMoving ? 'animate-pulse' : ''} />
                                     </div>
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-black uppercase tracking-wider ${
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                                                 isMoving
-                                                    ? 'bg-emerald-500 text-white animate-pulse'
-                                                    : 'bg-amber-100 text-amber-800'
+                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
                                             }`}>
-                                                {isMoving ? 'LIVE IN MOTION' : 'BUS STATIONARY'}
+                                                {isMoving ? 'Live In Motion' : 'Bus Stationary'}
                                             </span>
-                                            <span className="font-mono font-bold text-xs">
+                                            <span className="font-mono font-bold text-xs text-gray-800">
                                                 {isMoving ? `${liveSpeed} km/h` : '0 km/h'}
                                             </span>
                                             {busHeading > 0 && isMoving && (
-                                                <span className="text-[10px] font-semibold text-emerald-300">
+                                                <span className="text-[10px] font-semibold text-emerald-700">
                                                     • {getCompassDirection(busHeading)} ({busHeading}°)
                                                 </span>
                                             )}
                                         </div>
-                                        <div className={`text-xs font-bold truncate mt-0.5 ${isMoving ? 'text-slate-200' : 'text-slate-600'}`}>
+                                        <div className="text-xs font-bold text-gray-800 truncate mt-0.5">
                                             {isMoving
-                                                ? `En route towards ${activePass.stopName || 'your stop'}`
+                                                ? `En route towards ${activePass.stopName || studentStage?.stageName || 'your stop'}`
                                                 : `Parked / Idle • Engine ${ignitionActive ? 'ON' : 'OFF'}`
                                             }
                                         </div>
@@ -862,10 +677,10 @@ const Transport = () => {
                                 <div className="text-right shrink-0">
                                     {etaToStop ? (
                                         <>
-                                            <div className={`font-mono font-black text-sm sm:text-base leading-none ${isMoving ? 'text-emerald-400' : 'text-slate-900'}`}>
+                                            <div className="font-mono font-black text-sm sm:text-base leading-none text-emerald-700">
                                                 ETA: ~{etaToStop.etaClock}
                                             </div>
-                                            <div className={`text-[10px] font-semibold mt-0.5 ${isMoving ? 'text-slate-300' : 'text-slate-500'}`}>
+                                            <div className="text-[10px] font-semibold text-gray-500 mt-0.5">
                                                 {etaToStop.formattedTime} ({distanceBusToStop || '--'} km)
                                             </div>
                                         </>
@@ -873,23 +688,6 @@ const Transport = () => {
                                         <span className="text-xs text-gray-400 font-medium">Calculating...</span>
                                     )}
                                 </div>
-                            </div>
-
-                            {/* Sub-bar: Final Destination ETA & Vehicle Telemetry */}
-                            <div className={`mt-2 pt-1.5 border-t flex items-center justify-between text-[10px] ${
-                                isMoving ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'
-                            }`}>
-                                <span>
-                                    Bus: <strong className={isMoving ? 'text-slate-200' : 'text-slate-700'}>{activePass.busId || 'AP-39-VA-1853'}</strong>
-                                </span>
-                                {etaToDestination && (
-                                    <span>
-                                        🏁 {targetDestination.title}: <strong className={isMoving ? 'text-emerald-300' : 'text-indigo-600'}>~{etaToDestination.etaClock}</strong>
-                                    </span>
-                                )}
-                                <span>
-                                    Telemetry: <strong className={isMoving ? 'text-slate-200' : 'text-slate-700'}>{lastPingTime}</strong>
-                                </span>
                             </div>
                         </div>
 
@@ -902,10 +700,10 @@ const Transport = () => {
                                     <RiMapPin2Fill size={14} className="text-emerald-600" />
                                 </div>
                                 <div className="font-black text-emerald-950 text-sm sm:text-base truncate mt-0.5">
-                                    {activePass.stopName || 'THOSSIPUDI'}
+                                    {activePass.stopName || studentStage?.stageName || 'Assigned Stop'}
                                 </div>
                                 <div className="text-[10px] font-medium text-emerald-800/90 mt-1 flex items-center gap-1 truncate">
-                                    <span>Stage #{studentStageIndex || 6}</span>
+                                    <span>{studentStageIndex ? `Stage #${studentStageIndex}` : 'Your Stop'}</span>
                                     {distanceBusToStop && (
                                         <>
                                             <span>•</span>
@@ -922,7 +720,7 @@ const Transport = () => {
                                     <RiBusFill size={14} className="text-blue-600" />
                                 </div>
                                 <div className="font-black text-blue-950 text-sm sm:text-base truncate mt-0.5">
-                                    {activePass.busId || liveBusData?.busNumber || 'AP-39-VA-1853'}
+                                    {activePass.busId || liveBusData?.busNumber || activePass?.busDetails?.busNumber || 'Assigned Bus'}
                                 </div>
                                 <div className="text-[10px] font-medium text-blue-800/90 mt-1 flex items-center gap-1 truncate">
                                     <span className={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] ${
@@ -932,8 +730,12 @@ const Transport = () => {
                                     }`}>
                                         {isMoving ? `Moving (${liveSpeed}k)` : (liveBusData?.location?.status || 'Stopped')}
                                     </span>
-                                    <span>•</span>
-                                    <span>{activePass.busDetails?.capacity || 56} Seats</span>
+                                    {activePass.busDetails?.capacity ? (
+                                        <>
+                                            <span>•</span>
+                                            <span>{activePass.busDetails.capacity} Seats</span>
+                                        </>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -941,56 +743,7 @@ const Transport = () => {
 
                     {/* ADVANCED GOOGLE MAPS HYBRID LIVE TRACKING & NAVIGATION VIEW */}
                     <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative">
-                        {/* 1. AUTOMATIC LIVE TRACKING BANNER (APPEARS AUTOMATICALLY ONLY WHEN BUS IS IN MOVEMENT) */}
-                        {isMoving && (
-                            <div className="absolute top-2.5 left-2.5 right-2.5 z-[1000] bg-slate-950/95 backdrop-blur-md text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl border border-emerald-500/60 space-y-1.5 animate-slide-down">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0">
-                                            <RiNavigationFill size={18} className="animate-bounce text-emerald-400" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="px-1.5 py-0.2 rounded bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
-                                                    Live In Motion
-                                                </span>
-                                                <span className="font-mono text-emerald-400 font-bold text-xs">
-                                                    {liveSpeed} km/h
-                                                </span>
-                                                {busHeading > 0 && (
-                                                    <span className="text-[10px] text-emerald-300 font-semibold hidden sm:inline">
-                                                        ({getCompassDirection(busHeading)} {busHeading}°)
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="text-xs font-bold text-slate-100 truncate mt-0.5">
-                                                En Route to {activePass.stopName}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="text-right shrink-0">
-                                        <div className="text-base sm:text-lg font-black text-emerald-400 font-mono leading-none">
-                                            ~{etaToStop?.etaClock || '--'}
-                                        </div>
-                                        <div className="text-[10px] text-slate-300 font-semibold mt-0.5">
-                                            {etaToStop?.formattedTime || '--'} ({distanceBusToStop || '--'} km)
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Sub-bar with Telemetry details & Final Destination ETA */}
-                                <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-[9px] text-slate-400">
-                                    <span>Bus: <strong>{activePass.busId || 'AP-39-VA-1853'}</strong></span>
-                                    {etaToDestination && (
-                                        <span>🏁 {targetDestination.title}: <strong className="text-emerald-300">~{etaToDestination.etaClock}</strong></span>
-                                    )}
-                                    <span>Telemetry: <strong>{lastPingTime}</strong></span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 2. MAP QUICK ACTION BUTTONS (CLEAN BOTTOM-CENTER PILL BAR, ZERO OVERLAP) */}
+                        {/* MAP QUICK ACTION BUTTONS (CLEAN BOTTOM-CENTER PILL BAR, ZERO OVERLAP) */}
                         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white/95 backdrop-blur-md px-2 py-1 rounded-2xl shadow-xl border border-gray-200">
                             <button
                                 onClick={() => setMapFocus('bus')}
@@ -1090,86 +843,101 @@ const Transport = () => {
                                 )}
 
                                 {/* Campus Final Destination 200m Arrival Radius Circle */}
-                                <Circle
-                                    center={campusCoords}
-                                    radius={campusRadius}
-                                    pathOptions={{
-                                        color: '#7c3aed',
-                                        fillColor: '#8b5cf6',
-                                        fillOpacity: 0.22,
-                                        weight: 2,
-                                        dashArray: '4, 4'
-                                    }}
-                                />
+                                {campusCoords && (
+                                    <Circle
+                                        center={campusCoords}
+                                        radius={campusRadius}
+                                        pathOptions={{
+                                            color: '#7c3aed',
+                                            fillColor: '#8b5cf6',
+                                            fillOpacity: 0.22,
+                                            weight: 2,
+                                            dashArray: '4, 4'
+                                        }}
+                                    />
+                                )}
 
                                 {/* 1. Route Origin Marker */}
-                                <Marker position={[Number(allRouteStages[0]?.latitude), Number(allRouteStages[0]?.longitude)]} icon={originIcon}>
-                                    <Popup>
-                                        <div className="p-1.5 space-y-1 text-xs">
-                                            <div className="font-bold text-blue-600">🚩 Route Origin: {allRouteStages[0]?.stageName || 'KESAVARAM'}</div>
-                                            <p className="text-gray-700">
-                                                <strong>Morning Start:</strong> {MORNING_ORIGIN_START_TIME}
-                                            </p>
-                                            <p className="text-gray-700">
-                                                <strong>Evening Terminus:</strong> ~5:45 PM
-                                            </p>
-                                            <p className="text-gray-500">Commencement point • 0 KM</p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
+                                {originCoords && (
+                                    <Marker position={originCoords} icon={originIcon}>
+                                        <Popup>
+                                            <div className="p-1.5 space-y-1 text-xs">
+                                                <div className="font-bold text-blue-600">
+                                                    🚩 Route Origin: {allRouteStages[0]?.stageName || activePass?.routeDetails?.startPoint || 'Route Origin'}
+                                                </div>
+                                                <p className="text-gray-700">
+                                                    <strong>Morning Start:</strong> {MORNING_ORIGIN_START_TIME}
+                                                </p>
+                                                {allRouteStages.length > 0 && (
+                                                    <p className="text-gray-700">
+                                                        <strong>Evening Terminus:</strong> ~{getStageMetrics(allRouteStages[0]).eveningScheduledTime}
+                                                    </p>
+                                                )}
+                                                <p className="text-gray-500">Commencement point • 0 KM</p>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                )}
 
                                 {/* 2. Student's Designated Boarding Stop Marker */}
-                                <Marker position={stopCoords} icon={stopIcon}>
-                                    <Popup>
-                                        <div className="p-2 space-y-1 text-xs min-w-[210px]">
-                                            <div className="font-bold text-emerald-600 flex items-center gap-1 border-b border-gray-100 pb-1">
-                                                <RiMapPin2Fill size={15} />
-                                                <span>Your Boarding Stop: {activePass.stopName}</span>
-                                            </div>
-                                            <div className="bg-emerald-50/70 p-2 rounded-xl border border-emerald-100 space-y-1 text-emerald-950">
-                                                <p className="font-bold flex items-center justify-between">
-                                                    <span>🌅 Morning Pickup:</span>
-                                                    <span className="font-mono text-emerald-800">~{studentStopMetrics.morningTime}</span>
+                                {stopCoords && (
+                                    <Marker position={stopCoords} icon={stopIcon}>
+                                        <Popup>
+                                            <div className="p-2 space-y-1 text-xs min-w-[210px]">
+                                                <div className="font-bold text-emerald-600 flex items-center gap-1 border-b border-gray-100 pb-1">
+                                                    <RiMapPin2Fill size={15} />
+                                                    <span>Your Boarding Stop: {activePass.stopName || studentStage?.stageName}</span>
+                                                </div>
+                                                <div className="bg-emerald-50/70 p-2 rounded-xl border border-emerald-100 space-y-1 text-emerald-950">
+                                                    <p className="font-bold flex items-center justify-between">
+                                                        <span>🌅 Morning Pickup:</span>
+                                                        <span className="font-mono text-emerald-800">~{studentStopMetrics.morningTime}</span>
+                                                    </p>
+                                                    <p className="font-bold flex items-center justify-between">
+                                                        <span>🌇 Evening Drop:</span>
+                                                        <span className="font-mono text-emerald-800">~{studentStopMetrics.eveningTime}</span>
+                                                    </p>
+                                                </div>
+                                                {etaToStop && (
+                                                    <p className="text-blue-700 font-bold pt-0.5">
+                                                        Live GPS ETA: ~{etaToStop?.etaClock} ({etaToStop?.formattedTime})
+                                                    </p>
+                                                )}
+                                                <p className="text-gray-500 text-[11px]">
+                                                    Distance: {studentStage?.distanceFromStart != null ? `${studentStage.distanceFromStart} KM from start` : 'Assigned Route Stop'}
+                                                    {studentStage?.distanceToDestination != null ? ` • ${studentStage.distanceToDestination} KM to campus` : ''}
                                                 </p>
-                                                <p className="font-bold flex items-center justify-between">
-                                                    <span>🌇 Evening Drop:</span>
-                                                    <span className="font-mono text-emerald-800">~{studentStopMetrics.eveningTime}</span>
-                                                </p>
                                             </div>
-                                            <p className="text-blue-700 font-bold pt-0.5">
-                                                Live GPS ETA: ~{etaToStop?.etaClock} ({etaToStop?.formattedTime})
-                                            </p>
-                                            <p className="text-gray-500 text-[11px]">
-                                                Distance: {activePass.stopDetails?.distanceFromStart || '17.13'} KM from start • {activePass.stopDetails?.distanceToDestination || '24.65'} KM to campus
-                                            </p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
+                                        </Popup>
+                                    </Marker>
+                                )}
 
                                 {/* 3. Final Destination: Campus Gate Marker */}
-                                <Marker position={campusCoords} icon={campusIcon}>
-                                    <Popup>
-                                        <div className="p-2 space-y-1 text-xs min-w-[210px]">
-                                            <div className="font-bold text-purple-600 flex items-center gap-1 border-b border-gray-100 pb-1">
-                                                <RiBuilding2Fill size={15} />
-                                                <span>🏁 Final Destination: PYDAH COLLEGE</span>
-                                            </div>
-                                            <div className="bg-purple-50/70 p-2 rounded-xl border border-purple-100 space-y-1 text-purple-950">
-                                                <p className="font-bold flex items-center justify-between">
-                                                    <span>🌅 Morning Arrival:</span>
-                                                    <span className="font-mono text-purple-800">~8:15 AM</span>
+                                {campusCoords && (
+                                    <Marker position={campusCoords} icon={campusIcon}>
+                                        <Popup>
+                                            <div className="p-2 space-y-1 text-xs min-w-[210px]">
+                                                <div className="font-bold text-purple-600 flex items-center gap-1 border-b border-gray-100 pb-1">
+                                                    <RiBuilding2Fill size={15} />
+                                                    <span>🏁 Final Destination: {activePass?.routeDetails?.destination?.name || 'Campus Gate'}</span>
+                                                </div>
+                                                <div className="bg-purple-50/70 p-2 rounded-xl border border-purple-100 space-y-1 text-purple-950">
+                                                    <p className="font-bold flex items-center justify-between">
+                                                        <span>🌅 Morning Arrival:</span>
+                                                        <span className="font-mono text-purple-800">~{MORNING_CAMPUS_END_TIME}</span>
+                                                    </p>
+                                                    <p className="font-bold flex items-center justify-between">
+                                                        <span>🌇 Evening Dispersal:</span>
+                                                        <span className="font-mono text-purple-800">{EVENING_CAMPUS_START_TIME}</span>
+                                                    </p>
+                                                </div>
+                                                <p className="text-gray-500 text-[11px]">
+                                                    Total Route: {routeDistanceKm || activePass?.routeDetails?.totalDistance || '--'} KM • Geofence: {campusRadius}m radius
                                                 </p>
-                                                <p className="font-bold flex items-center justify-between">
-                                                    <span>🌇 Evening Dispersal:</span>
-                                                    <span className="font-mono text-purple-800">{EVENING_CAMPUS_START_TIME}</span>
-                                                </p>
                                             </div>
-                                            <p className="text-gray-500 text-[11px]">
-                                                Total Route: {routeDistanceKm || 70} KM • Geofence: {campusRadius}m radius
-                                            </p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
+                                        </Popup>
+                                    </Marker>
+                                )}
 
                                 {/* 4. ALL INTERMEDIATE STOPS (Pristine circular nodes as shown before, uncluttered on mobile) */}
                                 {allRouteStages.map((stage, idx) => {
@@ -1185,10 +953,10 @@ const Transport = () => {
                                         <Marker
                                             key={`stage_point_${idx}`}
                                             position={[Number(stage.latitude), Number(stage.longitude)]}
-                                            icon={createStagePointIcon(idx + 1, metrics, tripDirection, showStopTimesOnMap)}
+                                            icon={createStagePointIcon(idx + 1, metrics, false)}
                                         >
                                             <Tooltip direction="top" offset={[0, -18]} className="stage-tooltip">
-                                                #{idx + 1} {stage.stageName} ({tripDirection === 'morning' ? metrics.morningScheduledTime : metrics.eveningScheduledTime})
+                                                #{idx + 1} {stage.stageName} (Pickup ~{metrics.morningScheduledTime} • Drop ~{metrics.eveningScheduledTime})
                                             </Tooltip>
                                             <Popup>
                                                 <div className="p-1.5 text-xs space-y-1.5 min-w-[190px]">
@@ -1216,46 +984,52 @@ const Transport = () => {
                                 })}
 
                                 {/* 5. Live GPS Bus Marker with Enhanced Movement Radar */}
-                                <Marker position={busCoords} icon={busIcon}>
-                                    <Popup>
-                                        <div className="p-1.5 space-y-1.5 text-xs min-w-[200px]">
-                                            <div className="flex items-center justify-between text-blue-600 font-bold border-b border-gray-100 pb-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <RiBusFill size={16} />
-                                                    <span>Live GPS Telemetry</span>
-                                                </div>
-                                                <span className={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] ${
-                                                    isMoving ? 'bg-emerald-100 text-emerald-800 font-black' : 'bg-amber-100 text-amber-800'
-                                                }`}>
-                                                    {isMoving ? 'In Motion' : 'Stopped'}
-                                                </span>
-                                            </div>
-                                            <p className="font-black text-gray-900 text-base">{activePass.busId || liveBusData?.busNumber || 'AP-39-VA-1853'}</p>
-                                            
-                                            <div className="grid grid-cols-2 gap-1.5 bg-slate-50 p-2 rounded-xl text-slate-800">
-                                                <div>
-                                                    <span className="text-gray-400 text-[9px] uppercase font-bold block">Live Speed</span>
-                                                    <span className="font-mono font-black text-sm text-blue-700">{liveSpeed} km/h</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-gray-400 text-[9px] uppercase font-bold block">Ignition</span>
-                                                    <span className={`font-bold text-xs ${ignitionActive ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                                        {ignitionActive ? 'Engine ON' : 'Engine OFF'}
+                                {busCoords && (
+                                    <Marker position={busCoords} icon={busIcon}>
+                                        <Popup>
+                                            <div className="p-1.5 space-y-1.5 text-xs min-w-[200px]">
+                                                <div className="flex items-center justify-between text-blue-600 font-bold border-b border-gray-100 pb-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <RiBusFill size={16} />
+                                                        <span>Live GPS Telemetry</span>
+                                                    </div>
+                                                    <span className={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] ${
+                                                        isMoving ? 'bg-emerald-100 text-emerald-800 font-black' : 'bg-amber-100 text-amber-800'
+                                                    }`}>
+                                                        {isMoving ? 'In Motion' : 'Stopped'}
                                                     </span>
                                                 </div>
-                                            </div>
+                                                <p className="font-black text-gray-900 text-base">
+                                                    {activePass.busId || liveBusData?.busNumber || activePass?.busDetails?.busNumber || 'Assigned Bus'}
+                                                </p>
+                                                
+                                                <div className="grid grid-cols-2 gap-1.5 bg-slate-50 p-2 rounded-xl text-slate-800">
+                                                    <div>
+                                                        <span className="text-gray-400 text-[9px] uppercase font-bold block">Live Speed</span>
+                                                        <span className="font-mono font-black text-sm text-blue-700">{liveSpeed} km/h</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-400 text-[9px] uppercase font-bold block">Ignition</span>
+                                                        <span className={`font-bold text-xs ${ignitionActive ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                            {ignitionActive ? 'Engine ON' : 'Engine OFF'}
+                                                        </span>
+                                                    </div>
+                                                </div>
 
-                                            <div className="text-emerald-700 font-bold text-xs pt-0.5">
-                                                ETA to your stop: ~{etaToStop?.etaClock} ({etaToStop?.formattedTime})
-                                            </div>
+                                                {etaToStop && (
+                                                    <div className="text-emerald-700 font-bold text-xs pt-0.5">
+                                                        ETA to your stop: ~{etaToStop?.etaClock} ({etaToStop?.formattedTime})
+                                                    </div>
+                                                )}
 
-                                            <div className="text-gray-400 text-[10px] pt-1 border-t border-gray-100 flex items-center justify-between">
-                                                <span>Telemetry: {lastPingTime}</span>
-                                                {busHeading > 0 && <span>Heading: {busHeading}°</span>}
+                                                <div className="text-gray-400 text-[10px] pt-1 border-t border-gray-100 flex items-center justify-between">
+                                                    <span>Telemetry: {lastPingTime}</span>
+                                                    {busHeading > 0 && <span>Heading: {busHeading}°</span>}
+                                                </div>
                                             </div>
-                                        </div>
-                                    </Popup>
-                                </Marker>
+                                        </Popup>
+                                    </Marker>
+                                )}
                             </MapContainer>
                         </div>
                     </div>
