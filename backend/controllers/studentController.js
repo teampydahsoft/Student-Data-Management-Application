@@ -8619,9 +8619,47 @@ exports.getRegistrationAbstract = async (req, res) => {
 
     const rows = await fetchRegistrationAbstractRows(req);
 
+    let total = 0;
+    let overallCompleted = 0;
+    let overallTemporary = 0;
+    let verificationCompleted = 0;
+    let certificatesVerified = 0;
+    let certificatesTemporary = 0;
+    let feeCleared = 0;
+    let promotionCompleted = 0;
+    let scholarshipAssigned = 0;
+    let scholarshipPending = 0;
+
+    for (const r of rows) {
+      const t = parseInt(r.total || 0, 10);
+      total += t;
+      overallCompleted += parseInt(r.overall_completed || 0, 10);
+      overallTemporary += parseInt(r.overall_temporary || 0, 10);
+      verificationCompleted += parseInt(r.verification_completed || 0, 10);
+      certificatesVerified += parseInt(r.certificates_verified || 0, 10);
+      certificatesTemporary += parseInt(r.certificates_temporary || 0, 10);
+      feeCleared += parseInt(r.fee_cleared || 0, 10);
+      promotionCompleted += parseInt(r.promotion_completed || 0, 10);
+      scholarshipAssigned += parseInt(r.scholarship_assigned || 0, 10);
+      scholarshipPending += parseInt(r.scholarship_pending ?? (t - parseInt(r.scholarship_assigned || 0, 10)), 10);
+    }
+
+    const overallPending = Math.max(0, total - overallCompleted - overallTemporary);
+    const statistics = {
+      total,
+      allPagesTotal: total,
+      registration: { completed: overallCompleted, temporary: overallTemporary, pending: overallPending },
+      verification: { completed: verificationCompleted, pending: Math.max(0, total - verificationCompleted) },
+      certificates: { verified: certificatesVerified, temporary: certificatesTemporary, pending: Math.max(0, total - certificatesVerified - certificatesTemporary) },
+      fees: { cleared: feeCleared, pending: Math.max(0, total - feeCleared) },
+      promotion: { completed: promotionCompleted, pending: Math.max(0, total - promotionCompleted) },
+      scholarship: { assigned: scholarshipAssigned, pending: scholarshipPending }
+    };
+
     const payload = {
       success: true,
       data: rows,
+      statistics,
       groupingParams: {
         key: 'custom',
         label: 'Detailed'

@@ -75,6 +75,51 @@ const StatusBadge = ({ status, type = 'text' }) => {
   );
 };
 
+const computeStatsFromAbstract = (rows) => {
+  if (!rows || rows.length === 0) return null;
+  let total = 0;
+  let regCompleted = 0;
+  let regTemporary = 0;
+  let verCompleted = 0;
+  let certVerified = 0;
+  let certTemporary = 0;
+  let feeCleared = 0;
+  let promoCompleted = 0;
+  let scholAssigned = 0;
+  let scholPending = 0;
+
+  for (const r of rows) {
+    const t = parseInt(r.total || 0, 10);
+    total += t;
+    regCompleted += parseInt(r.overall_completed || 0, 10);
+    regTemporary += parseInt(r.overall_temporary || 0, 10);
+    verCompleted += parseInt(r.verification_completed || 0, 10);
+    certVerified += parseInt(r.certificates_verified || 0, 10);
+    certTemporary += parseInt(r.certificates_temporary || 0, 10);
+    feeCleared += parseInt(r.fee_cleared || 0, 10);
+    promoCompleted += parseInt(r.promotion_completed || 0, 10);
+    scholAssigned += parseInt(r.scholarship_assigned || 0, 10);
+    scholPending += parseInt(r.scholarship_pending ?? (t - parseInt(r.scholarship_assigned || 0, 10)), 10);
+  }
+
+  const regPending = Math.max(0, total - regCompleted - regTemporary);
+  const verPending = Math.max(0, total - verCompleted);
+  const certPending = Math.max(0, total - certVerified - certTemporary);
+  const feePending = Math.max(0, total - feeCleared);
+  const promoPending = Math.max(0, total - promoCompleted);
+
+  return {
+    total,
+    allPagesTotal: total,
+    registration: { completed: regCompleted, temporary: regTemporary, pending: regPending },
+    verification: { completed: verCompleted, pending: verPending },
+    certificates: { verified: certVerified, temporary: certTemporary, pending: certPending },
+    fees: { cleared: feeCleared, pending: feePending },
+    promotion: { completed: promoCompleted, pending: promoPending },
+    scholarship: { assigned: scholAssigned, pending: scholPending }
+  };
+};
+
 const Reports = () => {
   const { user } = useAuthStore();
   const location = useLocation();
@@ -267,6 +312,9 @@ const Reports = () => {
       const cached = abstractCacheRef.current.get(cacheKey);
       setAbstractData(cached.data || []);
       setGroupingParams(cached.groupingParams || { key: 'college', label: 'College' });
+      if (cached.statistics) {
+        setStats(cached.statistics);
+      }
     }
 
     const timer = setTimeout(async () => {
@@ -276,9 +324,13 @@ const Reports = () => {
         if (response.data?.success) {
           const data = response.data.data || [];
           const grouping = response.data.groupingParams || { key: 'college', label: 'College' };
-          abstractCacheRef.current.set(cacheKey, { data, groupingParams: grouping });
+          const computedStats = response.data.statistics || computeStatsFromAbstract(data);
+          abstractCacheRef.current.set(cacheKey, { data, groupingParams: grouping, statistics: computedStats });
           setAbstractData(data);
           setGroupingParams(grouping);
+          if (computedStats) {
+            setStats(computedStats);
+          }
         }
       } catch (error) {
         console.error('Failed to load abstract:', error);
@@ -1630,7 +1682,7 @@ const Reports = () => {
       return <span className="text-sm font-bold text-red-500">{pendingCount}</span>;
     };
 
-    if (statsLoading) {
+    if (statsLoading || (abstractLoading && !stats)) {
       return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0 animate-pulse">
           {[...Array(7)].map((_, i) => (
@@ -2099,7 +2151,7 @@ const Reports = () => {
       {reportType === 'registration' && activeTab === 'abstract' && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-300 gap-4">
           {/* Stats Grid - Shared */}
-          {stats && (
+          {Boolean(filters.college) && (stats || abstractLoading || statsLoading) && (
             <div className="flex-shrink-0">
               <StatsGrid />
             </div>
