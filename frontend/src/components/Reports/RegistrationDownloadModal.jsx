@@ -8,6 +8,7 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
     const [previewData, setPreviewData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const [downloadFormat, setDownloadFormat] = useState(null);
     const [previewReady, setPreviewReady] = useState(false);
 
     const loadPreview = async (filtersToUse, { silent = false } = {}) => {
@@ -83,6 +84,8 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
         }
 
         setDownloading(true);
+        setDownloadFormat(format);
+        const toastId = toast.loading(`Preparing ${format.toUpperCase()} report...`);
         try {
             const params = new URLSearchParams();
             Object.entries(localFilters).forEach(([key, value]) => {
@@ -95,7 +98,10 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
             params.append('format', format);
 
             if (format === 'excel') {
-                const response = await api.get(`/students/reports/registration/export?${params.toString()}`, { responseType: 'blob' });
+                const response = await api.get(`/students/reports/registration/export?${params.toString()}`, {
+                    responseType: 'blob',
+                    timeout: 180000 // 3 minutes timeout for report export
+                });
                 const url = window.URL.createObjectURL(new Blob([response.data]));
                 const link = document.createElement('a');
                 link.href = url;
@@ -104,7 +110,10 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                 link.click();
                 link.remove();
             } else if (format === 'pdf') {
-                const response = await api.get(`/students/reports/registration/export?${params.toString()}&type=pdf`, { responseType: 'blob' });
+                const response = await api.get(`/students/reports/registration/export?${params.toString()}&type=pdf`, {
+                    responseType: 'blob',
+                    timeout: 180000 // 3 minutes timeout for report export
+                });
                 const url = window.URL.createObjectURL(new Blob([response.data]));
                 const link = document.createElement('a');
                 link.href = url;
@@ -114,13 +123,18 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                 link.remove();
             }
 
-            toast.success(`${format.toUpperCase()} report downloaded successfully`);
+            toast.success(`${format.toUpperCase()} report downloaded successfully`, { id: toastId });
             onClose();
         } catch (error) {
             console.error('Download error:', error);
-            toast.error(`Failed to download ${format.toUpperCase()} report`);
+            if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+                toast.error('Download request timed out. Please try filtering by branch or year to export a smaller set.', { id: toastId });
+            } else {
+                toast.error(`Failed to download ${format.toUpperCase()} report`, { id: toastId });
+            }
         } finally {
             setDownloading(false);
+            setDownloadFormat(null);
         }
     };
 
@@ -350,16 +364,24 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
                             disabled={!canDownload}
                             className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm font-medium"
                         >
-                            <FileSpreadsheet size={18} />
-                            Download Excel
+                            {downloading && downloadFormat === 'excel' ? (
+                                <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                                <FileSpreadsheet size={18} />
+                            )}
+                            {downloading && downloadFormat === 'excel' ? 'Exporting Excel...' : 'Download Excel'}
                         </button>
                         <button
                             onClick={() => handleDownload('pdf')}
                             disabled={!canDownload}
                             className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm font-medium"
                         >
-                            <FileText size={18} />
-                            Download PDF
+                            {downloading && downloadFormat === 'pdf' ? (
+                                <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                                <FileText size={18} />
+                            )}
+                            {downloading && downloadFormat === 'pdf' ? 'Exporting PDF...' : 'Download PDF'}
                         </button>
                     </div>
                 </div>

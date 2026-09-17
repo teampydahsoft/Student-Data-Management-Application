@@ -23,7 +23,8 @@ import {
   Loader2,
   Lock,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Building2
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -143,6 +144,8 @@ const Reports = () => {
   const [academicYearOptions, setAcademicYearOptions] = useState([]); // { label, fromYear, isCurrent }[]
   const [academicYearLoading, setAcademicYearLoading] = useState(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const academicYearsCacheRef = useRef(new Map());
+  const abstractCacheRef = useRef(new Map());
 
   // Abstract Data State
   const [abstractData, setAbstractData] = useState([]);
@@ -214,29 +217,68 @@ const Reports = () => {
   const [statsSectionHeight, setStatsSectionHeight] = useState(180);
   const [dayEndDate, setDayEndDate] = useState(formatDateToLocalISO(new Date()));
 
+  const displayColleges = useMemo(() => {
+    if (filterOptions.colleges && filterOptions.colleges.length > 0) return filterOptions.colleges;
+    if (collegesList && collegesList.length > 0) return collegesList;
+    return [];
+  }, [filterOptions.colleges, collegesList]);
+
+  // Auto-select college on mount for registration reports to ensure fast college-wise loading
+  useEffect(() => {
+    if (reportType !== 'registration') return;
+    const available = displayColleges;
+    if (!filters.college && available.length > 0) {
+      const userCollegeId = user?.college_id ? String(user.college_id) : null;
+      const userCollegeName = user?.college || null;
+      let matched = null;
+      if (userCollegeId) {
+        matched = available.find(c => String(c.id || c) === userCollegeId);
+      }
+      if (!matched && userCollegeName) {
+        matched = available.find(c => (c.name || c) === userCollegeName);
+      }
+      const collegeVal = matched
+        ? String(matched.id || matched.name || matched)
+        : String(available[0].id || available[0].name || available[0]);
+
+      setFilters(prev => ({ ...prev, college: collegeVal }));
+    }
+  }, [reportType, displayColleges, filters.college, user]);
+
   // Fetch Abstract Data — debounced to avoid firing on every intermediate filter change
   useEffect(() => {
-    if (reportType !== 'registration' || activeTab !== 'abstract') return;
+    if (reportType !== 'registration' || activeTab !== 'abstract' || !filters.college) return;
+
+    const params = new URLSearchParams();
+    if (filters.college) params.append('filter_college', filters.college);
+    if (filters.batch) params.append('filter_batch', filters.batch);
+    if (filters.course) params.append('filter_course', filters.course);
+    if (filters.level) params.append('filter_level', filters.level);
+    if (filters.branch) params.append('filter_branch', filters.branch);
+    if (filters.year) params.append('filter_year', filters.year);
+    if (filters.semester) params.append('filter_semester', filters.semester);
+    if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
+    if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
+    if (filters.stagePending) params.append('filter_stage_pending', filters.stagePending);
+    if (filters.search) params.append('search', filters.search);
+
+    const cacheKey = params.toString();
+    if (abstractCacheRef.current.has(cacheKey)) {
+      const cached = abstractCacheRef.current.get(cacheKey);
+      setAbstractData(cached.data || []);
+      setGroupingParams(cached.groupingParams || { key: 'college', label: 'College' });
+    }
+
     const timer = setTimeout(async () => {
       setAbstractLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (filters.college) params.append('filter_college', filters.college);
-        if (filters.batch) params.append('filter_batch', filters.batch);
-        if (filters.course) params.append('filter_course', filters.course);
-        if (filters.level) params.append('filter_level', filters.level);
-        if (filters.branch) params.append('filter_branch', filters.branch);
-        if (filters.year) params.append('filter_year', filters.year);
-        if (filters.semester) params.append('filter_semester', filters.semester);
-        if (filters.academicYear) params.append('filter_academic_year', filters.academicYear);
-        if (filters.scholarshipStatus) params.append('filter_scholarship_status', filters.scholarshipStatus);
-        if (filters.stagePending) params.append('filter_stage_pending', filters.stagePending);
-        if (filters.search) params.append('search', filters.search);
-
-        const response = await api.get(`/students/reports/registration/abstract?${params.toString()}`);
+        const response = await api.get(`/students/reports/registration/abstract?${cacheKey}`);
         if (response.data?.success) {
-          setAbstractData(response.data.data || []);
-          setGroupingParams(response.data.groupingParams || { key: 'college', label: 'College' });
+          const data = response.data.data || [];
+          const grouping = response.data.groupingParams || { key: 'college', label: 'College' };
+          abstractCacheRef.current.set(cacheKey, { data, groupingParams: grouping });
+          setAbstractData(data);
+          setGroupingParams(grouping);
         }
       } catch (error) {
         console.error('Failed to load abstract:', error);
@@ -244,7 +286,7 @@ const Reports = () => {
       } finally {
         setAbstractLoading(false);
       }
-    }, 600);
+    }, 100);
     return () => clearTimeout(timer);
   }, [reportType, activeTab, filters]);
 
@@ -261,6 +303,13 @@ const Reports = () => {
   const loadReport = useCallback(
     async (overrideFilters) => {
       const activeFilters = overrideFilters ?? filters;
+      if (!activeFilters.college) {
+        setReportData([]);
+        setStats(null);
+        setLoading(false);
+        setStatsLoading(false);
+        return;
+      }
       setLoading(true);
       setStatsLoading(true);
       try {
@@ -281,12 +330,7 @@ const Reports = () => {
 
         const query = params.toString();
 
-        // Fire data and stats requests in parallel — table renders immediately,
-        // stats cards update when the heavier stats query completes.
-        const dataPromise = api.get(`/students/reports/registration${query ? `?${query}` : ''}`);
-        const statsPromise = api.get(`/students/reports/registration/stats${query ? `?${query}` : ''}`);
-
-        const response = await dataPromise;
+        const response = await api.get(`/students/reports/registration${query ? `?${query}` : ''}`);
         if (response.data?.success) {
           setReportData(response.data.data || []);
           if (response.data.pagination) {
@@ -298,25 +342,12 @@ const Reports = () => {
               limit: parseInt(response.data.pagination.limit)
             }));
           }
-          // If the data response also includes statistics (from cache), use them immediately
           if (response.data.statistics) {
             setStats(response.data.statistics);
-            setStatsLoading(false);
           }
         } else {
           throw new Error(response.data?.message || 'Unable to load reports');
         }
-
-        // Await the stats response separately (may be slower on first load)
-        statsPromise.then(statsRes => {
-          if (statsRes.data?.success && statsRes.data.statistics) {
-            setStats(statsRes.data.statistics);
-          }
-        }).catch(err => {
-          console.warn('Stats fetch failed (non-critical):', err.message);
-        }).finally(() => {
-          setStatsLoading(false);
-        });
 
       } catch (error) {
         console.error('Failed to load registration report:', error);
@@ -325,6 +356,7 @@ const Reports = () => {
         );
       } finally {
         setLoading(false);
+        setStatsLoading(false);
       }
     },
     [filters]
@@ -374,7 +406,12 @@ const Reports = () => {
       try {
         const response = await api.get('/colleges?includeInactive=false');
         if (response.data?.success) {
-          setCollegesList(response.data.data || []);
+          const list = response.data.data || [];
+          setCollegesList(list);
+          setFilterOptions(prev => ({
+            ...prev,
+            colleges: list
+          }));
         }
       } catch (error) {
         console.error('Failed to fetch colleges:', error);
@@ -385,7 +422,18 @@ const Reports = () => {
 
   // Fetch academic year options for the registration report filter dropdown
   useEffect(() => {
-    if (reportType !== 'registration') return;
+    if (reportType !== 'registration' || !filters.college) {
+      setAcademicYearOptions([]);
+      setAcademicYearLoading(false);
+      return;
+    }
+    const cacheKey = `${filters.college}::${filters.course || ''}::${filters.branch || ''}::${filters.level || ''}`;
+    if (academicYearsCacheRef.current.has(cacheKey)) {
+      setAcademicYearOptions(academicYearsCacheRef.current.get(cacheKey));
+      setAcademicYearLoading(false);
+      return;
+    }
+
     const fetchAcademicYears = async () => {
       setAcademicYearLoading(true);
       try {
@@ -396,7 +444,9 @@ const Reports = () => {
         if (filters.level) params.append('filter_level', filters.level);
         const res = await api.get(`/students/reports/registration/academic-years?${params.toString()}`);
         if (res.data?.success) {
-          setAcademicYearOptions(res.data.data || []);
+          const list = res.data.data || [];
+          academicYearsCacheRef.current.set(cacheKey, list);
+          setAcademicYearOptions(list);
         }
       } catch (err) {
         console.warn('Failed to fetch academic year options:', err);
@@ -440,15 +490,14 @@ const Reports = () => {
     return () => clearTimeout(timer);
   }, [filters.college, filters.level, filters.batch, filters.course, filters.branch, filters.year]);
 
-  // Debounced report load — prevents firing on every intermediate cascade filter update.
-  // Uses a 600ms debounce so only the final settled filter state triggers the API call.
+  // Debounced report load — only runs when on 'sheet' or 'analytics' tab and college is selected
   useEffect(() => {
-    if (reportType !== 'registration') return;
+    if (reportType !== 'registration' || activeTab === 'abstract' || !filters.college) return;
     const timer = setTimeout(() => {
       loadReport({ ...filters, page: 1 });
-    }, 600);
+    }, 150);
     return () => clearTimeout(timer);
-  }, [filters, loadReport, reportType]);
+  }, [filters, loadReport, reportType, activeTab]);
 
   // Update Attendance Filter Options when College, Level, Batch, or Course changes
   useEffect(() => {
@@ -869,7 +918,8 @@ const Reports = () => {
         params.append('previewFilter', dayEndPreviewFilter);
       }
       const response = await api.get(`/attendance/day-end-download?${params.toString()}`, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 120000
       });
       const blob = new Blob([response.data], {
         type: format === 'pdf'
@@ -1051,7 +1101,8 @@ const Reports = () => {
       if (attendanceFilters.semester) params.append('semester', attendanceFilters.semester);
 
       const response = await api.get(`/attendance/download?${params.toString()}`, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 120000
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -1104,7 +1155,8 @@ const Reports = () => {
       if (attendanceFilters.semester) params.append('semester', attendanceFilters.semester);
 
       const response = await api.get(`/attendance/download?${params.toString()}`, {
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 120000
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -1364,8 +1416,8 @@ const Reports = () => {
   };
 
   const clearFilters = () => {
-    setFilters({
-      college: '',
+    setFilters(prev => ({
+      college: prev.college || '',
       batch: '',
       course: '',
       level: '',
@@ -1376,7 +1428,7 @@ const Reports = () => {
       scholarshipStatus: '',
       stagePending: '',
       search: ''
-    });
+    }));
     setSearchTerm('');
   };
 
@@ -1591,8 +1643,13 @@ const Reports = () => {
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0">
       <div className="bg-blue-50 p-2 md:p-3 rounded-lg border border-blue-100">
-        <div className="text-[10px] md:text-xs text-blue-600 uppercase font-semibold">Total</div>
-        <div className="text-lg md:text-xl font-bold text-blue-900">{stats?.total || 0}</div>
+        <div className="text-[10px] md:text-xs text-blue-600 uppercase font-semibold">Total (Display)</div>
+        <div className="text-lg md:text-xl font-bold text-blue-900">
+          {stats?.total || 0}
+          {pagination.totalRecords > 0 && (
+            <span className="text-xs font-normal text-blue-600 ml-1">/ {pagination.totalRecords}</span>
+          )}
+        </div>
       </div>
       <div className="bg-gray-50 p-2 md:p-3 rounded-lg border border-gray-100">
         <div className="text-[10px] md:text-xs text-gray-600 uppercase font-semibold">Registration</div>
@@ -1878,7 +1935,23 @@ const Reports = () => {
           <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9 gap-3 w-full">
 
-              {/* Academic Year — first filter, groups students by the calendar year they are currently in */}
+              {/* College — Primary selection for fast college-wise data */}
+              <select
+                value={filters.college || ''}
+                onChange={(e) => handleFilterChange('college', e.target.value)}
+                className={`w-full rounded-lg border-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium ${
+                  filters.college
+                    ? 'border-blue-500 bg-blue-50/40 text-blue-950 font-semibold'
+                    : 'border-amber-400 bg-amber-50 text-amber-900 animate-pulse'
+                }`}
+              >
+                <option value="">-- Select College * --</option>
+                {displayColleges.map((college) => (
+                  <option key={college.id || college} value={college.id || college}>{college.name || college}</option>
+                ))}
+              </select>
+
+              {/* Academic Year — groups students by the calendar year they are currently in */}
               <select
                 value={filters.academicYear || ''}
                 onChange={(e) => handleFilterChange('academicYear', e.target.value)}
@@ -1917,18 +1990,6 @@ const Reports = () => {
                     </>
                   );
                 })()}
-              </select>
-
-              {/* College */}
-              <select
-                value={filters.college || ''}
-                onChange={(e) => handleFilterChange('college', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Colleges</option>
-                {filterOptions.colleges.map((college) => (
-                  <option key={college.id || college} value={college.id || college}>{college.name || college}</option>
-                ))}
               </select>
 
               {/* Level */}
@@ -2044,7 +2105,36 @@ const Reports = () => {
             </div>
           )}
 
-          {abstractLoading && abstractData.length === 0 ? (
+          {!filters.college ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-xl shadow-sm text-center">
+              <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3">
+                <Building2 className="text-blue-600" size={30} />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1">Select a College to View Reports</h3>
+              <p className="text-sm text-gray-500 max-w-md mb-5">
+                Please select a college below to quickly load registration data without delay.
+              </p>
+              <div className="flex flex-wrap gap-2.5 justify-center max-w-2xl">
+                {displayColleges.length === 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                    <RefreshCw className="animate-spin text-blue-600" size={16} />
+                    Loading colleges...
+                  </div>
+                ) : (
+                  displayColleges.map((c) => (
+                    <button
+                      key={c.id || c}
+                      type="button"
+                      onClick={() => handleFilterChange('college', String(c.id || c))}
+                      className="px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium rounded-lg text-sm transition-all border border-blue-200 shadow-sm hover:shadow"
+                    >
+                      {c.name || c}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : abstractLoading && abstractData.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500" >
               <RefreshCw className="animate-spin" size={24} />
               Loading abstract data...
@@ -2269,7 +2359,36 @@ const Reports = () => {
           )}
 
           {/* Table Area - Grows to fill remaining space */}
-          {loading ? (
+          {!filters.college ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-xl shadow-sm text-center">
+              <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3">
+                <Building2 className="text-blue-600" size={30} />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1">Select a College to View Student Records</h3>
+              <p className="text-sm text-gray-500 max-w-md mb-5">
+                Select a college to instantly view and manage student registration records.
+              </p>
+              <div className="flex flex-wrap gap-2.5 justify-center max-w-2xl">
+                {displayColleges.length === 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                    <RefreshCw className="animate-spin text-blue-600" size={16} />
+                    Loading colleges...
+                  </div>
+                ) : (
+                  displayColleges.map((c) => (
+                    <button
+                      key={c.id || c}
+                      type="button"
+                      onClick={() => handleFilterChange('college', String(c.id || c))}
+                      className="px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium rounded-lg text-sm transition-all border border-blue-200 shadow-sm hover:shadow"
+                    >
+                      {c.name || c}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500" >
               <RefreshCw className="animate-spin" size={24} />
               Loading report data...

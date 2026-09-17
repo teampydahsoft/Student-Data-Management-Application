@@ -65,6 +65,7 @@ const crypto = require('crypto');
 
 // In-memory cache for settings that are hit on every request
 const _settingsCache = createCache(5 * 60 * 1000); // 5 minute TTL
+const registrationAcademicYearsCache = createCache(10 * 60 * 1000); // 10 minute TTL
 
 /**
  * Cached fetch of attendance_config setting.
@@ -274,7 +275,6 @@ const loadRegistrationComputedAggregates = async (students, stageConfig, academi
   const config = stageConfig || await loadRegistrationStageConfig();
   const optionalStudents = students.filter((student) => (
     hasOptionalRegistrationStages(config, student)
-    || registrationUsesScholarshipTableOnly(student)
   ));
 
   if (!optionalStudents.length) {
@@ -370,6 +370,38 @@ const buildRegistrationStatsCacheKey = (req) => crypto.createHash('md5').update(
   search: req.query.search
 })).digest('hex');
 
+const buildRegistrationAbstractCacheKey = (req) => {
+  const {
+    filter_batch,
+    filter_course,
+    filter_branch,
+    filter_year,
+    filter_semester,
+    filter_college,
+    filter_level,
+    filter_scholarship_status,
+    filter_academic_year,
+    search
+  } = req.query;
+
+  const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
+  const normalizedAcademicYear = (filter_academic_year || '').trim();
+  return crypto.createHash('md5').update(JSON.stringify({
+    scope: req.userScope || null,
+    userId: req.user?.id || null,
+    filter_batch,
+    filter_course,
+    filter_branch,
+    filter_year,
+    filter_semester,
+    filter_college,
+    filter_level,
+    filter_scholarship_status: scholarshipFilterAbstract,
+    filter_academic_year: normalizedAcademicYear,
+    search
+  })).digest('hex');
+};
+
 const mergeRegistrationStatsWithSql = (sqlRow, computedOptional) => {
   const totalCount = parseInt(sqlRow.total || 0, 10);
   const sqlCompleted = parseInt(sqlRow.overall_completed || 0, 10);
@@ -458,13 +490,23 @@ const buildAcademicYearFilterClause = (academicYearLabel, tableAlias = null) => 
   const fromYear = parseAcademicYearFromYear(academicYearLabel);
   if (!fromYear) return { clause: '', params: [] };
   const prefix = tableAlias ? `${tableAlias}.` : '';
-  // Use REGEXP_SUBSTR to extract the first 4-digit year from the batch string,
-  // then compute batch_start + current_year - 1 = fromYear
-  const clause = ` AND (
-    CAST(REGEXP_SUBSTR(${prefix}batch, '[0-9]{4}') AS UNSIGNED)
-    + GREATEST(1, IFNULL(${prefix}current_year, 1)) - 1
-  ) = ?`;
-  return { clause, params: [fromYear] };
+
+  // Index-backed conditions for years 1 to 6
+  // Academic year = batch_start + current_year - 1 = fromYear
+  // => batch_start = fromYear - current_year + 1
+  const conditions = [];
+  const params = [];
+  for (let year = 1; year <= 6; year++) {
+    const batchYear = fromYear - year + 1;
+    conditions.push(`(${prefix}batch LIKE ? AND ${prefix}current_year = ?)`);
+    params.push(`${batchYear}%`, year);
+  }
+  // Include 1st year default when current_year is null or 0:
+  conditions.push(`(${prefix}batch LIKE ? AND (${prefix}current_year IS NULL OR ${prefix}current_year = 0))`);
+  params.push(`${fromYear}%`);
+
+  const clause = ` AND (${conditions.join(' OR ')})`;
+  return { clause, params };
 };
 
 // Sections are assigned manually via Section Partition — no auto-assignment on student changes.
@@ -7856,6 +7898,87 @@ exports.getRegistrationStats = async (req, res) => {
       if (ayClause) { baseQuery += ayClause; params.push(...ayParams); }
     }
 
+    // Display-only fast path: compute stats for the requested display page in <1s
+    const isDisplayOnly = req.query.only_display === 'true' || Boolean(req.query.page && req.query.limit);
+    if (isDisplayOnly) {
+      const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+      const offset = (pageNum - 1) * limitNum;
+
+      const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+      const idQuery = `SELECT id ${baseQuery} ORDER BY pin_no ASC, id ASC LIMIT ? OFFSET ?`;
+
+      const [[countRes], [idRows], stageConfig] = await Promise.all([
+        masterPool.query(countQuery, params),
+        masterPool.query(idQuery, [...params, limitNum, offset]),
+        loadRegistrationStageConfig()
+      ]);
+
+      const totalRecords = parseInt(countRes[0]?.total || 0, 10);
+      const pageIds = idRows.map(r => r.id);
+      let pageStudents = [];
+      if (pageIds.length > 0) {
+        const [studentRows] = await masterPool.query(`
+          SELECT id, pin_no, student_name, admission_number, batch, course, branch, stud_type,
+                 current_year, current_semester, student_data,
+                 certificates_status, fee_status, scholar_status, registration_status
+          FROM students WHERE id IN (?) ORDER BY pin_no ASC, id ASC
+        `, [pageIds]);
+        pageStudents = studentRows;
+      }
+
+      const [scholarshipMap, feePaidMap, scholarshipCtxMap] = await Promise.all([
+        buildRegistrationScholarshipMap(masterPool, pageStudents, { academicYearFromYear }),
+        buildRegistrationFeePaidMap(masterPool, pageStudents),
+        buildRegistrationScholarshipContextMap(masterPool, pageStudents, stageConfig, resolveOptionalStages)
+      ]);
+
+      const computedRows = pageStudents.map(student => {
+        const studentData = parseStudentData(student);
+        const optionalStages = resolveOptionalStages(stageConfig, student);
+        const scholarshipCtx = scholarshipCtxMap.get(student.id) || null;
+        const scholarStatus = scholarshipCtx?.eligible || scholarshipMap.get(student.id) || null;
+        const scholarFeePaid = scholarshipCtx?.feePaid != null ? scholarshipCtx.feePaid : (feePaidMap.get(student.id) || null);
+        return computeRegistrationStages(student, studentData, scholarStatus, scholarFeePaid, optionalStages, scholarshipCtx);
+      });
+
+      const displayStats = {
+        total: computedRows.length,
+        allPagesTotal: totalRecords,
+        registration: {
+          completed: computedRows.filter(s => s.overallStatus === 'completed').length,
+          temporary: computedRows.filter(s => s.overallStatus === 'temporary').length,
+          pending: computedRows.filter(s => s.overallStatus === 'pending').length
+        },
+        verification: {
+          completed: computedRows.filter(s => s.verification.display === 'completed').length,
+          pending: computedRows.filter(s => s.verification.display !== 'completed').length
+        },
+        certificates: {
+          verified: computedRows.filter(s => s.certificates.display === 'completed').length,
+          temporary: computedRows.filter(s => s.certificates.display === 'temporary').length,
+          pending: computedRows.filter(s => s.certificates.display !== 'completed' && s.certificates.display !== 'temporary').length
+        },
+        fees: {
+          cleared: computedRows.filter(s => s.fee.display === 'completed').length,
+          pending: computedRows.filter(s => s.fee.display !== 'completed').length
+        },
+        promotion: {
+          completed: computedRows.filter(s => s.promotion.display === 'completed').length,
+          pending: computedRows.filter(s => s.promotion.display !== 'completed').length
+        },
+        scholarship: {
+          assigned: computedRows.filter(s => s.scholarship.display === 'completed').length,
+          pending: computedRows.filter(s => s.scholarship.display === 'pending').length
+        }
+      };
+
+      return res.json({
+        success: true,
+        statistics: displayStats
+      });
+    }
+
     const registrationScholarshipAssignedSumSql = buildRegistrationScholarshipAssignedSumSql(academicYearFromYear);
     const registrationScholarshipPendingSumSql = buildRegistrationScholarshipPendingSumSql(academicYearFromYear);
 
@@ -7878,16 +8001,40 @@ exports.getRegistrationStats = async (req, res) => {
     const statsRow = statsResult[0] || {};
     const totalCount = parseInt(statsRow.total || 0, 10);
 
-    const aggregationStudentsQuery = `SELECT ${REGISTRATION_AGGREGATION_STUDENT_COLUMNS} ${baseQuery}`;
+    // Check memory cache for pre-computed stats
     const statsCacheKey = buildRegistrationStatsCacheKey(req);
-    let computedOptional;
+    let computedOptional = null;
     if (registrationStatsCache.has(statsCacheKey)) {
       computedOptional = registrationStatsCache.get(statsCacheKey);
     } else {
       const stageConfigForStats = await loadRegistrationStageConfig();
-      const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
-      computedOptional = await loadRegistrationComputedAggregates(aggregationStudents, stageConfigForStats, academicYearFromYear);
-      registrationStatsCache.set(statsCacheKey, computedOptional);
+      const optionalBranches = Object.entries(stageConfigForStats)
+        .filter(([_, v]) => v.optionalStages && v.optionalStages.length > 0)
+        .map(([k]) => k.split('::')[0].trim());
+      const uniqueOptionalBranches = [...new Set(optionalBranches)];
+
+      const branchFilter = req.query.filter_branch ? req.query.filter_branch.trim() : null;
+      const shouldCheckOptional = uniqueOptionalBranches.length > 0 && (
+        !branchFilter || uniqueOptionalBranches.includes(branchFilter)
+      );
+
+      // Only perform per-student JS pass if querying branches that actually have optional config
+      if (shouldCheckOptional) {
+        let branchConstraint = '';
+        const aggParams = [...params];
+        if (!branchFilter) {
+          branchConstraint = ` AND branch IN (${uniqueOptionalBranches.map(() => '?').join(',')})`;
+          aggParams.push(...uniqueOptionalBranches);
+        }
+        const aggregationStudentsQuery = `SELECT ${REGISTRATION_AGGREGATION_STUDENT_COLUMNS} ${baseQuery}${branchConstraint}`;
+        const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, aggParams);
+        if (aggregationStudents.length > 0) {
+          computedOptional = await loadRegistrationComputedAggregates(aggregationStudents, stageConfigForStats, academicYearFromYear);
+          if (computedOptional) {
+            registrationStatsCache.set(statsCacheKey, computedOptional);
+          }
+        }
+      }
     }
 
     const mergedStats = mergeRegistrationStatsWithSql(statsRow, computedOptional);
@@ -8071,106 +8218,48 @@ exports.getRegistrationReport = async (req, res) => {
       }
     }
 
-    // Get Total Count + Statistics in one pass
-    // Remove "FROM students WHERE " from the start of baseQuery so we just pass the WHERE conditions
-    // Actually, baseQuery is "FROM students WHERE 1=1 AND ...". Let's extract just the conditions.
-    const whereConditions = baseQuery.replace('FROM students WHERE ', '');
-    const { query: statsQuery, params: statsParams } = buildRegistrationAbstractQuery({
-      whereClause: whereConditions,
-      params,
-      scholarshipFilter,
-      academicYearFromYear,
-      omitGroupBy: true
-    });
-
-    const [statsResult] = await masterPool.query(statsQuery, statsParams);
-    const statsRow = statsResult[0] || {};
-    const totalRecords = parseInt(statsRow.total || 0, 10);
+    // Get Total Count directly and fast for pagination
+    const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+    const [countResult] = await masterPool.query(countQuery, params);
+    const totalRecords = parseInt(countResult[0]?.total || 0, 10);
     const totalPages = Math.ceil(totalRecords / limitNum) || 0;
-    const totalCount = totalRecords;
 
-    const aggregationStudentsQuery = `
-      SELECT ${REGISTRATION_AGGREGATION_STUDENT_COLUMNS}
-      ${baseQuery}
-    `;
-
+    // Check if statistics are already cached (from /registration/stats endpoint)
     const statsCacheKey = buildRegistrationStatsCacheKey(req);
-    let computedOptional;
-    if (registrationStatsCache.has(statsCacheKey)) {
-      computedOptional = registrationStatsCache.get(statsCacheKey);
-    } else {
-      const stageConfigForStats = await loadRegistrationStageConfig();
-      // Always recompute in JS: table-only (2026+) students need prior-year
-      // scholarship checks even when no optional-stage config exists.
-      // SQL Temporary counts Temporary-certificate rows only; 2026+ Temporary
-      // (verified certs + incomplete current scholarship) must come from JS.
-      const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
-      computedOptional = await loadRegistrationComputedAggregates(
-        aggregationStudents,
-        stageConfigForStats,
-        academicYearFromYear
-      );
-      registrationStatsCache.set(statsCacheKey, computedOptional);
-    }
+    const statistics = registrationStatsCache.get(statsCacheKey) || null;
 
-    const mergedStats = mergeRegistrationStatsWithSql(statsRow, computedOptional);
-    const overallCompleted = mergedStats.overallCompleted;
-    const overallTemporary = mergedStats.overallTemporary;
-    const overallPending = mergedStats.overallPending;
-
-    const statistics = {
-      total: totalCount,
-      registration: {
-        completed: overallCompleted,
-        temporary: overallTemporary,
-        pending: overallPending
-      },
-      verification: {
-        completed: parseInt(statsRow.verification_completed || 0, 10),
-        pending: totalCount - parseInt(statsRow.verification_completed || 0, 10)
-      },
-      certificates: {
-        verified: parseInt(statsRow.certificates_verified || 0, 10),
-        temporary: parseInt(statsRow.certificates_temporary || 0, 10),
-        pending: totalCount
-          - parseInt(statsRow.certificates_verified || 0, 10)
-          - parseInt(statsRow.certificates_temporary || 0, 10)
-      },
-      fees: {
-        cleared: parseInt(statsRow.fee_cleared || 0, 10),
-        pending: totalCount - parseInt(statsRow.fee_cleared || 0, 10)
-      },
-      promotion: {
-        completed: parseInt(statsRow.promotion_completed || 0, 10),
-        pending: totalCount - parseInt(statsRow.promotion_completed || 0, 10)
-      },
-      scholarship: {
-        assigned: mergedStats.scholarshipAssigned,
-        pending: mergedStats.scholarshipPending
-      },
-      overall: {
-        completed: overallCompleted,
-        temporary: overallTemporary,
-        pending: overallPending
-      }
-    };
-
-    // Get Data - specific columns only for performance
-    const dataQuery = `
-      SELECT 
-        id, pin_no, student_name, admission_number, batch, course, branch, stud_type,
-        current_year, current_semester, student_data, 
-        certificates_status, fee_status, scholar_status, registration_status
+    // Get Data - 2-step query: fetch IDs via index first, then fetch the 50 full records
+    // This avoids heavy full-table filesorts carrying large TEXT columns (student_data).
+    const idQuery = `
+      SELECT id 
       ${baseQuery} 
       ORDER BY pin_no ASC, id ASC 
       LIMIT ? OFFSET ?
     `;
-    const dataParams = [...params, limitNum, offset];
+    const idParams = [...params, limitNum, offset];
 
-    const [[students], stageConfig] = await Promise.all([
-      masterPool.query(dataQuery, dataParams),
+    const [[idRows], stageConfig] = await Promise.all([
+      masterPool.query(idQuery, idParams),
       loadRegistrationStageConfig()
     ]);
+
+    const pageIds = idRows.map((r) => r.id);
+    let students = [];
+
+    if (pageIds.length > 0) {
+      const dataQuery = `
+        SELECT 
+          id, pin_no, student_name, admission_number, batch, course, branch, stud_type,
+          current_year, current_semester, student_data, 
+          certificates_status, fee_status, scholar_status, registration_status
+        FROM students
+        WHERE id IN (?)
+        ORDER BY pin_no ASC, id ASC
+      `;
+      const [studentRows] = await masterPool.query(dataQuery, [pageIds]);
+      students = studentRows;
+    }
+
     const [scholarshipMap, feePaidMap, scholarshipContextMapReport] = await Promise.all([
       buildRegistrationScholarshipMap(masterPool, students, { academicYearFromYear }),
       buildRegistrationFeePaidMap(masterPool, students),
@@ -8215,10 +8304,43 @@ exports.getRegistrationReport = async (req, res) => {
       };
     });
 
+    // Compute display data statistics directly from the current page's students
+    // Instant (<1ms) accurate stats for the displayed records without scanning all pages
+    const displayStats = {
+      total: reportData.length,
+      allPagesTotal: totalRecords,
+      registration: {
+        completed: reportData.filter(s => s.overall_status === 'completed').length,
+        temporary: reportData.filter(s => s.overall_status === 'temporary').length,
+        pending: reportData.filter(s => s.overall_status === 'pending').length
+      },
+      verification: {
+        completed: reportData.filter(s => s.stages.verification === 'completed').length,
+        pending: reportData.filter(s => s.stages.verification !== 'completed').length
+      },
+      certificates: {
+        verified: reportData.filter(s => s.stages.certificates === 'completed').length,
+        temporary: reportData.filter(s => s.stages.certificates === 'temporary').length,
+        pending: reportData.filter(s => s.stages.certificates !== 'completed' && s.stages.certificates !== 'temporary').length
+      },
+      fees: {
+        cleared: reportData.filter(s => s.stages.fee === 'completed').length,
+        pending: reportData.filter(s => s.stages.fee !== 'completed').length
+      },
+      promotion: {
+        completed: reportData.filter(s => s.stages.promotion === 'completed').length,
+        pending: reportData.filter(s => s.stages.promotion !== 'completed').length
+      },
+      scholarship: {
+        assigned: reportData.filter(s => s.stages.scholarship === 'completed').length,
+        pending: reportData.filter(s => s.stages.scholarship === 'pending').length
+      }
+    };
+
     res.json({
       success: true,
       data: reportData,
-      statistics,
+      statistics: displayStats,
       pagination: {
         total: totalRecords,
         page: pageNum,
@@ -8240,6 +8362,18 @@ exports.getRegistrationReport = async (req, res) => {
 exports.getRegistrationAcademicYears = async (req, res) => {
   try {
     const { filter_college, filter_course, filter_branch, filter_level } = req.query;
+
+    const cacheKey = JSON.stringify({
+      college: filter_college || '',
+      course: filter_course || '',
+      branch: filter_branch || '',
+      level: filter_level || '',
+      scope: req.userScope || null
+    });
+    const cached = registrationAcademicYearsCache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
 
     let whereClause = "WHERE student_status = 'Regular'";
     const params = [];
@@ -8335,7 +8469,9 @@ exports.getRegistrationAcademicYears = async (req, res) => {
     // Sort: newest first
     const data = [...labelsSet.values()].sort((a, b) => b.fromYear - a.fromYear);
 
-    res.json({ success: true, data });
+    const payload = { success: true, data };
+    registrationAcademicYearsCache.set(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     console.error('Error fetching registration academic years:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch academic years' });
@@ -8344,6 +8480,12 @@ exports.getRegistrationAcademicYears = async (req, res) => {
 
 /** Shared registration abstract query — same SQL as preview UI and main Reports page. */
 const fetchRegistrationAbstractRows = async (req) => {
+  const cacheKey = buildRegistrationAbstractCacheKey(req);
+  const cached = registrationAbstractCache.get(cacheKey);
+  if (cached && cached.data) {
+    return cached.data;
+  }
+
   const filters = await loadRegistrationAbstractFilters(req, 'base');
 
   const { query, params: queryParams } = buildRegistrationAbstractQuery({
@@ -8353,12 +8495,26 @@ const fetchRegistrationAbstractRows = async (req) => {
     academicYearFromYear: filters.academicYearFromYear
   });
 
-  const [[rows], stageConfig] = await Promise.all([
+  const [dbRes, stageConfig] = await Promise.all([
     masterPool.query(query, queryParams),
     loadRegistrationStageConfig()
   ]);
+  const rows = dbRes[0] || [];
 
   if (!rows.length) return rows;
+
+  const rowsWithOptionalStages = rows.filter((row) => (
+    hasOptionalRegistrationStages(stageConfig, row.branch, row.current_year)
+  ));
+
+  if (!rowsWithOptionalStages.length) {
+    registrationAbstractCache.set(cacheKey, {
+      success: true,
+      data: rows,
+      groupingParams: { key: 'custom', label: 'Detailed' }
+    });
+    return rows;
+  }
 
   const columnList = REGISTRATION_AGGREGATION_STUDENT_COLUMNS
     .split(',')
@@ -8370,19 +8526,29 @@ const fetchRegistrationAbstractRows = async (req) => {
     'base'
   );
 
+  const optionalBranchConditions = rowsWithOptionalStages
+    .map(() => `(base.branch = ? AND base.current_year = ?)`)
+    .join(' OR ');
+  const optionalBranchParams = [];
+  rowsWithOptionalStages.forEach((r) => optionalBranchParams.push(r.branch, r.current_year));
+
   const [students] = await masterPool.query(
     `SELECT ${columnList}
      FROM students base
-     WHERE ${filters.whereClause}${scholarshipWhere}`,
-    filters.params
+     WHERE ${filters.whereClause}${scholarshipWhere} AND (${optionalBranchConditions})`,
+    [...filters.params, ...optionalBranchParams]
   );
 
   const optionalStudents = students.filter((student) => (
     hasOptionalRegistrationStages(stageConfig, student)
-    || registrationUsesScholarshipTableOnly(student)
   ));
 
   if (!optionalStudents.length) {
+    registrationAbstractCache.set(cacheKey, {
+      success: true,
+      data: rows,
+      groupingParams: { key: 'custom', label: 'Detailed' }
+    });
     return rows;
   }
 
@@ -8399,7 +8565,13 @@ const fetchRegistrationAbstractRows = async (req) => {
     scholarshipContextMap
   );
 
-  return enrichRegistrationAbstractRows(rows, groupAggregates, stageConfig);
+  const enrichedRows = enrichRegistrationAbstractRows(rows, groupAggregates, stageConfig);
+  registrationAbstractCache.set(cacheKey, {
+    success: true,
+    data: enrichedRows,
+    groupingParams: { key: 'custom', label: 'Detailed' }
+  });
+  return enrichedRows;
 };
 
 const mapRegistrationAbstractRowToExcel = (row) => {
@@ -8439,36 +8611,7 @@ const mapRegistrationAbstractRowToExcel = (row) => {
 // Get Registration Abstract (College/Course wise summary)
 exports.getRegistrationAbstract = async (req, res) => {
   try {
-    const {
-      filter_batch,
-      filter_course,
-      filter_branch,
-      filter_year,
-      filter_semester,
-      filter_college,
-      filter_level,
-      filter_scholarship_status,
-      filter_academic_year,
-      search
-    } = req.query;
-
-    const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
-    const normalizedAcademicYear = (filter_academic_year || '').trim();
-    const cacheKey = crypto.createHash('md5').update(JSON.stringify({
-      scope: req.userScope || null,
-      userId: req.user?.id || null,
-      filter_batch,
-      filter_course,
-      filter_branch,
-      filter_year,
-      filter_semester,
-      filter_college,
-      filter_level,
-      filter_scholarship_status: scholarshipFilterAbstract,
-      filter_academic_year: normalizedAcademicYear,
-      search
-    })).digest('hex');
-
+    const cacheKey = buildRegistrationAbstractCacheKey(req);
     const cached = registrationAbstractCache.get(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -8630,21 +8773,40 @@ exports.exportRegistrationReport = async (req, res) => {
         SUM(${buildRegistrationOverallTemporaryCaseSql('students', verificationCompletedSql, academicYearFromYearExport)}) as overall_temporary
       ${baseQuery}
     `;
-    const [statsResult] = await masterPool.query(statsQuery, params);
+
+    // --- Data Query ---
+    const dataQuery = `
+      SELECT 
+        id, pin_no, student_name, admission_number, course, branch, college, batch, stud_type,
+        college_id, course_id, branch_id,
+        current_year, current_semester, student_data, 
+        certificates_status, fee_status, scholar_status, registration_status
+      ${baseQuery} 
+      ORDER BY pin_no ASC
+    `;
+
+    const [[statsResult], [students], stageConfigExport] = await Promise.all([
+      masterPool.query(statsQuery, params),
+      masterPool.query(dataQuery, params),
+      loadRegistrationStageConfig()
+    ]);
+
     const statsRow = statsResult[0] || {};
     const totalCount = parseInt(statsRow.total || 0, 10);
 
-    const aggregationStudentsQuery = `
-      SELECT ${REGISTRATION_AGGREGATION_STUDENT_COLUMNS}
-      ${baseQuery}
-    `;
-    const [aggregationStudents] = await masterPool.query(aggregationStudentsQuery, params);
-    const stageConfigExport = await loadRegistrationStageConfig();
-    const computedOptionalExport = await loadRegistrationComputedAggregates(
-      aggregationStudents,
-      stageConfigExport,
-      academicYearFromYearExport
-    );
+    const statsCacheKey = buildRegistrationStatsCacheKey(req);
+    let computedOptionalExport = null;
+    if (registrationStatsCache.has(statsCacheKey)) {
+      computedOptionalExport = registrationStatsCache.get(statsCacheKey);
+    } else {
+      computedOptionalExport = await loadRegistrationComputedAggregates(
+        students,
+        stageConfigExport,
+        academicYearFromYearExport
+      );
+      registrationStatsCache.set(statsCacheKey, computedOptionalExport);
+    }
+
     const mergedExportStats = mergeRegistrationStatsWithSql(statsRow, computedOptionalExport);
 
     const statistics = {
@@ -8659,17 +8821,6 @@ exports.exportRegistrationReport = async (req, res) => {
       }
     };
 
-    // --- Data Query ---
-    const dataQuery = `
-      SELECT 
-        id, pin_no, student_name, admission_number, course, branch, college, batch, stud_type,
-        current_year, current_semester, student_data, 
-        certificates_status, fee_status, scholar_status, registration_status
-      ${baseQuery} 
-      ORDER BY pin_no ASC
-    `;
-
-    const [students] = await masterPool.query(dataQuery, params);
     const scholarshipContextMapExport = await buildRegistrationScholarshipContextMap(
       masterPool,
       students,

@@ -136,7 +136,22 @@ exports.getAnnouncements = async (req, res) => {
         const { college, course, branch } = req.query;
         let query = `
             SELECT 
-                a.*, 
+                a.id,
+                a.title,
+                a.content,
+                (a.image_url IS NOT NULL AND a.image_url != '') as has_image,
+                CASE WHEN a.image_url LIKE 'http%' THEN a.image_url ELSE NULL END as external_image_url,
+                a.target_college,
+                a.target_batch,
+                a.target_course,
+                a.target_branch,
+                a.target_year,
+                a.target_semester,
+                a.created_by,
+                a.audience_count,
+                a.is_active,
+                a.created_at,
+                a.updated_at,
                 u.username as created_by_name 
             FROM announcements a
             LEFT JOIN admins u ON a.created_by = u.id
@@ -154,9 +169,15 @@ exports.getAnnouncements = async (req, res) => {
 
         const [rows] = await masterPool.query(query, params);
 
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const data = rows.map(ann => ({
+            ...ann,
+            image_url: ann.external_image_url || (ann.has_image ? `${baseUrl}/api/announcements/${ann.id}/image` : null)
+        }));
+
         res.json({
             success: true,
-            data: rows
+            data
         });
     } catch (error) {
         console.error('Get announcements error:', error);
@@ -280,14 +301,19 @@ exports.updateAnnouncement = async (req, res) => {
             existing_image_url
         } = req.body;
 
-        let imageUrl = existing_image_url; // Default to keeping existing
+        let imageClause = '';
+        const imageParam = [];
 
         if (req.file) {
             localFilePath = req.file.path;
             const fileData = fs.readFileSync(localFilePath);
             const base64Image = fileData.toString('base64');
             const mimeType = req.file.mimetype;
-            imageUrl = `data:${mimeType};base64,${base64Image}`;
+            imageClause = 'image_url = ?, ';
+            imageParam.push(`data:${mimeType};base64,${base64Image}`);
+        } else if (!existing_image_url) {
+            // User explicitly removed the image
+            imageClause = 'image_url = NULL, ';
         }
 
         // Calculate audience count
@@ -321,7 +347,7 @@ exports.updateAnnouncement = async (req, res) => {
             `UPDATE announcements SET 
                 title = ?, 
                 content = ?, 
-                image_url = ?, 
+                ${imageClause}
                 target_college = ?, 
                 target_batch = ?, 
                 target_course = ?, 
@@ -333,7 +359,7 @@ exports.updateAnnouncement = async (req, res) => {
             [
                 title,
                 content,
-                imageUrl,
+                ...imageParam,
                 target_college || null,
                 target_batch || null,
                 target_course || null,

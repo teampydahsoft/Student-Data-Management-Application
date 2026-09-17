@@ -92,7 +92,8 @@ const DownloadReportsModal = ({ isOpen, onClose, filters }) => {
 
       if (format === 'excel') {
         const response = await api.get(`/attendance/download?${params.toString()}`, {
-          responseType: 'blob'
+          responseType: 'blob',
+          timeout: 120000
         });
 
         const url = window.URL.createObjectURL(new Blob([response.data]));

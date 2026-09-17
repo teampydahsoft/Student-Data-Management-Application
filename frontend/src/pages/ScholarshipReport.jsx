@@ -307,6 +307,7 @@ function ScholarshipReport() {
       const params = buildExportParams();
       const res = await api.get(`/students/reports/scholarship/export?${params.toString()}`, {
         responseType: 'blob',
+        timeout: 120000,
         validateStatus: (status) => status >= 200 && status < 300
       });
 

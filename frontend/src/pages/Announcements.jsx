@@ -28,13 +28,46 @@ import toast from 'react-hot-toast';
 import TargetSelector from '../components/TargetSelector';
 import EventCalendar from './admin/EventCalendar';
 
+const AnnouncementImage = ({ src, alt }) => {
+    const [loaded, setLoaded] = useState(false);
+    const [hasError, setHasError] = useState(false);
+
+    if (hasError || !src) return null;
+
+    return (
+        <div className="mb-3 h-36 overflow-hidden rounded-lg bg-gray-100 relative">
+            {!loaded && (
+                <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
+                    <ImageIcon size={22} className="text-gray-400 opacity-60" />
+                </div>
+            )}
+            <img
+                src={src}
+                alt={alt || 'Announcement'}
+                loading="lazy"
+                decoding="async"
+                onLoad={() => setLoaded(true)}
+                onError={() => setHasError(true)}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+            />
+        </div>
+    );
+};
+
 const Announcements = () => {
     const [activeTab, setActiveTab] = useState('announcements');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
-    // Data States
-    const [announcements, setAnnouncements] = useState([]);
+    // Data States with instant sessionStorage caching
+    const [announcements, setAnnouncements] = useState(() => {
+        try {
+            const cached = sessionStorage.getItem('admin_announcements_cache');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
     const [polls, setPolls] = useState([]);
     const [smsTemplates, setSmsTemplates] = useState([]);
 
@@ -85,10 +118,18 @@ const Announcements = () => {
     }, [activeTab]);
 
     const fetchAnnouncements = async () => {
-        setFetchingFeed(true);
+        if (announcements.length === 0) setFetchingFeed(true);
         try {
             const response = await api.get('/announcements/admin');
-            if (response.data.success) setAnnouncements(response.data.data || []);
+            if (response.data.success) {
+                const data = response.data.data || [];
+                setAnnouncements(data);
+                try {
+                    sessionStorage.setItem('admin_announcements_cache', JSON.stringify(data));
+                } catch (e) {
+                    console.warn('Failed to cache announcements in sessionStorage:', e);
+                }
+            }
         } catch (error) { toast.error('Failed to load announcements'); }
         finally { setFetchingFeed(false); }
     };
@@ -612,7 +653,7 @@ const Announcements = () => {
 
             {/* Content Area */}
             <div className="bg-white rounded-b-2xl shadow-sm border border-gray-200 border-t-0 p-6 min-h-[400px]">
-                {fetchingFeed && activeTab === 'announcements' && <AnnouncementSkeleton />}
+                {fetchingFeed && announcements.length === 0 && activeTab === 'announcements' && <AnnouncementSkeleton />}
                 {fetchingFeed && activeTab === 'polls' && <PollSkeleton />}
                 {fetchingFeed && (activeTab === 'sms' || activeTab === 'calendar') && (
                     <div className="flex justify-center py-10">
@@ -826,7 +867,7 @@ const Announcements = () => {
 
 
                 {
-                    activeTab === 'announcements' && (
+                    activeTab === 'announcements' && (!fetchingFeed || announcements.length > 0) && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {announcements.map(ann => (
                                 <div key={ann.id} className={`bg-white rounded-xl shadow-sm border p-4 group hover:shadow-md transition-all ${!ann.is_active ? 'opacity-75 grayscale' : ''}`}>
@@ -841,14 +882,12 @@ const Announcements = () => {
                                         </div>
                                     </div>
                                     {ann.image_url && (
-                                        <div className="mb-3 h-32 overflow-hidden rounded-lg bg-gray-100">
-                                            <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover" />
-                                        </div>
+                                        <AnnouncementImage src={ann.image_url} alt={ann.title} />
                                     )}
                                     <p className="text-sm text-gray-500 mb-3 line-clamp-2">{ann.content}</p>
                                 </div>
                             ))}
-                            {announcements.length === 0 && !loading && (
+                            {announcements.length === 0 && !fetchingFeed && (
                                 <div className="col-span-full text-center py-10 text-gray-500">No announcements found.</div>
                             )}
                         </div>

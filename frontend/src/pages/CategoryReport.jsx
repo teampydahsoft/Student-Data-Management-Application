@@ -223,6 +223,7 @@ function CategoryReport() {
 
       const res = await api.get(`/students/reports/category/export?${params.toString()}`, {
         responseType: 'blob',
+        timeout: 120000,
         // Ensure we catch server-side errors even with blob response
         validateStatus: (status) => status >= 200 && status < 300
       });
