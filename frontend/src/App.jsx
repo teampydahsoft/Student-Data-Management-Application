@@ -28,6 +28,7 @@ const Reports = lazy(() => import('./pages/Reports'));
 const CategoryReport = lazy(() => import('./pages/CategoryReport'));
 const SmsReport = lazy(() => import('./pages/SmsReport'));
 const ScholarshipReport = lazy(() => import('./pages/ScholarshipReport'));
+const CertificatesReport = lazy(() => import('./pages/CertificatesReport'));
 const StudentPromotions = lazy(() => import('./pages/StudentPromotions'));
 const PrintIdCards = lazy(() => import('./pages/PrintIdCards'));
 const CollegeTransfer = lazy(() => import('./pages/CollegeTransfer'));
@@ -242,6 +243,7 @@ function App() {
             <Route path="reports/category" element={<CategoryReport />} />
             <Route path="reports/sms" element={<SmsReport />} />
             <Route path="reports/scholarship" element={<ScholarshipReport />} />
+            <Route path="reports/certificates" element={<CertificatesReport />} />
             <Route path="tickets" element={<TicketAppRedirect redirectPath="/task-management" />} />
             <Route path="task-management" element={<TaskManagement />} />
             <Route path="announcements" element={<Announcements />} />

@@ -43,6 +43,7 @@ import {
   Tag,
   Award,
   CreditCard,
+  FileCheck,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -184,6 +185,13 @@ const NAV_ITEMS = [
         icon: Award,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_scholarship'
+      },
+      {
+        path: "/reports/certificates",
+        label: "Certificates Page",
+        icon: FileCheck,
+        permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_registration'
       },
       {
         path: "/reports/sms",
