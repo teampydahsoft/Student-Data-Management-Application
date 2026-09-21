@@ -419,17 +419,6 @@ const Transport = () => {
                             <svg width="10" height="10" fill="#fff" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
                         </div>` : ''}
                     </div>
-
-                    <!-- Top Speed & Movement Badge -->
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:${isMoving ? '#059669' : '#d97706'};font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid ${isMoving ? '#10b981' : '#f59e0b'};display:flex;align-items:center;gap:3px;">
-                        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${isMoving ? '#10b981' : '#f59e0b'};${isMoving ? 'animation:ping 1s infinite;' : ''}"></span>
-                        <span>${isMoving ? `MOVING • ${speed} km/h` : `STOPPED • 0 km/h`}</span>
-                    </div>
-
-                    <!-- Bottom Plate Badge -->
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0f172a;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #cbd5e1;">
-                        ${busNum}
-                    </div>
                 </div>
             `,
             iconSize: [56, 56],
@@ -450,12 +439,6 @@ const Transport = () => {
                     <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#059669;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25);border:2.5px solid #ffffff;">
                         <svg width="19" height="19" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                     </div>
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:#059669;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #10b981;display:flex;align-items:center;gap:3px;">
-                        <span>⭐ Pickup ~${studentStopMetrics.morningTime} • Drop ~${studentStopMetrics.eveningTime}</span>
-                    </div>
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#064e3b;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1.5px solid #10b981;">
-                        ${stopName} (Your Stop)
-                    </div>
                 </div>
             `,
             iconSize: [46, 46],
@@ -474,12 +457,6 @@ const Transport = () => {
                 <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center;">
                     <div style="position:relative;width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25);border:2.5px solid #ffffff;">
                         <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-                    </div>
-                    <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#ffffff;color:#7c3aed;font-size:9.5px;font-weight:900;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:1.5px solid #8b5cf6;">
-                        🏁 ~8:15 AM • Departs 4:30 PM
-                    </div>
-                    <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#ffffff;color:#4c1d95;font-size:10px;font-weight:900;padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1.5px solid #8b5cf6;">
-                        ${campusName}
                     </div>
                 </div>
             `,
@@ -500,12 +477,6 @@ const Transport = () => {
                     <div style="position:relative;width:30px;height:30px;border-radius:50%;background:#0284c7;color:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.22);border:2px solid #ffffff;">
                         <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                     </div>
-                    <div style="position:absolute;top:-19px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0284c7;font-size:8.5px;font-weight:900;padding:1.5px 6px;border-radius:8px;white-space:nowrap;border:1.5px solid #0284c7;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
-                        🚩 Starts 7:00 AM • ~5:45 PM
-                    </div>
-                    <div style="position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);background:#ffffff;color:#0369a1;font-size:9px;font-weight:900;padding:1px 6px;border-radius:5px;white-space:nowrap;border:1.5px solid #0284c7;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
-                        ${originName}
-                    </div>
                 </div>
             `,
             iconSize: [38, 38],
@@ -514,24 +485,20 @@ const Transport = () => {
         });
     }, [activePass, allRouteStages]);
 
-    // 5. Clean Circular Milestone Pin (Pristine circular nodes, uncluttered on mobile)
+    // 5. Clean Circular Milestone Pin (Tiny pristine circular nodes, uncluttered on mobile)
     const createStagePointIcon = (stageNumber, metrics, showTimeBadge) => {
         return L.divIcon({
             className: 'clean-leaflet-marker',
             html: `
                 <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
-                    ${showTimeBadge ? `
-                    <div style="background:#ffffff;color:#2563eb;font-size:8px;font-weight:900;padding:1px 4.5px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);border:1px solid #93c5fd;margin-bottom:2px;">
-                        ${metrics.morningScheduledTime}
-                    </div>` : ''}
-                    <div style="width:23px;height:23px;border-radius:50%;background:#2563eb;color:#ffffff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);border:2px solid #ffffff;">
+                    <div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;color:#ffffff;font-size:8.5px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.3);border:1.5px solid #ffffff;">
                         ${stageNumber}
                     </div>
                 </div>
             `,
-            iconSize: [26, showTimeBadge ? 38 : 26],
-            iconAnchor: [13, showTimeBadge ? 26 : 13],
-            popupAnchor: [0, -16]
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+            popupAnchor: [0, -10]
         });
     };
 
@@ -553,7 +520,7 @@ const Transport = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-2.5 animate-fade-in pb-2">
+        <div className="max-w-7xl mx-auto flex flex-col h-[calc(100vh-100px)] lg:h-[calc(100vh-60px)] space-y-2.5 animate-fade-in pb-0">
             <style>{customMapStyles}</style>
 
             {hasActivePass ? (
@@ -598,39 +565,6 @@ const Transport = () => {
                             </button>
                         </div>
 
-                        {/* COMMUTE SCHEDULE CARDS (SIDE-BY-SIDE WITH TIMINGS ONLY) */}
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            {/* Morning Pickup */}
-                            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center gap-2 sm:gap-2.5 shadow-xs">
-                                <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                                    <RiSunLine size={16} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider truncate">
-                                        Morning Pickup
-                                    </div>
-                                    <div className="font-mono font-black text-amber-950 text-sm sm:text-base leading-tight mt-0.5">
-                                        ~{studentStopMetrics.morningTime}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Evening Drop */}
-                            <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-center gap-2 sm:gap-2.5 shadow-xs">
-                                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                                    <RiMoonLine size={16} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider truncate">
-                                        Evening Drop
-                                    </div>
-                                    <div className="font-mono font-black text-indigo-950 text-sm sm:text-base leading-tight mt-0.5">
-                                        ~{studentStopMetrics.eveningTime}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         {/* LIVE BUS MOVEMENT & REAL-TIME DYNAMIC TIMINGS BAR (CLEAN LIGHT PORTAL THEME) */}
                         <div className={`p-3 rounded-xl border transition-all ${
                             isMoving
@@ -639,35 +573,36 @@ const Transport = () => {
                         }`}>
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                                    <div className={`w-10 h-10 rounded-full flex flex-col items-center justify-center shrink-0 shadow-sm border-2 ${
                                         isMoving
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-slate-200 text-slate-600'
+                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                                            : 'border-slate-300 bg-slate-100 text-slate-500'
                                     }`}>
-                                        <RiBusFill size={19} className={isMoving ? 'animate-pulse' : ''} />
+                                        <span className="font-black text-sm leading-none">{isMoving ? liveSpeed : '0'}</span>
+                                        <span className="text-[7px] font-black uppercase mt-0.5">km/h</span>
                                     </div>
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                                isMoving
-                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    <div className="min-w-0 flex flex-col justify-center">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className={`flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest ${
+                                                isMoving ? 'text-emerald-700' : 'text-amber-700'
                                             }`}>
-                                                {isMoving ? 'Live In Motion' : 'Bus Stationary'}
+                                                {isMoving ? (
+                                                    <>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                                        IN MOTION
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                        STATIONARY
+                                                    </>
+                                                )}
                                             </span>
-                                            <span className="font-mono font-bold text-xs text-gray-800">
-                                                {isMoving ? `${liveSpeed} km/h` : '0 km/h'}
-                                            </span>
-                                            {busHeading > 0 && isMoving && (
-                                                <span className="text-[10px] font-semibold text-emerald-700">
-                                                    • {getCompassDirection(busHeading)} ({busHeading}°)
-                                                </span>
-                                            )}
                                         </div>
-                                        <div className="text-xs font-bold text-gray-800 truncate mt-0.5">
+                                        <div className="text-[11px] sm:text-xs font-semibold text-gray-600 truncate">
                                             {isMoving
-                                                ? `En route towards ${activePass.stopName || studentStage?.stageName || 'your stop'}`
-                                                : `Parked / Idle • Engine ${ignitionActive ? 'ON' : 'OFF'}`
+                                                ? `Heading to ${activePass.stopName || studentStage?.stageName || 'stop'}`
+                                                : `Parked • Engine ${ignitionActive ? 'ON' : 'OFF'}`
                                             }
                                         </div>
                                     </div>
@@ -677,11 +612,11 @@ const Transport = () => {
                                 <div className="text-right shrink-0">
                                     {etaToStop ? (
                                         <>
-                                            <div className="font-mono font-black text-sm sm:text-base leading-none text-emerald-700">
-                                                ETA: ~{etaToStop.etaClock}
+                                            <div className={`font-mono font-black text-sm sm:text-base leading-none ${isMoving ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                ETA: {isMoving ? `~${etaToStop.etaClock}` : '--'}
                                             </div>
                                             <div className="text-[10px] font-semibold text-gray-500 mt-0.5">
-                                                {etaToStop.formattedTime} ({distanceBusToStop || '--'} km)
+                                                {isMoving ? `${etaToStop.formattedTime} (${distanceBusToStop || '--'} km)` : '--'}
                                             </div>
                                         </>
                                     ) : (
@@ -742,7 +677,7 @@ const Transport = () => {
                     </div>
 
                     {/* ADVANCED GOOGLE MAPS HYBRID LIVE TRACKING & NAVIGATION VIEW */}
-                    <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative">
+                    <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 relative flex-1 flex flex-col min-h-0">
                         {/* MAP QUICK ACTION BUTTONS (CLEAN BOTTOM-CENTER PILL BAR, ZERO OVERLAP) */}
                         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white/95 backdrop-blur-md px-2 py-1 rounded-2xl shadow-xl border border-gray-200">
                             <button
@@ -780,12 +715,13 @@ const Transport = () => {
                         </div>
 
                         {/* MAP CONTAINER (Full Height, completely uncluttered) */}
-                        <div className="h-[520px] sm:h-[560px] w-full">
+                        <div className="flex-1 w-full relative min-h-[250px]">
                             <MapContainer
                                 center={stopCoords}
                                 zoom={13}
                                 scrollWheelZoom={true}
-                                className="h-full w-full z-0"
+                                preferCanvas={true}
+                                className="absolute inset-0 z-0"
                             >
                                 <LayersControl position="bottomleft">
                                     <LayersControl.BaseLayer checked name="Satellite Hybrid">
@@ -834,10 +770,14 @@ const Transport = () => {
                                         <Polyline
                                             positions={activePolyline}
                                             pathOptions={{ color: '#0ea5e9', weight: 6.5, opacity: 0.45 }}
+                                            smoothFactor={2}
+                                            interactive={false}
                                         />
                                         <Polyline
                                             positions={activePolyline}
                                             pathOptions={{ color: '#2563eb', weight: 3.5, opacity: 0.95 }}
+                                            smoothFactor={2}
+                                            interactive={false}
                                         />
                                     </>
                                 )}
@@ -847,6 +787,7 @@ const Transport = () => {
                                     <Circle
                                         center={campusCoords}
                                         radius={campusRadius}
+                                        interactive={false}
                                         pathOptions={{
                                             color: '#7c3aed',
                                             fillColor: '#8b5cf6',
@@ -939,7 +880,7 @@ const Transport = () => {
                                     </Marker>
                                 )}
 
-                                {/* 4. ALL INTERMEDIATE STOPS (Pristine circular nodes as shown before, uncluttered on mobile) */}
+                                {/* 4. ALL INTERMEDIATE STOPS (Tiny nodes to show the path) */}
                                 {allRouteStages.map((stage, idx) => {
                                     const isStudentStop = activePass?.stopName && stage.stageName?.trim().toLowerCase() === activePass.stopName.trim().toLowerCase();
                                     const isOrigin = idx === 0;
@@ -955,9 +896,6 @@ const Transport = () => {
                                             position={[Number(stage.latitude), Number(stage.longitude)]}
                                             icon={createStagePointIcon(idx + 1, metrics, false)}
                                         >
-                                            <Tooltip direction="top" offset={[0, -18]} className="stage-tooltip">
-                                                #{idx + 1} {stage.stageName} (Pickup ~{metrics.morningScheduledTime} • Drop ~{metrics.eveningScheduledTime})
-                                            </Tooltip>
                                             <Popup>
                                                 <div className="p-1.5 text-xs space-y-1.5 min-w-[190px]">
                                                     <div className="font-bold text-indigo-600 text-sm border-b border-gray-100 pb-0.5">
