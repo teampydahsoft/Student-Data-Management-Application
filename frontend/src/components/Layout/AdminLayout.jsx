@@ -218,8 +218,8 @@ const NAV_ITEMS = [
     path: "/clubs",
     icon: Users,
     label: "Clubs",
-    permission: FRONTEND_MODULES.ANNOUNCEMENTS,
-  }, // Reusing announcement permission for now, or use a new one if available.
+    permission: FRONTEND_MODULES.CLUBS,
+  },
   {
     path: "/services",
     icon: Briefcase,

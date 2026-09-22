@@ -2377,22 +2377,22 @@ const UserManagement = () => {
                     return (
                       <div
                         key={roleKey}
-                        className="rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-all overflow-hidden"
+                        className="rounded-xl border border-slate-200 bg-white hover:border-violet-200 hover:shadow-md transition-all overflow-hidden"
                       >
-                        <div className={`p-3 sm:p-4 bg-gradient-to-br ${ROLE_AVATAR_COLORS[roleKey] || 'from-slate-400 to-slate-600'} bg-opacity-10`}>
+                        <div className="p-3 sm:p-4 bg-white flex flex-col justify-between h-full">
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${ROLE_AVATAR_COLORS[roleKey] || 'from-slate-400 to-slate-600'} flex items-center justify-center shadow-sm flex-shrink-0`}>
                                 <ShieldCheck size={16} className="text-white" />
                               </div>
                               <div className="min-w-0">
                                 <h3 className="font-bold text-slate-800 text-sm truncate">{label}</h3>
-                                <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">{description}</p>
+                                <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{description}</p>
                               </div>
                             </div>
                           </div>
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-[10px] text-slate-500">{permCount} permission(s) configured</span>
+                          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-medium text-slate-500">{permCount} permission(s) configured</span>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
@@ -2414,7 +2414,7 @@ const UserManagement = () => {
                                   setRoleConfigSelectedModule(Object.values(BACKEND_MODULES)[0] || null);
                                   setShowRoleConfigModal(true);
                                 }}
-                                className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                                className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-100 hover:border-slate-300 transition-colors"
                               >
                                 Edit name & configure
                               </button>

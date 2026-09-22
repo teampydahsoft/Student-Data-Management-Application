@@ -20,7 +20,8 @@ export const BACKEND_MODULES = {
   ANNOUNCEMENTS: 'announcements',
   SERVICES: 'services',
   FACULTY_MANAGEMENT: 'faculty_management',
-  FACULTY_ACADEMICS: 'faculty_academics'
+  FACULTY_ACADEMICS: 'faculty_academics',
+  CLUBS: 'clubs'
 };
 
 // Granular Permissions for each module
@@ -199,6 +200,13 @@ export const MODULE_PERMISSIONS = {
       view_students: 'View Students',
       moderate_chat: 'Moderate Chat'
     }
+  },
+  [BACKEND_MODULES.CLUBS]: {
+    permissions: ['view', 'manage'],
+    labels: {
+      view: 'View Clubs',
+      manage: 'Manage Clubs'
+    }
   }
 };
 
@@ -216,7 +224,8 @@ export const MODULE_LABELS = {
   [BACKEND_MODULES.TICKET_MANAGEMENT]: 'Maintenance Management',
   [BACKEND_MODULES.ANNOUNCEMENTS]: 'Announcements',
   [BACKEND_MODULES.SERVICES]: 'Services',
-  [BACKEND_MODULES.FACULTY_MANAGEMENT]: 'Faculty Management'
+  [BACKEND_MODULES.FACULTY_MANAGEMENT]: 'Faculty Management',
+  [BACKEND_MODULES.CLUBS]: 'Clubs'
 };
 
 // Frontend navigation keys
@@ -236,7 +245,8 @@ export const FRONTEND_MODULES = {
   TASK_MANAGEMENT: 'task_management',
   ANNOUNCEMENTS: 'announcements',
   SERVICES: 'services',
-  FACULTY_MANAGEMENT: 'faculty_management'
+  FACULTY_MANAGEMENT: 'faculty_management',
+  CLUBS: 'clubs'
 };
 
 // Map frontend navigation keys to backend permission keys
@@ -256,7 +266,8 @@ export const FRONTEND_TO_BACKEND_MAP = {
   [FRONTEND_MODULES.TASK_MANAGEMENT]: [BACKEND_MODULES.TICKET_MANAGEMENT],
   [FRONTEND_MODULES.ANNOUNCEMENTS]: [BACKEND_MODULES.ANNOUNCEMENTS],
   [FRONTEND_MODULES.SERVICES]: [BACKEND_MODULES.SERVICES],
-  [FRONTEND_MODULES.FACULTY_MANAGEMENT]: [BACKEND_MODULES.FACULTY_MANAGEMENT]
+  [FRONTEND_MODULES.FACULTY_MANAGEMENT]: [BACKEND_MODULES.FACULTY_MANAGEMENT],
+  [FRONTEND_MODULES.CLUBS]: [BACKEND_MODULES.CLUBS]
 };
 
 // Map backend module keys to frontend navigation keys (reverse mapping)
@@ -273,7 +284,8 @@ export const BACKEND_TO_FRONTEND_MAP = {
   [BACKEND_MODULES.REPORTS]: FRONTEND_MODULES.REPORTS,
   [BACKEND_MODULES.ANNOUNCEMENTS]: FRONTEND_MODULES.ANNOUNCEMENTS,
   [BACKEND_MODULES.SERVICES]: FRONTEND_MODULES.SERVICES,
-  [BACKEND_MODULES.FACULTY_MANAGEMENT]: FRONTEND_MODULES.FACULTY_MANAGEMENT
+  [BACKEND_MODULES.FACULTY_MANAGEMENT]: FRONTEND_MODULES.FACULTY_MANAGEMENT,
+  [BACKEND_MODULES.CLUBS]: FRONTEND_MODULES.CLUBS
 };
 
 // Route map for navigation
@@ -294,6 +306,7 @@ export const MODULE_ROUTE_MAP = {
   [FRONTEND_MODULES.ANNOUNCEMENTS]: '/announcements',
   [FRONTEND_MODULES.SERVICES]: '/services',
   [FRONTEND_MODULES.FACULTY_MANAGEMENT]: '/faculty-management',
+  [FRONTEND_MODULES.CLUBS]: '/clubs',
   attendance_monitoring: '/attendance-monitoring'
 };
 
@@ -316,6 +329,7 @@ export const getModuleKeyForPath = (path = '/') => {
   if (path.startsWith('/announcements')) return FRONTEND_MODULES.ANNOUNCEMENTS;
   if (path.startsWith('/services')) return FRONTEND_MODULES.SERVICES;
   if (path.startsWith('/faculty-management')) return FRONTEND_MODULES.FACULTY_MANAGEMENT;
+  if (path.startsWith('/clubs')) return FRONTEND_MODULES.CLUBS;
   if (path.startsWith('/attendance-monitoring')) return FRONTEND_MODULES.ATTENDANCE;
   return null;
 };

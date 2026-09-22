@@ -80,7 +80,8 @@ const MODULES = {
   SERVICES: 'services',
   ANNOUNCEMENTS: 'announcements',
   FACULTY_MANAGEMENT: 'faculty_management',
-  FACULTY_ACADEMICS: 'faculty_academics'
+  FACULTY_ACADEMICS: 'faculty_academics',
+  CLUBS: 'clubs'
 };
 
 // Granular Permissions for each module
@@ -263,6 +264,13 @@ const MODULE_PERMISSIONS = {
       view_students: 'View Students',
       moderate_chat: 'Moderate Chat'
     }
+  },
+  [MODULES.CLUBS]: {
+    permissions: ['view', 'manage'],
+    labels: {
+      view: 'View Clubs',
+      manage: 'Manage Clubs'
+    }
   }
 };
 
@@ -283,7 +291,8 @@ const MODULE_LABELS = {
   [MODULES.SERVICES]: 'Services',
   [MODULES.ANNOUNCEMENTS]: 'Announcements',
   [MODULES.FACULTY_MANAGEMENT]: 'Faculty Management',
-  [MODULES.FACULTY_ACADEMICS]: 'Faculty Academics'
+  [MODULES.FACULTY_ACADEMICS]: 'Faculty Academics',
+  [MODULES.CLUBS]: 'Clubs'
 };
 
 // All modules as array
