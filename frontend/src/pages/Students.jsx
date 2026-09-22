@@ -4178,17 +4178,9 @@ const Students = () => {
                   {/* Photo Container - CIRCULAR PHOTO */}
                   <div
                     onClick={() => {
-                      const hasPhoto = editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '';
-                      if (hasPhoto) {
-                        setShowPhotoViewer(true);
-                      } else if (editMode || canEditField('student_photo')) {
-                        setPhotoUploadTab('file');
-                        setShowPhotoUploadModal(true);
-                      }
+                      setShowPhotoViewer(true);
                     }}
-                    className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gray-100 border-2 border-indigo-200 overflow-hidden shrink-0 relative group shadow-md flex items-center justify-center ${
-                      editData.student_photo || (editMode || canEditField('student_photo')) ? 'cursor-pointer hover:border-blue-500' : ''
-                    }`}
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gray-100 border-2 border-indigo-200 overflow-hidden shrink-0 relative group shadow-md flex items-center justify-center cursor-pointer hover:border-blue-500 transition-all"
                   >
                     {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
                       <img
@@ -4543,10 +4535,35 @@ const Students = () => {
                             <span className="text-gray-500 font-semibold">Year / Sem</span>
                             <span className="font-bold text-gray-900">{editData.current_year || selectedStudent?.current_year || 1} / {editData.current_semester || selectedStudent?.current_semester || 1}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Section</span>
-                            <span className="font-bold text-gray-900">{getStudentSection(editData, selectedStudent) || '-'}</span>
-                          </div>
+                          {(studentBranchHasSections || getStudentSection(editData, selectedStudent)) && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-500 font-semibold">Section</span>
+                              {editMode ? (
+                                studentSectionOptions && studentSectionOptions.length > 0 ? (
+                                  <select
+                                    value={getStudentSection(editData, selectedStudent) || ''}
+                                    onChange={(e) => updateEditField('section', e.target.value)}
+                                    className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right"
+                                  >
+                                    <option value="">Select Section</option>
+                                    {studentSectionOptions.map((sec) => (
+                                      <option key={sec} value={sec}>{sec}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={editData.section !== undefined ? editData.section : (editData.Section !== undefined ? editData.Section : (selectedStudent?.section || ''))}
+                                    onChange={(e) => updateEditField('section', e.target.value)}
+                                    placeholder="e.g. A"
+                                    className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-24"
+                                  />
+                                )
+                              ) : (
+                                <span className="font-bold text-gray-900">{getStudentSection(editData, selectedStudent) || '-'}</span>
+                              )}
+                            </div>
+                          )}
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Quota</span>
                             <span className="font-bold text-gray-900">{editData.stud_type || selectedStudent?.stud_type || 'Regular'}</span>
@@ -4815,6 +4832,108 @@ const Students = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Card 7: Quick Actions */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
+                              <Sparkles size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Quick Actions</h3>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setShowIdCardPreview(true)}
+                            className="flex items-center gap-1.5 p-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-all text-left border border-indigo-100 hover:border-indigo-200 cursor-pointer"
+                          >
+                            <Printer size={13} className="shrink-0" />
+                            <span className="truncate">Digital ID Card</span>
+                          </button>
+
+                          {canViewAttendance && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveStudentTab('attendance')}
+                              className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold transition-all text-left border border-emerald-100 hover:border-emerald-200 cursor-pointer"
+                            >
+                              <Calendar size={13} className="shrink-0" />
+                              <span className="truncate">Attendance</span>
+                            </button>
+                          )}
+
+                          {canViewSms && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveStudentTab('sms')}
+                              className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold transition-all text-left border border-blue-100 hover:border-blue-200 cursor-pointer"
+                            >
+                              <MessageSquare size={13} className="shrink-0" />
+                              <span className="truncate">SMS Portal</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setShowVerificationModal(true)}
+                            className="flex items-center gap-1.5 p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold transition-all text-left border border-purple-100 hover:border-purple-200 cursor-pointer"
+                          >
+                            <CheckCircle size={13} className="shrink-0" />
+                            <span className="truncate">Mobile Verify</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 8: Certificates & Admission */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold shadow-xs">
+                              <Award size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Certificates & Admission</h3>
+                          </div>
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-teal-600 hover:text-teal-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-[11px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Certificates</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-teal-50 text-teal-700 border border-teal-200 capitalize">
+                              {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Scholarship Status</span>
+                            <span className="font-bold text-gray-900 capitalize">
+                              {editData.scholar_status || selectedStudent?.scholar_status || 'Regular'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Admission Date</span>
+                            <span className="font-bold text-gray-900 font-mono">
+                              {formatDate(editData.admission_date || selectedStudent?.admission_date)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Previous College</span>
+                            <span className="font-bold text-gray-900 truncate max-w-[120px]" title={editData.previous_college || selectedStudent?.previous_college}>
+                              {editData.previous_college || selectedStudent?.previous_college || '-'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Bottom Informational Banner (Image 2 style) */}
@@ -4903,19 +5022,19 @@ const Students = () => {
                       </div>
                     </div>
 
-                    {/* Registration Stages Stepper Indicator */}
-                    <div className="bg-white rounded-2xl border border-gray-200/90 p-5 shadow-2xs">
-                      <div className="flex items-center justify-between max-w-2xl mx-auto relative">
+                    {/* Registration Stages Stepper Indicator (5 Stages) */}
+                    <div className="bg-white rounded-2xl border border-gray-200/90 p-5 shadow-2xs overflow-x-auto">
+                      <div className="flex items-center justify-between min-w-[580px] max-w-4xl mx-auto relative">
                         {/* Step 1 Indicator */}
                         <div className="flex flex-col items-center gap-1.5 relative z-10">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
                             isVerificationComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
                           }`}>
-                            {isVerificationComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>1</span>}
+                            {isVerificationComplete ? <CheckCircle size={18} strokeWidth={2.5} /> : <span>1</span>}
                           </div>
-                          <span className="text-xs font-extrabold text-gray-900">Stage 1</span>
-                          <span className="text-[10px] font-bold text-gray-500">Mobile Verification</span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          <span className="text-[11px] font-extrabold text-gray-900">Stage 1</span>
+                          <span className="text-[9px] font-bold text-gray-500">Mobile Verification</span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
                             isVerificationComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                           }`}>
                             {isVerificationComplete ? 'Completed' : 'Pending'}
@@ -4923,20 +5042,20 @@ const Students = () => {
                         </div>
 
                         {/* Connector 1 -> 2 */}
-                        <div className="flex-1 h-1 mx-3 rounded-full overflow-hidden bg-gray-200">
+                        <div className="flex-1 h-1 mx-2 rounded-full overflow-hidden bg-gray-200">
                           <div className={`h-full transition-all duration-500 ${isVerificationComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
                         </div>
 
                         {/* Step 2 Indicator */}
                         <div className="flex flex-col items-center gap-1.5 relative z-10">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
                             isCertComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
                           }`}>
-                            {isCertComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>2</span>}
+                            {isCertComplete ? <CheckCircle size={18} strokeWidth={2.5} /> : <span>2</span>}
                           </div>
-                          <span className="text-xs font-extrabold text-gray-900">Stage 2</span>
-                          <span className="text-[10px] font-bold text-gray-500">Certificate Status</span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          <span className="text-[11px] font-extrabold text-gray-900">Stage 2</span>
+                          <span className="text-[9px] font-bold text-gray-500">Certificate Status</span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
                             isCertComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                           }`}>
                             {isCertComplete ? 'Completed' : (certStatus || 'Pending')}
@@ -4944,23 +5063,65 @@ const Students = () => {
                         </div>
 
                         {/* Connector 2 -> 3 */}
-                        <div className="flex-1 h-1 mx-3 rounded-full overflow-hidden bg-gray-200">
+                        <div className="flex-1 h-1 mx-2 rounded-full overflow-hidden bg-gray-200">
                           <div className={`h-full transition-all duration-500 ${isCertComplete && isFeeComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
                         </div>
 
                         {/* Step 3 Indicator */}
                         <div className="flex flex-col items-center gap-1.5 relative z-10">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
                             isFeeComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
                           }`}>
-                            {isFeeComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>3</span>}
+                            {isFeeComplete ? <CheckCircle size={18} strokeWidth={2.5} /> : <span>3</span>}
                           </div>
-                          <span className="text-xs font-extrabold text-gray-900">Stage 3</span>
-                          <span className="text-[10px] font-bold text-gray-500">Fee Payment</span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          <span className="text-[11px] font-extrabold text-gray-900">Stage 3</span>
+                          <span className="text-[9px] font-bold text-gray-500">Fee Payment</span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
                             isFeeComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                           }`}>
                             {isFeeComplete ? 'Completed' : (feeStatus || 'Pending')}
+                          </span>
+                        </div>
+
+                        {/* Connector 3 -> 4 */}
+                        <div className="flex-1 h-1 mx-2 rounded-full overflow-hidden bg-gray-200">
+                          <div className={`h-full transition-all duration-500 ${isFeeComplete && isScholarshipComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
+                        </div>
+
+                        {/* Step 4 Indicator */}
+                        <div className="flex flex-col items-center gap-1.5 relative z-10">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                            isScholarshipComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
+                          }`}>
+                            {isScholarshipComplete ? <CheckCircle size={18} strokeWidth={2.5} /> : <span>4</span>}
+                          </div>
+                          <span className="text-[11px] font-extrabold text-gray-900">Stage 4</span>
+                          <span className="text-[9px] font-bold text-gray-500">Scholarship Status</span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                            isScholarshipComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isScholarshipComplete ? 'Completed' : (scholarStatus || 'Pending')}
+                          </span>
+                        </div>
+
+                        {/* Connector 4 -> 5 */}
+                        <div className="flex-1 h-1 mx-2 rounded-full overflow-hidden bg-gray-200">
+                          <div className={`h-full transition-all duration-500 ${isScholarshipComplete && isPromotionComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
+                        </div>
+
+                        {/* Step 5 Indicator */}
+                        <div className="flex flex-col items-center gap-1.5 relative z-10">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                            isPromotionComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
+                          }`}>
+                            {isPromotionComplete ? <CheckCircle size={18} strokeWidth={2.5} /> : <span>5</span>}
+                          </div>
+                          <span className="text-[11px] font-extrabold text-gray-900">Stage 5</span>
+                          <span className="text-[9px] font-bold text-gray-500">Academic Promotion</span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                            isPromotionComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isPromotionComplete ? 'Completed' : 'Pending'}
                           </span>
                         </div>
                       </div>
@@ -4968,7 +5129,7 @@ const Students = () => {
 
                     <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">Registration Stage Details</h4>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {/* Stage 1: Mobile Verification */}
                       <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
                         <div className="space-y-3">
@@ -5077,6 +5238,90 @@ const Students = () => {
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Stage 4: Scholarship Status */}
+                      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl shrink-0 bg-teal-600 text-white shadow-xs">
+                                <Award size={18} />
+                              </div>
+                              <div>
+                                <span className="bg-teal-100 text-teal-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Stage 4</span>
+                                <h5 className="font-extrabold text-sm text-gray-900 mt-0.5">Scholarship Status</h5>
+                              </div>
+                            </div>
+                            <StatusBadge completed={isScholarshipComplete} optional={isScholarshipOptional} text={scholarStatus} />
+                          </div>
+
+                          <p className="text-xs text-gray-500">Scholarship registration and entitlement verification</p>
+
+                          <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Scholarship Status:</span>
+                              <span className="font-extrabold text-gray-900 capitalize">{scholarStatus || 'Pending'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Requirement:</span>
+                              <span className="font-semibold text-gray-600">{isScholarshipOptional ? 'Optional' : 'Mandatory'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {canViewScholarship && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveStudentTab('scholarship')}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white text-xs font-bold rounded-xl hover:bg-teal-700 transition-colors shadow-xs active:scale-95"
+                          >
+                            <Award size={14} />
+                            Manage Scholarship
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Stage 5: Academic Promotion */}
+                      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl shrink-0 bg-indigo-600 text-white shadow-xs">
+                                <GraduationCap size={18} />
+                              </div>
+                              <div>
+                                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Stage 5</span>
+                                <h5 className="font-extrabold text-sm text-gray-900 mt-0.5">Academic Promotion</h5>
+                              </div>
+                            </div>
+                            <StatusBadge completed={isPromotionComplete} optional={optSet.has('promotion')} />
+                          </div>
+
+                          <p className="text-xs text-gray-500">Yearly academic promotion & semester transition status</p>
+
+                          <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Current Year / Sem:</span>
+                              <span className="font-extrabold text-gray-900">{currentYear} Year / {currentSem} Sem</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Promotion Status:</span>
+                              <span className="font-semibold text-gray-600">{isPromotionComplete ? 'Promoted' : 'Pending'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {canViewMeritStatus && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveStudentTab('merit_status')}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-xs active:scale-95"
+                          >
+                            <GraduationCap size={14} />
+                            View Merit & Promotion
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -5460,9 +5705,9 @@ const Students = () => {
       />
 
       {/* Student Photo Full Viewer Modal */}
-      {showPhotoViewer && editData.student_photo && editData.student_photo !== '{}' && (
+      {showPhotoViewer && createPortal(
         <div
-          className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-[9999999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setShowPhotoViewer(false)}
         >
           <div
@@ -5479,7 +5724,7 @@ const Students = () => {
                   <h3 className="text-sm font-bold text-gray-900">Student Photo</h3>
                   <p className="text-xs text-slate-500 font-medium truncate max-w-[200px]">
                     {editData.student_name || selectedStudent?.student_name || 'Student'}
-                    {(editData.admission_number || selectedStudent?.admission_number) && ` • ${editData.admission_number || selectedStudent?.admission_number}`}
+                    {(editData.admission_number || selectedStudent?.admission_number || selectedStudent?.pin_no) && ` • ${editData.admission_number || selectedStudent?.admission_number || selectedStudent?.pin_no}`}
                   </p>
                 </div>
               </div>
@@ -5496,11 +5741,18 @@ const Students = () => {
             {/* Photo Display */}
             <div className="p-6 flex flex-col items-center justify-center bg-slate-950/5">
               <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-xl border-4 border-white bg-slate-900 flex items-center justify-center">
-                <img
-                  src={getStaticFileUrlDirect(editData.student_photo)}
-                  alt={editData.student_name || 'Student Photo'}
-                  className="w-full h-full object-cover"
-                />
+                {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
+                  <img
+                    src={getStaticFileUrlDirect(editData.student_photo)}
+                    alt={editData.student_name || 'Student Photo'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+                    <User size={64} />
+                    <span className="text-xs font-semibold text-slate-400">No Photo Uploaded</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -5509,7 +5761,7 @@ const Students = () => {
               <button
                 type="button"
                 onClick={() => setShowPhotoViewer(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-white text-slate-700 text-xs font-bold transition-all shadow-xs"
+                className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-white text-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer"
               >
                 Close
               </button>
@@ -5522,7 +5774,7 @@ const Students = () => {
                     setPhotoUploadTab('file');
                     setShowPhotoUploadModal(true);
                   }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer active:scale-95"
                 >
                   <Camera size={14} />
                   Change Photo
@@ -5530,7 +5782,8 @@ const Students = () => {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <StudentPhotoUploadModal
