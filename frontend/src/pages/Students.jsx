@@ -4395,7 +4395,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <User size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Student Identity</h3>
@@ -4514,7 +4514,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <GraduationCap size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Academic Info</h3>
@@ -4564,7 +4564,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <Activity size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Quick Status</h3>
@@ -4616,7 +4616,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <Phone size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Parent / Guardian</h3>
@@ -4710,7 +4710,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <MapPin size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Address & Demographics</h3>
@@ -4765,7 +4765,7 @@ const Students = () => {
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <History size={15} />
                             </div>
                             <h3 className="font-extrabold text-xs text-gray-900">Recent Activity</h3>
@@ -4903,70 +4903,180 @@ const Students = () => {
                       </div>
                     </div>
 
-                    <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Registration Stages</h4>
+                    {/* Registration Stages Stepper Indicator */}
+                    <div className="bg-white rounded-2xl border border-gray-200/90 p-5 shadow-2xs">
+                      <div className="flex items-center justify-between max-w-2xl mx-auto relative">
+                        {/* Step 1 Indicator */}
+                        <div className="flex flex-col items-center gap-1.5 relative z-10">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                            isVerificationComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
+                          }`}>
+                            {isVerificationComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>1</span>}
+                          </div>
+                          <span className="text-xs font-extrabold text-gray-900">Stage 1</span>
+                          <span className="text-[10px] font-bold text-gray-500">Mobile Verification</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            isVerificationComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isVerificationComplete ? 'Completed' : 'Pending'}
+                          </span>
+                        </div>
 
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className={`rounded-2xl border p-4 shadow-2xs flex flex-col gap-4 bg-white border-gray-200`}>
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                              <MessageSquare size={20} />
-                            </div>
-                            <div>
-                              <h5 className="font-bold text-gray-900 flex items-center gap-2">1. Mobile Verification</h5>
-                              <p className="text-xs text-gray-500 mt-0.5">Send OTP to student or parent mobile for this semester</p>
-                              <div className="flex flex-col gap-1.5 mt-2 text-xs text-gray-600">
-                                <span className={isStudentVerified ? 'text-green-600 font-bold' : 'text-red-500'}>
-                                  {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                  Student: {studentMobile || 'No number'}
-                                </span>
-                                <span className={isParentVerified ? 'text-green-600 font-bold' : 'text-red-500'}>
-                                  {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                  Parent: {parentMobile || 'No number'}
-                                </span>
+                        {/* Connector 1 -> 2 */}
+                        <div className="flex-1 h-1 mx-3 rounded-full overflow-hidden bg-gray-200">
+                          <div className={`h-full transition-all duration-500 ${isVerificationComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
+                        </div>
+
+                        {/* Step 2 Indicator */}
+                        <div className="flex flex-col items-center gap-1.5 relative z-10">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                            isCertComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
+                          }`}>
+                            {isCertComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>2</span>}
+                          </div>
+                          <span className="text-xs font-extrabold text-gray-900">Stage 2</span>
+                          <span className="text-[10px] font-bold text-gray-500">Certificate Status</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            isCertComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isCertComplete ? 'Completed' : (certStatus || 'Pending')}
+                          </span>
+                        </div>
+
+                        {/* Connector 2 -> 3 */}
+                        <div className="flex-1 h-1 mx-3 rounded-full overflow-hidden bg-gray-200">
+                          <div className={`h-full transition-all duration-500 ${isCertComplete && isFeeComplete ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
+                        </div>
+
+                        {/* Step 3 Indicator */}
+                        <div className="flex flex-col items-center gap-1.5 relative z-10">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all shadow-md ${
+                            isFeeComplete ? 'bg-emerald-600 text-white ring-4 ring-emerald-100' : 'bg-slate-900 text-white ring-4 ring-slate-100'
+                          }`}>
+                            {isFeeComplete ? <CheckCircle size={20} strokeWidth={2.5} /> : <span>3</span>}
+                          </div>
+                          <span className="text-xs font-extrabold text-gray-900">Stage 3</span>
+                          <span className="text-[10px] font-bold text-gray-500">Fee Payment</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            isFeeComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isFeeComplete ? 'Completed' : (feeStatus || 'Pending')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">Registration Stage Details</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Stage 1: Mobile Verification */}
+                      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl shrink-0 bg-blue-600 text-white shadow-xs">
+                                <MessageSquare size={18} />
+                              </div>
+                              <div>
+                                <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Stage 1</span>
+                                <h5 className="font-extrabold text-sm text-gray-900 mt-0.5">Mobile Verification</h5>
                               </div>
                             </div>
-                          </div>
-                          <div className="flex flex-col sm:items-end gap-2 shrink-0">
                             <StatusBadge completed={isVerificationComplete} optional={optSet.has('verification')} />
-                            {canVerifyMobile && (
-                              <button
-                                type="button"
-                                onClick={() => setShowVerificationModal(true)}
-                                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
-                              >
-                                <Shield size={16} />
-                                {isVerificationComplete ? 'View / Re-verify' : 'Verify with OTP'}
-                              </button>
-                            )}
+                          </div>
+
+                          <p className="text-xs text-gray-500">Send OTP to student or parent mobile for this semester</p>
+
+                          <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Student Mobile:</span>
+                              <span className={`font-bold flex items-center gap-1 ${isStudentVerified ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {isStudentVerified ? <CheckCircle size={13} /> : <X size={13} />}
+                                {studentMobile || 'No number'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Parent Mobile:</span>
+                              <span className={`font-bold flex items-center gap-1 ${isParentVerified ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {isParentVerified ? <CheckCircle size={13} /> : <X size={13} />}
+                                {parentMobile || 'No number'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {canVerifyMobile && (
+                          <button
+                            type="button"
+                            onClick={() => setShowVerificationModal(true)}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-xs active:scale-95"
+                          >
+                            <Shield size={14} />
+                            {isVerificationComplete ? 'View / Re-verify' : 'Verify with OTP'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Stage 2: Certificate Status */}
+                      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl shrink-0 bg-purple-600 text-white shadow-xs">
+                                <FileText size={18} />
+                              </div>
+                              <div>
+                                <span className="bg-purple-100 text-purple-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Stage 2</span>
+                                <h5 className="font-extrabold text-sm text-gray-900 mt-0.5">Certificate Status</h5>
+                              </div>
+                            </div>
+                            <StatusBadge completed={isCertComplete} optional={optSet.has('certificates')} text={certStatus} />
+                          </div>
+
+                          <p className="text-xs text-gray-500">Verification of student certificates & credentials</p>
+
+                          <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Current Status:</span>
+                              <span className="font-extrabold text-gray-900 capitalize">{certStatus || 'Pending'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Requirement:</span>
+                              <span className="font-semibold text-gray-600">{optSet.has('certificates') ? 'Optional' : 'Mandatory'}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border p-4 bg-white border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                            <FileText size={20} />
+                      {/* Stage 3: Fee Payment */}
+                      <div className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-4 flex flex-col justify-between gap-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl shrink-0 bg-amber-600 text-white shadow-xs">
+                                <CreditCard size={18} />
+                              </div>
+                              <div>
+                                <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Stage 3</span>
+                                <h5 className="font-extrabold text-sm text-gray-900 mt-0.5">Fee Payment</h5>
+                              </div>
+                            </div>
+                            <StatusBadge completed={isFeeComplete} optional={optSet.has('fee')} text={feeStatus} />
                           </div>
-                          <div>
-                            <h5 className="font-bold text-gray-900">2. Certificate Status</h5>
-                            <p className="text-xs text-gray-500 mt-0.5">Current Status: <span className="font-bold text-gray-900 capitalize">{certStatus || 'Pending'}</span></p>
-                          </div>
-                        </div>
-                        <StatusBadge completed={isCertComplete} optional={optSet.has('certificates')} text={certStatus} />
-                      </div>
 
-                      <div className="rounded-2xl border p-4 bg-white border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                            <CreditCard size={20} />
-                          </div>
-                          <div>
-                            <h5 className="font-bold text-gray-900">3. Fee Payment</h5>
-                            <p className="text-xs text-gray-500 mt-0.5">Current Status: <span className="font-bold text-gray-900 capitalize">{feeStatus || 'Pending'}</span></p>
+                          <p className="text-xs text-gray-500">Tuition & fee payment status verification</p>
+
+                          <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Fee Clearance:</span>
+                              <span className="font-extrabold text-gray-900 capitalize">{feeStatus || 'Pending'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 font-semibold">Requirement:</span>
+                              <span className="font-semibold text-gray-600">{optSet.has('fee') ? 'Optional' : 'Mandatory'}</span>
+                            </div>
                           </div>
                         </div>
-                        <StatusBadge completed={isFeeComplete} optional={optSet.has('fee')} text={feeStatus} />
                       </div>
                     </div>
                   </div>
