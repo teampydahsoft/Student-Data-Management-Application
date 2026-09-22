@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   Edit,
@@ -39,7 +40,12 @@ import {
   Phone,
   Copy,
   Check,
-  Camera
+  Camera,
+  Quote,
+  Activity,
+  Info,
+  MoreHorizontal,
+  Sparkles
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -374,6 +380,7 @@ const Students = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const [scholarshipData, setScholarshipData] = useState(null);
   const [scholarshipLoading, setScholarshipLoading] = useState(false);
   const [regOptionalStages, setRegOptionalStages] = useState([]); // optional stages for selected student's branch+year
@@ -1029,47 +1036,49 @@ const Students = () => {
     // Define all fields that count towards completion
     const profileFields = [
       // Identity Fields
-      { key: 'student_name', altKeys: ['Student Name', 'studentname'] },
-      { key: 'pin_no', altKeys: ['Pin Number', 'PIN Number', 'roll_no', 'roll_number'] },
-      { key: 'dob', altKeys: ['DOB (Date of Birth - DD-MM-YYYY)', 'DOB (Date-Month-Year) Ex: 09-Sep-2003)', 'date_of_birth'] },
-      { key: 'adhar_no', altKeys: ['ADHAR No', 'aadhar_no', 'aadhaar_no'] },
-      { key: 'father_name', altKeys: ['Father Name', 'fathername'] },
-      { key: 'gender', altKeys: ['M/F', 'Gender'] },
-      { key: 'category_id', altKeys: ['Category'] },
+      { key: 'student_name', label: 'Student Name', altKeys: ['Student Name', 'studentname'] },
+      { key: 'pin_no', label: 'Roll Number', altKeys: ['Pin Number', 'PIN Number', 'roll_no', 'roll_number'] },
+      { key: 'dob', label: 'Date of Birth', altKeys: ['DOB (Date of Birth - DD-MM-YYYY)', 'DOB (Date-Month-Year) Ex: 09-Sep-2003)', 'date_of_birth'] },
+      { key: 'adhar_no', label: 'Aadhaar Number', altKeys: ['ADHAR No', 'aadhar_no', 'aadhaar_no'] },
+      { key: 'apaar_id', label: 'APAAR ID', altKeys: ['APAAR ID', 'apaar id'] },
+      { key: 'father_name', label: 'Father Name', altKeys: ['Father Name', 'fathername'] },
+      { key: 'gender', label: 'Gender', altKeys: ['M/F', 'Gender'] },
+      { key: 'category_id', label: 'Category', altKeys: ['Category'] },
 
       // Academic Fields
-      { key: 'admission_number', altKeys: ['Admission Number', 'Admission No', 'admission_no'] },
-      { key: 'course', altKeys: ['Program', 'Program Name'] },
-      { key: 'branch', altKeys: ['Branch', 'Branch Name'] },
-      { key: 'batch', altKeys: ['Batch'] },
-      { key: 'college', altKeys: ['College', 'College Name'] },
-      { key: 'stud_type', altKeys: ['StudType', 'Student Type', 'student_type'] },
-      { key: 'current_year', altKeys: ['Current Academic Year', 'Current Year', 'Year'] },
-      { key: 'current_semester', altKeys: ['Current Semester', 'Semester', 'Semister'] },
-      { key: 'admission_date', altKeys: ['Admission Date', 'admission_date'] },
+      { key: 'admission_number', label: 'Admission Number', altKeys: ['Admission Number', 'Admission No', 'admission_no'] },
+      { key: 'course', label: 'Program', altKeys: ['Program', 'Program Name'] },
+      { key: 'branch', label: 'Branch', altKeys: ['Branch', 'Branch Name'] },
+      { key: 'batch', label: 'Batch', altKeys: ['Batch'] },
+      { key: 'college', label: 'College', altKeys: ['College', 'College Name'] },
+      { key: 'stud_type', label: 'Quota', altKeys: ['StudType', 'Student Type', 'student_type'] },
+      { key: 'current_year', label: 'Current Year', altKeys: ['Current Academic Year', 'Current Year', 'Year'] },
+      { key: 'current_semester', label: 'Current Semester', altKeys: ['Current Semester', 'Semester', 'Semister'] },
+      { key: 'admission_date', label: 'Admission Date', altKeys: ['Admission Date', 'admission_date'] },
 
       // Parent Information
-      { key: 'parent_mobile1', altKeys: ['Parent Mobile Number 1', 'Parent Mobile 1', 'parent_mobile_1'] },
-      { key: 'parent_mobile2', altKeys: ['Parent Mobile Number 2', 'Parent Mobile 2', 'parent_mobile_2'] },
+      { key: 'parent_mobile1', label: 'Parent Mobile 1', altKeys: ['Parent Mobile Number 1', 'Parent Mobile 1', 'parent_mobile_1'] },
+      { key: 'parent_mobile2', label: 'Parent Mobile 2', altKeys: ['Parent Mobile Number 2', 'Parent Mobile 2', 'parent_mobile_2'] },
 
       // Address Fields
-      { key: 'student_address', altKeys: ['Student Address (D.No, Str name, Village, Mandal, Dist)', 'Student Address', 'address'] },
-      { key: 'city_village', altKeys: ['City/Village', 'City/Village Name', 'city_village_name'] },
-      { key: 'mandal_name', altKeys: ['Mandal Name', 'Mandal', 'mandal'] },
-      { key: 'district', altKeys: ['District', 'District Name'] },
+      { key: 'student_address', label: 'Permanent Address', altKeys: ['Student Address (D.No, Str name, Village, Mandal, Dist)', 'Student Address', 'address'] },
+      { key: 'city_village', label: 'City/Village', altKeys: ['City/Village', 'City/Village Name', 'city_village_name'] },
+      { key: 'mandal_name', label: 'Mandal', altKeys: ['Mandal Name', 'Mandal', 'mandal'] },
+      { key: 'district', label: 'District', altKeys: ['District', 'District Name'] },
 
       // Administrative Fields
-      { key: 'student_status', altKeys: ['Student Status', 'studentstatus'] },
-      { key: 'scholar_status', altKeys: ['Scholar Status', 'scholarstatus'] },
-      { key: 'certificates_status', altKeys: ['Certificates Status', 'Certificate Status', 'certificatesstatus'] },
-      { key: 'previous_college', altKeys: ['Previous College Name', 'Previous College', 'previouscollege'] },
-      { key: 'remarks', altKeys: ['Remarks', 'remark'] },
+      { key: 'student_status', label: 'Student Status', altKeys: ['Student Status', 'studentstatus'] },
+      { key: 'scholar_status', label: 'Scholar Status', altKeys: ['Scholar Status', 'scholarstatus'] },
+      { key: 'certificates_status', label: 'Certificate Status', altKeys: ['Certificates Status', 'Certificate Status', 'certificatesstatus'] },
+      { key: 'previous_college', label: 'Previous College', altKeys: ['Previous College Name', 'Previous College', 'previouscollege'] },
+      { key: 'remarks', label: 'Remarks', altKeys: ['Remarks', 'remark'] },
 
       // Photo
-      { key: 'student_photo', altKeys: ['Student Photo', 'photo', 'studentphoto'] }
+      { key: 'student_photo', label: 'Student Photo', altKeys: ['Student Photo', 'photo', 'studentphoto'] }
     ];
 
     let filledCount = 0;
+    const missingFields = [];
     const totalCount = profileFields.length;
 
     // Count filled fields
@@ -1077,6 +1086,8 @@ const Students = () => {
       const value = getFieldValue(field.key, field.altKeys);
       if (isValidValue(value)) {
         filledCount++;
+      } else {
+        missingFields.push(field.label);
       }
     });
 
@@ -1086,7 +1097,8 @@ const Students = () => {
     return {
       percentage,
       filledCount,
-      totalCount
+      totalCount,
+      missingFields
     };
   }, []);
 
@@ -4030,9 +4042,9 @@ const Students = () => {
         </div>
       )}
 
-      {showModal && selectedStudent && (
+      {showModal && selectedStudent && createPortal(
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[999999] p-2 sm:p-4 overflow-y-auto"
           onClick={(e) => {
             // Close modal when clicking on backdrop
             if (e.target === e.currentTarget) {
@@ -4046,2150 +4058,1072 @@ const Students = () => {
           }}
         >
           <div
-            className="bg-gray-50/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl w-full max-w-[min(86vw,1380px)] max-h-[92vh] flex flex-col overflow-hidden border border-white/20 animate-scale-in"
+            className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-[min(94vw,1240px)] max-h-[96vh] flex flex-col overflow-hidden border border-white/40 animate-scale-in font-sans"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 py-5 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-inner">
-                  <User size={24} />
+            {/* Header Banner Section */}
+            <div className="bg-white border-b border-gray-100 p-4 sm:p-5 flex flex-col gap-3 shrink-0 relative shadow-2xs">
+              {/* Top Row: Breadcrumb & Right Actions */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
+                  <span>Students</span>
+                  <span>&rsaquo;</span>
+                  <span className="text-gray-900 font-extrabold">Student Profile</span>
                 </div>
-                <div>
-                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Student Profile</h3>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">
-                    {editMode ? 'Editing Mode' : 'Identification & Records'}
-                  </p>
+
+                <div className="flex items-center gap-2.5">
+                  {!editMode && canEditStudents && !isCashier && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.student_data?.batch]?.includes("ALL")) && (
+                    <button
+                      onClick={handleEdit}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200 active:scale-95"
+                    >
+                      <Edit size={14} />
+                      <span>Edit Profile</span>
+                    </button>
+                  )}
+                  {editMode && (
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit}
+                      className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 active:scale-95"
+                    >
+                      <Check size={14} />
+                      <span>{savingEdit ? 'Saving...' : 'Save Changes'}</span>
+                    </button>
+                  )}
+
+                  {/* ... More Actions Dropdown */}
+                  {!editMode && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowMoreActions(!showMoreActions)}
+                        className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+                      >
+                        <MoreHorizontal size={14} />
+                        <span>More Actions</span>
+                        <ChevronDown size={12} />
+                      </button>
+
+                      {showMoreActions && (
+                        <div
+                          className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-[100] animate-fade-in text-xs font-semibold text-gray-700"
+                          onClick={() => setShowMoreActions(false)}
+                        >
+                          {!isCashier && (
+                            <button
+                              onClick={handleResetPassword}
+                              className="w-full text-left px-4 py-2.5 hover:bg-orange-50 hover:text-orange-600 flex items-center gap-2 transition-colors"
+                            >
+                              <RefreshCw size={14} className={resettingPassword ? 'animate-spin text-orange-500' : ''} />
+                              <span>Reset Password</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              const svgEl = document.querySelector(`#student-qr-${selectedStudent.admission_number} svg`);
+                              if (svgEl) {
+                                const serializer = new XMLSerializer();
+                                const svgStr = serializer.serializeToString(svgEl);
+                                const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `QR_${selectedStudent.admission_number}.svg`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              } else {
+                                toast.error('QR code generator initialized');
+                              }
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 transition-colors"
+                          >
+                            <Download size={14} />
+                            <span>Download QR Code</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setActiveStudentTab('id_card');
+                              setShowIdCardPreview(true);
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-2 transition-colors"
+                          >
+                            <CreditCard size={14} />
+                            <span>View Digital ID Card</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      if (editMode) {
+                        setEditMode(false);
+                      } else {
+                        setShowModal(false);
+                        setActiveStudentTab('details');
+                      }
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-700 transition-all active:scale-95"
+                    title="Close"
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                {!editMode && canEditStudents && !isCashier && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.student_data?.batch]?.includes("ALL")) && (
+
+              {/* Bottom Row: Student Profile Overview Banner */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4 sm:gap-5">
+                  {/* Photo Container - CIRCULAR PHOTO */}
+                  <div
+                    onClick={() => {
+                      const hasPhoto = editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '';
+                      if (hasPhoto) {
+                        setShowPhotoViewer(true);
+                      } else if (editMode || canEditField('student_photo')) {
+                        setPhotoUploadTab('file');
+                        setShowPhotoUploadModal(true);
+                      }
+                    }}
+                    className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gray-100 border-2 border-indigo-200 overflow-hidden shrink-0 relative group shadow-md flex items-center justify-center ${
+                      editData.student_photo || (editMode || canEditField('student_photo')) ? 'cursor-pointer hover:border-blue-500' : ''
+                    }`}
+                  >
+                    {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
+                      <img
+                        src={getStaticFileUrlDirect(editData.student_photo)}
+                        alt="Profile"
+                        className="w-full h-full object-cover rounded-full"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <User size={32} />
+                      </div>
+                    )}
+                    {(editMode || canEditField('student_photo')) && (
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white rounded-full">
+                        <Camera size={18} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Main Details Info Header (Merged Subtitle & College) */}
+                  <div className="space-y-1">
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                      {editData.student_name || selectedStudent?.student_name || 'Student Name'}
+                    </h2>
+
+                    <p className="text-xs sm:text-sm font-bold text-gray-600 flex flex-wrap items-center gap-1.5">
+                      <span className="font-mono bg-gray-100 text-gray-800 px-2 py-0.5 rounded-md text-xs font-black">{editData.pin_no || selectedStudent?.pin_no || selectedStudent?.roll_number || selectedStudent?.admission_number}</span>
+                      <span className="text-gray-300 font-bold">|</span>
+                      <span>{editData.course || selectedStudent?.course || 'Program'} - {editData.branch || selectedStudent?.branch || 'Branch'}</span>
+                      <span className="text-gray-300 font-bold">|</span>
+                      <span>Year {editData.current_year || selectedStudent?.current_year || 1} &bull; Semester {editData.current_semester || selectedStudent?.current_semester || 1}</span>
+                      <span className="text-gray-300 font-bold">|</span>
+                      <span className="text-indigo-700 font-extrabold">{editData.college || selectedStudent?.college || 'Pydah College of Engineering'}</span>
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100/90 text-emerald-800 border border-emerald-300 shadow-2xs">
+                        <CheckCircle size={14} strokeWidth={2.5} className="text-emerald-700" /> Regular
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-100/90 text-purple-800 border border-purple-300 shadow-2xs">
+                        <Award size={14} strokeWidth={2.5} className="text-purple-700" /> {editData.stud_type || selectedStudent?.stud_type || 'Quota'}
+                      </span>
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-black">
+                        <span>Profile {profileCompletion.percentage}% Complete</span>
+                        <div className="w-16 bg-emerald-200 rounded-full h-2 overflow-hidden shadow-inner">
+                          <div className="bg-emerald-600 h-full rounded-full transition-all duration-500" style={{ width: `${profileCompletion.percentage}%` }}></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Completion Alert Banner */}
+            {profileCompletion.percentage < 100 && (
+              <div className="mx-6 mt-3 p-3 bg-orange-50/90 border border-orange-200/90 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-2xs shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-extrabold text-gray-900">Profile completion is {profileCompletion.percentage}%</span>
+                    <span className="text-gray-300 font-bold">|</span>
+                    <span className="font-semibold text-gray-600">{profileCompletion.missingFields?.length || 0} fields are missing</span>
+                    <div className="flex flex-wrap gap-1.5 ml-2">
+                      {profileCompletion.missingFields?.slice(0, 4).map((f) => (
+                        <span key={f} className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white text-orange-800 border border-orange-200 shadow-2xs">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {!editMode && canEditStudents && !isCashier && (
                   <button
                     onClick={handleEdit}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs transition-all shadow-lg shadow-indigo-200 active:scale-95"
+                    className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-1.5 rounded-xl transition-all shadow-md shadow-orange-200 flex items-center gap-1 shrink-0 active:scale-95"
                   >
-                    <Edit size={16} />
-                    <span className="hidden sm:inline">Edit Profile</span>
+                    <span>Complete Profile</span>
+                    <span>&rarr;</span>
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Tabs Navigation Bar */}
+            <div className="bg-white border-b border-gray-200/80 px-6 shrink-0 shadow-2xs mt-2">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
                 <button
-                  onClick={() => {
-                    setShowModal(false);
-                    setActiveStudentTab('details');
-                  }}
-                  className="p-2.5 hover:bg-red-50 rounded-2xl text-gray-400 hover:text-red-500 transition-all active:scale-95"
+                  onClick={() => setActiveStudentTab('details')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    activeStudentTab === 'details'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
                 >
-                  <X size={24} />
+                  <User size={15} />
+                  <span>Overview</span>
+                </button>
+
+                {canViewField('registration_status') && (
+                  <button
+                    onClick={() => setActiveStudentTab('registration')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                      activeStudentTab === 'registration'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <GraduationCap size={15} />
+                    <span>Academics</span>
+                  </button>
+                )}
+
+                {canViewAttendance && (
+                  <button
+                    onClick={() => setActiveStudentTab('attendance')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                      activeStudentTab === 'attendance'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <Calendar size={15} />
+                    <span>Attendance</span>
+                  </button>
+                )}
+
+                {canViewScholarship && (
+                  <button
+                    onClick={() => setActiveStudentTab('scholarship')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                      activeStudentTab === 'scholarship'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <CreditCard size={15} />
+                    <span>Fees & Scholarship</span>
+                  </button>
+                )}
+
+                {canViewSms && (
+                  <button
+                    onClick={() => setActiveStudentTab('sms_tracking')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                      activeStudentTab === 'sms_tracking'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <MessageSquare size={15} />
+                    <span>Communication</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setActiveStudentTab('id_card')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    activeStudentTab === 'id_card'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <FileText size={15} />
+                  <span>Documents</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveStudentTab('history')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    activeStudentTab === 'history'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <History size={15} />
+                  <span>History</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveStudentTab('parent_activity')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    activeStudentTab === 'parent_activity'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <Eye size={15} />
+                  <span>Parent Activity</span>
                 </button>
               </div>
             </div>
 
-            {/* Password Display Modal - (Keep as is, it's already a centered modal) */}
-            {viewingPassword && studentPassword && (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 animate-fade-in">
-                <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 border border-gray-100">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
-                        <Key size={20} />
-                      </div>
-                      <h3 className="text-lg font-black text-gray-900 tracking-tight">Credentials</h3>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setViewingPassword(false);
-                        setStudentPassword(null);
-                      }}
-                      className="p-2 hover:bg-gray-100 rounded-xl transition-all"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Username</label>
-                      <p className="font-mono text-lg font-bold text-gray-900 break-all">{studentPassword.username}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Password</label>
-                      <p className="font-mono text-lg font-bold text-indigo-600 break-all">{studentPassword.password}</p>
-                    </div>
-                    <div className="flex items-start gap-2 text-[10px] text-gray-500 font-bold bg-amber-50/80 p-3 rounded-xl border border-amber-100">
-                      <AlertTriangle size={14} className="shrink-0 text-amber-500" />
-                      <p>
-                        Use the username and password exactly as shown here. The password is case-sensitive and was also sent to the student&apos;s registered mobile via SMS.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-8">
-                    <button
-                      onClick={() => {
-                        setViewingPassword(false);
-                        setStudentPassword(null);
-                      }}
-                      className="w-full py-3 bg-gray-900 text-white rounded-2xl font-black text-xs hover:bg-gray-800 transition-all active:scale-95 shadow-lg shadow-gray-200"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Main Content Layout */}
-            <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row">
-              {/* Left Sidebar - Key Identity */}
-              <div className="w-full lg:w-[320px] bg-white border-b lg:border-b-0 lg:border-r border-gray-100 p-4 lg:p-6 flex-shrink-0 flex flex-col lg:overflow-y-auto">
-                <div className="space-y-4 lg:space-y-6">
-                  {/* Photo & Basic Info */}
-                  <div className="flex flex-row lg:flex-col items-center gap-4 lg:gap-6">
-                    {canViewField('student_photo') && (
-                      <div className="relative shrink-0">
-                        <div
-                          onClick={() => {
-                            const hasPhoto = editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '';
-                            if (hasPhoto) {
-                              setShowPhotoViewer(true);
-                            } else if (editMode || canEditField('student_photo')) {
-                              setPhotoUploadTab('file');
-                              setShowPhotoUploadModal(true);
-                            }
-                          }}
-                          className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-36 lg:h-36 rounded-2xl lg:rounded-[2.5rem] bg-gray-50 border-2 border-gray-100 overflow-hidden flex items-center justify-center shadow-inner relative group ${
-                            editData.student_photo || (editMode || canEditField('student_photo'))
-                              ? 'cursor-pointer hover:border-indigo-400 p-1'
-                              : ''
-                          }`}
-                          title={
-                            editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== ''
-                              ? 'Click to view full photo'
-                              : editMode || canEditField('student_photo')
-                              ? 'Click to upload photo'
-                              : ''
-                          }
-                        >
-                          {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
-                            <img
-                              src={getStaticFileUrlDirect(editData.student_photo)}
-                              alt="Profile"
-                              className="w-full h-full object-cover rounded-xl lg:rounded-[2.2rem]"
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center text-gray-300">
-                              <User size={32} className="lg:w-12 lg:h-12" strokeWidth={1.5} />
-                              <span className="text-[8px] lg:text-[10px] font-black uppercase mt-0.5 lg:mt-1">No Photo</span>
+            {/* Scrollable Content Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {/* Overview Tab (4 Cards per row Grid Layout) */}
+              {activeStudentTab === 'details' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card 1: Student Identity */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                              <User size={15} />
                             </div>
-                          )}
-
-                          {editData.student_photo && editData.student_photo !== '{}' && editData.student_photo !== null && editData.student_photo !== '' ? (
-                            <div className="absolute inset-x-0 bottom-0 bg-slate-900/80 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-bold text-white uppercase tracking-wider backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                              <Eye size={12} />
-                              View Photo
-                            </div>
-                          ) : (editMode || canEditField('student_photo')) && (
-                            <div className="absolute inset-x-0 bottom-0 bg-indigo-600/90 py-1 lg:py-2 text-center text-[8px] lg:text-[10px] font-black text-white uppercase tracking-widest backdrop-blur-sm opacity-90 group-hover:opacity-100 flex items-center justify-center gap-1">
-                              <Upload size={12} />
-                              Upload
-                            </div>
-                          )}
-
-                          {photoUploading && (
-                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-                              <Loader2 className="animate-spin text-indigo-600 w-6 h-6 lg:w-8 lg:h-8" />
-                            </div>
-                          )}
-                        </div>
-
-                        {(editMode || canEditField('student_photo')) && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPhotoUploadTab('file');
-                              setShowPhotoUploadModal(true);
-                            }}
-                            className="absolute -bottom-1 -right-1 p-2 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-110 active:scale-95 z-10"
-                            title="Upload Photo or Take with Camera"
-                          >
-                            <Camera size={14} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex-1 lg:text-center min-w-0">
-                      <p className="text-[9px] lg:text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-0.5 lg:mb-1">Student PIN</p>
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editData.pin_no || ''}
-                          onChange={(e) => updateEditField('pin_no', e.target.value)}
-                          placeholder="Enter PIN"
-                          className="w-full text-center text-base lg:text-lg font-black text-gray-900 border-b-2 border-indigo-200 focus:border-indigo-500 outline-none bg-transparent placeholder-gray-300"
-                        />
-                      ) : (
-                        <h4 className="text-base lg:text-lg font-black text-gray-900 leading-tight truncate">
-                          {editData.pin_no || selectedStudent?.pin_no || 'NOT ASSIGNED'}
-                        </h4>
-                      )}
-                      <div className="mt-1 lg:mt-2 flex lg:justify-center">
-                        {editMode && !isFieldFrozen(selectedStudent, 'stud_type') ? (
-                          <select
-                            value={editData.stud_type || selectedStudent?.stud_type || ''}
-                            onChange={(e) => updateEditField('stud_type', e.target.value)}
-                            className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest border-none outline-none cursor-pointer"
-                          >
-                            <option value="">Select Quota</option>
-                            {studentQuotas.map((quota) => (
-                              <option key={quota.id} value={quota.code}>{quota.name}</option>
-                            ))}
-                            {editData.stud_type && !studentQuotas.some((quota) => quota.code === (editData.stud_type || selectedStudent?.stud_type)) && (
-                              <option value={editData.stud_type || selectedStudent?.stud_type}>
-                                {editData.stud_type || selectedStudent?.stud_type}
-                              </option>
-                            )}
-                          </select>
-                        ) : (
-                          <span className="bg-gray-900 text-white px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[8px] lg:text-[10px] font-black uppercase tracking-widest">
-                            {editData.stud_type || selectedStudent?.stud_type || 'Regular'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="w-full space-y-2">
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wide">
-                        <GitBranch size={12} />
-                        {editData.branch || selectedStudent?.branch || 'No Branch'}
-                      </span>
-                      {studentBranchHasSections && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 text-[10px] font-bold uppercase tracking-wide">
-                          Sec {getStudentSection(editData, selectedStudent) || '—'}
-                        </span>
-                      )}
-                      {!editMode && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wide">
-                          <Calendar size={12} />
-                          {editData.batch || selectedStudent?.batch || 'No Batch'}
-                        </span>
-                      )}
-                    </div>
-
-                    {editMode && (
-                      <div className={`grid grid-cols-1 ${studentBranchHasSections ? 'sm:grid-cols-2' : ''} gap-2`}>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Batch</label>
-                          <select
-                            value={editData.batch || selectedStudent?.batch || ''}
-                            onChange={(e) => updateEditField('batch', e.target.value)}
-                            disabled={isFieldFrozen(selectedStudent, 'batch')}
-                            className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all disabled:bg-gray-100 disabled:text-gray-500"
-                          >
-                            <option value="">Select Batch</option>
-                            {batchOptions.map((batch) => (
-                              <option key={batch} value={batch.id || batch}>{batch.name || batch}</option>
-                            ))}
-                            {(editData.batch || selectedStudent?.batch) &&
-                              !batchOptions.includes(editData.batch || selectedStudent?.batch) && (
-                                <option value={editData.batch || selectedStudent?.batch}>
-                                  {editData.batch || selectedStudent?.batch}
-                                </option>
-                              )}
-                          </select>
-                        </div>
-                        {studentBranchHasSections && (
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Section</label>
-                            <select
-                              value={getStudentSection(editData, selectedStudent)}
-                              onChange={(e) => updateEditField('section', e.target.value)}
-                              className="w-full bg-white border-2 border-indigo-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
-                            >
-                              <option value="">Select Section</option>
-                              {studentSectionOptions.map((section) => (
-                                <option key={section} value={section.id || section}>{section.name || section}</option>
-                              ))}
-                            </select>
+                            <h3 className="font-extrabold text-xs text-gray-900">Student Identity</h3>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Sidebar Details Group */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 lg:gap-4 bg-gray-50/50 rounded-2xl lg:rounded-[2rem] p-4 lg:p-5 border border-gray-100">
-                    <SidebarDetailItem
-                      label="Full Name"
-                      value={editData.student_name || selectedStudent?.student_name}
-                      icon={<User size={14} />}
-                      editable={editMode}
-                      disabled={isFieldFrozen(selectedStudent, 'student_name')}
-                      onChange={(val) => updateEditField('student_name', val)}
-                    />
-                    <SidebarDetailItem
-                      label="College"
-                      value={editData.college || selectedStudent?.college}
-                      icon={<Book size={14} />}
-                      editable={editMode}
-                      disabled={isFieldFrozen(selectedStudent, 'college')}
-                      type={editMode ? 'select' : 'text'}
-                      options={colleges.filter(c => c.isActive !== false)}
-                      onChange={(val) => updateEditField('college', val)}
-                    />
-                    <SidebarDetailItem
-                      label="Program"
-                      value={editData.course || selectedStudent?.course}
-                      icon={<Book size={14} />}
-                      editable={editMode}
-                      disabled={isFieldFrozen(selectedStudent, 'course')}
-                      type="select"
-                      options={(() => {
-                        const collegeName = editData.college || selectedStudent?.college;
-                        const collegeObj = colleges.find(c => c.name === collegeName);
-                        const filtered = collegeObj
-                          ? coursesWithLevels.filter(c => {
-                              const cid = c.collegeId || c.college_id;
-                              return !cid || Number(cid) === Number(collegeObj.id);
-                            })
-                          : coursesWithLevels;
-                        return filtered.filter(c => c.isActive !== false);
-                      })()}
-                      onChange={(val) => updateEditField('course', val)}
-                    />
-                    <SidebarDetailItem
-                      label="Branch"
-                      value={editData.branch || selectedStudent?.branch}
-                      icon={<GitBranch size={14} />}
-                      editable={editMode}
-                      disabled={isFieldFrozen(selectedStudent, 'branch')}
-                      type="select"
-                      options={(() => {
-                        const courseName = editData.course || selectedStudent?.course;
-                        const courseObj = coursesWithLevels.find(c => c.name === courseName);
-                        return (courseObj?.branches || []).filter(b => b.isActive !== false);
-                      })()}
-                      onChange={(val) => updateEditField('branch', val)}
-                      onFocus={() => {
-                        // Refresh branches for selected course when dropdown is focused
-                        if (editData.course || selectedStudent?.course) {
-                          fetchQuickFilterOptions({
-                            college: editData.college || selectedStudent?.college,
-                            course: editData.course || selectedStudent?.course
-                          }, 'branch').catch(console.warn);
-                        }
-                      }}
-                    />
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                      <SidebarDetailItem
-                        label="Year"
-                        value={String(editData.current_year || selectedStudent?.current_year || '')}
-                        icon={<Calendar size={14} />}
-                        editable={editMode}
-                        disabled={isFieldFrozen(selectedStudent, 'current_year')}
-                        type="select"
-                        options={studentEditYearOptions}
-                        onChange={(val) => updateEditField('current_year', val)}
-                      />
-                      <SidebarDetailItem
-                        label="Semester"
-                        value={String(editData.current_semester || selectedStudent?.current_semester || '')}
-                        icon={<Calendar size={14} />}
-                        editable={editMode}
-                        disabled={isFieldFrozen(selectedStudent, 'current_semester')}
-                        type="select"
-                        options={studentEditSemesterOptions}
-                        onChange={(val) => updateEditField('current_semester', val)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* QR Code Widget - visible in view mode only */}
-                  {!editMode && selectedStudent?.admission_number && (
-                    <div className="bg-gray-50/50 rounded-2xl lg:rounded-[2rem] p-4 lg:p-5 border border-gray-100 flex flex-col items-center gap-3">
-                      <div className="flex items-center gap-2 self-start">
-                        <div className="w-5 h-5 text-teal-600">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect width="5" height="5" x="3" y="3" rx="1" />
-                            <rect width="5" height="5" x="16" y="3" rx="1" />
-                            <rect width="5" height="5" x="3" y="16" rx="1" />
-                            <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
-                            <path d="M21 21v.01" />
-                            <path d="M12 7v3a2 2 0 0 1-2 2H7" />
-                            <path d="M3 12h.01" />
-                            <path d="M12 3h.01" />
-                            <path d="M12 16v.01" />
-                            <path d="M16 12h1" />
-                            <path d="M21 12v.01" />
-                            <path d="M12 21v-1" />
-                          </svg>
-                        </div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Student QR Code</p>
-                      </div>
-                      <div id={`student-qr-${selectedStudent.admission_number}`} className="bg-white p-2 rounded-xl border border-gray-200">
-                        <QRCodeSVG
-                          value={`${window.location.origin}/qr/${activeQrToken || selectedStudent.qr_token || selectedStudent.admission_number}`}
-                          size={130}
-                          level="M"
-                          includeMargin={false}
-                        />
-                      </div>
-                      <p className="text-[9px] text-gray-400 text-center font-medium leading-tight">
-                        {activeQrToken || selectedStudent.qr_token ? 'Secure ID Active' : selectedStudent.admission_number}
-                      </p>
-                      <button
-                        onClick={() => {
-                          // Download QR as SVG
-                          const svgEl = document.querySelector(`#student-qr-${selectedStudent.admission_number} svg`);
-                          if (!svgEl) return;
-                          const serializer = new XMLSerializer();
-                          const svgStr = serializer.serializeToString(svgEl);
-                          const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `QR_${selectedStudent.admission_number}.svg`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 text-teal-700 bg-teal-50 border border-teal-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-teal-100 transition-all"
-                      >
-                        <Download size={12} /> Download QR
-                      </button>
-                    </div>
-                  )}
-
-                  {!editMode && !isCashier && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.student_data?.batch]?.includes("ALL")) && (
-                    <button
-                      onClick={handleResetPassword}
-                      className="w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-100 text-orange-600 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest hover:bg-orange-50 transition-all active:scale-95"
-                    >
-                      <RefreshCw size={14} className={resettingPassword ? 'animate-spin' : ''} />
-                      {resettingPassword ? 'Processing...' : 'Reset Password'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Side - All Student Data */}
-              <div className={`flex-1 min-w-0 flex flex-col relative ${
-                activeStudentTab === 'history'
-                  ? 'lg:overflow-hidden'
-                  : 'overflow-y-auto min-h-0'
-              }`}>
-                {/* Sticky Tabs Container */}
-                <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur-md border-b border-gray-100 px-3 py-3 sm:px-4 lg:px-6 lg:py-4 shrink-0 shadow-sm">
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mb-1">
-                    <button
-                      onClick={() => setActiveStudentTab('details')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'details' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <Book size={16} /> <span className="whitespace-nowrap">Details</span>
-                    </button>
-                    {canViewField('registration_status') && (
-                      <button
-                        onClick={() => setActiveStudentTab('registration')}
-                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'registration' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                      >
-                        <CheckCircle size={16} /> <span className="whitespace-nowrap">Registration</span>
-                      </button>
-                    )}
-                    {canViewAttendance && (
-                      <button
-                        onClick={() => setActiveStudentTab('attendance')}
-                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'attendance' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                      >
-                        <Calendar size={16} /> <span className="whitespace-nowrap">Attendance</span>
-                      </button>
-                    )}
-                    {canViewSms && (
-                      <button
-                        onClick={() => setActiveStudentTab('sms_tracking')}
-                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'sms_tracking' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                      >
-                        <MessageSquare size={16} /> <span className="whitespace-nowrap">SMS</span>
-                      </button>
-                    )}
-                    {canViewScholarship && (
-                      <button
-                        onClick={() => setActiveStudentTab('scholarship')}
-                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'scholarship' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                      >
-                        <GraduationCap size={16} /> <span className="whitespace-nowrap">Scholarship</span>
-                      </button>
-                    )}
-                    {canViewMeritStatus && (
-                      <button
-                        onClick={() => setActiveStudentTab('merit_status')}
-                        className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'merit_status' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                      >
-                        <Award size={16} /> <span className="whitespace-nowrap">Merit Status</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActiveStudentTab('history')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <History size={16} /> <span className="whitespace-nowrap">History</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveStudentTab('id_card')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'id_card' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <CreditCard size={16} /> <span className="whitespace-nowrap">ID Card</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveStudentTab('parent_activity')}
-                      className={`shrink-0 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${activeStudentTab === 'parent_activity' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                    >
-                      <Eye size={16} /> <span className="whitespace-nowrap">Parent Activity</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className={`p-3 sm:p-4 lg:p-6 ${
-                  activeStudentTab === 'history'
-                    ? 'flex-1 overflow-hidden flex flex-col'
-                    : activeStudentTab === 'scholarship' || activeStudentTab === 'merit_status'
-                      ? 'flex-1 min-h-0 overflow-y-auto'
-                      : ''
-                }`}>
-
-                  {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
-                    const studentData = selectedStudent.student_data || {};
-
-                    const currentYear = selectedStudent.current_year || studentData.current_year;
-                    const currentSem = selectedStudent.current_semester || studentData.current_semester;
-
-                    const isStudentVerified = isStudentMobileVerifiedForCycle(
-                      studentData,
-                      currentYear,
-                      currentSem
-                    );
-                    const isParentVerified = isParentMobileVerifiedForCycle(
-                      studentData,
-                      currentYear,
-                      currentSem
-                    );
-                    const isVerificationComplete = isVerificationCompleteForCycle(
-                      studentData,
-                      currentYear,
-                      currentSem
-                    );
-
-                    const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
-                    const isCertComplete = isCertificatesStatusComplete(certStatus);
-
-                    const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
-                    const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));
-
-                    const isPromotionComplete = isPromotionCompleteForCycle(
-                      studentData,
-                      currentYear,
-                      currentSem
-                    );
-
-                    // Build optional set for this student's branch+year
-                    const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
-                    const programYear = resolveRegistrationBranchYear(
-                      selectedStudent.branch || studentData.branch,
-                      selectedStudent.current_year || studentData.current_year
-                    );
-                    const isScholarshipOptional = optSet.has('scholarship');
-
-                    const scholarStatus = getRegistrationScholarshipStatus(scholarshipData, {
-                      ...selectedStudent,
-                      ...studentData
-                    }, regOptionalStages, registrationStageConfig);
-                    const scholarshipCtx = resolveRegistrationScholarshipDisplay(scholarshipData, {
-                      ...selectedStudent,
-                      ...studentData
-                    }, regOptionalStages, registrationStageConfig);
-                    const isScholarshipComplete = scholarshipCtx.satisfied;
-
-                    const registrationStages = computeRegistrationStageDisplays(
-                      { ...selectedStudent, ...studentData },
-                      scholarshipData,
-                      regOptionalStages,
-                      registrationStageConfig
-                    );
-                    const resolvedOverallStatus = resolveRegistrationOverallStatus(
-                      registrationStages.overallStatus,
-                      selectedStudent.registration_status
-                    );
-                    const isRegistrationComplete = resolvedOverallStatus === 'completed';
-                    const isRegistrationTemporary = resolvedOverallStatus === 'Temporary';
-
-                    const studentMobile = selectedStudent.student_mobile || studentData.student_mobile;
-                    const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
-                    const canVerifyMobile = canViewField('registration_status');
-
-                    // A stage is "satisfied" if actually complete OR marked optional
-                    const StatusBadge = ({ completed, optional = false, text }) => {
-                      const display = completed ? 'Completed' : (text ? formatScholarshipStatusDisplay(text) : '—');
-                      return (
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          completed
-                            ? 'bg-green-100 text-green-800'
-                            : optional
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {display}
-                          {optional && !completed && (
-                            <span className="text-[10px] opacity-75">(optional)</span>
-                          )}
-                        </span>
-                      );
-                    };
-
-                    return (
-                      <div className="space-y-6">
-                        <div className={`rounded-xl p-6 border ${
-                          isRegistrationComplete
-                            ? 'bg-green-50 border-green-200'
-                            : isRegistrationTemporary
-                              ? 'bg-amber-50 border-amber-200'
-                              : 'bg-white border-gray-200 shadow-sm'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h3 className="text-lg font-bold text-gray-900">Registration Status</h3>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Overall registration completion based on all stages
-                              </p>
-                            </div>
-                            <div className={`px-4 py-2 rounded-lg font-bold text-lg flex items-center gap-2 ${
-                              isRegistrationComplete
-                                ? 'bg-green-200 text-green-800'
-                                : isRegistrationTemporary
-                                  ? 'bg-amber-200 text-amber-800'
-                                  : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                              {isRegistrationComplete ? (
-                                <><CheckCircle size={24} /> Completed</>
-                              ) : isRegistrationTemporary ? (
-                                <><AlertTriangle size={24} /> Temporary</>
-                              ) : (
-                                <><LoadingAnimation width={20} height={20} showMessage={false} variant="inline" /> Pending</>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide px-1">
-                          Registration Stages
-                        </h4>
-
-                        <div className="grid grid-cols-1 gap-4">
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col gap-4 ${isVerificationComplete ? 'bg-white border-gray-200' : optSet.has('verification') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
-                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                              <div className="flex items-start gap-3">
-                                <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : optSet.has('verification') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
-                                  <MessageSquare size={20} />
-                                </div>
-                                <div>
-                                  <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-                                    1. Mobile Verification
-                                    {optSet.has('verification') && !isVerificationComplete && (
-                                      <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
-                                    )}
-                                  </h5>
-                                  <p className="text-xs text-gray-500 mt-0.5">Send OTP to student or parent mobile for this semester</p>
-                                  <div className="flex flex-col gap-1.5 mt-2">
-                                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                                      <span className={isStudentVerified ? 'text-green-600' : 'text-red-500'}>
-                                        {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                        Student: {studentMobile || 'No number'}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                                      <span className={isParentVerified ? 'text-green-600' : 'text-red-500'}>
-                                        {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
-                                        Parent: {parentMobile || 'No number'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex flex-col sm:items-end gap-2 shrink-0">
-                                <StatusBadge completed={isVerificationComplete} optional={optSet.has('verification')} />
-                                {canVerifyMobile && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowVerificationModal(true)}
-                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                                  >
-                                    <Shield size={16} />
-                                    {isVerificationComplete ? 'View / Re-verify' : 'Verify with OTP'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isCertComplete ? 'bg-white border-gray-200' : optSet.has('certificates') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : optSet.has('certificates') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
-                                <FileText size={20} />
-                              </div>
-                              <div>
-                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-                                  2. Certificate Status
-                                  {optSet.has('certificates') && !isCertComplete && (
-                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
-                                  )}
-                                </h5>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  Current Status: <span className="font-medium text-gray-900 capitalize">{certStatus || 'Pending'}</span>
-                                </p>
-                              </div>
-                            </div>
-                            <StatusBadge completed={isCertComplete} optional={optSet.has('certificates')} text={certStatus} />
-                          </div>
-
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isFeeComplete ? 'bg-white border-gray-200' : optSet.has('fee') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : optSet.has('fee') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
-                                <span className="font-bold text-lg px-1">₹</span>
-                              </div>
-                              <div>
-                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-                                  3. Fee Payment
-                                  {optSet.has('fee') && !isFeeComplete && (
-                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
-                                  )}
-                                </h5>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  Current Status: <span className="font-medium text-gray-900 capitalize">{feeStatus || 'Pending'}</span>
-                                </p>
-                              </div>
-                            </div>
-                            <StatusBadge completed={isFeeComplete} optional={optSet.has('fee')} text={feeStatus} />
-                          </div>
-
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isPromotionComplete ? 'bg-white border-gray-200' : optSet.has('promotion') ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isPromotionComplete ? 'bg-blue-100 text-blue-600' : optSet.has('promotion') ? 'bg-blue-100 text-blue-500' : 'bg-gray-100 text-gray-400'}`}>
-                                <TrendingUp size={20} />
-                              </div>
-                              <div>
-                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-                                  4. Promotion Status
-                                  {optSet.has('promotion') && !isPromotionComplete && (
-                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
-                                  )}
-                                </h5>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  Acknowledged for current semester
-                                </p>
-                              </div>
-                            </div>
-                            <div className="ml-auto flex items-center gap-2">
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                Year {currentYear || '-'} • Sem {currentSem || '-'}
-                              </span>
-                              <StatusBadge
-                                completed={isPromotionComplete}
-                                optional={optSet.has('promotion')}
-                                text={isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY}
-                              />
-                            </div>
-                          </div>
-
-                          <div className={`rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isScholarshipComplete ? 'bg-white border-gray-200' : isScholarshipOptional ? 'bg-blue-50/40 border-blue-200' : 'bg-white border-gray-200'}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1 p-2 rounded-full ${isScholarshipComplete ? 'bg-purple-100 text-purple-600' : isScholarshipOptional ? 'bg-blue-100 text-blue-500' : 'bg-purple-100 text-purple-600'}`}>
-                                <Book size={20} />
-                              </div>
-                              <div>
-                                <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-                                  5. Scholarship Status
-                                  {isScholarshipOptional && programYear <= 1 && !isScholarshipComplete && (
-                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Optional</span>
-                                  )}
-                                  {isScholarshipOptional && programYear > 1 && !isScholarshipComplete && (
-                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Prior year required</span>
-                                  )}
-                                </h5>
-                                <p className="text-sm text-gray-500 mt-1">
-                                  {scholarshipCtx.displayLabel
-                                    ? `${scholarshipCtx.displayLabel} status from scholarship records (current year optional)`
-                                    : `Year ${programYear} status from scholarship records`}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="ml-auto flex items-center">
-                              <StatusBadge
-                                completed={isScholarshipComplete}
-                                optional={isScholarshipOptional && programYear <= 1}
-                                text={scholarStatus}
-                              />
-                            </div>
-                          </div>
-
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {activeStudentTab === 'attendance' && (
-                    <StudentAttendanceTab student={selectedStudent} />
-                  )}
-
-                  {activeStudentTab === 'sms_tracking' && (
-                    <StudentSmsTab student={selectedStudent} />
-                  )}
-
-                  {activeStudentTab === 'scholarship' && canViewScholarship && (
-                    <StudentScholarshipHistoryTab
-                      student={selectedStudent}
-                      readOnly={isCashier || !canEditScholarship}
-                      registrationOptionalStages={regOptionalStages}
-                      onUpdated={(data) => {
-                        setScholarshipData(data);
-                        const status = getCurrentScholarshipStatus(data, data?.student || selectedStudent);
-                        setSelectedStudent((prev) => (prev ? {
-                          ...prev,
-                          scholar_status: status,
-                          ...(data?.student?.caste ? { caste: data.student.caste } : {})
-                        } : prev));
-                      }}
-                    />
-                  )}
-                  {activeStudentTab === 'merit_status' && canViewMeritStatus && (
-                    <StudentMeritStatusTab
-                      student={selectedStudent}
-                      readOnly={isCashier || !canEditMeritStatus}
-                      onUpdated={(data) => {
-                        const currentYear = Math.max(
-                          1,
-                          Number(data?.currentYear || selectedStudent?.current_year) || 1
-                        );
-                        const currentMerit = data?.years?.find(
-                          (entry) => Number(entry.student_year) === currentYear
-                        )?.merit_status || '';
-                        setSelectedStudent((prev) => (prev ? { ...prev, merit_status: currentMerit } : prev));
-                        invalidateStudents();
-                      }}
-                    />
-                  )}
-
-                  {activeStudentTab === 'history' && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden">
-                      {/* Sub-tabs for History */}
-                      <div className="flex items-center justify-between border-b border-gray-100 p-3 bg-gray-50/50">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setHistorySubTab('remarks')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'remarks'
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-                              : 'text-gray-500 hover:bg-white hover:text-blue-600'
-                              }`}
-                          >
-                            <MessageSquare size={14} />
-                            Remarks
-                          </button>
-                          <button
-                            onClick={() => setHistorySubTab('audit')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 ${historySubTab === 'audit'
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
-                              : 'text-gray-500 hover:bg-white hover:text-blue-600'
-                              }`}
-                          >
-                            <History size={14} />
-                            Edit History
-                          </button>
-                        </div>
-                        <div className="hidden sm:block text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">
-                          Student Logs
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 overflow-hidden">
-                        {historySubTab === 'remarks' ? (
-                          <StudentRemarksContent
-                            student={selectedStudent}
-                            canAddRemarks={canAddRemarks}
-                            canManageRemarks={canManageRemarks}
-                          />
-                        ) : (
-                          <StudentHistoryLogs student={selectedStudent} />
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeStudentTab === 'id_card' && (() => {
-                    const getStudentDataForCard = (key) => {
-                      if (!selectedStudent?.student_data) return '';
-                      const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === key.toLowerCase());
-                      const v = dk ? selectedStudent.student_data[dk] : undefined;
-                      return v !== undefined && v !== null && v !== '' ? v : '';
-                    };
-
-                    const handleGeneratePrint = () => {
-                      const runPrint = () => {
-                        try {
-                          printDigitalIdCard('.id-card-print-root');
-                        } catch (err) {
-                          console.error(err);
-                          toast.error(err.message || 'Preview the ID card first, then print');
-                        }
-                      };
-
-                      if (showIdCardPreview) {
-                        runPrint();
-                        return;
-                      }
-                      setShowIdCardPreview(true);
-                      setTimeout(runPrint, 350);
-                    };
-
-                    return (
-                      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
-                        <div className="max-w-sm mx-auto flex flex-col items-center gap-5">
-
-                          {/* Header */}
-                          <div className="flex items-center gap-3 self-start w-full no-print">
-                            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-                              <CreditCard size={20} className="text-red-700" />
-                            </div>
-                            <div>
-                              <h3 className="text-base font-bold text-gray-900">Digital ID Card</h3>
-                              <p className="text-xs text-gray-400">Print to Evolis · CR80 (same layout as preview)</p>
-                            </div>
-                          </div>
-
-                          {/* Preview Gate / Card */}
-                          {!showIdCardPreview ? (
-                            <div
-                              className="relative w-full cursor-pointer group no-print"
-                              style={{ maxWidth: '380px' }}
-                              onClick={() => setShowIdCardPreview(true)}
-                            >
-                              {/* Blurred placeholder — no print root until preview */}
-                              <div className="rounded-[2rem] overflow-hidden shadow-xl select-none pointer-events-none bg-[#f8f9fa] border border-gray-200" style={{ filter: 'blur(6px)', opacity: 0.5, minHeight: 420 }}>
-                                <div className="h-36 bg-[#b91c1c]"></div>
-                                <div className="h-10" />
-                                <div className="h-8 bg-[#b91c1c] mt-auto" />
-                              </div>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[2rem] bg-white/40 backdrop-blur-[2px] group-hover:bg-white/50 transition-all">
-                                <div className="w-14 h-14 rounded-full bg-white shadow-lg flex items-center justify-center">
-                                  <Eye size={22} className="text-red-700" />
-                                </div>
-                                <span className="bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow">Preview ID Card</span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="relative w-full flex justify-center">
-                              <div className="id-card-preview-scaler">
-                                <DigitalStudentCard
-                                  student={selectedStudent}
-                                  getStudentData={getStudentDataForCard}
-                                />
-                              </div>
-                              <button
-                                onClick={() => setShowIdCardPreview(false)}
-                                className="no-print absolute top-3 right-3 w-7 h-7 rounded-full bg-black/30 hover:bg-black/50 text-white flex items-center justify-center transition-all"
-                                title="Hide card"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-3 w-full no-print">
-                            {!showIdCardPreview && (
-                              <button
-                                onClick={() => setShowIdCardPreview(true)}
-                                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-700 text-white rounded-xl text-sm font-bold hover:bg-red-800 transition-all active:scale-95"
-                              >
-                                <Eye size={16} /> Preview Card
-                              </button>
-                            )}
-                            <button
-                              onClick={handleGeneratePrint}
-                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-all active:scale-95"
-                            >
-                              <Printer size={16} /> Generate Print
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
                             </button>
-                          </div>
-
-                          <p className="text-[10px] text-gray-400 text-center no-print">
-                            Opens the printer dialog with the same digital ID card layout. Select Evolis · CR80 · turn off Headers and footers · turn on Background graphics.
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {activeStudentTab === 'parent_activity' && selectedStudent?.id && (
-                    <ParentEngagementPanel studentId={selectedStudent.id} variant="tab" />
-                  )}
-
-                  <div className={`space-y-4 sm:space-y-6 ${activeStudentTab !== 'details' ? 'hidden' : ''}`}>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-
-                      {/* Column 1 */}
-                      <div className="space-y-4">
-                        {/* Admission Number */}
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-                                <Users size={16} />
-                              </div>
-                              Admission Details
-                            </h4>
-                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Core Record
-                            </span>
-                          </div>
-
-                          {canViewField('admission_number') && (
-                            <div className="p-3.5 bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-slate-50/40 rounded-xl border border-blue-100/80 mb-3">
-                              <label className="block text-[10px] font-bold text-blue-700/80 uppercase tracking-wider mb-1">
-                                Admission Number
-                              </label>
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-mono text-base font-black text-gray-900 tracking-tight select-all">
-                                  {selectedStudent.admission_number}
-                                </span>
-                                {selectedStudent.roll_number && (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-sm shadow-indigo-200">
-                                    Roll No: {selectedStudent.roll_number}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
                           )}
+                        </div>
 
-                          <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70">
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                Profile Completion
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                  profileCompletion.percentage >= 80 ? 'bg-emerald-100 text-emerald-800' :
-                                  profileCompletion.percentage >= 50 ? 'bg-blue-100 text-blue-800' :
-                                  'bg-amber-100 text-amber-800'
-                                }`}>
-                                  {profileCompletion.percentage}%
-                                </span>
-                                <span className="text-[11px] font-medium text-slate-500">
-                                  ({profileCompletion.filledCount}/{profileCompletion.totalCount} fields)
-                                </span>
-                                {editMode && (
-                                  <button
-                                    onClick={() => {
-                                      const parsedStudentData = typeof editData === 'string'
-                                        ? JSON.parse(editData || '{}')
-                                        : editData;
-                                      const completion = calculateProfileCompletion(selectedStudent, parsedStudentData);
-                                      setProfileCompletion(completion);
-                                      toast.success('Completion progress refreshed');
-                                    }}
-                                    className="p-1 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                                    title="Refresh completion progress"
-                                  >
-                                    <RefreshCw size={12} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden shadow-inner">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                  profileCompletion.percentage >= 80 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
-                                  profileCompletion.percentage >= 50 ? 'bg-gradient-to-r from-blue-500 to-indigo-500' :
-                                  'bg-gradient-to-r from-amber-500 to-orange-500'
-                                }`}
-                                style={{ width: `${profileCompletion.percentage}%` }}
+                        <div className="space-y-2 text-[11px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Admission No</span>
+                            <span className="font-extrabold text-gray-900 font-mono">{selectedStudent?.admission_number || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Roll Number</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.pin_no || ''}
+                                onChange={(e) => updateEditField('pin_no', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
                               />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Parent Information */}
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
-                                <Phone size={16} />
-                              </div>
-                              Parent Information
-                            </h4>
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Emergency Contacts
-                            </span>
-                          </div>
-                          <div className="space-y-3">
-                            {canViewField('parent_mobile1') && (
-                              <div className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                  Parent Mobile 1
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="tel"
-                                    value={editData.parent_mobile1 ?? editData['Parent Mobile Number 1'] ?? ''}
-                                    onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
-                                    placeholder="Enter parent mobile 1"
-                                    maxLength={10}
-                                    disabled={isFieldFrozen(selectedStudent, 'parent_mobile1')}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                  />
-                                ) : (
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {revealedMobiles['parent_mobile1']
-                                        ? (editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')
-                                        : maskMobileNumber(editData.parent_mobile1 || editData['Parent Mobile Number 1'] || selectedStudent?.parent_mobile1 || '-')}
-                                    </p>
-                                    {(canEditStudentDetails || canEditField('parent_mobile1')) && (editData.parent_mobile1 || selectedStudent?.parent_mobile1) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleRevealMobile('parent_mobile1')}
-                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-orange-600 hover:text-orange-700 hover:bg-orange-100/60 border border-orange-200/80 transition-all shadow-xs"
-                                        title={revealedMobiles['parent_mobile1'] ? "Hide full mobile number" : "View full mobile number"}
-                                      >
-                                        {revealedMobiles['parent_mobile1'] ? (
-                                          <>
-                                            <EyeOff size={13} />
-                                            <span>Hide</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Eye size={13} />
-                                            <span>View</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('parent_mobile2') && (
-                              <div className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                  Parent Mobile 2
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="tel"
-                                    value={editData.parent_mobile2 ?? editData['Parent Mobile Number 2'] ?? ''}
-                                    onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
-                                    placeholder="Enter parent mobile 2"
-                                    maxLength={10}
-                                    disabled={isFieldFrozen(selectedStudent, 'parent_mobile2')}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                  />
-                                ) : (
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {revealedMobiles['parent_mobile2']
-                                        ? (editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')
-                                        : maskMobileNumber(editData.parent_mobile2 || editData['Parent Mobile Number 2'] || selectedStudent?.parent_mobile2 || '-')}
-                                    </p>
-                                    {(canEditStudentDetails || canEditField('parent_mobile2')) && (editData.parent_mobile2 || selectedStudent?.parent_mobile2) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleRevealMobile('parent_mobile2')}
-                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-orange-600 hover:text-orange-700 hover:bg-orange-100/60 border border-orange-200/80 transition-all shadow-xs"
-                                        title={revealedMobiles['parent_mobile2'] ? "Hide full mobile number" : "View full mobile number"}
-                                      >
-                                        {revealedMobiles['parent_mobile2'] ? (
-                                          <>
-                                            <EyeOff size={13} />
-                                            <span>Hide</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Eye size={13} />
-                                            <span>View</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
+                            ) : (
+                              <span className="font-extrabold text-gray-900 font-mono">{editData.pin_no || selectedStudent?.pin_no || '-'}</span>
                             )}
                           </div>
-                        </div>
-
-                        {/* Address Details */}
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-                                <MapPin size={16} />
-                              </div>
-                              Address & Demographics
-                            </h4>
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Location & Caste
-                            </span>
-                          </div>
-                          <div className="space-y-3">
-                            {canViewField('student_address') && (
-                              <div className="p-3.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                  Full Address
-                                </label>
-                                {editMode ? (
-                                  <textarea
-                                    value={editData.student_address ?? editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] ?? ''}
-                                    onChange={(e) => updateEditField('student_address', e.target.value)}
-                                    placeholder="Enter student address"
-                                    rows="3"
-                                    disabled={isFieldFrozen(selectedStudent, 'student_address')}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-semibold leading-relaxed">
-                                    {editData.student_address || editData['Student Address (D.No, Str name, Village, Mandal, Dist)'] || '-'}
-                                  </p>
-                                )}
-                              </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Date of Birth</span>
+                            {editMode ? (
+                              <input
+                                type="date"
+                                value={editData.dob ? editData.dob.split('T')[0] : ''}
+                                onChange={(e) => updateEditField('dob', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900">{formatDate(editData.dob || selectedStudent?.dob)}</span>
                             )}
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('city_village') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    City/Village
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.city_village ?? editData['City/Village'] ?? ''}
-                                      onChange={(e) => updateEditField('city_village', e.target.value)}
-                                      placeholder="Enter city/village"
-                                      disabled={isFieldFrozen(selectedStudent, 'city_village')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {editData.city_village || editData['City/Village'] || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('mandal_name') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Mandal
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.mandal_name ?? editData['Mandal Name'] ?? ''}
-                                      onChange={(e) => updateEditField('mandal_name', e.target.value)}
-                                      placeholder="Enter mandal name"
-                                      disabled={isFieldFrozen(selectedStudent, 'mandal_name')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {editData.mandal_name || editData['Mandal Name'] || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('district') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    District
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.district ?? editData.District ?? ''}
-                                      onChange={(e) => updateEditField('district', e.target.value)}
-                                      placeholder="Enter district"
-                                      disabled={isFieldFrozen(selectedStudent, 'district')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {editData.district || editData.District || selectedStudent?.district || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('gender') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Gender
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editData.gender ?? editData['M/F'] ?? ''}
-                                      onChange={(e) => updateEditField('gender', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'gender')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    >
-                                      <option value="">Select Gender</option>
-                                      <option value="M">Male</option>
-                                      <option value="F">Female</option>
-                                      <option value="Other">Other</option>
-                                    </select>
-                                  ) : (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold ${
-                                      (editData.gender || editData['M/F'] || selectedStudent?.gender) === 'M'
-                                        ? 'bg-blue-100 text-blue-800'
-                                        : (editData.gender || editData['M/F'] || selectedStudent?.gender) === 'F'
-                                          ? 'bg-pink-100 text-pink-800'
-                                          : 'bg-gray-100 text-gray-800'
-                                    }`}>
-                                      {editData.gender === 'M' || editData['M/F'] === 'M' || selectedStudent?.gender === 'M' ? 'Male' :
-                                       editData.gender === 'F' || editData['M/F'] === 'F' || selectedStudent?.gender === 'F' ? 'Female' :
-                                       editData.gender || editData['M/F'] || selectedStudent?.gender || '-'}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('caste') && (
-                                <>
-                                  <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                      Category
-                                    </label>
-                                    {editMode ? (
-                                      <select
-                                        value={dialogCasteCategoryId}
-                                        onChange={(e) => {
-                                          const nextCategoryId = e.target.value;
-                                          setDialogCasteCategoryId(nextCategoryId);
-                                          const cat = casteCategories.find(
-                                            (item) => String(item.id) === String(nextCategoryId)
-                                          );
-                                          updateEditField('caste', cat?.name || '');
-                                          setEditData((prev) => ({ ...prev, nested_caste: '' }));
-                                        }}
-                                        disabled={isFieldFrozen(selectedStudent, 'caste')}
-                                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                      >
-                                        <option value="">Select category</option>
-                                        {casteCategories.map((cat) => (
-                                          <option key={cat.id} value={String(cat.id)}>
-                                            {cat.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800">
-                                        {resolveStudentCaste(selectedStudent).categoryName
-                                          || resolveStudentCaste(selectedStudent).legacyCaste
-                                          || '-'}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                      Caste
-                                    </label>
-                                    {editMode ? (
-                                      <select
-                                        value={editData.nested_caste || ''}
-                                        onChange={(e) => {
-                                          const nextCaste = e.target.value;
-                                          setEditData((prev) => ({ ...prev, nested_caste: nextCaste }));
-                                          if (nextCaste) {
-                                            const cat = getCategoryForCaste(nextCaste);
-                                            if (cat) setDialogCasteCategoryId(String(cat.id));
-                                          }
-                                        }}
-                                        disabled={isFieldFrozen(selectedStudent, 'caste') || !dialogCasteCategoryId}
-                                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                      >
-                                        <option value="">Select caste (optional)</option>
-                                        {buildCasteSelectOptions(
-                                          dialogCasteCategoryId
-                                            ? getCastesForCategory(dialogCasteCategoryId)
-                                            : [],
-                                          editData.nested_caste
-                                        ).map((caste) => (
-                                          <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <p className="text-sm text-gray-900 font-bold">
-                                        {resolveStudentCaste(selectedStudent).linked
-                                          ? (resolveStudentCaste(selectedStudent).casteName || '-')
-                                          : '-'}
-                                      </p>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-                            </div>
                           </div>
-                        </div>
-                      </div>
-
-                      {/* Column 2 */}
-                      <div className="space-y-4">
-                        {/* Student Information */}
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-                                <User size={16} />
-                              </div>
-                              Personal Details
-                            </h4>
-                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Student Identity
-                            </span>
-                          </div>
-                          <div className="space-y-3">
-                            {canViewField('student_mobile') && (
-                              <div className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                  Mobile Number
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="tel"
-                                    value={editData.student_mobile ?? editData['Student Mobile Number'] ?? ''}
-                                    onChange={(e) => updateEditField('student_mobile', e.target.value)}
-                                    placeholder="Enter mobile number"
-                                    maxLength={10}
-                                    disabled={isFieldFrozen(selectedStudent, 'student_mobile')}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                  />
-                                ) : (
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {revealedMobiles['student_mobile']
-                                        ? (editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')
-                                        : maskMobileNumber(editData.student_mobile || editData['Student Mobile Number'] || selectedStudent?.student_mobile || '-')}
-                                    </p>
-                                    {(canEditStudentDetails || canEditField('student_mobile')) && (editData.student_mobile || selectedStudent?.student_mobile) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleRevealMobile('student_mobile')}
-                                        className="text-xs font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 border border-blue-200/80 transition-all shadow-xs"
-                                        title={revealedMobiles['student_mobile'] ? "Hide full mobile number" : "View full mobile number"}
-                                      >
-                                        {revealedMobiles['student_mobile'] ? (
-                                          <>
-                                            <EyeOff size={13} />
-                                            <span>Hide</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Eye size={13} />
-                                            <span>View</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {canViewField('father_name') && (
-                              <div className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                  Father Name
-                                </label>
-                                {editMode ? (
-                                  <input
-                                    type="text"
-                                    value={editData.father_name ?? editData['Father Name'] ?? ''}
-                                    onChange={(e) => updateEditField('father_name', e.target.value)}
-                                    placeholder="Enter father name"
-                                    disabled={isFieldFrozen(selectedStudent, 'father_name')}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-gray-900 font-bold">
-                                    {editData.father_name || editData['Father Name'] || selectedStudent?.father_name || '-'}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('dob') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Date of Birth
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="date"
-                                      value={(editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']) ?
-                                        (editData.dob ?? editData['DOB (Date of Birth - DD-MM-YYYY)']).split('T')[0] : ''}
-                                      onChange={(e) => updateEditField('dob', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'dob')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {formatDate(editData.dob || editData['DOB (Date of Birth - DD-MM-YYYY)'] || selectedStudent?.dob)}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('admission_date') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Admission Date
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="date"
-                                      value={(editData.admission_date ?? editData['Admission Date']) ?
-                                        (editData.admission_date ?? editData['Admission Date']).split('T')[0] : ''}
-                                      onChange={(e) => updateEditField('admission_date', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'admission_date')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {formatDate(editData.admission_date || editData['Admission Date'])}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('adhar_no') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Aadhar Number
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.adhar_no ?? editData['ADHAR No'] ?? ''}
-                                      onChange={(e) => updateEditField('adhar_no', e.target.value)}
-                                      placeholder="Enter Aadhar number"
-                                      disabled={isFieldFrozen(selectedStudent, 'adhar_no')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="font-mono text-sm text-gray-900 font-bold">
-                                      {editData.adhar_no || editData['ADHAR No'] || selectedStudent?.adhar_no || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('apaar_id') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    APAAR ID
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.apaar_id ?? editData['APAAR ID'] ?? editData['apaar id'] ?? ''}
-                                      onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '').slice(0, 12);
-                                        updateEditField('apaar_id', val);
-                                      }}
-                                      placeholder="Enter 12-digit APAAR ID"
-                                      maxLength={12}
-                                      inputMode="numeric"
-                                      disabled={isFieldFrozen(selectedStudent, 'apaar_id')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="font-mono text-sm text-indigo-700 font-bold">
-                                      {editData.apaar_id || editData['APAAR ID'] || editData['apaar id'] || selectedStudent?.apaar_id || selectedStudent?.student_data?.apaar_id || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Administrative Information */}
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20">
-                                <UserCog size={16} />
-                              </div>
-                              Administrative Information
-                            </h4>
-                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Academic Status
-                            </span>
-                          </div>
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('stud_type') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Quota
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editData.stud_type || selectedStudent?.stud_type || ''}
-                                      onChange={(e) => updateEditField('stud_type', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'stud_type')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                      <option value="">Select Quota</option>
-                                      {studentQuotas.map((quota) => (
-                                        <option key={quota.id} value={quota.code}>{quota.name}</option>
-                                      ))}
-                                      {editData.stud_type && !studentQuotas.some((quota) => quota.code === (editData.stud_type || selectedStudent?.stud_type)) && (
-                                        <option value={editData.stud_type || selectedStudent?.stud_type}>
-                                          {editData.stud_type || selectedStudent?.stud_type}
-                                        </option>
-                                      )}
-                                    </select>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-purple-100 text-purple-800">
-                                      {editData.stud_type || selectedStudent?.stud_type || '-'}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('student_status') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Student Status
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editData.student_status ?? editData['Student Status'] ?? selectedStudent?.student_status ?? ''}
-                                      onChange={(e) => updateEditField('student_status', e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'student_status')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                      {!editData.student_status && !editData['Student Status'] && !selectedStudent?.student_status && (
-                                        <option value="">Select Status</option>
-                                      )}
-                                      {STUDENT_STATUS_OPTIONS.map((status) => (
-                                        <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold ${
-                                      (editData.student_status || selectedStudent?.student_status) === 'active'
-                                        ? 'bg-emerald-100 text-emerald-800'
-                                        : (editData.student_status || selectedStudent?.student_status) === 'inactive'
-                                          ? 'bg-rose-100 text-rose-800'
-                                          : 'bg-slate-100 text-slate-800'
-                                    }`}>
-                                      {editData.student_status || editData['Student Status'] || selectedStudent?.student_status || '-'}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('scholar_status') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Scholarship Status
-                                  </label>
-                                  <p className="text-sm text-gray-900 font-bold capitalize">
-                                    {scholarshipLoading
-                                      ? 'Loading...'
-                                      : formatScholarshipStatusDisplay(
-                                        getCurrentScholarshipStatus(scholarshipData, { ...selectedStudent, ...editData })
-                                      )}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveStudentTab('scholarship')}
-                                    className="mt-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
-                                  >
-                                    Update in tab →
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Mobile Number</span>
+                            {editMode ? (
+                              <input
+                                type="tel"
+                                value={editData.student_mobile || ''}
+                                onChange={(e) => updateEditField('student_mobile', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1 font-mono font-bold text-gray-900">
+                                <span>
+                                  {revealedMobiles['student_mobile']
+                                    ? (editData.student_mobile || selectedStudent?.student_mobile || '-')
+                                    : maskMobileNumber(editData.student_mobile || selectedStudent?.student_mobile || '-')}
+                                </span>
+                                {(editData.student_mobile || selectedStudent?.student_mobile) && (
+                                  <button onClick={() => toggleRevealMobile('student_mobile')} className="text-blue-600 p-0.5 hover:bg-blue-50 rounded">
+                                    {revealedMobiles['student_mobile'] ? <EyeOff size={11} /> : <Eye size={11} />}
                                   </button>
-                                </div>
-                              )}
-                              {showMeritColumn && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Merit Status (Current)
-                                  </label>
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold ${
-                                    selectedStudent?.merit_status === 'yes'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : selectedStudent?.merit_status === 'no'
-                                        ? 'bg-rose-100 text-rose-800'
-                                        : 'bg-slate-100 text-slate-800'
-                                  }`}>
-                                    {formatMeritStatusDisplay(selectedStudent?.merit_status)}
-                                  </span>
-                                  {canViewMeritStatus && (
-                                    <div>
-                                      <button
-                                        type="button"
-                                        onClick={() => setActiveStudentTab('merit_status')}
-                                        className="mt-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
-                                      >
-                                        Update in tab →
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {canViewField('fee_status') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Fee Status
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || ''}
-                                      onChange={(e) => {
-                                        const newStatus = e.target.value;
-                                        setEditFeeStatus(newStatus);
-                                        if (newStatus !== 'permitted') {
-                                          setPermitEndingDate('');
-                                          setPermitRemarks('');
-                                        }
-                                      }}
-                                      disabled={isFieldFrozen(selectedStudent, 'fee_status')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                      {!editFeeStatus && !editData.fee_status && !editData['Fee Status'] && !selectedStudent?.fee_status && (
-                                        <option value="">Select Fee Status</option>
-                                      )}
-                                      {FEE_STATUS_OPTIONS.map((status) => (
-                                        <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold ${
-                                      (editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status) === 'paid'
-                                        ? 'bg-emerald-100 text-emerald-800'
-                                        : (editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status) === 'permitted'
-                                          ? 'bg-blue-100 text-blue-800'
-                                          : 'bg-amber-100 text-amber-800'
-                                    }`}>
-                                      {editFeeStatus || editData.fee_status || editData['Fee Status'] || selectedStudent?.fee_status || '-'}
-                                    </span>
-                                  )}
-                                  {(editFeeStatus === 'permitted' || editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && editMode && (
-                                    <div className="mt-3 space-y-2 pt-2 border-t border-slate-200">
-                                      <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                          Permit Ending Date <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                          type="date"
-                                          value={permitEndingDate}
-                                          onChange={(e) => setPermitEndingDate(e.target.value)}
-                                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white"
-                                          required
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                          Permit Remarks <span className="text-red-500">*</span>
-                                        </label>
-                                        <textarea
-                                          value={permitRemarks}
-                                          onChange={(e) => setPermitRemarks(e.target.value)}
-                                          rows="2"
-                                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white"
-                                          placeholder="Enter remarks for the permit"
-                                          required
-                                        />
-                                      </div>
-                                    </div>
-                                  )}
-                                  {(editData.fee_status === 'permitted' || selectedStudent?.fee_status === 'permitted') && !editMode && (
-                                    <div className="mt-2 space-y-1 pt-2 border-t border-slate-200">
-                                      {permitEndingDate && (
-                                        <div>
-                                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                            Permit Ending Date: <span className="text-gray-900 font-bold">{permitEndingDate || selectedStudent?.permit_ending_date}</span>
-                                          </label>
-                                        </div>
-                                      )}
-                                      {permitRemarks && (
-                                        <div>
-                                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                            Permit Remarks: <span className="text-gray-900 font-normal">{permitRemarks || selectedStudent?.permit_remarks}</span>
-                                          </label>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('registration_status') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Registration Status
-                                  </label>
-                                  {editMode ? (
-                                    <select
-                                      value={editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || ''}
-                                      onChange={(e) => setEditRegistrationStatus(e.target.value)}
-                                      disabled={isFieldFrozen(selectedStudent, 'registration_status')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                      {!editRegistrationStatus && !editData.registration_status && !editData['Registration Status'] && !selectedStudent?.registration_status && (
-                                        <option value="">Select Registration Status</option>
-                                      )}
-                                      {REGISTRATION_STATUS_OPTIONS.map((status) => (
-                                        <option key={status.id || status} value={status.id || status}>{status.name || status}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-100 text-indigo-800">
-                                      {editRegistrationStatus || editData.registration_status || editData['Registration Status'] || selectedStudent?.registration_status || '-'}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2.5">
-                              {canViewField('previous_college') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Previous College
-                                  </label>
-                                  {editMode ? (
-                                    <input
-                                      type="text"
-                                      value={editData.previous_college ?? ''}
-                                      onChange={(e) => updateEditField('previous_college', e.target.value)}
-                                      placeholder="Enter previous college"
-                                      disabled={isFieldFrozen(selectedStudent, 'previous_college')}
-                                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed bg-white"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {editData.previous_college || selectedStudent?.previous_college || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                              {canViewField('certificates_status') && (
-                                <div className="p-2.5 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Certificate Status
-                                  </label>
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold ${
-                                    (editData.certificates_status || selectedStudent?.certificates_status) === 'Submitted'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : 'bg-amber-100 text-amber-800'
-                                  }`}>
-                                    {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
-                                  </span>
-                                  <p className="text-[10px] text-gray-500 mt-1 italic">
-                                    (Auto-updated)
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-
-                            {canViewField('remarks') && (
-                              <div className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                    Latest Remark
-                                  </label>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowRemarksHistoryModal(true)}
-                                    className="text-xs text-purple-700 hover:text-purple-900 font-bold flex items-center gap-1 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-lg transition-colors"
-                                  >
-                                    <History size={12} />
-                                    View History
-                                  </button>
-                                </div>
-                                <p className="text-sm text-gray-800 font-medium leading-relaxed bg-white p-2.5 rounded-lg border border-slate-200/70">
-                                  {editData.remarks || editData.Remarks || selectedStudent?.remarks || 'No remarks recorded.'}
-                                </p>
+                                )}
                               </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Aadhaar No</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.adhar_no || ''}
+                                onChange={(e) => updateEditField('adhar_no', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-extrabold text-gray-900 font-mono">{editData.adhar_no || selectedStudent?.adhar_no || '-'}</span>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">APAAR ID</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.apaar_id || ''}
+                                onChange={(e) => updateEditField('apaar_id', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-extrabold text-indigo-600 font-mono">{editData.apaar_id || selectedStudent?.apaar_id || selectedStudent?.student_data?.apaar_id || '-'}</span>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Gender</span>
+                            {editMode ? (
+                              <select
+                                value={editData.gender || ''}
+                                onChange={(e) => updateEditField('gender', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold"
+                              >
+                                <option value="">Select</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            ) : (
+                              <span className="font-bold text-gray-900">{editData.gender === 'M' ? 'Male' : editData.gender === 'F' ? 'Female' : editData.gender || selectedStudent?.gender || '-'}</span>
                             )}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Certificate Information Section */}
-                    {canViewField('certificates_status') && (() => {
-                      // Determine course type from student data
-                      const selectedCourseName = editData.course || selectedStudent?.course || '';
-                      const selectedCourseObj = coursesWithLevels.find(c => c.name === selectedCourseName);
-                      const courseType = getCourseType(selectedCourseObj || selectedCourseName);
-
-                      if (!courseType) return null;
-
-                      const certificates = getCertificatesForCourse(courseType);
-                      const overallStatus = editData.certificates_status || selectedStudent?.certificates_status || null;
-
-                      return (
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5 mt-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center shadow-md shadow-teal-500/20">
-                                <FileText size={16} />
-                              </div>
-                              Certificate Verification
-                            </h4>
-                            <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Documentation
-                            </span>
+                    {/* Card 2: Academic Information */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                              <GraduationCap size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Academic Info</h3>
                           </div>
-                          <div className="bg-slate-50/70 rounded-xl border border-slate-200/80 p-4">
-                            <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                              <FileText size={14} className="text-teal-600" />
-                              {editMode ? 'Edit Certificate Records' : 'Verified Certificates'}
-                            </h5>
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
+                            </button>
+                          )}
+                        </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {certificates.map((cert) => {
-                                const isPresent = isCertificatePresent(cert.key);
-                                const displayStatus = getCertificateStatusDisplay(cert.key, overallStatus);
-                                const isYes = displayStatus === 'Yes';
+                        <div className="space-y-2 text-[11px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">College</span>
+                            <span className="font-bold text-gray-900 truncate max-w-[120px]" title={editData.college || selectedStudent?.college}>{editData.college || selectedStudent?.college || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Program</span>
+                            <span className="font-bold text-gray-900">{editData.course || selectedStudent?.course || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Branch</span>
+                            <span className="font-bold text-gray-900">{editData.branch || selectedStudent?.branch || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Year / Sem</span>
+                            <span className="font-bold text-gray-900">{editData.current_year || selectedStudent?.current_year || 1} / {editData.current_semester || selectedStudent?.current_semester || 1}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Section</span>
+                            <span className="font-bold text-gray-900">{getStudentSection(editData, selectedStudent) || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Quota</span>
+                            <span className="font-bold text-gray-900">{editData.stud_type || selectedStudent?.stud_type || 'Regular'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Status</span>
+                            <span className="font-bold text-emerald-600 capitalize">{editData.student_status || selectedStudent?.student_status || 'Regular'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
 
-                                return (
-                                  <div
-                                    key={cert.key}
-                                    className={`flex items-center justify-between p-3 bg-white rounded-xl border transition-all shadow-xs ${
-                                      isYes ? 'border-emerald-200/80 bg-emerald-50/30' : 'border-slate-200/80 hover:border-slate-300'
-                                    }`}
-                                  >
-                                    <span className="text-xs font-bold text-gray-800 flex-1 pr-2">{cert.label}</span>
+                    {/* Card 3: Quick Status */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                              <Activity size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Quick Status</h3>
+                          </div>
+                        </div>
 
-                                    {editMode ? (
-                                      <select
-                                        value={getCertificateStatusDisplay(cert.key) === 'No' ? '' : getCertificateStatusDisplay(cert.key)}
-                                        onChange={(e) => updateCertificateStatus(cert.key, e.target.value)}
-                                        disabled={isFieldFrozen(selectedStudent, 'certificates_status')}
-                                        className="text-xs font-bold px-2.5 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                      >
-                                        <option value="">No</option>
-                                        {(() => {
-                                          const type = courseType.toLowerCase();
-                                          const configCert = certificateConfig[type]?.find(c => c.id === cert.key);
-                                          const options = configCert?.options || [];
-                                          if (options.length > 0) {
-                                            return options.map((opt, idx) => {
-                                              const optValue = typeof opt === 'object' ? opt.value : opt;
-                                              return (
-                                                <option key={idx} value={optValue}>{optValue}</option>
-                                              );
-                                            });
-                                          }
-                                          return <option value="Yes">Yes</option>;
-                                        })()}
-                                      </select>
-                                    ) : (
-                                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-md border ${
-                                        isPresent
-                                          ? 'text-emerald-800 bg-emerald-100/80 border-emerald-200'
-                                          : 'text-rose-800 bg-rose-100/80 border-rose-200'
-                                      }`}>
-                                        {displayStatus}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                        <div className="space-y-2.5 text-[11px]">
+                          <div>
+                            <div className="flex justify-between items-center mb-0.5">
+                              <span className="text-gray-500 font-semibold">Attendance</span>
+                              <span className="font-bold text-emerald-600">87%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-emerald-500 h-full rounded-full" style={{ width: '87%' }}></div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })()}
 
-                    {/* Dynamic Additional Registration Fields - auto-synced from Settings registration form */}
-                    {(() => {
-                      // Keys already rendered as hardcoded fields - skip these
-                      const HARDCODED_KEYS = new Set([
-                        'batch', 'college', 'course', 'branch', 'current_year', 'current_semester',
-                        'student_name', 'father_name', 'gender', 'dob', 'student_mobile',
-                        'parent_mobile1', 'parent_mobile2', 'parent_mobile_1', 'parent_mobile_2',
-                        'adhar_no', 'aadhar_no', 'aadhaar_no', 'caste', 'stud_type', 'studtype',
-                        'student_address', 'city_village', 'mandal_name', 'district',
-                        'previous_college', 'certificates_status', 'remarks', 'pin_no',
-                        'admission_date', 'student_status', 'scholar_status', 'fee_status',
-                        'registration_status', 'student_photo', 'apaar_id',
-                        'admission_number', 'created_at', 'updated_at', 'id',
-                        // verification flags stored internally
-                        'is_student_mobile_verified', 'is_parent_mobile_verified'
-                      ]);
-
-                      // Collect all enabled form fields from active forms, excluding hardcoded ones
-                      const extraFields = [];
-                      const seenKeys = new Set();
-
-                      forms.forEach(form => {
-                        if (!form.is_active) return;
-                        const formFields = Array.isArray(form.form_fields) ? form.form_fields : [];
-                        formFields.forEach(field => {
-                          if (field.isEnabled === false) return;
-                          const key = (field.key || '').toLowerCase().trim();
-                          if (!key || HARDCODED_KEYS.has(key) || seenKeys.has(key)) return;
-                          // Also skip keys that start with 'field_' (auto-generated temp keys)
-                          if (key.startsWith('field_') && !editData[field.key] && !editData[field.label]) return;
-                          seenKeys.add(key);
-                          extraFields.push(field);
-                        });
-                      });
-
-                      if (extraFields.length === 0) return null;
-
-                      return (
-                        <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-gray-200/90 shadow-sm hover:shadow-md transition-all p-5 mt-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
-                                <Award size={16} />
-                              </div>
-                              Additional Registration Fields
-                            </h4>
-                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Custom Schema
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Fee Status</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {selectedStudent?.fee_status || 'No Due'}
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {extraFields.map((field) => {
-                              const fieldKey = field.key || field.label;
-                              const labelKey = field.label;
-                              const value = editData[fieldKey] ?? editData[labelKey] ?? '';
-                              const isSelectType = field.type === 'select' || field.type === 'radio';
-                              const options = Array.isArray(field.options) ? field.options : [];
 
-                              return (
-                                <div key={fieldKey} className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200/80 transition-all">
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    {field.label}
-                                    {field.required && <span className="text-red-500 ml-1">*</span>}
-                                  </label>
-                                  {editMode ? (
-                                    isSelectType ? (
-                                      <select
-                                        value={value}
-                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm bg-white"
-                                      >
-                                        <option value="">Select {field.label}</option>
-                                        {options.map((opt, i) => (
-                                          <option key={i} value={opt}>{opt}</option>
-                                        ))}
-                                      </select>
-                                    ) : field.type === 'textarea' ? (
-                                      <textarea
-                                        value={value}
-                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                        placeholder={field.placeholder || `Enter ${field.label}`}
-                                        rows={3}
-                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm bg-white"
-                                      />
-                                    ) : (
-                                      <input
-                                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                        value={value}
-                                        onChange={(e) => updateEditField(fieldKey, e.target.value)}
-                                        placeholder={field.placeholder || `Enter ${field.label}`}
-                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm bg-white"
-                                      />
-                                    )
-                                  ) : (
-                                    <p className="text-sm text-gray-900 font-bold">
-                                      {value || '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Scholarship</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Active ({selectedStudent?.stud_type || 'LSPOT'})
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Merit Status</span>
+                            <span className="text-gray-400 font-bold">{formatMeritStatusDisplay(selectedStudent?.merit_status)}</span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">ID Card</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Issued
+                            </span>
                           </div>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    </div>
+
+                    {/* Card 4: Parent / Guardian Information */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
+                              <Phone size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Parent / Guardian</h3>
+                          </div>
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-orange-600 hover:text-orange-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-[11px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Father Name</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.father_name || ''}
+                                onChange={(e) => updateEditField('father_name', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 truncate max-w-[120px]">{editData.father_name || selectedStudent?.father_name || '-'}</span>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Father Mobile</span>
+                            {editMode ? (
+                              <input
+                                type="tel"
+                                value={editData.parent_mobile1 || ''}
+                                onChange={(e) => updateEditField('parent_mobile1', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1 font-mono font-bold text-gray-900">
+                                <span>
+                                  {revealedMobiles['parent_mobile1']
+                                    ? (editData.parent_mobile1 || selectedStudent?.parent_mobile1 || '-')
+                                    : maskMobileNumber(editData.parent_mobile1 || selectedStudent?.parent_mobile1 || '-')}
+                                </span>
+                                {(editData.parent_mobile1 || selectedStudent?.parent_mobile1) && (
+                                  <button onClick={() => toggleRevealMobile('parent_mobile1')} className="text-orange-600 p-0.5 hover:bg-orange-50 rounded">
+                                    {revealedMobiles['parent_mobile1'] ? <EyeOff size={11} /> : <Eye size={11} />}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Mother Name</span>
+                            <span className="font-bold text-gray-900 truncate max-w-[120px]">{selectedStudent?.student_data?.mother_name || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Mother Mobile</span>
+                            {editMode ? (
+                              <input
+                                type="tel"
+                                value={editData.parent_mobile2 || ''}
+                                onChange={(e) => updateEditField('parent_mobile2', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1 font-mono font-bold text-gray-900">
+                                <span>
+                                  {revealedMobiles['parent_mobile2']
+                                    ? (editData.parent_mobile2 || selectedStudent?.parent_mobile2 || '-')
+                                    : maskMobileNumber(editData.parent_mobile2 || selectedStudent?.parent_mobile2 || '-')}
+                                </span>
+                                {(editData.parent_mobile2 || selectedStudent?.parent_mobile2) && (
+                                  <button onClick={() => toggleRevealMobile('parent_mobile2')} className="text-orange-600 p-0.5 hover:bg-orange-50 rounded">
+                                    {revealedMobiles['parent_mobile2'] ? <EyeOff size={11} /> : <Eye size={11} />}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Emergency</span>
+                            <span className="font-bold text-gray-900 font-mono">{selectedStudent?.parent_mobile2 || selectedStudent?.parent_mobile1 || '-'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Second Row of Cards (Address & Demographics + Recent Activity) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {/* Card 5: Address & Demographics */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                              <MapPin size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Address & Demographics</h3>
+                          </div>
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-[11px]">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-gray-500 font-semibold shrink-0">Address</span>
+                            {editMode ? (
+                              <textarea
+                                value={editData.student_address || ''}
+                                onChange={(e) => updateEditField('student_address', e.target.value)}
+                                className="w-full px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right"
+                                rows={2}
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 text-right truncate max-w-[130px]" title={editData.student_address || selectedStudent?.student_address}>
+                                {editData.student_address || selectedStudent?.student_address || '-'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">City / Village</span>
+                            <span className="font-bold text-gray-900">{editData.city_village || selectedStudent?.city_village || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">District</span>
+                            <span className="font-bold text-gray-900">{editData.district || selectedStudent?.district || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">State</span>
+                            <span className="font-bold text-gray-900">{editData.mandal_name || selectedStudent?.mandal_name || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Category / Caste</span>
+                            <span className="font-bold text-gray-900">
+                              {resolveStudentCaste(selectedStudent).categoryName || resolveStudentCaste(selectedStudent).legacyCaste || '-'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 6: Recent Activity */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                              <History size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Recent Activity</h3>
+                          </div>
+                          <button
+                            onClick={() => setActiveStudentTab('history')}
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <span>View All</span>
+                            <span>&rarr;</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2.5 text-[11px]">
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0"></div>
+                            <div>
+                              <p className="font-extrabold text-gray-900">Profile updated</p>
+                              <p className="text-[10px] font-semibold text-gray-400">Recent record synced</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1 shrink-0"></div>
+                            <div>
+                              <p className="font-extrabold text-gray-900">Admission verified</p>
+                              <p className="text-[10px] font-semibold text-gray-400">Core parameters confirmed</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-2 h-2 rounded-full bg-purple-500 mt-1 shrink-0"></div>
+                            <div>
+                              <p className="font-extrabold text-gray-900">Account active</p>
+                              <p className="text-[10px] font-semibold text-gray-400">Credentials created</p>
+                            </div>
+                          </div>
+
+                          {/* Hidden QR container */}
+                          {selectedStudent?.admission_number && (
+                            <div id={`student-qr-${selectedStudent.admission_number}`} className="hidden">
+                              <QRCodeSVG
+                                value={`${window.location.origin}/qr/${activeQrToken || selectedStudent.qr_token || selectedStudent.admission_number}`}
+                                size={120}
+                                level="M"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Informational Banner (Image 2 style) */}
+                  <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-blue-900 shadow-2xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                        <Info size={18} />
+                      </div>
+                      <div>
+                        <p className="font-extrabold">Additional Information</p>
+                        <p className="text-gray-600 font-medium">View student's documents, examination records, fee history and more in respective tabs.</p>
+                      </div>
+                    </div>
+                    <span className="text-gray-500 font-medium text-[11px] shrink-0">
+                      For any data corrections, please use Edit Profile or contact the Academic Office.
+                    </span>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Footer */}
-            < div className="sticky bottom-0 bg-white border-t border-gray-200 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex-shrink-0" >
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-                {editMode ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleSaveEdit}
-                      disabled={savingEdit || !(() => {
-                        const mandatoryKeys = [
-                          { k: 'student_name', alt: 'Student Name' },
-                          { k: 'student_mobile', alt: 'Student Mobile Number' },
-                          { k: 'college', alt: 'College' },
-                          { k: 'batch', alt: 'Batch' },
-                          { k: 'course', alt: 'Program' },
-                          { k: 'branch', alt: 'Branch' },
-                          { k: 'parent_mobile1', alt: 'Parent Mobile Number 1' }
-                        ];
-                        return mandatoryKeys.every(field => {
-                          const val = editData[field.k] ?? editData[field.alt] ?? '';
-                          return typeof val === 'string' ? val.trim() !== '' : (val !== null && val !== undefined);
-                        });
-                      })()}
-                      className="w-full sm:flex-1 bg-green-600 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[44px]"
-                    >
-                      {savingEdit ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Changes'
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditMode(false)}
-                      disabled={savingEdit}
-                      className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {canUpdatePin && (
+              {/* Other Tabs Rendering (Keep exact functionality) */}
+              {activeStudentTab === 'registration' && canViewField('registration_status') && (() => {
+                const studentData = selectedStudent.student_data || {};
+                const currentYear = selectedStudent.current_year || studentData.current_year;
+                const currentSem = selectedStudent.current_semester || studentData.current_semester;
+
+                const isStudentVerified = isStudentMobileVerifiedForCycle(studentData, currentYear, currentSem);
+                const isParentVerified = isParentMobileVerifiedForCycle(studentData, currentYear, currentSem);
+                const isVerificationComplete = isVerificationCompleteForCycle(studentData, currentYear, currentSem);
+
+                const certStatus = (selectedStudent.certificates_status || studentData.certificates_status || '').toLowerCase();
+                const isCertComplete = isCertificatesStatusComplete(certStatus);
+
+                const feeStatus = (selectedStudent.fee_status || studentData.fee_status || '').toLowerCase();
+                const isFeeComplete = ['no due', 'no_due', 'permitted', 'completed', 'nodue'].some(s => feeStatus.includes(s));
+
+                const isPromotionComplete = isPromotionCompleteForCycle(studentData, currentYear, currentSem);
+
+                const optSet = new Set(Array.isArray(regOptionalStages) ? regOptionalStages : []);
+                const programYear = resolveRegistrationBranchYear(
+                  selectedStudent.branch || studentData.branch,
+                  selectedStudent.current_year || studentData.current_year
+                );
+                const isScholarshipOptional = optSet.has('scholarship');
+
+                const scholarStatus = getRegistrationScholarshipStatus(scholarshipData, { ...selectedStudent, ...studentData }, regOptionalStages, registrationStageConfig);
+                const scholarshipCtx = resolveRegistrationScholarshipDisplay(scholarshipData, { ...selectedStudent, ...studentData }, regOptionalStages, registrationStageConfig);
+                const isScholarshipComplete = scholarshipCtx.satisfied;
+
+                const registrationStages = computeRegistrationStageDisplays({ ...selectedStudent, ...studentData }, scholarshipData, regOptionalStages, registrationStageConfig);
+                const resolvedOverallStatus = resolveRegistrationOverallStatus(registrationStages.overallStatus, selectedStudent.registration_status);
+                const isRegistrationComplete = resolvedOverallStatus === 'completed';
+                const isRegistrationTemporary = resolvedOverallStatus === 'Temporary';
+
+                const studentMobile = selectedStudent.student_mobile || studentData.student_mobile;
+                const parentMobile = selectedStudent.parent_mobile1 || studentData.parent_mobile1;
+                const canVerifyMobile = canViewField('registration_status');
+
+                const StatusBadge = ({ completed, optional = false, text }) => {
+                  const display = completed ? 'Completed' : (text ? formatScholarshipStatusDisplay(text) : '—');
+                  return (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      completed ? 'bg-green-100 text-green-800' : optional ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {display}
+                      {optional && !completed && <span className="text-[10px] opacity-75">(optional)</span>}
+                    </span>
+                  );
+                };
+
+                return (
+                  <div className="space-y-6">
+                    <div className={`rounded-2xl p-6 border ${
+                      isRegistrationComplete ? 'bg-green-50 border-green-200' : isRegistrationTemporary ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200 shadow-sm'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">Registration Status</h3>
+                          <p className="text-sm text-gray-500 mt-1">Overall registration completion based on all stages</p>
+                        </div>
+                        <div className={`px-4 py-2 rounded-xl font-bold text-base flex items-center gap-2 ${
+                          isRegistrationComplete ? 'bg-green-200 text-green-800' : isRegistrationTemporary ? 'bg-amber-200 text-amber-800' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {isRegistrationComplete ? <><CheckCircle size={20} /> Completed</> : isRegistrationTemporary ? <><AlertTriangle size={20} /> Temporary</> : 'Pending'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Registration Stages</h4>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className={`rounded-2xl border p-4 shadow-2xs flex flex-col gap-4 bg-white border-gray-200`}>
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-1 p-2 rounded-full ${isVerificationComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <MessageSquare size={20} />
+                            </div>
+                            <div>
+                              <h5 className="font-bold text-gray-900 flex items-center gap-2">1. Mobile Verification</h5>
+                              <p className="text-xs text-gray-500 mt-0.5">Send OTP to student or parent mobile for this semester</p>
+                              <div className="flex flex-col gap-1.5 mt-2 text-xs text-gray-600">
+                                <span className={isStudentVerified ? 'text-green-600 font-bold' : 'text-red-500'}>
+                                  {isStudentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                  Student: {studentMobile || 'No number'}
+                                </span>
+                                <span className={isParentVerified ? 'text-green-600 font-bold' : 'text-red-500'}>
+                                  {isParentVerified ? <CheckCircle size={14} className="inline mr-1" /> : <X size={14} className="inline mr-1" />}
+                                  Parent: {parentMobile || 'No number'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:items-end gap-2 shrink-0">
+                            <StatusBadge completed={isVerificationComplete} optional={optSet.has('verification')} />
+                            {canVerifyMobile && (
+                              <button
+                                type="button"
+                                onClick={() => setShowVerificationModal(true)}
+                                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                              >
+                                <Shield size={16} />
+                                {isVerificationComplete ? 'View / Re-verify' : 'Verify with OTP'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border p-4 bg-white border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 p-2 rounded-full ${isCertComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                            <FileText size={20} />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-gray-900">2. Certificate Status</h5>
+                            <p className="text-xs text-gray-500 mt-0.5">Current Status: <span className="font-bold text-gray-900 capitalize">{certStatus || 'Pending'}</span></p>
+                          </div>
+                        </div>
+                        <StatusBadge completed={isCertComplete} optional={optSet.has('certificates')} text={certStatus} />
+                      </div>
+
+                      <div className="rounded-2xl border p-4 bg-white border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 p-2 rounded-full ${isFeeComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                            <CreditCard size={20} />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-gray-900">3. Fee Payment</h5>
+                            <p className="text-xs text-gray-500 mt-0.5">Current Status: <span className="font-bold text-gray-900 capitalize">{feeStatus || 'Pending'}</span></p>
+                          </div>
+                        </div>
+                        <StatusBadge completed={isFeeComplete} optional={optSet.has('fee')} text={feeStatus} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {activeStudentTab === 'attendance' && (
+                <StudentAttendanceTab student={selectedStudent} />
+              )}
+
+              {activeStudentTab === 'sms_tracking' && (
+                <StudentSmsTab student={selectedStudent} />
+              )}
+
+              {activeStudentTab === 'scholarship' && canViewScholarship && (
+                <StudentScholarshipHistoryTab
+                  student={selectedStudent}
+                  readOnly={isCashier || !canEditScholarship}
+                  registrationOptionalStages={regOptionalStages}
+                  onUpdated={(data) => {
+                    setScholarshipData(data);
+                    const status = getCurrentScholarshipStatus(data, data?.student || selectedStudent);
+                    setSelectedStudent((prev) => (prev ? {
+                      ...prev,
+                      scholar_status: status,
+                      ...(data?.student?.caste ? { caste: data.student.caste } : {})
+                    } : prev));
+                  }}
+                />
+              )}
+
+              {activeStudentTab === 'merit_status' && canViewMeritStatus && (
+                <StudentMeritStatusTab
+                  student={selectedStudent}
+                  readOnly={isCashier || !canEditMeritStatus}
+                  onUpdated={(data) => {
+                    const currentYear = Math.max(1, Number(data?.currentYear || selectedStudent?.current_year) || 1);
+                    const currentMerit = data?.years?.find(entry => Number(entry.student_year) === currentYear)?.merit_status || '';
+                    setSelectedStudent((prev) => (prev ? { ...prev, merit_status: currentMerit } : prev));
+                    invalidateStudents();
+                  }}
+                />
+              )}
+
+              {activeStudentTab === 'history' && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col flex-1 min-h-[400px] overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-gray-100 p-3 bg-gray-50/50">
+                    <div className="flex gap-2">
                       <button
-                        onClick={handleResetPassword}
-                        disabled={resettingPassword}
-                        className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 active:bg-indigo-200 transition-colors font-medium touch-manipulation min-h-[44px] mr-2 flex items-center justify-center gap-2"
-                        title="Resend password via SMS"
+                        onClick={() => setHistorySubTab('remarks')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                          historySubTab === 'remarks' ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                        }`}
                       >
-                        <Key size={18} />
-                        {resettingPassword ? 'Sending...' : 'Resend Password'}
+                        <MessageSquare size={14} /> Remarks
                       </button>
+                      <button
+                        onClick={() => setHistorySubTab('audit')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                          historySubTab === 'audit' ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'text-gray-500 hover:bg-white hover:text-blue-600'
+                        }`}
+                      >
+                        <History size={14} /> Edit History
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-hidden p-4">
+                    {historySubTab === 'remarks' ? (
+                      <StudentRemarksContent student={selectedStudent} canAddRemarks={canAddRemarks} canManageRemarks={canManageRemarks} />
+                    ) : (
+                      <StudentHistoryLogs student={selectedStudent} />
                     )}
-                    <button onClick={() => setShowModal(false)} className="w-full sm:w-auto sm:ml-auto px-4 sm:px-6 py-2.5 sm:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors font-medium touch-manipulation min-h-[44px]">
-                      Close
-                    </button>
-                  </>
-                )}
-              </div>
-            </div >
-          </div >
-        </div >
-      )
-      }
+                  </div>
+                </div>
+              )}
+
+              {activeStudentTab === 'id_card' && (() => {
+                const getStudentDataForCard = (key) => {
+                  if (!selectedStudent?.student_data) return '';
+                  const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === key.toLowerCase());
+                  const v = dk ? selectedStudent.student_data[dk] : undefined;
+                  return v !== undefined && v !== null && v !== '' ? v : '';
+                };
+
+                const handleGeneratePrint = () => {
+                  const runPrint = () => {
+                    try {
+                      printDigitalIdCard('.id-card-print-root');
+                    } catch (err) {
+                      console.error(err);
+                      toast.error(err.message || 'Preview the ID card first, then print');
+                    }
+                  };
+                  if (showIdCardPreview) {
+                    runPrint();
+                    return;
+                  }
+                  setShowIdCardPreview(true);
+                  setTimeout(runPrint, 350);
+                };
+
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col items-center gap-5">
+                    <div className="flex items-center justify-between w-full max-w-md">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-bold">
+                          <CreditCard size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900">Digital ID Card</h3>
+                          <p className="text-xs text-gray-400">Print CR80 format</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!showIdCardPreview ? (
+                      <div className="w-full max-w-sm cursor-pointer group" onClick={() => setShowIdCardPreview(true)}>
+                        <div className="rounded-2xl p-8 bg-gradient-to-br from-gray-900 to-slate-800 text-white flex flex-col items-center gap-4 text-center shadow-lg group-hover:scale-[1.02] transition-transform">
+                          <CreditCard size={40} className="text-blue-400" />
+                          <div>
+                            <h4 className="font-extrabold text-base">{selectedStudent?.student_name}</h4>
+                            <p className="text-xs text-gray-300 font-mono mt-1">{selectedStudent?.admission_number}</p>
+                          </div>
+                          <span className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md">Click to Preview Card</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative w-full flex justify-center">
+                        <DigitalStudentCard student={selectedStudent} getStudentData={getStudentDataForCard} />
+                        <button onClick={() => setShowIdCardPreview(false)} className="absolute top-2 right-2 p-2 bg-black/40 text-white rounded-full hover:bg-black/60">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 w-full max-w-sm">
+                      {!showIdCardPreview && (
+                        <button onClick={() => setShowIdCardPreview(true)} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700">
+                          Preview Card
+                        </button>
+                      )}
+                      <button onClick={handleGeneratePrint} className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-gray-800">
+                        Generate Print
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {activeStudentTab === 'parent_activity' && selectedStudent?.id && (
+                <ParentEngagementPanel studentId={selectedStudent.id} variant="tab" />
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <StudentExportModal
         isOpen={showExportModal}
