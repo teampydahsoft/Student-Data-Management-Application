@@ -4354,8 +4354,8 @@ const Students = () => {
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >
-                  <FileText size={15} />
-                  <span>Documents</span>
+                  <CreditCard size={15} />
+                  <span>ID Card</span>
                 </button>
 
                 <button
