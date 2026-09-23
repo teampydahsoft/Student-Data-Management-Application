@@ -57,6 +57,111 @@ const getOptionLabel = (item) => {
   return String(item);
 };
 
+const CERT_ALIASES = {
+  'custom_1771671980118': ['custom_1771671980118', '10th_original', 'ssc_certificate', '10th_cert', '10th_study', 'ssc'],
+  'custom_1771672088118': ['custom_1771672088118', '10th_original', 'ssc_certificate', '10th_cert', '10th_study', 'ssc'],
+  'custom_1771672142110': ['custom_1771672142110', '10th_cert', '10th_original', 'ssc_certificate', 'ssc'],
+  'custom_1771672108925': ['custom_1771672108925', 'inter_diploma_original', 'inter_diploma_cert', 'inter_diploma_study'],
+  '10th_study': ['10th_study', 'ssc_study', 'studyCertificate'],
+  '10th_tc': ['10th_tc', 'ssc_tc', 'transferCertificate'],
+  '10th_cert': ['10th_cert', '10th_original', 'ssc_certificate', 'ssc', 'custom_1771672142110'],
+  '10th_original': ['10th_original', 'custom_1771671980118', 'custom_1771672088118', '10th_cert', 'ssc_certificate', 'ssc'],
+  'inter_diploma_study': ['inter_diploma_study', 'inter_diploma_cert', 'inter_study', 'diploma_study'],
+  'inter_diploma_tc': ['inter_diploma_tc', 'inter_tc', 'diploma_tc'],
+  'inter_diploma_cert': ['inter_diploma_cert', 'inter_diploma_study', 'inter_cert', 'inter', 'diploma_cert'],
+  'inter_diploma_original': ['inter_diploma_original', 'custom_1771672108925', 'inter_original']
+};
+
+const getCertificateValue = (student, certCol) => {
+  if (!student) return null;
+  const certKey = typeof certCol === 'object' && certCol !== null ? certCol.key : certCol;
+  const certName = (typeof certCol === 'object' && certCol !== null ? certCol.name : '') || '';
+
+  let keysToTry = [...(CERT_ALIASES[certKey] || [certKey])];
+
+  const normName = certName.toLowerCase();
+  if (normName.includes('10') || normName.includes('ssc')) {
+    if (normName.includes('original')) {
+      keysToTry.push('10th_original', 'ssc_certificate', '10th_cert', 'custom_1771671980118', 'custom_1771672088118');
+    } else if (normName.includes('tc') || normName.includes('transfer')) {
+      keysToTry.push('10th_tc', 'ssc_tc');
+    } else if (normName.includes('study')) {
+      keysToTry.push('10th_study', 'ssc_study');
+    } else {
+      keysToTry.push('10th_cert', '10th_original', 'ssc_certificate', 'custom_1771672142110');
+    }
+  } else if (normName.includes('inter') || normName.includes('diploma')) {
+    if (normName.includes('original')) {
+      keysToTry.push('inter_diploma_original', 'custom_1771672108925');
+    } else if (normName.includes('tc') || normName.includes('transfer')) {
+      keysToTry.push('inter_diploma_tc', 'inter_tc');
+    } else if (normName.includes('study')) {
+      keysToTry.push('inter_diploma_study', 'inter_study');
+    } else if (normName.includes('cert')) {
+      keysToTry.push('inter_diploma_cert', 'inter_diploma_study', 'inter_cert');
+    }
+  }
+
+  keysToTry = Array.from(new Set(keysToTry));
+
+  for (const k of keysToTry) {
+    if (student[k] !== undefined && student[k] !== null) return student[k];
+    if (student.certificates && student.certificates[k] !== undefined && student.certificates[k] !== null) {
+      return student.certificates[k];
+    }
+
+    const sd = student.student_data;
+    if (sd) {
+      let parsedSd = sd;
+      if (typeof sd === 'string') {
+        try {
+          parsedSd = JSON.parse(sd);
+        } catch (e) {
+          parsedSd = {};
+        }
+      }
+
+      if (parsedSd && typeof parsedSd === 'object') {
+        if (parsedSd[k] !== undefined && parsedSd[k] !== null) return parsedSd[k];
+        if (parsedSd.certificates && parsedSd.certificates[k] !== undefined && parsedSd.certificates[k] !== null) {
+          return parsedSd.certificates[k];
+        }
+
+        const checklist = parsedSd.registrationFormData?.certificate_checklist;
+        if (checklist && checklist[k] !== undefined && checklist[k] !== null) {
+          const item = checklist[k];
+          if (typeof item === 'object' && item !== null) {
+            return item.status || item.option || item;
+          }
+          return item;
+        }
+
+        if (parsedSd.registrationFormData && parsedSd.registrationFormData[k] !== undefined && parsedSd.registrationFormData[k] !== null) {
+          return parsedSd.registrationFormData[k];
+        }
+
+        if (parsedSd.documents && parsedSd.documents[k] !== undefined && parsedSd.documents[k] !== null) {
+          return parsedSd.documents[k];
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const isCertificatePresent = (val) => {
+  if (val === true) return true;
+  if (val === false || val === null || val === undefined) return false;
+  if (typeof val === 'number') return val > 0;
+
+  const norm = String(val).trim().toLowerCase();
+  if (!norm || norm === 'no' || norm === 'pending' || norm === 'unverified' || norm === 'false' || norm === '0' || norm === 'none' || norm === 'n/a') {
+    return false;
+  }
+  return true;
+};
+
 const CertificatesReport = () => {
   const { user } = useAuthStore();
 
@@ -256,8 +361,8 @@ const CertificatesReport = () => {
         const isApplicable = reqCerts.some(c => (c.id || c.key) === certCol.key);
         if (!isApplicable) return 'N/A';
 
-        const val = s?.[certCol.key] ?? s?.certificates?.[certCol.key];
-        const isYes = val === true || val === 'Submitted' || val === 'Verified' || val === 'yes' || val === 'Yes' || val === 'Original Returned' || val === 'Originals Returned';
+        const val = getCertificateValue(s, certCol);
+        const isYes = isCertificatePresent(val);
         return isYes ? 'Yes' : 'No';
       });
 
@@ -645,8 +750,8 @@ const CertificatesReport = () => {
                           );
                         }
 
-                        const val = student?.[certCol.key] ?? student?.certificates?.[certCol.key];
-                        const isYes = val === true || val === 'Submitted' || val === 'Verified' || val === 'yes' || val === 'Yes' || val === 'Original Returned' || val === 'Originals Returned';
+                        const val = getCertificateValue(student, certCol);
+                        const isYes = isCertificatePresent(val);
 
                         return (
                           <td key={certCol.key} className="py-3.5 px-3 align-middle text-center border-r border-gray-100 last:border-r-0">
@@ -775,7 +880,7 @@ const StudentCertificateModal = ({ student, settingsCertConfig, onClose, onUpdat
   const [certFields, setCertFields] = useState(() => {
     const initial = {};
     levelCertList.forEach(cert => {
-      const val = student?.[cert.key] ?? student?.certificates?.[cert.key];
+      const val = getCertificateValue(student, cert);
       if (val === true || val === 'Submitted' || val === 'yes' || val === 'Yes') {
         initial[cert.key] = 'Submitted';
       } else if (val === 'Verified') {
@@ -784,6 +889,8 @@ const StudentCertificateModal = ({ student, settingsCertConfig, onClose, onUpdat
         initial[cert.key] = 'Original Returned';
       } else if (val === 'Not Required') {
         initial[cert.key] = 'Not Required';
+      } else if (isCertificatePresent(val)) {
+        initial[cert.key] = typeof val === 'string' && val ? val : 'Submitted';
       } else {
         initial[cert.key] = typeof val === 'string' && val ? val : 'Pending';
       }
@@ -804,7 +911,7 @@ const StudentCertificateModal = ({ student, settingsCertConfig, onClose, onUpdat
           certificates_status: currentCertStatus,
           ...certFields
         };
-        await api.put(`/students/${identifier}`, payload);
+        await api.put(`/students/${identifier}`, { studentData: payload });
         toast.success(`Certificates updated successfully for ${studentName}`);
         if (onUpdateStatus) onUpdateStatus();
       }

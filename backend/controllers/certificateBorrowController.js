@@ -60,14 +60,12 @@ const certificateBorrowController = {
       // Filter only present/submitted certificates that are in the whitelist
       const submittedCertificates = Object.entries(studentData)
         .filter(([key, value]) => {
-          // Normalize key (some might have spaces or different casing in older data, though rare)
           if (!certIds.has(key)) return false;
-          
-          return value === true || 
-                 value === 'Yes' || 
-                 value === 'Original' || 
-                 value === 'Submitted' ||
-                 (typeof value === 'string' && value.toLowerCase() === 'yes');
+          if (value === true) return true;
+          if (value === false || value === null || value === undefined) return false;
+          if (typeof value === 'number') return value > 0;
+          const norm = String(value).trim().toLowerCase();
+          return norm && norm !== 'no' && norm !== 'pending' && norm !== 'unverified' && norm !== 'false' && norm !== '0' && norm !== 'none';
         })
         .map(([key, value]) => key);
 
