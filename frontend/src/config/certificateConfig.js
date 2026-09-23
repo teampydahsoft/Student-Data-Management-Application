@@ -69,11 +69,130 @@ export const getCourseType = (course) => {
 export const getCertificatesForCourse = (courseType) => {
   const type = courseType?.toLowerCase();
   if (type === 'diploma') {
-    return certificateConfig.diploma.map(c => ({ key: c.id, label: c.name }));
+    return certificateConfig.diploma.map(c => ({ key: c.id, label: c.name, name: c.name }));
   } else if (type === 'ug') {
-    return certificateConfig.ug.map(c => ({ key: c.id, label: c.name }));
+    return certificateConfig.ug.map(c => ({ key: c.id, label: c.name, name: c.name }));
   } else if (type === 'pg') {
-    return certificateConfig.pg.map(c => ({ key: c.id, label: c.name }));
+    return certificateConfig.pg.map(c => ({ key: c.id, label: c.name, name: c.name }));
   }
   return [];
+};
+
+const CERT_ALIASES = {
+  'custom_1771671980118': ['custom_1771671980118', '10th_original', 'ssc_certificate', '10th_cert', '10th_study', 'ssc'],
+  'custom_1771672088118': ['custom_1771672088118', '10th_original', 'ssc_certificate', '10th_cert', '10th_study', 'ssc'],
+  'custom_1771672142110': ['custom_1771672142110', '10th_cert', '10th_original', 'ssc_certificate', 'ssc'],
+  'custom_1771672108925': ['custom_1771672108925', 'inter_diploma_original', 'inter_diploma_cert', 'inter_diploma_study'],
+  '10th_study': ['10th_study', 'ssc_study', 'studyCertificate'],
+  '10th_tc': ['10th_tc', 'ssc_tc', 'transferCertificate'],
+  '10th_cert': ['10th_cert', '10th_original', 'ssc_certificate', 'ssc', 'custom_1771672142110'],
+  '10th_original': ['10th_original', 'custom_1771671980118', 'custom_1771672088118', '10th_cert', 'ssc_certificate', 'ssc'],
+  'inter_diploma_study': ['inter_diploma_study', 'inter_diploma_cert', 'inter_study', 'diploma_study'],
+  'inter_diploma_tc': ['inter_diploma_tc', 'inter_tc', 'diploma_tc'],
+  'inter_diploma_cert': ['inter_diploma_cert', 'inter_diploma_study', 'inter_cert', 'inter', 'diploma_cert'],
+  'inter_diploma_original': ['inter_diploma_original', 'custom_1771672108925', 'inter_original']
+};
+
+export const getCertificateValue = (student, certCol) => {
+  if (!student) return null;
+  const certKey = typeof certCol === 'object' && certCol !== null ? (certCol.key || certCol.id) : certCol;
+  const certName = (typeof certCol === 'object' && certCol !== null ? (certCol.name || certCol.label) : '') || '';
+
+  let keysToTry = [...(CERT_ALIASES[certKey] || [certKey])];
+
+  const normName = certName.toLowerCase();
+  if (normName.includes('10') || normName.includes('ssc')) {
+    if (normName.includes('original')) {
+      keysToTry.push('10th_original', 'ssc_certificate', '10th_cert', 'custom_1771671980118', 'custom_1771672088118');
+    } else if (normName.includes('tc') || normName.includes('transfer')) {
+      keysToTry.push('10th_tc', 'ssc_tc');
+    } else if (normName.includes('study')) {
+      keysToTry.push('10th_study', 'ssc_study');
+    } else {
+      keysToTry.push('10th_cert', '10th_original', 'ssc_certificate', 'custom_1771672142110');
+    }
+  } else if (normName.includes('inter') || normName.includes('diploma')) {
+    if (normName.includes('original')) {
+      keysToTry.push('inter_diploma_original', 'custom_1771672108925');
+    } else if (normName.includes('tc') || normName.includes('transfer')) {
+      keysToTry.push('inter_diploma_tc', 'inter_tc');
+    } else if (normName.includes('study')) {
+      keysToTry.push('inter_diploma_study', 'inter_study');
+    } else if (normName.includes('cert')) {
+      keysToTry.push('inter_diploma_cert', 'inter_diploma_study', 'inter_cert');
+    }
+  }
+
+  keysToTry = Array.from(new Set(keysToTry));
+
+  for (const k of keysToTry) {
+    if (student[k] !== undefined && student[k] !== null) return student[k];
+    if (student.certificates && student.certificates[k] !== undefined && student.certificates[k] !== null) {
+      return student.certificates[k];
+    }
+
+    const sd = student.student_data;
+    if (sd) {
+      let parsedSd = sd;
+      if (typeof sd === 'string') {
+        try {
+          parsedSd = JSON.parse(sd);
+        } catch (e) {
+          parsedSd = {};
+        }
+      }
+
+      if (parsedSd && typeof parsedSd === 'object') {
+        if (parsedSd[k] !== undefined && parsedSd[k] !== null) return parsedSd[k];
+        if (parsedSd.certificates && parsedSd.certificates[k] !== undefined && parsedSd.certificates[k] !== null) {
+          return parsedSd.certificates[k];
+        }
+
+        const checklist = parsedSd.registrationFormData?.certificate_checklist;
+        if (checklist && checklist[k] !== undefined && checklist[k] !== null) {
+          const item = checklist[k];
+          if (typeof item === 'object' && item !== null) {
+            return item.status || item.option || item;
+          }
+          return item;
+        }
+
+        if (parsedSd.registrationFormData && parsedSd.registrationFormData[k] !== undefined && parsedSd.registrationFormData[k] !== null) {
+          return parsedSd.registrationFormData[k];
+        }
+
+        if (parsedSd.documents && parsedSd.documents[k] !== undefined && parsedSd.documents[k] !== null) {
+          return parsedSd.documents[k];
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+export const isCertificatePresent = (val) => {
+  if (val === true) return true;
+  if (val === false || val === null || val === undefined) return false;
+  if (typeof val === 'number') return val > 0;
+
+  const norm = String(val).trim().toLowerCase();
+  if (!norm || norm === 'no' || norm === 'pending' || norm === 'unverified' || norm === 'false' || norm === '0' || norm === 'none' || norm === 'n/a') {
+    return false;
+  }
+  return true;
+};
+
+export const getCertificateBadgeClass = (status) => {
+  const norm = String(status || '').trim().toLowerCase();
+  if (norm === 'verified') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  if (norm === 'original') return 'bg-teal-100 text-teal-800 border-teal-200';
+  if (norm === 'temporary') return 'bg-amber-100 text-amber-800 border-amber-200';
+  if (norm === 'submitted' || norm === 'yes') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  if (norm === 'unverified') return 'bg-orange-100 text-orange-800 border-orange-200';
+  if (norm === 'partial') return 'bg-purple-100 text-purple-800 border-purple-200';
+  if (norm === 'originals returned' || norm === 'original returned' || norm === 'returned') return 'bg-purple-100 text-purple-800 border-purple-200';
+  if (norm === 'not required' || norm === 'n/a') return 'bg-gray-100 text-gray-700 border-gray-200';
+  if (norm === 'no' || norm === 'pending') return 'bg-rose-100 text-rose-700 border-rose-200';
+  return 'bg-amber-100 text-amber-800 border-amber-200';
 };

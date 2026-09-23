@@ -81,7 +81,7 @@ import useStudentQuotas from '../hooks/useStudentQuotas';
 import useAuthStore from '../store/authStore';
 import { BACKEND_MODULES, hasPermission as hasModulePermission, USER_ROLES, hasModuleAccess, FRONTEND_MODULES } from '../constants/rbac';
 import { formatMeritStatusDisplay, MERIT_STATUS_FILTER_OPTIONS } from '../config/studentProgramYears';
-import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse } from '../config/certificateConfig';
+import { certificateConfig as sharedCertificateConfig, getCourseType, getCertificatesForCourse, getCertificateValue, isCertificatePresent, getCertificateBadgeClass } from '../config/certificateConfig';
 import {
   SCHOLARSHIP_ELIGIBLE_OPTIONS,
   SCHOLARSHIP_STATUS_FILTER_OPTIONS,
@@ -4833,63 +4833,7 @@ const Students = () => {
                       </div>
                     </div>
 
-                    {/* Card 7: Quick Actions */}
-                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
-                              <Sparkles size={15} />
-                            </div>
-                            <h3 className="font-extrabold text-xs text-gray-900">Quick Actions</h3>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <button
-                            type="button"
-                            onClick={() => setShowIdCardPreview(true)}
-                            className="flex items-center gap-1.5 p-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-all text-left border border-indigo-100 hover:border-indigo-200 cursor-pointer"
-                          >
-                            <Printer size={13} className="shrink-0" />
-                            <span className="truncate">Digital ID Card</span>
-                          </button>
-
-                          {canViewAttendance && (
-                            <button
-                              type="button"
-                              onClick={() => setActiveStudentTab('attendance')}
-                              className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold transition-all text-left border border-emerald-100 hover:border-emerald-200 cursor-pointer"
-                            >
-                              <Calendar size={13} className="shrink-0" />
-                              <span className="truncate">Attendance</span>
-                            </button>
-                          )}
-
-                          {canViewSms && (
-                            <button
-                              type="button"
-                              onClick={() => setActiveStudentTab('sms')}
-                              className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold transition-all text-left border border-blue-100 hover:border-blue-200 cursor-pointer"
-                            >
-                              <MessageSquare size={13} className="shrink-0" />
-                              <span className="truncate">SMS Portal</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setShowVerificationModal(true)}
-                            className="flex items-center gap-1.5 p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold transition-all text-left border border-purple-100 hover:border-purple-200 cursor-pointer"
-                          >
-                            <CheckCircle size={13} className="shrink-0" />
-                            <span className="truncate">Mobile Verify</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card 8: Certificates & Admission */}
+                    {/* Card 7: Admission & Summary */}
                     <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
@@ -4897,7 +4841,7 @@ const Students = () => {
                             <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold shadow-xs">
                               <Award size={15} />
                             </div>
-                            <h3 className="font-extrabold text-xs text-gray-900">Certificates & Admission</h3>
+                            <h3 className="font-extrabold text-xs text-gray-900">Admission & Summary</h3>
                           </div>
                           {!editMode && canEditStudents && !isCashier && (
                             <button onClick={handleEdit} className="text-[11px] font-bold text-teal-600 hover:text-teal-800 flex items-center gap-1">
@@ -4908,29 +4852,168 @@ const Students = () => {
 
                         <div className="space-y-2 text-[11px]">
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Certificates</span>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-teal-50 text-teal-700 border border-teal-200 capitalize">
-                              {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
-                            </span>
+                            <span className="text-gray-500 font-semibold">Overall Status</span>
+                            {editMode ? (
+                              <select
+                                value={editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
+                                onChange={(e) => updateEditField('certificates_status', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold bg-white focus:ring-1 focus:ring-teal-500 outline-none"
+                              >
+                                <option value="Verified">Verified</option>
+                                <option value="Unverified">Unverified</option>
+                                <option value="Temporary">Temporary</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Partial">Partial</option>
+                                <option value="Originals Returned">Originals Returned</option>
+                                <option value="Not Required">Not Required</option>
+                              </select>
+                            ) : (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border ${getCertificateBadgeClass(editData.certificates_status || selectedStudent?.certificates_status)}`}>
+                                {editData.certificates_status || selectedStudent?.certificates_status || 'Pending'}
+                              </span>
+                            )}
                           </div>
+
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Scholarship Status</span>
-                            <span className="font-bold text-gray-900 capitalize">
-                              {editData.scholar_status || selectedStudent?.scholar_status || 'Regular'}
-                            </span>
+                            <span className="text-gray-500 font-semibold">Scholarship</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.scholar_status || ''}
+                                onChange={(e) => updateEditField('scholar_status', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 capitalize">
+                                {editData.scholar_status || selectedStudent?.scholar_status || 'Regular'}
+                              </span>
+                            )}
                           </div>
+
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Admission Date</span>
-                            <span className="font-bold text-gray-900 font-mono">
-                              {formatDate(editData.admission_date || selectedStudent?.admission_date)}
-                            </span>
+                            {editMode ? (
+                              <input
+                                type="date"
+                                value={editData.admission_date ? editData.admission_date.split('T')[0] : ''}
+                                onChange={(e) => updateEditField('admission_date', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold bg-white"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 font-mono">
+                                {formatDate(editData.admission_date || selectedStudent?.admission_date)}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Previous College</span>
-                            <span className="font-bold text-gray-900 truncate max-w-[120px]" title={editData.previous_college || selectedStudent?.previous_college}>
-                              {editData.previous_college || selectedStudent?.previous_college || '-'}
-                            </span>
+
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-gray-500 font-semibold shrink-0">Previous College</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.previous_college || ''}
+                                onChange={(e) => updateEditField('previous_college', e.target.value)}
+                                className="w-full px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 text-right truncate max-w-[130px]" title={editData.previous_college || selectedStudent?.previous_college}>
+                                {editData.previous_college || selectedStudent?.previous_college || '-'}
+                              </span>
+                            )}
                           </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 8: Program Certificates Checklist */}
+                    <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs hover:shadow-sm transition-all p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
+                              <CheckCircle size={15} />
+                            </div>
+                            <h3 className="font-extrabold text-xs text-gray-900">Certificates Checklist</h3>
+                          </div>
+                          {!editMode && canEditStudents && !isCashier && (
+                            <button onClick={handleEdit} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1">
+                              <Edit size={11} /> Edit
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-[11px]">
+                          {(() => {
+                            const courseLvl = getCourseType(selectedStudent?.course || selectedStudent?.student_data?.course) || 'UG';
+                            const certList = getCertificatesForCourse(courseLvl);
+
+                            if (!certList || certList.length === 0) {
+                              return (
+                                <div className="text-gray-400 italic text-center py-2">
+                                  No certificates configured.
+                                </div>
+                              );
+                            }
+
+                            return certList.map((cert) => {
+                              const rawVal = getCertificateValue(editMode ? editData : selectedStudent, cert);
+                              const isSubmitted = isCertificatePresent(rawVal);
+
+                              let selectedCertVal = editData[cert.key] !== undefined ? editData[cert.key] : rawVal;
+
+                              // Normalize value to standard options
+                              let currentCertVal = 'No';
+                              if (selectedCertVal === true || selectedCertVal === 'true' || selectedCertVal === 'yes' || selectedCertVal === 'Yes' || selectedCertVal === 'Submitted' || selectedCertVal === 'Verified') {
+                                currentCertVal = 'Yes';
+                              } else if (typeof selectedCertVal === 'string' && selectedCertVal.toLowerCase() === 'original') {
+                                currentCertVal = 'Original';
+                              } else if (typeof selectedCertVal === 'string' && selectedCertVal.toLowerCase() === 'temporary') {
+                                currentCertVal = 'Temporary';
+                              } else if (selectedCertVal === false || selectedCertVal === 'false' || selectedCertVal === 'no' || selectedCertVal === 'No' || selectedCertVal === 'Pending') {
+                                currentCertVal = 'No';
+                              } else if (selectedCertVal) {
+                                currentCertVal = String(selectedCertVal);
+                              } else if (isSubmitted) {
+                                currentCertVal = 'Yes';
+                              }
+
+                              const standardOptions = ['Yes', 'No', 'Original', 'Temporary'];
+                              const showExtraOption = !standardOptions.includes(currentCertVal);
+
+                              return (
+                                <div
+                                  key={cert.key}
+                                  className="flex items-center justify-between gap-1 py-1 border-b border-gray-100 last:border-0"
+                                >
+                                  <span className="font-semibold text-gray-700 truncate max-w-[120px]" title={cert.label}>
+                                    {cert.label}
+                                  </span>
+
+                                  {editMode ? (
+                                    <select
+                                      value={currentCertVal}
+                                      onChange={(e) => updateEditField(cert.key, e.target.value)}
+                                      className="text-[10px] font-bold border border-gray-300 rounded px-1.5 py-0.5 bg-white focus:ring-1 focus:ring-emerald-500 outline-none shrink-0"
+                                    >
+                                      <option value="Yes">Yes</option>
+                                      <option value="No">No</option>
+                                      <option value="Original">Original</option>
+                                      <option value="Temporary">Temporary</option>
+                                      {showExtraOption && (
+                                        <option value={currentCertVal}>{currentCertVal}</option>
+                                      )}
+                                    </select>
+                                  ) : (
+                                    <span
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 border ${getCertificateBadgeClass(currentCertVal)}`}
+                                    >
+                                      {currentCertVal}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     </div>
