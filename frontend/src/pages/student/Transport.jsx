@@ -665,12 +665,6 @@ const Transport = () => {
                                     }`}>
                                         {isMoving ? `Moving (${liveSpeed}k)` : (liveBusData?.location?.status || 'Stopped')}
                                     </span>
-                                    {activePass.busDetails?.capacity ? (
-                                        <>
-                                            <span>•</span>
-                                            <span>{activePass.busDetails.capacity} Seats</span>
-                                        </>
-                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -1030,8 +1024,8 @@ const Transport = () => {
 
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                                            <span className={`font-bold ${
-                                                                isStudentStop ? 'text-emerald-950 font-black' : isCampus ? 'text-purple-950 font-black' : 'text-gray-800'
+                                                            <span className={`font-bold text-sm ${
+                                                                isStudentStop ? 'text-emerald-950 font-black' : isCampus ? 'text-purple-950 font-black' : 'text-gray-900'
                                                             }`}>
                                                                 {stage.stageName}
                                                             </span>
@@ -1048,25 +1042,13 @@ const Transport = () => {
                                                         </div>
 
                                                         {/* Both Sides Timings Row */}
-                                                        <div className="grid grid-cols-2 gap-1.5 mt-1 text-[10px]">
-                                                            <div className="bg-blue-50/80 px-2 py-0.5 rounded text-blue-900 font-medium">
+                                                        <div className="grid grid-cols-2 gap-1.5 mt-1 text-xs">
+                                                            <div className="bg-blue-50/80 px-2 py-1 rounded text-blue-900 font-medium">
                                                                 🌅 Pickup: <strong>~{metrics.morningScheduledTime}</strong>
                                                             </div>
-                                                            <div className="bg-indigo-50/80 px-2 py-0.5 rounded text-indigo-900 font-medium">
+                                                            <div className="bg-indigo-50/80 px-2 py-1 rounded text-indigo-900 font-medium">
                                                                 🌇 Drop: <strong>~{metrics.eveningScheduledTime}</strong>
                                                             </div>
-                                                        </div>
-
-                                                        <div className="text-gray-400 text-[10px] flex items-center gap-1.5 mt-1">
-                                                            <span>{metrics.distFromStart} KM from origin</span>
-                                                            <span>•</span>
-                                                            <span>{metrics.distToCampus} KM to campus</span>
-                                                            {stage.fare ? (
-                                                                <>
-                                                                    <span>•</span>
-                                                                    <span className="text-emerald-700 font-bold">₹{stage.fare}</span>
-                                                                </>
-                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 </div>
