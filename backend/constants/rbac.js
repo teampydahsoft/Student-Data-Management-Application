@@ -103,7 +103,7 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.STUDENT_MANAGEMENT]: {
-    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'view_scholarship', 'edit_scholarship', 'print_id_cards'],
+    permissions: ['view', 'add_student', 'bulk_upload', 'edit_student', 'delete_student', 'update_pin', 'export', 'view_details', 'edit_details', 'view_sms', 'add_remarks', 'manage_remarks', 'view_merit_status', 'edit_merit_status', 'view_scholarship', 'edit_scholarship', 'view_profile_requests', 'edit_profile_requests', 'print_id_cards'],
     labels: {
       view: 'View Students',
       add_student: 'Add Student',
@@ -121,6 +121,8 @@ const MODULE_PERMISSIONS = {
       edit_merit_status: 'Edit Merit Status',
       view_scholarship: 'View Scholarship Info',
       edit_scholarship: 'Edit Scholarship Info',
+      view_profile_requests: 'View Profile Requests',
+      edit_profile_requests: 'Manage Profile Requests (Approve/Reject)',
       print_id_cards: 'Print ID Cards'
     }
   },

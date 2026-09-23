@@ -92,7 +92,7 @@ const NAV_ITEMS = [
         label: "Profile Requests",
         icon: ClipboardList,
         permission: FRONTEND_MODULES.STUDENTS,
-        action: 'edit_student'
+        action: 'view_profile_requests'
       },
       {
         path: "/section-partition",

@@ -2,8 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Eye, Check, X, Clock, User, AlertCircle, ChevronRight } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
+import useAuthStore from '../../store/authStore';
+import { isFullAccessRole, hasPermission, BACKEND_MODULES } from '../../constants/rbac';
 
 export const ProfileChangeRequests = () => {
+    const { user } = useAuthStore();
+    const canManageRequests = useMemo(() => {
+        if (!user) return false;
+        if (isFullAccessRole(user.role)) return true;
+        return hasPermission(user.permissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_profile_requests');
+    }, [user]);
+
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('pending');
@@ -416,7 +425,7 @@ export const ProfileChangeRequests = () => {
                             </div>
 
                             {/* Reviewer Comments */}
-                            {selectedRequest.status === 'pending' && (
+                            {selectedRequest.status === 'pending' && canManageRequests && (
                                 <div>
                                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Admin Comments (Optional)</h3>
                                     <textarea
@@ -426,6 +435,13 @@ export const ProfileChangeRequests = () => {
                                         rows={3}
                                         className="w-full p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
                                     ></textarea>
+                                </div>
+                            )}
+
+                            {selectedRequest.status === 'pending' && !canManageRequests && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
+                                    <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
+                                    <span>You have Read-Only access to Profile Requests. Write permission is required to approve or reject requests.</span>
                                 </div>
                             )}
 
@@ -448,7 +464,7 @@ export const ProfileChangeRequests = () => {
                             )}
                         </div>
 
-                        {selectedRequest.status === 'pending' && (
+                        {selectedRequest.status === 'pending' && canManageRequests && (
                             <div className="p-6 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50 rounded-b-2xl">
                                 <button type="button" onClick={() => setSelectedRequest(null)} className="px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">
                                     Cancel
@@ -467,7 +483,7 @@ export const ProfileChangeRequests = () => {
                                 </button>
                             </div>
                         )}
-                        {selectedRequest.status !== 'pending' && (
+                        {(selectedRequest.status !== 'pending' || !canManageRequests) && (
                             <div className="p-6 border-t border-gray-100 flex items-center justify-end bg-gray-50 rounded-b-2xl">
                                 <button type="button" onClick={() => setSelectedRequest(null)} className="px-5 py-2.5 text-sm font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-lg transition-colors">
                                     Close

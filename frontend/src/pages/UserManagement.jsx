@@ -50,7 +50,9 @@ const StudentViewDialogSubPagesSection = ({
   onToggleViewMerit,
   onToggleEditMerit,
   onToggleViewScholarship,
-  onToggleEditScholarship
+  onToggleEditScholarship,
+  onToggleViewProfileRequests,
+  onToggleEditProfileRequests
 }) => {
   const viewSmsEnabled = permissions.view_sms === true;
   const viewMeritEnabled = permissions.view_merit_status === true;
@@ -63,19 +65,48 @@ const StudentViewDialogSubPagesSection = ({
   const editScholarshipEnabled = permissions.edit_scholarship !== undefined
     ? permissions.edit_scholarship === true
     : permissions.edit_student === true;
+  const viewProfileRequestsEnabled = permissions.view_profile_requests === true;
+  const editProfileRequestsEnabled = permissions.edit_profile_requests === true;
 
   return (
     <div className="mt-5 pt-5 border-t border-slate-200">
       <p className="text-[11px] font-bold text-slate-400 uppercase mb-3 px-1">
-        View Details Dialog Sub-Pages
+        Student Features & Dialog Sub-Pages
       </p>
       <div className={`${SUBPAGE_GRID_CLASS} mb-2 px-1`}>
-        <span className="text-[11px] font-bold text-slate-400 uppercase">Page</span>
+        <span className="text-[11px] font-bold text-slate-400 uppercase">Page / Feature</span>
         <span className="text-[11px] font-bold text-blue-500 uppercase text-center">Read</span>
         <span className="text-[11px] font-bold text-emerald-500 uppercase text-center">Write</span>
       </div>
 
       <div className="space-y-2">
+        <div className={`${SUBPAGE_GRID_CLASS} rounded-lg px-3 py-2.5 bg-slate-50 border border-slate-200`}>
+          <div className="min-w-0 pr-2">
+            <span className="text-xs font-medium text-slate-700">Profile Requests</span>
+            <p className="text-[10px] text-slate-500 leading-snug">Student profile update requests page & approvals</p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleViewProfileRequests}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${viewProfileRequestsEnabled ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${viewProfileRequestsEnabled ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {viewProfileRequestsEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {viewProfileRequestsEnabled ? 'On' : 'Off'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleEditProfileRequests}
+            className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-all ${editProfileRequestsEnabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+          >
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${editProfileRequestsEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              {editProfileRequestsEnabled ? <Check size={10} /> : <X size={10} />}
+            </span>
+            {editProfileRequestsEnabled ? 'On' : 'Off'}
+          </button>
+        </div>
+
         <div className={`${SUBPAGE_GRID_CLASS} rounded-lg px-3 py-2.5 bg-slate-50 border border-slate-200`}>
           <div className="min-w-0 pr-2">
             <span className="text-xs font-medium text-slate-700">SMS Logs</span>
@@ -3351,6 +3382,30 @@ const UserManagement = () => {
                               }
                             }));
                           }}
+                          onToggleViewProfileRequests={() => {
+                            const currentView = permsForRole.view_profile_requests === true;
+                            const nextView = !currentView;
+                            setRoleConfigModalPermissions(prev => ({
+                              ...prev,
+                              [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
+                                ...(prev[BACKEND_MODULES.STUDENT_MANAGEMENT] || {}),
+                                view_profile_requests: nextView,
+                                ...(!nextView ? { edit_profile_requests: false } : {})
+                              }
+                            }));
+                          }}
+                          onToggleEditProfileRequests={() => {
+                            const currentEdit = permsForRole.edit_profile_requests === true;
+                            const nextEdit = !currentEdit;
+                            setRoleConfigModalPermissions(prev => ({
+                              ...prev,
+                              [BACKEND_MODULES.STUDENT_MANAGEMENT]: {
+                                ...(prev[BACKEND_MODULES.STUDENT_MANAGEMENT] || {}),
+                                edit_profile_requests: nextEdit,
+                                ...(nextEdit ? { view_profile_requests: true } : {})
+                              }
+                            }));
+                          }}
                         />
                       )}
                     </div>
@@ -3842,6 +3897,22 @@ const UserManagement = () => {
                                 setSinglePermissionValue('edit_scholarship', nextEdit);
                                 if (nextEdit) {
                                   setSinglePermissionValue('view_scholarship', true);
+                                }
+                              }}
+                              onToggleViewProfileRequests={() => {
+                                const currentView = permsForUser.view_profile_requests === true;
+                                const nextView = !currentView;
+                                setSinglePermissionValue('view_profile_requests', nextView);
+                                if (!nextView) {
+                                  setSinglePermissionValue('edit_profile_requests', false);
+                                }
+                              }}
+                              onToggleEditProfileRequests={() => {
+                                const currentEdit = permsForUser.edit_profile_requests === true;
+                                const nextEdit = !currentEdit;
+                                setSinglePermissionValue('edit_profile_requests', nextEdit);
+                                if (nextEdit) {
+                                  setSinglePermissionValue('view_profile_requests', true);
                                 }
                               }}
                             />

@@ -20,11 +20,11 @@ router.post('/request', authMiddleware, requireStudent, profileChangeController.
 router.get('/my-requests', authMiddleware, requireStudent, profileChangeController.getStudentRequests);
 router.post('/mark-verified', authMiddleware, requireStudent, profileChangeController.markVerified);
 
-// Admin Routes — edit_student + college/course/branch scope
+// Admin Routes — view_profile_requests/edit_profile_requests + college/course/branch scope
 router.get(
     '/all',
     authMiddleware,
-    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view_profile_requests'),
     attachUserScope,
     profileChangeController.getAllRequests
 );
@@ -32,7 +32,7 @@ router.get(
 router.get(
     '/by-student/:admission_number',
     authMiddleware,
-    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view_profile_requests'),
     attachUserScope,
     profileChangeController.getRequestsByAdmission
 );
@@ -41,7 +41,7 @@ router.get(
 router.post(
     '/submit',
     authMiddleware,
-    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_profile_requests'),
     attachUserScope,
     profileChangeController.submitRequestByAdmin
 );
@@ -49,7 +49,7 @@ router.post(
 router.put(
     '/:id/status',
     authMiddleware,
-    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_student'),
+    verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit_profile_requests'),
     attachUserScope,
     profileChangeController.updateRequestStatus
 );
