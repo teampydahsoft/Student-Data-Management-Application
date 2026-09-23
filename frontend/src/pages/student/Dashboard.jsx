@@ -476,6 +476,11 @@ const Dashboard = () => {
         setCurrentAnnouncement(null);
     };
 
+    const cleanEventDescription = (desc) => {
+        if (!desc) return '';
+        return String(desc).replace(/\[.*?\]\s*/g, '').trim();
+    };
+
     const formatTime = (timeStr) => {
         if (!timeStr) return '';
         // Handle "09:30:00" or "09:30"
@@ -653,7 +658,7 @@ const Dashboard = () => {
                                 <div>
                                     <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase tracking-wide">Description</h4>
                                     <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                                        {selectedEvent.description || 'No description provided.'}
+                                        {cleanEventDescription(selectedEvent.description) || 'No description provided.'}
                                     </p>
                                 </div>
                             </div>
@@ -1303,7 +1308,7 @@ const Dashboard = () => {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-xs font-black text-slate-800 truncate group-hover:text-sky-700">{event.title}</h4>
-                                            <p className="text-[10px] text-slate-400 truncate font-medium">{event.description || 'No details'}</p>
+                                            <p className="text-[10px] text-slate-400 truncate font-medium">{cleanEventDescription(event.description) || event.event_type || 'No details'}</p>
                                         </div>
                                     </div>
                                 ))}
