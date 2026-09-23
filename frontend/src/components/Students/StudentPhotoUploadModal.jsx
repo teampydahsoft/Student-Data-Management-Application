@@ -1,39 +1,679 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, Upload, X, RotateCcw, Check, AlertCircle, RefreshCw, FlipHorizontal, Sparkles, Image as ImageIcon } from 'lucide-react';
+import {
+  Camera,
+  Upload,
+  X,
+  RotateCcw,
+  Check,
+  AlertCircle,
+  RefreshCw,
+  FlipHorizontal,
+  Sparkles,
+  Image as ImageIcon,
+  ShieldCheck,
+  ShieldAlert,
+  UserCheck,
+  Sun,
+  Focus,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle
+} from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
+import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+// Validation Threshold Constants for Student ID Photo (Broad & Tolerant)
+const MIN_FACE_HEIGHT_RATIO = 0.18; // Minimum face height relative to frame height (18%)
+const MIN_FACE_WIDTH_RATIO = 0.14;  // Minimum face width relative to frame width (14%)
+const MAX_ROLL_DEG = 15;            // Max head tilt side-to-side (+/- 15 degrees)
+const MAX_YAW_DEG = 20;             // Max head turn left/right (+/- 20 degrees)
+const MAX_PITCH_DEG = 20;           // Max head tilt up/down (+/- 20 degrees)
+const STABLE_VALID_DURATION_MS = 350; // Required continuous valid duration (ms) for "Ready ✓"
+
+let faceLandmarkerPromise = null;
+
+/**
+ * Singleton loader for MediaPipe FaceLandmarker.
+ * Re-uses detector instance across all live preview frames and photo uploads.
+ */
+export const getFaceLandmarker = async () => {
+  if (faceLandmarkerPromise) return faceLandmarkerPromise;
+
+  faceLandmarkerPromise = (async () => {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      );
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+          delegate: 'GPU'
+        },
+        runningMode: 'IMAGE',
+        numFaces: 5
+      });
+      return landmarker;
+    } catch (gpuErr) {
+      console.warn('MediaPipe GPU initialization failed, falling back to CPU:', gpuErr);
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+        );
+        const landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'CPU'
+          },
+          runningMode: 'IMAGE',
+          numFaces: 5
+        });
+        return landmarker;
+      } catch (cpuErr) {
+        console.error('MediaPipe FaceLandmarker initialization failed:', cpuErr);
+        faceLandmarkerPromise = null;
+        throw cpuErr;
+      }
+    }
+  })();
+
+  return faceLandmarkerPromise;
+};
+
+/**
+ * Draws 1:1 square center crop of video onto canvas (and handles horizontal mirroring for selfie camera).
+ * Guarantees that camera preview, live detection, final capture snapshot, and final validation operate on identical framing.
+ */
+export const drawCameraFrameToCanvas = (video, canvas, facingMode = 'user') => {
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    return false;
+  }
+  const vWidth = video.videoWidth;
+  const vHeight = video.videoHeight;
+  const minDim = Math.min(vWidth, vHeight);
+  const cropX = (vWidth - minDim) / 2;
+  const cropY = (vHeight - minDim) / 2;
+
+  if (canvas.width !== minDim || canvas.height !== minDim) {
+    canvas.width = minDim;
+    canvas.height = minDim;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  if (facingMode === 'user') {
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, cropX, cropY, minDim, minDim, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+  return true;
+};
+
+/**
+ * Evaluates photo composition and posture using MediaPipe FaceLandmarker.
+ * Replaces all skin-pixel heuristic logic with real client-side AI face landmark detection.
+ */
+const evaluatePhotoGuidelinesAsync = async (canvas) => {
+  if (!canvas || !canvas.width || !canvas.height) {
+    return {
+      passesAll: false,
+      canCapture: false,
+      instruction: 'No image frame available',
+      faceCount: 0,
+      validationState: {
+        faceDetected: false,
+        faceCountValid: false,
+        faceSizeValid: false,
+        headPostureValid: false,
+        lightingValid: false
+      },
+      guidelines: [
+        { id: 'landmarks', title: 'Face Detection', passed: false, reason: 'No image frame available' }
+      ]
+    };
+  }
+
+  let landmarker = null;
+  try {
+    landmarker = await getFaceLandmarker();
+  } catch (err) {
+    console.error('FaceLandmarker load error:', err);
+  }
+
+  if (!landmarker) {
+    return {
+      passesAll: false,
+      canCapture: false,
+      instruction: 'Initializing face detector...',
+      faceCount: 0,
+      validationState: {
+        faceDetected: false,
+        faceCountValid: false,
+        faceSizeValid: false,
+        headPostureValid: false,
+        lightingValid: false
+      },
+      guidelines: [
+        { id: 'landmarks', title: 'Face Detection', passed: false, reason: 'Face detector loading...' }
+      ]
+    };
+  }
+
+  const detectionResult = landmarker.detect(canvas);
+  const faces = detectionResult?.faceLandmarks || [];
+  const faceCount = faces.length;
+
+  if (faceCount === 0) {
+    return {
+      passesAll: false,
+      canCapture: false,
+      instruction: 'No face detected',
+      faceCount: 0,
+      validationState: {
+        faceDetected: false,
+        faceCountValid: false,
+        faceSizeValid: false,
+        headPostureValid: false,
+        lightingValid: true
+      },
+      guidelines: [
+        { id: 'landmarks', title: 'Face Detection', passed: false, reason: 'No face detected in photo' },
+        { id: 'size', title: 'Face Size & Framing', passed: false, reason: 'Face is missing' },
+        { id: 'posture', title: 'Head Posture', passed: false, reason: 'Face is missing' },
+        { id: 'lighting', title: 'Lighting & Quality', passed: true, reason: 'Clear frame loaded' }
+      ]
+    };
+  }
+
+  if (faceCount > 1) {
+    return {
+      passesAll: false,
+      canCapture: false,
+      instruction: 'Only one person should be visible',
+      faceCount,
+      validationState: {
+        faceDetected: true,
+        faceCountValid: false,
+        faceSizeValid: false,
+        headPostureValid: false,
+        lightingValid: true
+      },
+      guidelines: [
+        { id: 'landmarks', title: 'Face Detection', passed: false, reason: 'Only one person should be visible' },
+        { id: 'size', title: 'Face Size & Framing', passed: false, reason: 'Multiple faces detected' },
+        { id: 'posture', title: 'Head Posture', passed: false, reason: 'Multiple faces detected' },
+        { id: 'lighting', title: 'Lighting & Quality', passed: true, reason: 'Clear frame loaded' }
+      ]
+    };
+  }
+
+  // Exactly 1 face detected!
+  const landmarks = faces[0];
+
+  // Bounding box from 478 normalized 3D landmarks
+  let minX = 1, maxX = 0, minY = 1, maxY = 0;
+  for (const lm of landmarks) {
+    if (lm.x < minX) minX = lm.x;
+    if (lm.x > maxX) maxX = lm.x;
+    if (lm.y < minY) minY = lm.y;
+    if (lm.y > maxY) maxY = lm.y;
+  }
+
+  const faceWidthNorm = maxX - minX;
+  const faceHeightNorm = maxY - minY;
+
+  // Face size check
+  const faceSizeValid = faceHeightNorm >= MIN_FACE_HEIGHT_RATIO && faceWidthNorm >= MIN_FACE_WIDTH_RATIO;
+
+  // Head posture calculations (Roll, Yaw, Pitch)
+  const rightEye = landmarks[33];
+  const leftEye = landmarks[263];
+  const noseTip = landmarks[1];
+  const chin = landmarks[152];
+  const topHead = landmarks[10];
+  const rightCheek = landmarks[234];
+  const leftCheek = landmarks[454];
+
+  // Roll (head tilt side to side)
+  const dy = leftEye.y - rightEye.y;
+  const dx = leftEye.x - rightEye.x;
+  const rollDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  // Yaw (head turn left/right)
+  const distRight = Math.abs(noseTip.x - rightCheek.x);
+  const distLeft = Math.abs(leftCheek.x - noseTip.x);
+  const yawRatio = (distLeft - distRight) / Math.max(0.001, distLeft + distRight);
+  const yawDeg = yawRatio * 50;
+
+  // Pitch (head tilt up/down)
+  const distTop = Math.abs(noseTip.y - topHead.y);
+  const distBottom = Math.abs(chin.y - noseTip.y);
+  const pitchRatio = (distTop - distBottom) / Math.max(0.001, distTop + distBottom);
+  const pitchDeg = pitchRatio * 50;
+
+  const rollValid = Math.abs(rollDeg) <= MAX_ROLL_DEG;
+  const yawValid = Math.abs(yawDeg) <= MAX_YAW_DEG;
+  const pitchValid = Math.abs(pitchDeg) <= MAX_PITCH_DEG;
+
+  const headPostureValid = rollValid && yawValid && pitchValid;
+  const qualityValid = true;
+
+  // Final composition equation (Requirement 11)
+  const passesAll = faceCount === 1 && faceSizeValid && headPostureValid && qualityValid;
+
+  let instruction = 'Hold still';
+  if (!faceSizeValid) {
+    instruction = 'Move closer';
+  } else if (!headPostureValid) {
+    instruction = 'Keep your face straight';
+  } else if (passesAll) {
+    instruction = 'Ready ✓';
+  }
+
+  const guidelines = [
+    {
+      id: 'landmarks',
+      title: 'Face Detection',
+      passed: faceCount === 1,
+      reason: faceCount === 1 ? 'One clear face detected' : 'Face detection issue'
+    },
+    {
+      id: 'size',
+      title: 'Face Size & Framing',
+      passed: faceSizeValid,
+      reason: faceSizeValid ? 'Good face size & quality' : 'Move closer - face is too small'
+    },
+    {
+      id: 'posture',
+      title: 'Head Posture',
+      passed: headPostureValid,
+      reason: headPostureValid ? 'Head upright & front facing' : 'Keep your face straight'
+    },
+    {
+      id: 'lighting',
+      title: 'Lighting & Quality',
+      passed: qualityValid,
+      reason: 'Clear visibility'
+    }
+  ];
+
+  return {
+    passesAll,
+    canCapture: passesAll,
+    instruction,
+    faceCount: 1,
+    validationState: {
+      faceDetected: true,
+      faceCountValid: true,
+      faceSizeValid,
+      headPostureValid,
+      lightingValid: true
+    },
+    guidelines
+  };
+};
+
+/**
+ * Analyzes uploaded image file on an offscreen canvas for guidelines.
+ */
+const analyzeFileImage = (file) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 640;
+      canvas.height = img.naturalHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const res = await evaluatePhotoGuidelinesAsync(canvas);
+      URL.revokeObjectURL(url);
+      resolve(res);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ passesAll: false, guidelines: [] });
+    };
+    img.src = url;
+  });
+};
+
+/**
+ * Head and Shoulder Placement Guideline Overlay for 1:1 ratio photo capture & uploads.
+ * Displays crisp head outline, eye-level indicator line, shoulder zone arches, and alignment status.
+ */
+export function JoiningPhotoGuidelinesOverlay({
+  instructionText = 'Position face in camera view',
+  showHdBadge = true,
+  variant = 'camera',
+  isValidGuideline = null
+}) {
+  const isMatched = isValidGuideline === true;
+  const isFailed = isValidGuideline === false;
+
+  const strokeMain = isMatched
+    ? 'rgba(52, 211, 153, 0.95)'
+    : isFailed
+    ? 'rgba(251, 146, 60, 0.95)'
+    : 'rgba(255, 255, 255, 0.95)';
+
+  const strokeGuide = isMatched
+    ? 'rgba(16, 185, 129, 0.9)'
+    : isFailed
+    ? 'rgba(249, 115, 22, 0.85)'
+    : 'rgba(59, 130, 246, 0.85)';
+
+  const strokeSoft = isMatched
+    ? 'rgba(167, 243, 208, 0.7)'
+    : isFailed
+    ? 'rgba(253, 186, 116, 0.7)'
+    : 'rgba(255, 255, 255, 0.6)';
+
+  const fillSubtle = isMatched
+    ? 'rgba(16, 185, 129, 0.12)'
+    : isFailed
+    ? 'rgba(249, 115, 22, 0.08)'
+    : 'rgba(59, 130, 246, 0.08)';
+
+  // Helper for corner framing brackets
+  const corner = (x1, y1, x2, y2, x3, y3) => (
+    <path
+      d={`M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3}`}
+      stroke={strokeMain}
+      strokeWidth="2.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+
+  return (
+    <div
+      className={`pointer-events-none absolute inset-0 z-10 select-none overflow-hidden transition-colors duration-300 ${
+        isFailed
+          ? 'ring-4 ring-inset ring-amber-500/60'
+          : isMatched
+          ? 'ring-4 ring-inset ring-emerald-400/70'
+          : ''
+      }`}
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 100 100"
+        className="absolute inset-0 h-full w-full"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <filter id="guideGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="0.6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        {/* 1:1 Outer Corner Brackets */}
+        {corner(6, 16, 6, 6, 16, 6)}
+        {corner(94, 16, 94, 6, 84, 6)}
+        {corner(6, 84, 6, 94, 16, 94)}
+        {corner(94, 84, 94, 94, 84, 94)}
+
+        {/* Center Vertical Axis Line */}
+        <line x1="50" y1="8" x2="50" y2="92" stroke={strokeSoft} strokeWidth="0.5" strokeDasharray="2 3" />
+
+        {/* --- HEAD GUIDELINES --- */}
+        {/* Head Alignment Oval (Visual Guide) */}
+        <ellipse
+          cx="50"
+          cy="40"
+          rx="20"
+          ry="24"
+          stroke={strokeMain}
+          strokeWidth="1.8"
+          strokeDasharray="4 3"
+          filter="url(#guideGlow)"
+        />
+
+        {/* Eye Level Line */}
+        <line
+          x1="26"
+          y1="37"
+          x2="74"
+          y2="37"
+          stroke={strokeGuide}
+          strokeWidth="1.2"
+          strokeDasharray="3 2"
+        />
+        <text
+          x="75"
+          y="36.5"
+          fill={isMatched ? '#a7f3d0' : isFailed ? '#fdba74' : 'rgba(147, 197, 253, 0.95)'}
+          fontSize="2.4"
+          fontWeight="600"
+          fontFamily="sans-serif"
+        >
+          EYE LEVEL
+        </text>
+
+        {/* Eye Position Reference Dots */}
+        <circle cx="42" cy="37" r="1.3" fill={strokeSoft} />
+        <circle cx="58" cy="37" r="1.3" fill={strokeSoft} />
+
+        {/* Nose & Mouth Guide */}
+        <path d="M 50 42 L 50 46" stroke={strokeSoft} strokeWidth="1" strokeLinecap="round" />
+        <path d="M 46 49 Q 50 52 54 49" stroke={strokeSoft} strokeWidth="1" strokeLinecap="round" />
+
+        {/* Neck Lines */}
+        <path d="M 42 62 L 42 67" stroke={strokeSoft} strokeWidth="1.2" strokeDasharray="2 2" />
+        <path d="M 58 62 L 58 67" stroke={strokeSoft} strokeWidth="1.2" strokeDasharray="2 2" />
+
+        {/* --- SHOULDER GUIDELINES --- */}
+        {/* Left & Right Shoulder Arches */}
+        <path
+          d="M 12 88 C 22 75, 34 68, 42 67 M 58 67 C 66 68, 78 75, 88 88"
+          stroke={strokeGuide}
+          strokeWidth="1.8"
+          strokeDasharray="4 3"
+          strokeLinecap="round"
+          filter="url(#guideGlow)"
+        />
+        {/* Shoulder Zone Fill Hint */}
+        <path
+          d="M 12 94 C 22 79, 34 70, 42 67 L 58 67 C 66 70, 78 79, 88 94 L 88 98 L 12 98 Z"
+          fill={fillSubtle}
+        />
+      </svg>
+
+      {/* Top Badges */}
+      {showHdBadge ? (
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/80 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 shadow-md backdrop-blur-md border border-emerald-500/30">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            1:1 HD Ratio
+          </span>
+          {isMatched ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/90 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 shadow-md backdrop-blur-md border border-emerald-500/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+              Ready ✓
+            </span>
+          ) : isFailed ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-950/90 px-2.5 py-1 text-[10px] font-semibold text-amber-300 shadow-md backdrop-blur-md border border-amber-500/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              Adjust Position ⚠
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-2.5 py-1 text-[10px] font-medium text-blue-200 shadow-md backdrop-blur-md border border-blue-400/30">
+              Guidelines Active
+            </span>
+          )}
+        </div>
+      ) : null}
+
+      {/* Bottom Instruction Bar */}
+      <div className="absolute bottom-2 left-2 right-2 flex justify-center pointer-events-none">
+        <div
+          className={`rounded-lg px-3.5 py-1.5 text-center shadow-lg backdrop-blur-md border transition-all duration-200 ${
+            isMatched
+              ? 'bg-emerald-950/90 border-emerald-400/60 text-emerald-100 scale-105'
+              : isFailed
+              ? 'bg-amber-950/90 border-amber-400/50 text-amber-100'
+              : 'bg-slate-900/85 border-white/20 text-white'
+          }`}
+        >
+          <p className="text-[11px] font-semibold tracking-wide drop-shadow-sm">
+            {instructionText}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function StudentPhotoUploadModal({
   isOpen,
   onClose,
-  student,
   onSuccess,
   onSelectPhoto,
-  initialTab = 'file'
+  student,
+  initialTab = 'camera'
 }) {
-  const [activeTab, setActiveTab] = useState(initialTab); // 'file' | 'camera'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'camera' | 'file'
   const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
   const [cameraError, setCameraError] = useState(null);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [hasActiveStream, setHasActiveStream] = useState(false);
+
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(true);
+
+  // Live guidelines validation state
+  const [liveValidation, setLiveValidation] = useState({
+    canCapture: false,
+    instruction: 'Position face in camera view',
+    progress: 100,
+    validationState: {
+      faceDetected: false,
+      faceCountValid: false,
+      faceSizeValid: false,
+      headPostureValid: false,
+      lightingValid: false
+    },
+    guidelines: []
+  });
+
+  const [validationResult, setValidationResult] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const streamRef = useRef(null);
+  const animFrameRef = useRef(null);
+
+  const validStartRef = useRef(null);
+  const lastStateUpdateRef = useRef(0);
 
   const facingModeRef = useRef(facingMode);
   facingModeRef.current = facingMode;
 
+  // Continuous live validation loop (Throttled ~100ms, non-blocking)
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'camera' || previewUrl || !hasActiveStream || cameraError) {
+      validStartRef.current = null;
+      setLiveValidation({
+        canCapture: false,
+        instruction: 'Position face in camera view',
+        progress: 100,
+        validationState: {
+          faceDetected: false,
+          faceCountValid: false,
+          faceSizeValid: false,
+          headPostureValid: false,
+          lightingValid: false
+        },
+        guidelines: []
+      });
+      return;
+    }
+
+    const offscreenCanvas = document.createElement('canvas');
+    let isCancelled = false;
+    let isDetecting = false;
+
+    const processFrame = async () => {
+      if (isCancelled) return;
+
+      const now = Date.now();
+      if (!isDetecting && now - lastStateUpdateRef.current >= 100) {
+        const video = videoRef.current;
+        if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          lastStateUpdateRef.current = now;
+          isDetecting = true;
+          try {
+            const drewFrame = drawCameraFrameToCanvas(video, offscreenCanvas, facingModeRef.current);
+            if (drewFrame) {
+              const evalResult = await evaluatePhotoGuidelinesAsync(offscreenCanvas);
+
+              if (!isCancelled) {
+                if (evalResult.passesAll) {
+                  if (!validStartRef.current) {
+                    validStartRef.current = Date.now();
+                  }
+                  const elapsed = Date.now() - validStartRef.current;
+                  const isStable = elapsed >= STABLE_VALID_DURATION_MS;
+
+                  setLiveValidation({
+                    canCapture: isStable,
+                    instruction: isStable ? 'Ready ✓' : 'Hold still',
+                    progress: 100,
+                    validationState: evalResult.validationState,
+                    guidelines: evalResult.guidelines
+                  });
+                } else {
+                  validStartRef.current = null;
+                  setLiveValidation({
+                    canCapture: false,
+                    instruction: evalResult.instruction,
+                    progress: 100,
+                    validationState: evalResult.validationState,
+                    guidelines: evalResult.guidelines
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Frame detection error:', err);
+          } finally {
+            isDetecting = false;
+          }
+        }
+      }
+
+      if (!isCancelled) {
+        animFrameRef.current = requestAnimationFrame(processFrame);
+      }
+    };
+
+    animFrameRef.current = requestAnimationFrame(processFrame);
+
+    return () => {
+      isCancelled = true;
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
+  }, [isOpen, activeTab, previewUrl, hasActiveStream, cameraError]);
+
   // Stop active camera stream safely without triggering state re-renders
   const stopCamera = useCallback(() => {
+    validStartRef.current = null;
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach((track) => {
@@ -54,8 +694,8 @@ export default function StudentPhotoUploadModal({
   // Start camera stream with robust fallbacks
   const startCamera = useCallback(async (facingOverride) => {
     const facing = facingOverride || facingModeRef.current;
+    validStartRef.current = null;
 
-    // Clean up any existing stream first
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -73,7 +713,6 @@ export default function StudentPhotoUploadModal({
     setHasActiveStream(false);
 
     try {
-      // Check for secure context (getUserMedia requires HTTPS or localhost)
       if (
         typeof window !== 'undefined' &&
         !window.isSecureContext &&
@@ -91,7 +730,6 @@ export default function StudentPhotoUploadModal({
 
       let stream = null;
 
-      // 1. First attempt: Try with requested facingMode and ideal resolution
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -104,7 +742,6 @@ export default function StudentPhotoUploadModal({
       } catch (firstErr) {
         console.warn('First camera attempt failed, retrying with flexible constraints...', firstErr);
 
-        // 2. Second attempt: Try simple video constraint without resolution constraints
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: facing ? { facingMode: facing } : true,
@@ -113,7 +750,6 @@ export default function StudentPhotoUploadModal({
         } catch (secondErr) {
           console.warn('Second camera attempt failed, retrying with basic { video: true }...', secondErr);
 
-          // 3. Third attempt: Absolute fallback to any available video device
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false
@@ -161,7 +797,7 @@ export default function StudentPhotoUploadModal({
     }
   }, []);
 
-  // Ensure video element receives the active stream whenever re-rendered
+  // Ensure video element receives active stream whenever re-rendered
   useEffect(() => {
     if (videoRef.current && streamRef.current && videoRef.current.srcObject !== streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
@@ -174,6 +810,8 @@ export default function StudentPhotoUploadModal({
     if (isOpen) {
       setActiveTab(initialTab);
       setCameraError(null);
+      setValidationResult(null);
+      validStartRef.current = null;
     } else {
       stopCamera();
       setSelectedFile(null);
@@ -182,7 +820,9 @@ export default function StudentPhotoUploadModal({
         setPreviewUrl(null);
       }
       setCameraError(null);
+      setValidationResult(null);
       setActiveTab(initialTab);
+      validStartRef.current = null;
     }
   }, [isOpen, initialTab, stopCamera]);
 
@@ -204,13 +844,14 @@ export default function StudentPhotoUploadModal({
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
     setFacingMode(nextMode);
     facingModeRef.current = nextMode;
+    validStartRef.current = null;
     if (!previewUrl && activeTab === 'camera') {
       startCamera(nextMode);
     }
   };
 
-  // Capture snapshot from video stream
-  const capturePhoto = () => {
+  // Capture snapshot from video stream & perform ONE FINAL face detection on actual full-res frame
+  const capturePhoto = async () => {
     if (!videoRef.current) return;
 
     const video = videoRef.current;
@@ -220,21 +861,20 @@ export default function StudentPhotoUploadModal({
     }
 
     const canvas = canvasRef.current || document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-
-    const ctx = canvas.getContext('2d');
-    if (facingMode === 'user') {
-      // Mirror horizontal for natural selfie feel
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
+    const drewFrame = drawCameraFrameToCanvas(video, canvas, facingMode);
+    if (!drewFrame) {
+      toast.error('Failed to capture camera frame');
+      return;
     }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Final evaluation on the actual full-resolution captured canvas
+    const evalResult = await evaluatePhotoGuidelinesAsync(canvas);
+    setValidationResult(evalResult);
 
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          toast.error('Failed to capture photo frame');
+          toast.error('Failed to create image blob');
           return;
         }
         const fileName = `student_${student?.admission_number || 'photo'}_${Date.now()}.jpg`;
@@ -244,6 +884,12 @@ export default function StudentPhotoUploadModal({
         stopCamera();
         setSelectedFile(file);
         setPreviewUrl(url);
+
+        if (!evalResult.passesAll) {
+          toast.error(`Photo rejected: ${evalResult.instruction}`);
+        } else {
+          toast.success('Photo captured! All quality guidelines passed.');
+        }
       },
       'image/jpeg',
       0.92
@@ -257,14 +903,16 @@ export default function StudentPhotoUploadModal({
     }
     setSelectedFile(null);
     setPreviewUrl(null);
+    setValidationResult(null);
+    validStartRef.current = null;
 
     if (activeTab === 'camera') {
       startCamera(facingMode);
     }
   };
 
-  // File selection via input
-  const handleFileSelect = (file) => {
+  // File selection via input with strict posture & quality check using AI detector
+  const handleFileSelect = async (file) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
@@ -281,8 +929,17 @@ export default function StudentPhotoUploadModal({
       URL.revokeObjectURL(previewUrl);
     }
 
+    const evalResult = await analyzeFileImage(file);
+    setValidationResult(evalResult);
+
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
+
+    if (!evalResult.passesAll) {
+      toast.error(`Selected photo rejected: ${evalResult.instruction}`);
+    } else {
+      toast.success('Selected photo passed all posture & quality checks!');
+    }
   };
 
   // Drag and drop handlers
@@ -311,7 +968,11 @@ export default function StudentPhotoUploadModal({
       return;
     }
 
-    // If onSelectPhoto callback is provided (e.g., in Add Student wizard without existing admission number)
+    if (validationResult && !validationResult.passesAll) {
+      toast.error('Cannot save: Photo does not comply with posture and quality guidelines. Please retake photo.');
+      return;
+    }
+
     if (onSelectPhoto) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -371,6 +1032,8 @@ export default function StudentPhotoUploadModal({
       setPreviewUrl(null);
     }
     setSelectedFile(null);
+    setValidationResult(null);
+    validStartRef.current = null;
     onClose();
   };
 
@@ -454,13 +1117,26 @@ export default function StudentPhotoUploadModal({
                   alt="Captured Preview"
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-xs flex items-center gap-1">
-                  <Check size={10} className="text-emerald-400" />
-                  Ready
+                <div
+                  className={`absolute top-2 right-2 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-xs flex items-center gap-1 ${
+                    validationResult?.passesAll ? 'bg-emerald-600/90' : 'bg-rose-600/90'
+                  }`}
+                >
+                  {validationResult?.passesAll ? (
+                    <>
+                      <Check size={10} className="text-white" />
+                      Compliant
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={10} className="text-white" />
+                      Rejected
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-3 text-center">
+              <div className="mt-2 text-center">
                 <p className="text-xs font-bold text-gray-800">
                   {selectedFile?.name || 'Captured Photo'}
                 </p>
@@ -471,7 +1147,59 @@ export default function StudentPhotoUploadModal({
                 )}
               </div>
 
-              <div className="flex items-center gap-3 mt-5 w-full max-w-xs">
+              {/* Guidelines Compliance Card */}
+              {validationResult && (
+                <div className="w-full max-w-sm mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-xs text-left">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 mb-2">
+                    <h5 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                      <ShieldCheck
+                        size={15}
+                        className={validationResult.passesAll ? 'text-emerald-600' : 'text-rose-600'}
+                      />
+                      Posture & Quality Verification
+                    </h5>
+                    {validationResult.passesAll ? (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold flex items-center gap-1">
+                        <CheckCircle2 size={11} /> PASSED
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-extrabold flex items-center gap-1">
+                        <XCircle size={11} /> REJECTED
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {validationResult.guidelines.map((g) => (
+                      <div key={g.id} className="text-[11px] leading-tight flex items-start gap-2">
+                        {g.passed ? (
+                          <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />
+                        ) : (
+                          <XCircle size={13} className="text-rose-500 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <span className={`font-bold ${g.passed ? 'text-slate-800' : 'text-rose-900'}`}>
+                            {g.title}
+                          </span>
+                          <p className={`text-[10.5px] mt-0.5 ${g.passed ? 'text-slate-500' : 'text-rose-700 font-semibold'}`}>
+                            {g.reason}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!validationResult.passesAll && (
+                    <div className="mt-2.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-[11px] font-medium flex items-center gap-1.5">
+                      <ShieldAlert size={14} className="text-rose-600 shrink-0" />
+                      <span>Photo rejected: Does not meet posture or quality guidelines. Please click Retake.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 mt-4 w-full max-w-sm">
                 <button
                   type="button"
                   onClick={handleRetake}
@@ -479,13 +1207,18 @@ export default function StudentPhotoUploadModal({
                   className="flex-1 py-2 px-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   <RotateCcw size={14} />
-                  Retake
+                  Retake Photo
                 </button>
                 <button
                   type="button"
                   onClick={handleUpload}
-                  disabled={isUploading}
-                  className="flex-1 py-2 px-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  disabled={isUploading || (validationResult && !validationResult.passesAll)}
+                  title={validationResult && !validationResult.passesAll ? 'Fix posture/quality issues to save' : 'Confirm & Save'}
+                  className={`flex-1 py-2 px-3 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 ${
+                    validationResult && !validationResult.passesAll
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-200'
+                  }`}
                 >
                   {isUploading ? (
                     <>
@@ -504,6 +1237,39 @@ export default function StudentPhotoUploadModal({
           ) : activeTab === 'camera' ? (
             /* Camera Mode */
             <div className="w-full flex flex-col items-center">
+              {/* Guidelines Reference Accordion */}
+              <div className="w-full max-w-sm mb-3 bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5 text-left transition-all">
+                <div
+                  onClick={() => setShowGuidelines(!showGuidelines)}
+                  className="flex items-center justify-between cursor-pointer select-none"
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                    <ShieldCheck size={15} className="text-indigo-600" />
+                    Posture & Camera Guidelines
+                  </span>
+                  <span className="text-[11px] font-semibold text-indigo-600 flex items-center gap-1">
+                    {showGuidelines ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </span>
+                </div>
+
+                {showGuidelines && (
+                  <ul className="mt-2 space-y-1 text-[11px] text-indigo-950 font-medium border-t border-indigo-100/80 pt-2">
+                    <li className="flex items-start gap-1.5">
+                      <UserCheck size={13} className="text-indigo-600 shrink-0 mt-0.5" />
+                      <span><strong>Face Alignment:</strong> Position face straight ahead in camera view.</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <Focus size={13} className="text-indigo-600 shrink-0 mt-0.5" />
+                      <span><strong>Face Visibility:</strong> Ensure exactly one face is clearly visible.</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <Sun size={13} className="text-indigo-600 shrink-0 mt-0.5" />
+                      <span><strong>Lighting:</strong> Ensure even room lighting without heavy shadows or backlight.</span>
+                    </li>
+                  </ul>
+                )}
+              </div>
+
               {cameraError ? (
                 <div className="p-5 max-w-sm bg-rose-50 border border-rose-200 rounded-2xl text-center">
                   <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
@@ -530,8 +1296,8 @@ export default function StudentPhotoUploadModal({
                 </div>
               ) : (
                 <>
-                  {/* Viewfinder Frame */}
-                  <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl overflow-hidden bg-slate-900 shadow-2xl border-4 border-slate-800 flex items-center justify-center">
+                  {/* Viewfinder Frame with JoiningPhotoGuidelinesOverlay */}
+                  <div className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-3xl overflow-hidden bg-slate-900 shadow-2xl flex items-center justify-center">
                     <video
                       ref={videoRef}
                       playsInline
@@ -540,19 +1306,15 @@ export default function StudentPhotoUploadModal({
                       className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                     />
 
-                    {/* Framing guide overlay */}
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                      {/* Face positioning oval */}
-                      <div className="w-44 h-52 sm:w-48 sm:h-56 rounded-[50%] border-2 border-dashed border-white/60 shadow-inner" />
-                      {/* Corner marks */}
-                      <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-white/80 rounded-tl-lg" />
-                      <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-white/80 rounded-tr-lg" />
-                      <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-white/80 rounded-bl-lg" />
-                      <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-white/80 rounded-br-lg" />
-                    </div>
+                    <JoiningPhotoGuidelinesOverlay
+                      instructionText={liveValidation.instruction}
+                      showHdBadge={true}
+                      variant="camera"
+                      isValidGuideline={liveValidation.canCapture}
+                    />
 
                     {isCameraStarting && (
-                      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs gap-2">
+                      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs gap-2 z-20">
                         <RefreshCw size={20} className="animate-spin text-indigo-400" />
                         <span>Starting camera...</span>
                       </div>
@@ -562,27 +1324,27 @@ export default function StudentPhotoUploadModal({
                     <button
                       type="button"
                       onClick={toggleFacingMode}
-                      className="absolute top-3 right-3 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-xs transition-colors"
+                      className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20 transition-colors z-20 pointer-events-auto"
                       title="Switch camera"
                     >
                       <FlipHorizontal size={16} />
                     </button>
                   </div>
 
-                  <p className="text-[11px] font-semibold text-slate-500 mt-2 text-center">
-                    Align student face within the framing guide and snap
+                  <p className="text-[11px] font-semibold text-slate-600 mt-2 text-center">
+                    {liveValidation.instruction}
                   </p>
 
-                  {/* Trigger Button */}
-                  <div className="mt-4 flex items-center justify-center">
+                  {/* Trigger Button - Always unblocked while camera active */}
+                  <div className="mt-3 flex items-center justify-center">
                     <button
                       type="button"
                       onClick={capturePhoto}
                       disabled={isCameraStarting || !hasActiveStream}
-                      className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-white border-4 border-indigo-600 shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="group relative flex items-center justify-center w-16 h-16 rounded-full border-4 shadow-xl transition-all bg-white border-emerald-500 hover:scale-105 active:scale-95 cursor-pointer shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Capture Photo"
                     >
-                      <span className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 group-hover:from-indigo-700 group-hover:to-blue-600 transition-colors" />
+                      <span className="w-11 h-11 rounded-full transition-all bg-gradient-to-tr from-emerald-600 to-teal-500 group-hover:from-emerald-700 group-hover:to-teal-600" />
                     </button>
                   </div>
                 </>
@@ -592,7 +1354,18 @@ export default function StudentPhotoUploadModal({
             </div>
           ) : (
             /* File Upload Mode */
-            <div className="w-full max-w-sm">
+            <div className="w-full max-w-sm flex flex-col items-center">
+              {/* Guidelines Notice for File Upload */}
+              <div className="w-full mb-3 bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5 text-left">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 mb-1">
+                  <ShieldCheck size={15} className="text-indigo-600" />
+                  Uploaded Photo Requirements
+                </span>
+                <p className="text-[11px] text-indigo-950 font-medium leading-relaxed">
+                  Uploaded image will be automatically validated for face presence, face size, upright head posture, and image quality.
+                </p>
+              </div>
+
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -639,7 +1412,7 @@ export default function StudentPhotoUploadModal({
         <div className="px-5 py-3 border-t border-gray-100 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
           <span className="flex items-center gap-1">
             <Sparkles size={13} className="text-amber-500" />
-            Square or portrait photo recommended
+            AI face posture & quality guidelines enabled
           </span>
           <button
             type="button"

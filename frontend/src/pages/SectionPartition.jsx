@@ -24,19 +24,30 @@ import {
 
 const CHUNK_SIZE = 50;
 
-const getBranchSectionConfig = (coursesWithLevels, courseName, branchName) => {
-  if (!branchName) {
+const getBranchSectionConfig = (coursesWithLevels, courseInput, branchInput) => {
+  if (!branchInput || !courseInput) {
     return { enabled: false, items: [] };
   }
 
-  const courseObj = coursesWithLevels.find((course) => course.name === courseName);
-  const branchObj = (courseObj?.branches || []).find((branch) => branch.name === branchName);
+  const courseStr = typeof courseInput === 'object' ? (courseInput.name || courseInput.id) : String(courseInput).trim();
+  const branchStr = typeof branchInput === 'object' ? (branchInput.name || branchInput.id) : String(branchInput).trim();
+
+  const courseObj = (coursesWithLevels || []).find(
+    (c) => String(c.name).toLowerCase() === courseStr.toLowerCase() || String(c.id) === courseStr
+  );
+  if (!courseObj) {
+    return { enabled: false, items: [] };
+  }
+
+  const branchObj = (courseObj.branches || []).find(
+    (b) => String(b.name).toLowerCase() === branchStr.toLowerCase() || String(b.id) === branchStr
+  );
   if (!branchObj?.metadata?.sections?.enabled) {
     return { enabled: false, items: [] };
   }
 
   const items = (branchObj.metadata?.sections?.items || [])
-    .map((item) => item?.name)
+    .map((item) => (typeof item === 'object' ? item?.name : item))
     .filter(Boolean);
 
   return { enabled: items.length > 0, items };
@@ -98,15 +109,17 @@ const SectionPartition = () => {
   );
 
   const branchHasSections = useMemo(() => {
+    if (!filters.course || !filters.branch) return false;
+    if (sectionOptions && sectionOptions.length > 0) return true;
     return getBranchSectionConfig(coursesWithLevels, filters.course, filters.branch).enabled;
-  }, [coursesWithLevels, filters.course, filters.branch]);
+  }, [coursesWithLevels, filters.course, filters.branch, sectionOptions]);
 
   const availableBranches = useMemo(() => {
     if (!filters.course) return [];
-    return (quickFilterOptions.branches || []).filter((branchName) =>
-      getBranchSectionConfig(coursesWithLevels, filters.course, branchName).enabled
-    );
-  }, [quickFilterOptions.branches, filters.course, coursesWithLevels]);
+    return (quickFilterOptions.branches || [])
+      .map((b) => (typeof b === 'object' ? b.name || b.id : b))
+      .filter(Boolean);
+  }, [quickFilterOptions.branches, filters.course]);
 
   const configuredSectionItems = useMemo(() => {
     if (sectionOptions.length > 0) return sectionOptions;
@@ -212,10 +225,11 @@ const SectionPartition = () => {
     setTotalStudents(0);
     setHasMore(false);
     setNextOffset(0);
+    setSectionOptions([]);
   }, []);
 
   const loadStudents = useCallback(async ({ offset = 0, append = false } = {}) => {
-    if (!filtersReady || !branchHasSections) {
+    if (!filtersReady) {
       resetStudentList();
       return;
     }
@@ -276,7 +290,7 @@ const SectionPartition = () => {
         setLoadingInitial(false);
       }
     }
-  }, [filters, filtersReady, branchHasSections, resetStudentList, applyRowsToSectionState]);
+  }, [filters, filtersReady, resetStudentList, applyRowsToSectionState]);
 
   useEffect(() => {
     fetchColleges();
@@ -288,12 +302,12 @@ const SectionPartition = () => {
   }, [filters.college, filters.course, filters.batch, fetchQuickFilterOptions]);
 
   useEffect(() => {
-    if (!filtersReady || !branchHasSections) {
+    if (!filtersReady) {
       resetStudentList();
       return;
     }
     loadStudents({ offset: 0, append: false });
-  }, [filtersReady, branchHasSections, filters.college, filters.course, filters.branch, filters.batch]);
+  }, [filtersReady, filters.college, filters.course, filters.branch, filters.batch, loadStudents, resetStudentList]);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
@@ -466,7 +480,7 @@ const SectionPartition = () => {
   };
 
   const handleRefresh = () => {
-    if (!filtersReady || !branchHasSections) return;
+    if (!filtersReady) return;
     loadStudents({ offset: 0, append: false });
   };
 
@@ -544,9 +558,15 @@ const SectionPartition = () => {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
             >
               <option value="">Select Course</option>
-              {quickFilterOptions.courses.map((course) => (
-                <option key={course} value={course.id || course}>{course.name || course}</option>
-              ))}
+              {quickFilterOptions.courses.map((course) => {
+                const val = typeof course === 'object' ? course.name || course.id : course;
+                const label = typeof course === 'object' ? course.name || course.id : course;
+                return (
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -561,9 +581,15 @@ const SectionPartition = () => {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
             >
               <option value="">Select Branch</option>
-              {availableBranches.map((branch) => (
-                <option key={branch} value={branch.id || branch}>{branch.name || branch}</option>
-              ))}
+              {availableBranches.map((branch) => {
+                const val = typeof branch === 'object' ? branch.name || branch.id : branch;
+                const label = typeof branch === 'object' ? branch.name || branch.id : branch;
+                return (
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -578,9 +604,15 @@ const SectionPartition = () => {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
             >
               <option value="">Select Batch</option>
-              {quickFilterOptions.batches.map((batch) => (
-                <option key={batch} value={batch.id || batch}>{batch.name || batch}</option>
-              ))}
+              {quickFilterOptions.batches.map((batch) => {
+                const val = typeof batch === 'object' ? batch.name || batch.id : batch;
+                const label = typeof batch === 'object' ? batch.name || batch.id : batch;
+                return (
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -599,7 +631,7 @@ const SectionPartition = () => {
           </button>
         </div>
 
-        {filters.branch && !branchHasSections && (
+        {filters.branch && !branchHasSections && students.length === 0 && !loadingInitial && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <AlertTriangle size={18} className="shrink-0 mt-0.5" />
             <span>
@@ -617,7 +649,7 @@ const SectionPartition = () => {
               Only Regular students are shown in PIN order. Assign sections using the table dropdown or Bulk Assign, then click Save.
             </p>
           </div>
-          {filtersReady && branchHasSections && (
+          {filtersReady && (
             <div className="text-sm text-gray-700 font-medium">
               <span className="text-indigo-600">{students.length.toLocaleString()}</span>
               {' of '}
@@ -634,10 +666,6 @@ const SectionPartition = () => {
         {!filtersReady ? (
           <div className="flex-1 flex items-center justify-center text-gray-500 border border-dashed border-gray-200 rounded-lg">
             Select all filters above to view students eligible for section partition.
-          </div>
-        ) : !branchHasSections ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500 border border-dashed border-gray-200 rounded-lg">
-            This branch does not support section partition.
           </div>
         ) : loadingInitial && students.length === 0 ? (
           <SkeletonTable rows={10} cols={7} />
@@ -763,9 +791,15 @@ const SectionPartition = () => {
                             }`}
                           >
                             <option value="">—</option>
-                            {configuredSectionItems.map((section) => (
-                              <option key={section} value={section.id || section}>{section.name || section}</option>
-                            ))}
+                            {configuredSectionItems.map((section) => {
+                              const val = typeof section === 'object' ? section.name || section.id : section;
+                              const label = typeof section === 'object' ? section.name || section.id : section;
+                              return (
+                                <option key={val} value={val}>
+                                  {label}
+                                </option>
+                              );
+                            })}
                           </select>
                         </td>
                       </tr>
@@ -845,9 +879,15 @@ const SectionPartition = () => {
                         autoFocus
                       >
                         <option value="">None (clear section)</option>
-                        {configuredSectionItems.map((section) => (
-                          <option key={section} value={section.id || section}>{section.name || section}</option>
-                        ))}
+                        {configuredSectionItems.map((section) => {
+                          const val = typeof section === 'object' ? section.name || section.id : section;
+                          const label = typeof section === 'object' ? section.name || section.id : section;
+                          return (
+                            <option key={val} value={val}>
+                              {label}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                     <p className="text-xs text-gray-500">
