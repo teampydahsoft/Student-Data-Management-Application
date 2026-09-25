@@ -8135,11 +8135,8 @@ exports.getRegistrationReport = async (req, res) => {
     const isNumeric = (val) => /^\d+$/.test(val);
 
     if (normalizedFilterCollege) {
-      if (isNumeric(normalizedFilterCollege)) {
-        baseQuery += ` AND college_id = ?`;
-        params.push(parseInt(normalizedFilterCollege, 10));
-      } else {
-        const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      if (clause) {
         baseQuery += ` AND ${clause}`;
         params.push(...collegeParams);
       }
@@ -8315,25 +8312,25 @@ exports.getRegistrationReport = async (req, res) => {
         pending: reportData.filter(s => s.overall_status === 'pending').length
       },
       verification: {
-        completed: reportData.filter(s => s.stages.verification === 'completed').length,
-        pending: reportData.filter(s => s.stages.verification !== 'completed').length
+        completed: reportData.filter(s => (s.stages.verification || '').toLowerCase() === 'completed').length,
+        pending: reportData.filter(s => (s.stages.verification || '').toLowerCase() !== 'completed').length
       },
       certificates: {
-        verified: reportData.filter(s => s.stages.certificates === 'completed').length,
-        temporary: reportData.filter(s => s.stages.certificates === 'temporary').length,
-        pending: reportData.filter(s => s.stages.certificates !== 'completed' && s.stages.certificates !== 'temporary').length
+        verified: reportData.filter(s => (s.stages.certificates || '').toLowerCase() === 'completed').length,
+        temporary: reportData.filter(s => (s.stages.certificates || '').toLowerCase() === 'temporary').length,
+        pending: reportData.filter(s => (s.stages.certificates || '').toLowerCase() !== 'completed' && (s.stages.certificates || '').toLowerCase() !== 'temporary').length
       },
       fees: {
-        cleared: reportData.filter(s => s.stages.fee === 'completed').length,
-        pending: reportData.filter(s => s.stages.fee !== 'completed').length
+        cleared: reportData.filter(s => (s.stages.fee || '').toLowerCase() === 'completed').length,
+        pending: reportData.filter(s => (s.stages.fee || '').toLowerCase() !== 'completed').length
       },
       promotion: {
-        completed: reportData.filter(s => s.stages.promotion === 'completed').length,
-        pending: reportData.filter(s => s.stages.promotion !== 'completed').length
+        completed: reportData.filter(s => (s.stages.promotion || '').toLowerCase() === 'completed').length,
+        pending: reportData.filter(s => (s.stages.promotion || '').toLowerCase() !== 'completed').length
       },
       scholarship: {
-        assigned: reportData.filter(s => s.stages.scholarship === 'completed').length,
-        pending: reportData.filter(s => s.stages.scholarship === 'pending').length
+        assigned: reportData.filter(s => (s.stages.scholarship || '').toLowerCase() === 'completed').length,
+        pending: reportData.filter(s => (s.stages.scholarship || '').toLowerCase() !== 'completed').length
       }
     };
 

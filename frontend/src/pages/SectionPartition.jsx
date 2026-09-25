@@ -500,7 +500,7 @@ const SectionPartition = () => {
               <LayoutGrid size={20} />
               <span className="text-xs font-bold uppercase tracking-widest">Students</span>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Section Partition</h1>
+            <h1 className="text-xl font-bold text-gray-900">Section Management</h1>
             <p className="text-sm text-gray-600 mt-1">
               Regular students in the selected batch are listed by PIN order. Assign sections and click Save.
             </p>
@@ -665,7 +665,7 @@ const SectionPartition = () => {
 
         {!filtersReady ? (
           <div className="flex-1 flex items-center justify-center text-gray-500 border border-dashed border-gray-200 rounded-lg">
-            Select all filters above to view students eligible for section partition.
+            Select all filters above to view students eligible for section management.
           </div>
         ) : loadingInitial && students.length === 0 ? (
           <SkeletonTable rows={10} cols={7} />

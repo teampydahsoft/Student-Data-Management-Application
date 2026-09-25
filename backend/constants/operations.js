@@ -16,7 +16,7 @@ const AVAILABLE_OPERATIONS = [
   },
   {
     key: 'section_partition',
-    label: 'Section Partition',
+    label: 'Section Management',
     description: 'Assign students to sections within a branch and batch.'
   },
   {

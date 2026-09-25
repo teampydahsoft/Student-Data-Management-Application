@@ -43,7 +43,8 @@ const formatRegistrationStatusDisplay = (status) => {
   if (normalized === 'not_applied') return 'Not applied';
   if (normalized === 'eligible') return 'Eligible';
   if (normalized === 'pending') return 'Pending';
-  return REGISTRATION_EMPTY_DISPLAY;
+  if (status && String(status).toLowerCase().includes('temporary')) return 'Temporary';
+  return 'Pending';
 };
 
 const getStageBadgeDisplay = (completed, rawText) => (
@@ -149,7 +150,9 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
     certificates: {
       completed: isCertComplete,
       optional: optSet.has('certificates'),
-      display: getStageBadgeDisplay(isCertComplete || optSet.has('certificates'), certStatus),
+      display: isCertTemporary
+        ? 'Temporary'
+        : getStageBadgeDisplay(isCertComplete || optSet.has('certificates'), certStatus),
       status: isCertTemporary ? 'temporary' : (isCertComplete ? 'completed' : (optSet.has('certificates') ? 'optional' : 'pending'))
     },
     fee: {
@@ -163,7 +166,7 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
       optional: optSet.has('promotion'),
       display: getStageBadgeDisplay(
         isPromotionComplete || optSet.has('promotion'),
-        isPromotionComplete ? 'Completed' : REGISTRATION_EMPTY_DISPLAY
+        isPromotionComplete ? 'Completed' : 'Pending'
       ),
       status: isPromotionComplete ? 'completed' : (optSet.has('promotion') ? 'optional' : 'pending')
     },
@@ -172,7 +175,7 @@ const computeRegistrationStages = (student, studentData, scholarStatus, scholarF
       optional: isScholarshipOptional,
       optionalPriorYear: false,
       display: isScholarshipOptional && !isScholarshipComplete
-        ? REGISTRATION_EMPTY_DISPLAY
+        ? 'Pending'
         : getStageBadgeDisplay(isScholarshipComplete, isScholarshipComplete ? scholarStatus : (scholarStatus || 'pending')),
       status: isScholarshipComplete
         ? 'completed'
