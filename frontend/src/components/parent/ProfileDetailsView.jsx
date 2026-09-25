@@ -17,8 +17,17 @@ const ProfileDetailsView = ({ data }) => {
 
         <ProfileSection title="Parent Information" icon={Users} iconClassName="text-orange-600">
           <ProfileField label="Father Name" value={data.father_name} />
+          <ProfileField label="Mother Name" value={data.mother_name || data.student_data?.mother_name} />
           <ProfileField label="Parent Mobile 1" value={data.parent_mobile1 || data.parent_mobile} />
           <ProfileField label="Parent Mobile 2" value={data.parent_mobile2} />
+          <ProfileField 
+            label="Preferred Mobile" 
+            value={
+              (data.preferred_parent_mobile || data.student_data?.preferred_parent_mobile) === 'mother'
+                ? `Mother Number (${data.parent_mobile2 || '—'})`
+                : `Father Number (${data.parent_mobile1 || data.parent_mobile || '—'})`
+            } 
+          />
           <div className="flex flex-wrap gap-3 pt-1">
             <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${data.is_parent_mobile_verified ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
               {data.is_parent_mobile_verified ? <CheckCircle size={12} /> : <XCircle size={12} />}

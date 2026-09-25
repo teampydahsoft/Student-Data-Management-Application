@@ -55,6 +55,7 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
     student_mobile: '',
     parent_mobile1: '',
     parent_mobile2: '',
+    preferred_parent_mobile: 'father',
     caste: '',
     gender: '',
     father_name: '',
@@ -1005,6 +1006,20 @@ const IndividualStudentModal = ({ isOpen, onClose, forms, isLoadingForms = false
                         onChange={handleChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Preferred Parent Mobile
+                      </label>
+                      <select
+                        name="preferred_parent_mobile"
+                        value={studentData.preferred_parent_mobile || 'father'}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none bg-white"
+                      >
+                        <option value="father">Father Number</option>
+                        <option value="mother">Mother Number</option>
+                      </select>
                     </div>
                   </div>
                 </div>

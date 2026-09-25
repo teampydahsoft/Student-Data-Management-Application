@@ -393,12 +393,13 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
 const resolveParentContact = (student) => {
   if (!student) return '';
 
-  if (student.parent_mobile1) {
-    return student.parent_mobile1;
-  }
-
-  if (student.parent_mobile2) {
-    return student.parent_mobile2;
+  const pref = student.preferred_parent_mobile || student.student_data?.preferred_parent_mobile;
+  if (pref === 'mother') {
+    if (student.parent_mobile2) return student.parent_mobile2;
+    if (student.parent_mobile1) return student.parent_mobile1;
+  } else {
+    if (student.parent_mobile1) return student.parent_mobile1;
+    if (student.parent_mobile2) return student.parent_mobile2;
   }
 
   const data = student.student_data;

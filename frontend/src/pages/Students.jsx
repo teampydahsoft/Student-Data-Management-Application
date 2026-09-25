@@ -4699,7 +4699,16 @@ const Students = () => {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Mother Name</span>
-                            <span className="font-bold text-gray-900 truncate max-w-[120px]">{selectedStudent?.student_data?.mother_name || '-'}</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.mother_name !== undefined ? editData.mother_name : (selectedStudent?.student_data?.mother_name || selectedStudent?.mother_name || '')}
+                                onChange={(e) => updateEditField('mother_name', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900 truncate max-w-[120px]">{editData.mother_name || selectedStudent?.student_data?.mother_name || selectedStudent?.mother_name || '-'}</span>
+                            )}
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Mother Mobile</span>
@@ -4726,8 +4735,41 @@ const Students = () => {
                             )}
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Emergency</span>
-                            <span className="font-bold text-gray-900 font-mono">{selectedStudent?.parent_mobile2 || selectedStudent?.parent_mobile1 || '-'}</span>
+                            <span className="text-gray-500 font-semibold">Preferred Mobile</span>
+                            {editMode ? (
+                              <select
+                                value={editData.preferred_parent_mobile || (selectedStudent?.preferred_parent_mobile || selectedStudent?.student_data?.preferred_parent_mobile || 'father')}
+                                onChange={(e) => updateEditField('preferred_parent_mobile', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                              >
+                                <option value="father">Father Number</option>
+                                <option value="mother">Mother Number</option>
+                              </select>
+                            ) : (
+                              <div className="flex items-center gap-1 font-mono font-bold text-gray-900">
+                                <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-sans font-semibold border border-amber-200">
+                                  {(editData.preferred_parent_mobile || selectedStudent?.preferred_parent_mobile || selectedStudent?.student_data?.preferred_parent_mobile) === 'mother' ? 'Mother Number' : 'Father Number'}
+                                </span>
+                                <span>
+                                  {(() => {
+                                    const pref = editData.preferred_parent_mobile || selectedStudent?.preferred_parent_mobile || selectedStudent?.student_data?.preferred_parent_mobile || 'father';
+                                    const key = pref === 'mother' ? 'parent_mobile2' : 'parent_mobile1';
+                                    const val = editData[key] !== undefined ? editData[key] : (selectedStudent?.[key] || selectedStudent?.student_data?.[key] || '-');
+                                    return val !== '-' ? (revealedMobiles[key] ? val : maskMobileNumber(val)) : '-';
+                                  })()}
+                                </span>
+                                {(() => {
+                                  const pref = editData.preferred_parent_mobile || selectedStudent?.preferred_parent_mobile || selectedStudent?.student_data?.preferred_parent_mobile || 'father';
+                                  const key = pref === 'mother' ? 'parent_mobile2' : 'parent_mobile1';
+                                  const val = editData[key] !== undefined ? editData[key] : (selectedStudent?.[key] || selectedStudent?.student_data?.[key] || '');
+                                  return val ? (
+                                    <button onClick={() => toggleRevealMobile(key)} className="text-amber-600 p-0.5 hover:bg-amber-50 rounded">
+                                      {revealedMobiles[key] ? <EyeOff size={11} /> : <Eye size={11} />}
+                                    </button>
+                                  ) : null;
+                                })()}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

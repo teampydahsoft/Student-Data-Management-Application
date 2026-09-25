@@ -382,7 +382,7 @@ const buildRegistrationAbstractCacheKey = (req) => {
     filter_scholarship_status,
     filter_academic_year,
     search
-  } = req.query;
+  } = req.query || {};
 
   const scholarshipFilterAbstract = (filter_scholarship_status || req.query.filter_scholarshipStatus || '').trim().toLowerCase();
   const normalizedAcademicYear = (filter_academic_year || '').trim();
@@ -4859,19 +4859,55 @@ exports.getDashboardStats = async (req, res) => {
       }
     }
 
-    // Run all independent queries in parallel
-    const [studentCountResult, pendingResult, recentSubmissionsResult, attendanceResult] = await Promise.allSettled([
+    // Run all independent queries in parallel with graceful error handling
+    const [
+      studentCountResult,
+      registrationStatusResult,
+      monthlyRegistrationsResult,
+      submissionsStatusResult,
+      recentSubmissionsResult,
+      attendanceResult,
+      collegeAttendanceResult,
+      weeklyAttendanceResult,
+      monthlyAttendanceResult,
+      serviceRequestsResult,
+      recentServicesResult,
+      ticketStatsResult,
+      recentTicketsResult,
+      profileRequestsResult,
+      recentProfileRequestsResult,
+      upcomingEventsResult
+    ] = await Promise.allSettled([
       masterPool.query(statsQuery, statsParams),
-      masterPool.query('SELECT COUNT(*) as count FROM form_submissions WHERE status = ?', ['pending']),
+      masterPool.query(`
+        SELECT COALESCE(registration_status, 'pending') as status, COUNT(*) as count 
+        FROM students 
+        WHERE student_status = 'Regular'
+        GROUP BY COALESCE(registration_status, 'pending')
+      `),
+      masterPool.query(`
+        SELECT 
+          DATE_FORMAT(created_at, '%b') as month,
+          MONTH(created_at) as month_num,
+          SUM(CASE WHEN LOWER(COALESCE(registration_status, 'pending')) IN ('completed', 'approved') THEN 1 ELSE 0 END) as approved,
+          SUM(CASE WHEN LOWER(COALESCE(registration_status, 'pending')) = 'pending' THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN LOWER(COALESCE(registration_status, 'pending')) IN ('temporary', 'rejected') THEN 1 ELSE 0 END) as rejected
+        FROM students
+        WHERE student_status = 'Regular' AND created_at IS NOT NULL
+        GROUP BY MONTH(created_at), DATE_FORMAT(created_at, '%b')
+        ORDER BY MIN(created_at) ASC
+        LIMIT 12
+      `),
+      masterPool.query('SELECT status, COUNT(*) as count FROM form_submissions GROUP BY status'),
       masterPool.query(
         `SELECT fs.submission_id, fs.admission_number, fs.status, fs.created_at, fs.form_id,
-                f.form_name
+                f.form_name, s.student_name
          FROM form_submissions fs
          LEFT JOIN forms f ON f.form_id = fs.form_id
+         LEFT JOIN students s ON s.admission_number = fs.admission_number
          ORDER BY fs.created_at DESC
          LIMIT 10`
       ),
-      // Today's present/absent counts — scoped to the same students visible to this user
       masterPool.query(
         `SELECT ar.status, COUNT(*) AS count
          FROM attendance_records ar
@@ -4881,60 +4917,375 @@ exports.getDashboardStats = async (req, res) => {
          GROUP BY ar.status`,
         [todayKey, ...attendanceScopeParams]
       ),
+      masterPool.query(
+        `SELECT c.id, c.name, c.code,
+                COUNT(s.id) as totalStudents,
+                SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END) as presentToday,
+                SUM(CASE WHEN ar.status = 'absent' THEN 1 ELSE 0 END) as absentToday,
+                COUNT(ar.id) as recordsToday
+         FROM colleges c
+         LEFT JOIN students s ON (s.college_id = c.id OR s.college COLLATE utf8mb4_unicode_ci = c.name OR s.college COLLATE utf8mb4_unicode_ci = c.code) AND s.student_status = 'Regular'
+         LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
+         GROUP BY c.id, c.name, c.code`,
+        [todayKey]
+      ),
+      masterPool.query(
+        `SELECT ar.status, COUNT(*) AS count
+         FROM attendance_records ar
+         INNER JOIN students s ON s.id = ar.student_id
+         WHERE ar.attendance_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 DAY) AND CURDATE()
+           AND s.student_status = 'Regular'${attendanceScopeJoin}
+         GROUP BY ar.status`,
+        [...attendanceScopeParams]
+      ),
+      masterPool.query(
+        `SELECT ar.status, COUNT(*) AS count
+         FROM attendance_records ar
+         INNER JOIN students s ON s.id = ar.student_id
+         WHERE ar.attendance_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 29 DAY) AND CURDATE()
+           AND s.student_status = 'Regular'${attendanceScopeJoin}
+         GROUP BY ar.status`,
+        [...attendanceScopeParams]
+      ),
+      masterPool.query('SELECT status, COUNT(*) as count FROM service_requests GROUP BY status'),
+      masterPool.query(
+        `SELECT sr.id, sr.status, sr.created_at, s.name as service_name, st.student_name, st.admission_number
+         FROM service_requests sr
+         LEFT JOIN services s ON sr.service_id = s.id
+         LEFT JOIN students st ON sr.student_id = st.id
+         ORDER BY sr.created_at DESC
+         LIMIT 5`
+      ),
+      masterPool.query('SELECT status, COUNT(*) as count FROM tickets GROUP BY status'),
+      masterPool.query(
+        `SELECT t.id, t.ticket_number, t.status, t.priority, t.created_at, c.name as category_name, s.student_name, s.admission_number
+         FROM tickets t
+         LEFT JOIN complaint_categories c ON t.category_id = c.id
+         LEFT JOIN students s ON t.student_id = s.id
+         ORDER BY t.created_at DESC
+         LIMIT 5`
+      ),
+      masterPool.query('SELECT status, COUNT(*) as count FROM profile_change_requests GROUP BY status'),
+      masterPool.query(
+        `SELECT p.id, p.admission_number, p.requested_changes, p.status, p.created_at, s.student_name, s.college, s.branch
+         FROM profile_change_requests p
+         LEFT JOIN students s ON p.admission_number = s.admission_number
+         WHERE p.status = 'pending'
+         ORDER BY p.created_at DESC
+         LIMIT 5`
+      ),
+      masterPool.query(
+        `SELECT id, title, description, event_date, start_time, end_time, event_type, is_active
+         FROM events
+         WHERE is_active = 1
+         ORDER BY event_date DESC
+         LIMIT 10`
+      )
     ]);
 
     const masterDbConnected = studentCountResult.status === 'fulfilled';
-    if (!masterDbConnected) {
-      console.warn('Dashboard stats: master database unavailable', studentCountResult.reason?.message);
+    const totalStudents = studentCountResult.status === 'fulfilled' ? Number(studentCountResult.value[0]?.[0]?.total || 0) : 0;
+
+    // Registrations breakdown from students table
+    let registrationsSummary = { total: 0, pending: 0, approved: 0, rejected: 0 };
+    if (registrationStatusResult.status === 'fulfilled') {
+      const rows = registrationStatusResult.value[0] || [];
+      rows.forEach(r => {
+        const cnt = Number(r.count) || 0;
+        registrationsSummary.total += cnt;
+        const st = (r.status || '').toLowerCase();
+        if (st === 'completed' || st === 'approved') registrationsSummary.approved += cnt;
+        else if (st === 'temporary' || st === 'rejected') registrationsSummary.rejected += cnt;
+        else registrationsSummary.pending += cnt;
+      });
     }
 
-    const totalStudents =
-      studentCountResult.status === 'fulfilled'
-        ? studentCountResult.value[0]?.[0]?.total || 0
-        : 0;
-
-    const pendingSubmissions =
-      pendingResult.status === 'fulfilled'
-        ? pendingResult.value[0]?.[0]?.count || 0
-        : 0;
-
-    if (pendingResult.status === 'rejected') {
-      console.warn('Dashboard stats: unable to count pending submissions', pendingResult.reason?.message);
+    // Monthly Registrations breakdown
+    let monthlyRegistrations = [];
+    if (monthlyRegistrationsResult.status === 'fulfilled') {
+      monthlyRegistrations = (monthlyRegistrationsResult.value[0] || []).map(r => ({
+        month: r.month,
+        approved: Number(r.approved || 0),
+        pending: Number(r.pending || 0),
+        rejected: Number(r.rejected || 0)
+      }));
     }
 
     let recentWithNames = [];
     if (recentSubmissionsResult.status === 'fulfilled') {
-      const rows = recentSubmissionsResult.value[0] || [];
-      recentWithNames = rows.map((r) => ({ ...r, submitted_at: r.created_at }));
-    } else {
-      console.warn('Dashboard stats: unable to fetch recent submissions', recentSubmissionsResult.reason?.message);
+      recentWithNames = (recentSubmissionsResult.value[0] || []).map(r => ({ ...r, submitted_at: r.created_at }));
     }
 
-    // Parse today's attendance counts from the grouped result
+    // Attendance breakdown
     let presentToday = 0;
     let absentToday = 0;
+    let holidayToday = 0;
     if (attendanceResult.status === 'fulfilled') {
-      const rows = attendanceResult.value[0] || [];
-      rows.forEach((row) => {
+      (attendanceResult.value[0] || []).forEach(row => {
         if (row.status === 'present') presentToday = Number(row.count) || 0;
-        if (row.status === 'absent') absentToday = Number(row.count) || 0;
+        else if (row.status === 'absent') absentToday = Number(row.count) || 0;
+        else if (row.status === 'holiday') holidayToday = Number(row.count) || 0;
       });
-    } else {
-      console.warn('Dashboard stats: unable to fetch today attendance counts', attendanceResult.reason?.message);
+    }
+
+    let weeklyPresent = 0, weeklyAbsent = 0, weeklyHoliday = 0;
+    if (weeklyAttendanceResult && weeklyAttendanceResult.status === 'fulfilled') {
+      (weeklyAttendanceResult.value[0] || []).forEach(row => {
+        if (row.status === 'present') weeklyPresent = Number(row.count) || 0;
+        else if (row.status === 'absent') weeklyAbsent = Number(row.count) || 0;
+        else if (row.status === 'holiday') weeklyHoliday = Number(row.count) || 0;
+      });
+    }
+
+    let monthlyPresent = 0, monthlyAbsent = 0, monthlyHoliday = 0;
+    if (monthlyAttendanceResult && monthlyAttendanceResult.status === 'fulfilled') {
+      (monthlyAttendanceResult.value[0] || []).forEach(row => {
+        if (row.status === 'present') monthlyPresent = Number(row.count) || 0;
+        else if (row.status === 'absent') monthlyAbsent = Number(row.count) || 0;
+        else if (row.status === 'holiday') monthlyHoliday = Number(row.count) || 0;
+      });
+    }
+
+    let collegeAttendanceList = [];
+    let isAttendancePostedToday = false;
+    let collegesPostedCount = 0;
+    if (collegeAttendanceResult.status === 'fulfilled') {
+      collegeAttendanceList = (collegeAttendanceResult.value[0] || []).map(c => {
+        const recs = Number(c.recordsToday) || 0;
+        if (recs > 0) collegesPostedCount++;
+        return {
+          id: c.id,
+          name: c.name,
+          code: c.code,
+          totalStudents: Number(c.totalStudents) || 0,
+          presentToday: Number(c.presentToday) || 0,
+          absentToday: Number(c.absentToday) || 0,
+          isPosted: recs > 0
+        };
+      });
+      isAttendancePostedToday = (presentToday + absentToday) > 0 || collegesPostedCount > 0;
+    }
+
+    const pendingToday = Math.max(0, totalStudents - presentToday - absentToday - holidayToday);
+    const weeklyMarked = weeklyPresent + weeklyAbsent + weeklyHoliday;
+    const monthlyMarked = monthlyPresent + monthlyAbsent + monthlyHoliday;
+
+    const periodsAttendance = {
+      today: {
+        present: presentToday,
+        absent: absentToday,
+        holiday: holidayToday,
+        pending: pendingToday,
+        total: totalStudents,
+        marked: presentToday + absentToday + holidayToday,
+        rate: totalStudents > 0 ? Math.round(((presentToday + absentToday + holidayToday) / totalStudents) * 100) : 0
+      },
+      weekly: {
+        present: weeklyPresent,
+        absent: weeklyAbsent,
+        holiday: weeklyHoliday,
+        pending: Math.max(0, (totalStudents * 6) - weeklyMarked),
+        total: totalStudents * 6,
+        marked: weeklyMarked,
+        rate: (totalStudents * 6) > 0 ? Math.round((weeklyMarked / (totalStudents * 6)) * 100) : 0
+      },
+      monthly: {
+        present: monthlyPresent,
+        absent: monthlyAbsent,
+        holiday: monthlyHoliday,
+        pending: Math.max(0, (totalStudents * 25) - monthlyMarked),
+        total: totalStudents * 25,
+        marked: monthlyMarked,
+        rate: (totalStudents * 25) > 0 ? Math.round((monthlyMarked / (totalStudents * 25)) * 100) : 0
+      }
+    };
+
+    // Service Requests breakdown
+    let serviceRequestsSummary = { total: 0, pending: 0, processing: 0, completed: 0, rejected: 0 };
+    if (serviceRequestsResult.status === 'fulfilled') {
+      (serviceRequestsResult.value[0] || []).forEach(r => {
+        const cnt = Number(r.count) || 0;
+        serviceRequestsSummary.total += cnt;
+        const st = (r.status || '').toLowerCase();
+        if (st === 'pending') serviceRequestsSummary.pending += cnt;
+        else if (st === 'processing') serviceRequestsSummary.processing += cnt;
+        else if (['ready_to_collect', 'completed'].includes(st)) serviceRequestsSummary.completed += cnt;
+        else if (['closed', 'rejected'].includes(st)) serviceRequestsSummary.rejected += cnt;
+      });
+    }
+    const recentServiceRequests = recentServicesResult.status === 'fulfilled' ? recentServicesResult.value[0] || [] : [];
+
+    // Maintenance Tickets breakdown
+    let ticketsSummary = { total: 0, open: 0, in_progress: 0, resolved: 0, closed: 0 };
+    if (ticketStatsResult.status === 'fulfilled') {
+      (ticketStatsResult.value[0] || []).forEach(r => {
+        const cnt = Number(r.count) || 0;
+        ticketsSummary.total += cnt;
+        const st = (r.status || '').toLowerCase();
+        if (['open', 'pending'].includes(st)) ticketsSummary.open += cnt;
+        else if (['in_progress', 'resolving'].includes(st)) ticketsSummary.in_progress += cnt;
+        else if (['resolved', 'completed'].includes(st)) ticketsSummary.resolved += cnt;
+        else if (st === 'closed') ticketsSummary.closed += cnt;
+      });
+    }
+    const recentTickets = recentTicketsResult.status === 'fulfilled' ? recentTicketsResult.value[0] || [] : [];
+
+    // Profile Change Requests breakdown
+    let profileRequestsSummary = { total: 0, pending: 0, approved: 0, rejected: 0 };
+    if (profileRequestsResult.status === 'fulfilled') {
+      (profileRequestsResult.value[0] || []).forEach(r => {
+        const cnt = Number(r.count) || 0;
+        profileRequestsSummary.total += cnt;
+        const st = (r.status || '').toLowerCase();
+        if (st === 'pending') profileRequestsSummary.pending += cnt;
+        else if (st === 'approved') profileRequestsSummary.approved += cnt;
+        else if (st === 'rejected') profileRequestsSummary.rejected += cnt;
+      });
+    }
+    const recentProfileRequests = recentProfileRequestsResult.status === 'fulfilled' ? recentProfileRequestsResult.value[0] || [] : [];
+
+    // Events
+    const upcomingEvents = upcomingEventsResult.status === 'fulfilled' ? upcomingEventsResult.value[0] || [] : [];
+
+    // Recent activity feed combining tickets, service requests, profile requests
+    const activities = [];
+    recentTickets.slice(0, 2).forEach(t => {
+      activities.push({
+        id: `t-${t.id}`,
+        text: `Ticket #${t.ticket_number || t.id} updated (${t.category_name || 'General'})`,
+        time: t.created_at,
+        type: 'ticket'
+      });
+    });
+    recentServiceRequests.slice(0, 2).forEach(s => {
+      activities.push({
+        id: `sr-${s.id}`,
+        text: `Service request raised: ${s.service_name || 'General'}`,
+        time: s.created_at,
+        type: 'service'
+      });
+    });
+    recentProfileRequests.slice(0, 2).forEach(p => {
+      activities.push({
+        id: `pr-${p.id}`,
+        text: `Profile change request submitted by ${p.student_name || p.admission_number}`,
+        time: p.created_at,
+        type: 'profile'
+      });
+    });
+
+    // Compute exact 5-stage registration statistics (matching Registration Reports)
+    let stageStatistics = null;
+    try {
+      const abstractRows = await fetchRegistrationAbstractRows(req);
+      let totalAb = 0;
+      let overallCompleted = 0;
+      let overallTemporary = 0;
+      let verificationCompleted = 0;
+      let certificatesVerified = 0;
+      let certificatesTemporary = 0;
+      let feeCleared = 0;
+      let promotionCompleted = 0;
+      let scholarshipAssigned = 0;
+      let scholarshipPending = 0;
+
+      for (const r of abstractRows) {
+        const t = parseInt(r.total || 0, 10);
+        totalAb += t;
+        overallCompleted += parseInt(r.overall_completed || 0, 10);
+        overallTemporary += parseInt(r.overall_temporary || 0, 10);
+        verificationCompleted += parseInt(r.verification_completed || 0, 10);
+        certificatesVerified += parseInt(r.certificates_verified || 0, 10);
+        certificatesTemporary += parseInt(r.certificates_temporary || 0, 10);
+        feeCleared += parseInt(r.fee_cleared || 0, 10);
+        promotionCompleted += parseInt(r.promotion_completed || 0, 10);
+        scholarshipAssigned += parseInt(r.scholarship_assigned || 0, 10);
+        scholarshipPending += parseInt(r.scholarship_pending ?? (t - parseInt(r.scholarship_assigned || 0, 10)), 10);
+      }
+
+      const overallPending = Math.max(0, totalAb - overallCompleted - overallTemporary);
+      stageStatistics = {
+        total: totalAb,
+        registration: { completed: overallCompleted, temporary: overallTemporary, pending: overallPending },
+        verification: { completed: verificationCompleted, pending: Math.max(0, totalAb - verificationCompleted) },
+        certificates: { verified: certificatesVerified, temporary: certificatesTemporary, pending: Math.max(0, totalAb - certificatesVerified - certificatesTemporary) },
+        fees: { cleared: feeCleared, pending: Math.max(0, totalAb - feeCleared) },
+        promotion: { completed: promotionCompleted, pending: Math.max(0, totalAb - promotionCompleted) },
+        scholarship: { assigned: scholarshipAssigned, pending: scholarshipPending }
+      };
+
+      if (totalAb > 0) {
+        registrationsSummary = {
+          total: totalAb,
+          approved: overallCompleted,
+          temporary: overallTemporary,
+          pending: overallPending,
+          rejected: overallTemporary
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to compute stage statistics for dashboard:', err);
     }
 
     res.json({
       success: true,
       data: {
         totalStudents,
-        pendingSubmissions,
+        pendingSubmissions: registrationsSummary.pending,
         recentSubmissions: recentWithNames,
         presentToday,
         absentToday,
+        holidayToday,
         attendanceDate: todayKey,
-        completedProfiles: 0,
-        averageCompletion: 0,
         masterDbConnected,
+
+        // 1. Student Attendance Posted or Not
+        attendanceStatus: {
+          isPostedToday: isAttendancePostedToday,
+          collegesPostedCount,
+          totalCollegesCount: collegeAttendanceList.length,
+          presentToday,
+          absentToday,
+          holidayToday,
+          totalMarked: presentToday + absentToday + holidayToday,
+          collegeList: collegeAttendanceList,
+          periods: periodsAttendance
+        },
+
+        // 2. Events Calendars
+        events: {
+          totalUpcoming: upcomingEvents.length,
+          list: upcomingEvents
+        },
+
+        // 3. Service Requests Raised
+        serviceRequests: {
+          summary: serviceRequestsSummary,
+          recent: recentServiceRequests
+        },
+
+        // 4. Maintenance Tickets Raised
+        maintenanceTickets: {
+          summary: ticketsSummary,
+          recent: recentTickets
+        },
+
+        // 5. Students Profile Requests Pending
+        profileRequests: {
+          summary: profileRequestsSummary,
+          recent: recentProfileRequests
+        },
+
+        // 6. Students Registrations Status & 5-Stage Abstract
+        registrations: {
+          summary: registrationsSummary,
+          stages: stageStatistics,
+          monthly: monthlyRegistrations,
+          recent: recentWithNames
+        },
+
+        // 7. Recent combined activity
+        recentActivities: activities
       },
     });
   } catch (error) {
