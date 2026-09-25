@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, CheckCircle, Shield, AlertCircle, Send, KeyRound, Smartphone } from 'lucide-react';
 import api from '../../config/api';
 import { toast } from 'react-hot-toast';
@@ -205,8 +206,10 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
         return number.slice(0, 2) + '******' + number.slice(-2);
     };
 
-    return (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
 
                 {/* Header */}
@@ -413,7 +416,8 @@ const MobileVerificationModal = ({ isOpen, onClose, student, onVerificationCompl
                 </div>
 
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

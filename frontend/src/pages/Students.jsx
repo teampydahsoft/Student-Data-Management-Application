@@ -45,7 +45,8 @@ import {
   Activity,
   Info,
   MoreHorizontal,
-  Sparkles
+  Sparkles,
+  Bus
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
@@ -62,6 +63,7 @@ import StudentRemarksModal from '../components/Students/StudentRemarksModal';
 import StudentRemarksContent from '../components/Students/StudentRemarksContent';
 import StudentHistoryLogs from '../components/Students/StudentHistoryLogs';
 import StudentScholarshipHistoryTab from '../components/Students/StudentScholarshipHistoryTab';
+import StudentTransportHostelTab from '../components/Students/StudentTransportHostelTab';
 import StudentMeritStatusTab from '../components/Students/StudentMeritStatusTab';
 import StudentExportModal from '../components/Students/StudentExportModal';
 import BulkUploadModal from '../components/BulkUploadModal';
@@ -4324,6 +4326,18 @@ const Students = () => {
                   </button>
                 )}
 
+                <button
+                  onClick={() => setActiveStudentTab('transport_hostel')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    activeStudentTab === 'transport_hostel'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <Bus size={15} />
+                  <span>Transport/Hostel</span>
+                </button>
+
                 {canViewSms && (
                   <button
                     onClick={() => setActiveStudentTab('sms_tracking')}
@@ -5434,6 +5448,10 @@ const Students = () => {
                     } : prev));
                   }}
                 />
+              )}
+
+              {activeStudentTab === 'transport_hostel' && (
+                <StudentTransportHostelTab student={selectedStudent} />
               )}
 
               {activeStudentTab === 'merit_status' && canViewMeritStatus && (
