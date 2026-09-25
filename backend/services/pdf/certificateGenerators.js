@@ -127,12 +127,17 @@ const generateStudyCertificate = async (student, request, collegeDetails) => {
   });
 
   // Phone/Website
-  doc.text(
-    `Ph: ${collegeDetails.phone || "0884-2315333"}   Website : ${collegeDetails.website || "www.pydah.edu.in"}`,
-    40,
-    86,
-    { align: "center", width: contentWidth },
-  );
+  const contactParts = [];
+  if (collegeDetails.phone) contactParts.push(`Ph: ${collegeDetails.phone}`);
+  if (collegeDetails.website) contactParts.push(`Website : ${collegeDetails.website}`);
+  if (contactParts.length > 0) {
+    doc.text(
+      contactParts.join('   '),
+      40,
+      86,
+      { align: "center", width: contentWidth },
+    );
+  }
 
   // Line separator
   doc

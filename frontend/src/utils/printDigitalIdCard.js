@@ -18,7 +18,12 @@ function ensureMount() {
 function cloneCard(source) {
   const clone = source.cloneNode(true);
   clone.classList.add('id-card-print-root');
-  clone.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+  clone.querySelectorAll('[id]').forEach((el) => {
+    const tag = el.tagName ? el.tagName.toLowerCase() : '';
+    if (!el.closest('defs') && !['lineargradient', 'radialgradient', 'clippath', 'pattern', 'filter', 'mask', 'stop', 'svg'].includes(tag)) {
+      el.removeAttribute('id');
+    }
+  });
   clone.style.removeProperty('min-height');
   clone.style.removeProperty('aspect-ratio');
   clone.style.removeProperty('transform');

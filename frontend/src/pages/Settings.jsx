@@ -1200,6 +1200,8 @@ const Settings = () => {
     name: '',
     code: '',
     address: '',
+    website: '',
+    contact: '',
     isActive: true,
     principalSignatureFile: null,
     principalSignaturePreview: null
@@ -2420,6 +2422,8 @@ const Settings = () => {
       name: '',
       code: '',
       address: '',
+      website: '',
+      contact: '',
       isActive: true,
       principalSignatureFile: null,
       principalSignaturePreview: null
@@ -2445,6 +2449,8 @@ const Settings = () => {
         name: newCollege.name.trim(),
         code: newCollege.code.trim(),
         address: newCollege.address?.trim() || null,
+        website: newCollege.website?.trim() || null,
+        contact: newCollege.contact?.trim() || null,
         isActive: newCollege.isActive !== undefined ? newCollege.isActive : true
       });
 
@@ -2514,6 +2520,12 @@ const Settings = () => {
       }
       if (draft.address !== undefined) {
         updates.address = draft.address?.trim() || null;
+      }
+      if (draft.website !== undefined) {
+        updates.website = draft.website?.trim() || null;
+      }
+      if (draft.contact !== undefined) {
+        updates.contact = draft.contact?.trim() || null;
       }
 
       await api.put(`/colleges/${collegeId}`, updates);
@@ -2630,6 +2642,8 @@ const Settings = () => {
         name: college.name,
         code: college.code || '',
         address: college.address || '',
+        website: college.website || '',
+        contact: college.contact || '',
         principal_signature_url: college.principal_signature_url || null,
         principalSignatureFile: null,
         principalSignaturePreview: null,
@@ -6156,6 +6170,33 @@ const Settings = () => {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                  <input
+                    type="text"
+                    value={collegeDrafts[editingCollegeId]?.website || ''}
+                    onChange={(e) => updateCollegeDraft(editingCollegeId, 'website', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="College website (e.g., www.pydahpharmacy.edu.in)"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Website displayed on student ID cards and official documents
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                  <input
+                    type="text"
+                    value={collegeDrafts[editingCollegeId]?.contact || ''}
+                    onChange={(e) => updateCollegeDraft(editingCollegeId, 'contact', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="College contact number (e.g., 0884-2315333 or 9876543210)"
+                    maxLength={20}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Contact number displayed on student ID cards and official documents
+                  </p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Principal Signature
                   </label>
@@ -7205,6 +7246,41 @@ const Settings = () => {
                   className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
                   rows={3}
                 />
+              </div>
+
+              {/* College Website */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Website
+                </label>
+                <input
+                  type="text"
+                  value={newCollege.website}
+                  onChange={(e) => setNewCollege((prev) => ({ ...prev, website: e.target.value }))}
+                  placeholder="College website (e.g., www.pydahpharmacy.edu.in)"
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Website displayed on student ID cards and official documents
+                </p>
+              </div>
+
+              {/* College Contact Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Contact Number
+                </label>
+                <input
+                  type="text"
+                  value={newCollege.contact}
+                  onChange={(e) => setNewCollege((prev) => ({ ...prev, contact: e.target.value }))}
+                  placeholder="College contact number (e.g., 0884-2315333 or 9876543210)"
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  maxLength={20}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Contact number displayed on student ID cards and official documents
+                </p>
               </div>
 
               {/* Principal Signature */}

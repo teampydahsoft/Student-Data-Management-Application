@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../config/api';
+import { getStaticFileUrlDirect } from '../config/api';
 import { useStudents } from '../hooks/useStudents';
 import DigitalStudentCard from '../components/DigitalStudentCard';
 import DigitalIdCardBack from '../components/DigitalIdCardBack';
@@ -241,13 +242,32 @@ const PrintIdCards = () => {
       (c.name && c.name.trim().toLowerCase() === colName) ||
       (c.code && c.code.trim().toLowerCase() === colName)
     );
-    return colObj?.principal_signature_url || null;
+    const relativeUrl = colObj?.principal_signature_url || null;
+    if (!relativeUrl) return null;
+    // Resolve to an absolute URL so <img> can load it from the backend
+    return getStaticFileUrlDirect(relativeUrl);
   }, [colleges, resolveCollege]);
 
-  const collegeName = useMemo(
-    () => resolveCollege(previewStudent),
-    [previewStudent, resolveCollege]
+  const resolveCollegeObj = useCallback((student) => {
+    if (!student) return null;
+    const colName = String(resolveCollege(student) || '').trim().toLowerCase();
+    if (colleges.length > 0) {
+      const colObj = colleges.find(c =>
+        (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
+        (c.name && c.name.trim().toLowerCase() === colName) ||
+        (c.code && c.code.trim().toLowerCase() === colName)
+      );
+      if (colObj) return colObj;
+    }
+    return resolveCollege(student);
+  }, [colleges, resolveCollege]);
+
+  const activeCollege = useMemo(
+    () => resolveCollegeObj(previewStudent),
+    [previewStudent, resolveCollegeObj]
   );
+
+
 
   const toggleStudent = (student, { previewOnly = false } = {}) => {
     const key = studentKey(student);
@@ -716,6 +736,7 @@ const PrintIdCards = () => {
                   <div className="id-card-preview-scaler">
                     <DigitalStudentCard
                       className="id-card-print-front"
+                      college={activeCollege}
                       student={previewStudent}
                       getStudentData={getStudentData(previewStudent)}
                       principalSignatureUrl={resolveCollegeSignature(previewStudent)}
@@ -736,7 +757,9 @@ const PrintIdCards = () => {
                   <div className="id-card-preview-scaler">
                     <DigitalIdCardBack
                       className="id-card-print-back"
-                      college={collegeName}
+                      student={previewStudent}
+                      getStudentData={getStudentData(previewStudent)}
+                      college={activeCollege}
                       rotate180={backOrientation === 'rotate180'}
                     />
                   </div>
@@ -806,7 +829,14 @@ const PrintIdCards = () => {
       {selectedStudents.length > 0 && (
         <div
           id="id-card-batch-source"
-          className="fixed left-[-10000px] top-0 w-[54mm] pointer-events-none opacity-0"
+          style={{
+            position: 'fixed',
+            left: '-10000px',
+            top: 0,
+            width: '54mm',
+            pointerEvents: 'none',
+            visibility: 'hidden',   /* hides from view but NOT copied into cloned children */
+          }}
           aria-hidden="true"
         >
           {selectedStudents.map((s) => {
@@ -815,13 +845,16 @@ const PrintIdCards = () => {
               <div key={`batch-${key}`} data-batch-student={key}>
                 <DigitalStudentCard
                   className="id-card-batch-front"
+                  college={resolveCollegeObj(s)}
                   student={s}
                   getStudentData={getStudentData(s)}
                   principalSignatureUrl={resolveCollegeSignature(s)}
                 />
                 <DigitalIdCardBack
                   className="id-card-batch-back"
-                  college={resolveCollege(s)}
+                  student={s}
+                  getStudentData={getStudentData(s)}
+                  college={resolveCollegeObj(s)}
                   rotate180={backOrientation === 'rotate180'}
                 />
               </div>

@@ -31,7 +31,7 @@ export const getTCTemplate = () => {
         },
         {
             id: 'h4', type: 'text',
-            content: 'E-mail: princengg@pydah.edu.in  Website: www.pydah.edu.in',
+            content: 'E-mail: {{college_email}}  Website: {{college_website}}',
             x: center(500), y: 100,
             fontSize: 10, font: 'Helvetica', align: 'center',
             width: 500, height: 15, color: '#000000'

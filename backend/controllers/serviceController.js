@@ -967,9 +967,9 @@ exports.previewTemplate = async (req, res) => {
 
     // Fetch Actual College Details
     let collegeDetails = {
-      name: "Pydah College of Engineering",
-      phone: "0884-2315333",
-      website: "www.pydah.edu.in",
+      name: "",
+      phone: "",
+      website: "",
     };
 
     let config = req.body.template_config || {};
@@ -1009,12 +1009,18 @@ exports.previewTemplate = async (req, res) => {
         if (target.address) {
           collegeDetails.address = target.address;
         }
+        if (target.website) {
+          collegeDetails.website = target.website;
+        }
         if (target.metadata) {
           const meta =
             typeof target.metadata === "string"
               ? JSON.parse(target.metadata)
               : target.metadata;
           collegeDetails = { ...collegeDetails, ...meta };
+          if (target.website) {
+            collegeDetails.website = target.website;
+          }
         }
         // Add image URLs and binary data for templated certificate
         if (target.header_image_url)

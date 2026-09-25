@@ -526,7 +526,7 @@ exports.deletePrincipalSignature = async (req, res) => {
  */
 exports.createCollege = async (req, res) => {
   try {
-    const { name, code, address, isActive, metadata } = req.body;
+    const { name, code, address, website, contact, isActive, metadata } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -546,6 +546,8 @@ exports.createCollege = async (req, res) => {
       name,
       code,
       address,
+      website,
+      contact,
       isActive: isActive !== undefined ? isActive : true,
       metadata
     });
@@ -587,12 +589,14 @@ exports.updateCollege = async (req, res) => {
       });
     }
 
-    const { name, code, address, isActive, metadata } = req.body;
+    const { name, code, address, website, contact, isActive, metadata } = req.body;
 
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (code !== undefined) updates.code = code;
     if (address !== undefined) updates.address = address;
+    if (website !== undefined) updates.website = website;
+    if (contact !== undefined) updates.contact = contact;
     if (isActive !== undefined) updates.isActive = isActive;
     if (metadata !== undefined) updates.metadata = metadata;
 

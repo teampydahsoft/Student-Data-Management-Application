@@ -1,21 +1,47 @@
 const { masterPool } = require('../config/database');
 
+// Safely ensure website and contact columns exist on colleges table
+(async () => {
+  try {
+    await masterPool.query('ALTER TABLE colleges ADD COLUMN website VARCHAR(255) NULL AFTER address');
+    console.log('✅ Added website column to colleges table');
+  } catch (_) {
+    // Column already exists or table cannot be altered
+  }
+  try {
+    await masterPool.query('ALTER TABLE colleges ADD COLUMN contact VARCHAR(20) NULL AFTER website');
+    console.log('✅ Added contact column to colleges table');
+  } catch (_) {
+    // Column already exists or table cannot be altered
+  }
+})();
+
 /**
  * Serialize college row from database to API format
  */
-const serializeCollegeRow = (row) => ({
-  id: row.id,
-  name: row.name,
-  code: row.code || null,
-  address: row.address || null,
-  isActive: row.is_active === 1 || row.is_active === true,
-  metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
-  header_image_url: row.header_image ? `/api/colleges/${row.id}/header-image` : null,
-  footer_image_url: row.footer_image ? `/api/colleges/${row.id}/footer-image` : null,
-  principal_signature_url: row.principal_signature ? `/api/colleges/${row.id}/principal-signature` : null,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at
-});
+const serializeCollegeRow = (row) => {
+  let meta = {};
+  if (row.metadata) {
+    try {
+      meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+    } catch (_) {}
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code || null,
+    address: row.address || null,
+    website: row.website || meta?.website || null,
+    contact: row.contact || meta?.contact || null,
+    isActive: row.is_active === 1 || row.is_active === true,
+    metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
+    header_image_url: row.header_image ? `/api/colleges/${row.id}/header-image` : null,
+    footer_image_url: row.footer_image ? `/api/colleges/${row.id}/footer-image` : null,
+    principal_signature_url: row.principal_signature ? `/api/colleges/${row.id}/principal-signature` : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+};
 
 /**
  * Fetch all colleges
@@ -156,7 +182,7 @@ const isCollegeCodeUnique = async (code, excludeId = null) => {
  * @returns {Promise<Object>} Created college object
  */
 const createCollege = async (collegeData) => {
-  const { name, code = null, address = null, isActive = true, metadata = null } = collegeData;
+  const { name, code = null, address = null, website = null, contact = null, isActive = true, metadata = null } = collegeData;
 
   if (!name || !name.trim()) {
     throw new Error('College name is required');
@@ -177,18 +203,62 @@ const createCollege = async (collegeData) => {
     throw new Error('College with this code already exists');
   }
 
+  let metaObj = {};
+  if (metadata) {
+    metaObj = typeof metadata === 'string' ? JSON.parse(metadata) : { ...metadata };
+  }
+  if (website && website.trim()) {
+    metaObj.website = website.trim();
+  }
+  if (contact && contact.trim()) {
+    metaObj.contact = contact.trim();
+  }
+
   try {
-    const [result] = await masterPool.query(
-      `INSERT INTO colleges (name, code, address, is_active, metadata) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        name.trim(),
-        code.trim(),
-        address && address.trim() ? address.trim() : null,
-        isActive ? 1 : 0,
-        metadata ? JSON.stringify(metadata) : null
-      ]
-    );
+    let result;
+    try {
+      [result] = await masterPool.query(
+        `INSERT INTO colleges (name, code, address, website, contact, is_active, metadata) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          name.trim(),
+          code.trim(),
+          address && address.trim() ? address.trim() : null,
+          website && website.trim() ? website.trim() : null,
+          contact && contact.trim() ? contact.trim() : null,
+          isActive ? 1 : 0,
+          Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : null
+        ]
+      );
+    } catch (insertErr) {
+      // Fallback if contact or website column is not present
+      try {
+        [result] = await masterPool.query(
+          `INSERT INTO colleges (name, code, address, website, is_active, metadata) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            name.trim(),
+            code.trim(),
+            address && address.trim() ? address.trim() : null,
+            website && website.trim() ? website.trim() : null,
+            isActive ? 1 : 0,
+            Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : null
+          ]
+        );
+      } catch (insertErr2) {
+        [result] = await masterPool.query(
+          `INSERT INTO colleges (name, code, address, is_active, metadata) 
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            name.trim(),
+            code.trim(),
+            address && address.trim() ? address.trim() : null,
+            isActive ? 1 : 0,
+            Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : null
+          ]
+        );
+      }
+    }
 
     return await fetchCollegeById(result.insertId);
   } catch (error) {
@@ -247,6 +317,18 @@ const updateCollege = async (collegeId, updates) => {
     updateValues.push(updates.address && updates.address.trim() ? updates.address.trim() : null);
   }
 
+  // Handle website update
+  if (updates.website !== undefined) {
+    updateFields.push('website = ?');
+    updateValues.push(updates.website && updates.website.trim() ? updates.website.trim() : null);
+  }
+
+  // Handle contact update
+  if (updates.contact !== undefined) {
+    updateFields.push('contact = ?');
+    updateValues.push(updates.contact && updates.contact.trim() ? updates.contact.trim() : null);
+  }
+
   // Handle code update
   if (updates.code !== undefined) {
     if (updates.code && updates.code.trim()) {
@@ -267,10 +349,35 @@ const updateCollege = async (collegeId, updates) => {
     updateValues.push(updates.isActive ? 1 : 0);
   }
 
-  // Handle metadata update
+  // Handle metadata & website/contact sync in metadata
+  let metaObj = null;
   if (updates.metadata !== undefined) {
+    metaObj = updates.metadata ? (typeof updates.metadata === 'string' ? JSON.parse(updates.metadata) : { ...updates.metadata }) : {};
+  } else if (existing.metadata) {
+    metaObj = typeof existing.metadata === 'string' ? JSON.parse(existing.metadata) : { ...existing.metadata };
+  }
+
+  if (updates.website !== undefined) {
+    metaObj = metaObj || {};
+    if (updates.website && updates.website.trim()) {
+      metaObj.website = updates.website.trim();
+    } else {
+      delete metaObj.website;
+    }
+  }
+
+  if (updates.contact !== undefined) {
+    metaObj = metaObj || {};
+    if (updates.contact && updates.contact.trim()) {
+      metaObj.contact = updates.contact.trim();
+    } else {
+      delete metaObj.contact;
+    }
+  }
+
+  if (metaObj !== null || updates.metadata !== undefined) {
     updateFields.push('metadata = ?');
-    updateValues.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
+    updateValues.push(metaObj && Object.keys(metaObj).length > 0 ? JSON.stringify(metaObj) : null);
   }
 
   if (updateFields.length === 0) {
@@ -280,11 +387,33 @@ const updateCollege = async (collegeId, updates) => {
   updateValues.push(collegeId);
 
   try {
-    // Update college
-    await masterPool.query(
-      `UPDATE colleges SET ${updateFields.join(', ')} WHERE id = ?`,
-      updateValues
-    );
+    // Update college (with fallback if website or contact column is missing)
+    try {
+      await masterPool.query(
+        `UPDATE colleges SET ${updateFields.join(', ')} WHERE id = ?`,
+        updateValues
+      );
+    } catch (queryErr) {
+      if (queryErr.code === 'ER_BAD_FIELD_ERROR') {
+        const fallbackFields = [];
+        const fallbackValues = [];
+        updateFields.forEach((field, idx) => {
+          if (queryErr.message.includes('website') && field.startsWith('website =')) return;
+          if (queryErr.message.includes('contact') && field.startsWith('contact =')) return;
+          fallbackFields.push(field);
+          fallbackValues.push(updateValues[idx]);
+        });
+        fallbackValues.push(collegeId);
+        if (fallbackFields.length > 0) {
+          await masterPool.query(
+            `UPDATE colleges SET ${fallbackFields.join(', ')} WHERE id = ?`,
+            fallbackValues
+          );
+        }
+      } else {
+        throw queryErr;
+      }
+    }
 
     // If college name was changed, cascade update to students table
     let studentsUpdated = 0;

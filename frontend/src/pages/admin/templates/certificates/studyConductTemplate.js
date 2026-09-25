@@ -31,7 +31,7 @@ export const getStudyConductTemplate = () => {
         },
         {
             id: 'h4', type: 'text',
-            content: 'Ph: 0884 - 2315333  Website : www.pydah.edu.in',
+            content: 'Ph: {{college_phone}}  Website : {{college_website}}',
             x: center(500), y: 80,
             fontSize: 10, font: 'Helvetica', align: 'center',
             width: 500, height: 15, color: '#1E40AF'
