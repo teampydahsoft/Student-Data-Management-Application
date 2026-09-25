@@ -2,6 +2,10 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { masterPool } = require('../config/database');
 const { ROLE_LABELS } = require('../constants/rbac');
+const TransportRequest = require('../MongoDb-Transport/TransportRequest');
+const { getHostelRequestModel } = require('../MongoDb-Hostel/HostelRequest');
+const { getHostelCategoryModel } = require('../MongoDb-Hostel/HostelCategory');
+const { getHostelConnection } = require('../config/mongoConfig');
 
 // Special key for public (no-auth) field config
 const PUBLIC_CONFIG_KEY = '__public__';
@@ -268,6 +272,207 @@ exports.saveQrConfig = async (req, res) => {
 };
 
 /**
+ * Helper to fetch student's transport requests from MongoDB (pydah_transport).
+ * Formats requests and groups them by year of study.
+ */
+async function getStudentTransportInfo(admissionNo) {
+    if (!admissionNo) return { hasTransport: false, totalRequests: 0, activePass: null, requests: [], requestsByYear: {} };
+
+    try {
+        const admStr = String(admissionNo).trim();
+        const rawRequests = await TransportRequest.find({
+            $or: [
+                { admission_number: admStr },
+                { admission_number: Number(admStr) },
+                { admission_number: admStr.toLowerCase() },
+                { application_number: admStr }
+            ]
+        }).sort({ year_of_study: -1, id: -1, _id: -1 }).lean();
+
+        if (!rawRequests || rawRequests.length === 0) {
+            return { hasTransport: false, totalRequests: 0, activePass: null, requests: [], requestsByYear: {} };
+        }
+
+        const formattedRequests = rawRequests.map(r => {
+            const statusLower = String(r.status || '').toLowerCase();
+            const isNotInterested = r.not_interested === true || r.not_interested === 'true' || r.not_interested === 1;
+            const isCancelled = Boolean(r.cancelled_at);
+            const isActivePass = (statusLower === 'approved' || statusLower === 'active') && !isCancelled && !isNotInterested;
+
+            return {
+                id: r.id,
+                application_number: r.application_number,
+                student_name: r.student_name,
+                admission_number: String(r.admission_number),
+                academic_year: r.academic_year || null,
+                year_of_study: r.year_of_study != null ? Number(r.year_of_study) : null,
+                semester_number: r.semester_number != null ? Number(r.semester_number) : null,
+                route_id: r.route_id,
+                route_name: r.route_name,
+                stage_name: r.stage_name,
+                bus_id: r.bus_id,
+                fare: r.fare != null ? Number(r.fare) : 0,
+                status: r.status || 'pending',
+                isActivePass: isActivePass,
+                request_date: r.request_date,
+                expiry_date: r.expiry_date,
+                cancelled_at: r.cancelled_at,
+                cancellation_reason: r.cancellation_reason,
+                not_interested: r.not_interested,
+                is_detained: Boolean(r.is_detained)
+            };
+        });
+
+        // Group requests by year_of_study (e.g. "Year 1", "Year 2", "Year 3", "Year 4")
+        const requestsByYear = {};
+        formattedRequests.forEach(r => {
+            const yearKey = r.year_of_study ? `Year ${r.year_of_study}` : (r.academic_year ? r.academic_year : 'General');
+            if (!requestsByYear[yearKey]) {
+                requestsByYear[yearKey] = [];
+            }
+            requestsByYear[yearKey].push(r);
+        });
+
+        const activePass = formattedRequests.find(r => r.isActivePass) || null;
+
+        return {
+            hasTransport: true,
+            totalRequests: formattedRequests.length,
+            activePass: activePass,
+            requests: formattedRequests,
+            requestsByYear: requestsByYear
+        };
+    } catch (err) {
+        console.error('Error fetching student transport info for QR view:', err.message);
+        return { hasTransport: false, totalRequests: 0, activePass: null, requests: [], requestsByYear: {}, error: err.message };
+    }
+}
+
+/**
+ * Helper to fetch student's hostel requests from Hostel MongoDB (hms-live).
+ * Formats requests and groups them by year of study.
+ */
+async function getStudentHostelInfo(admissionNo, pinNo) {
+    if (!admissionNo && !pinNo) {
+        return { hasHostel: false, totalRequests: 0, activeHostel: null, requests: [], requestsByYear: {} };
+    }
+
+    try {
+        const HostelRequest = getHostelRequestModel();
+        let rawRequests = [];
+
+        const identifiers = [];
+        if (admissionNo) {
+            const adm = String(admissionNo).trim();
+            identifiers.push(adm, adm.toUpperCase(), adm.toLowerCase());
+        }
+        if (pinNo) {
+            const pin = String(pinNo).trim();
+            identifiers.push(pin, pin.toUpperCase(), pin.toLowerCase());
+        }
+
+        if (HostelRequest) {
+            rawRequests = await HostelRequest.find({
+                $or: [
+                    { admissionNumber: { $in: identifiers } },
+                    { sdmsRollNumber: { $in: identifiers } }
+                ]
+            }).sort({ academicYear: -1, createdAt: -1 }).lean();
+        } else {
+            const hostelConn = getHostelConnection();
+            if (hostelConn) {
+                const collection = hostelConn.collection('hostelrequests');
+                rawRequests = await collection.find({
+                    $or: [
+                        { admissionNumber: { $in: identifiers } },
+                        { sdmsRollNumber: { $in: identifiers } }
+                    ]
+                }).sort({ academicYear: -1, createdAt: -1 }).toArray();
+            }
+        }
+
+        if (!rawRequests || rawRequests.length === 0) {
+            return { hasHostel: false, totalRequests: 0, activeHostel: null, requests: [], requestsByYear: {} };
+        }
+
+        // Fetch category names for referenced hostelCategoryId values
+        const categoryMap = {};
+        try {
+            const catIds = rawRequests.map(r => r.hostelCategoryId).filter(Boolean);
+            if (catIds.length > 0) {
+                const HostelCategory = getHostelCategoryModel();
+                let categories = [];
+                if (HostelCategory) {
+                    categories = await HostelCategory.find({ _id: { $in: catIds } }).lean();
+                } else {
+                    const hostelConn = getHostelConnection();
+                    if (hostelConn) {
+                        categories = await hostelConn.collection('hostelcategories').find({ _id: { $in: catIds } }).toArray();
+                    }
+                }
+                categories.forEach(c => {
+                    if (c._id && c.name) {
+                        categoryMap[String(c._id)] = c.name;
+                    }
+                });
+            }
+        } catch (catErr) {
+            console.error('Error fetching hostel categories for QR view:', catErr.message);
+        }
+
+        const formattedRequests = rawRequests.map(r => {
+            const statusLower = String(r.status || '').toLowerCase();
+            const isActiveHostel = statusLower === 'active';
+            const categoryName = r.hostelCategoryId ? (categoryMap[String(r.hostelCategoryId)] || null) : null;
+
+            return {
+                id: r._id ? String(r._id) : r.id,
+                admissionNumber: r.admissionNumber,
+                academicYear: r.academicYear,
+                status: r.status || 'active',
+                isActiveHostel: isActiveHostel,
+                roomNumber: r.roomNumber || 'Unassigned',
+                bedNumber: r.bedNumber || '—',
+                lockerNumber: r.lockerNumber || '—',
+                hostelCode: r.hostelCode || 'Hostel',
+                categoryName: categoryName,
+                collegeCode: r.collegeCode || '—',
+                courseCode: r.courseCode || '—',
+                mealType: r.mealType || 'veg',
+                sdmsYearOfStudy: r.sdmsYearOfStudy != null ? Number(r.sdmsYearOfStudy) : null,
+                admitDate: r.admitDate,
+                joiningDate: r.joiningDate,
+                leftDate: r.leftDate,
+                notes: r.notes,
+                statusReason: r.statusReason
+            };
+        });
+
+        const requestsByYear = {};
+        formattedRequests.forEach(r => {
+            const yearKey = r.sdmsYearOfStudy ? `Year ${r.sdmsYearOfStudy}` : (r.academicYear ? r.academicYear : 'General');
+            if (!requestsByYear[yearKey]) {
+                requestsByYear[yearKey] = [];
+            }
+            requestsByYear[yearKey].push(r);
+        });
+
+        const activeHostel = formattedRequests.find(r => r.isActiveHostel) || null;
+
+        return {
+            hasHostel: true,
+            totalRequests: formattedRequests.length,
+            activeHostel: activeHostel,
+            requests: formattedRequests,
+            requestsByYear: requestsByYear
+        };
+    } catch (err) {
+        console.error('Error fetching student hostel info for QR view:', err.message);
+        return { hasHostel: false, totalRequests: 0, activeHostel: null, requests: [], requestsByYear: {}, error: err.message };
+    }
+}
+
+/**
  * GET /api/qr/public/:qrToken  (PUBLIC - no auth required)
  * Returns publicly-visible student fields for QR scan page.
  * Uses an opaque UUID token (qr_token) — NOT the admission number.
@@ -336,15 +541,27 @@ exports.getPublicStudentData = async (req, res) => {
         if (!publicData.admission_no && admNo) {
             publicData.admission_no = { label: 'Admission Number', value: admNo };
         }
+        const pinNo = student.pin_no || student.pin_number || student.pin;
+        if (!publicData.pin_no && pinNo) {
+            publicData.pin_no = { label: 'PIN Number', value: pinNo };
+        }
         // Include photo if configured
         if (publicFieldKeys.includes('student_photo') && student.student_photo) {
             publicData.student_photo = { label: 'Student Photo', value: student.student_photo };
         }
 
+        // Fetch Transport Requests from MongoDB (pydah_transport)
+        const transportInfo = await getStudentTransportInfo(admNo);
+
+        // Fetch Hostel Requests from Hostel MongoDB (hms-live)
+        const hostelInfo = await getStudentHostelInfo(admNo, pinNo);
+
         res.json({
             success: true,
             data: {
                 student: publicData,
+                transportInfo: transportInfo,
+                hostelInfo: hostelInfo,
                 // Return qrToken so frontend can use it for the verify call
                 qrToken,
                 publicFields: publicFieldKeys,

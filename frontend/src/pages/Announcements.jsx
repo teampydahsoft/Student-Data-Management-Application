@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Megaphone,
     Send,
@@ -88,6 +89,8 @@ const Announcements = () => {
     const initialFormState = {
         title: '',
         content: '',
+        time_limit_option: '3', // '1', '3', '7', '30', 'none', 'custom'
+        custom_expiry_date: '',
         // Poll specific
         question: '',
         options: ['', ''],
@@ -219,10 +222,22 @@ const Announcements = () => {
         };
 
         if (type === 'announcements') {
+            let timeLimitOpt = 'none';
+            let customExpiry = '';
+            if (item.expires_at) {
+                timeLimitOpt = 'custom';
+                try {
+                    customExpiry = new Date(item.expires_at).toISOString().slice(0, 16);
+                } catch (e) {
+                    customExpiry = '';
+                }
+            }
             setFormData({
                 ...initialFormState,
                 title: item.title,
                 content: item.content,
+                time_limit_option: timeLimitOpt,
+                custom_expiry_date: customExpiry,
                 target_college: parseField(item.target_college),
                 target_batch: parseField(item.target_batch),
                 target_course: parseField(item.target_course),
@@ -356,6 +371,22 @@ const Announcements = () => {
         data.append('content', formData.content);
         if (formData.image) data.append('image', formData.image);
         if (editId && formData.existing_image_url && !formData.image) data.append('existing_image_url', formData.existing_image_url);
+
+        let computedExpiresAt = null;
+        if (formData.time_limit_option === 'custom' && formData.custom_expiry_date) {
+            computedExpiresAt = new Date(formData.custom_expiry_date).toISOString().slice(0, 19).replace('T', ' ');
+        } else if (formData.time_limit_option && formData.time_limit_option !== 'none') {
+            const days = parseInt(formData.time_limit_option, 10);
+            if (!isNaN(days) && days > 0) {
+                const expDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                computedExpiresAt = expDate.toISOString().slice(0, 19).replace('T', ' ');
+            }
+        }
+        if (computedExpiresAt) {
+            data.append('expires_at', computedExpiresAt);
+        } else {
+            data.append('expires_at', '');
+        }
 
         ['target_college', 'target_batch', 'target_course', 'target_branch', 'target_year', 'target_semester'].forEach(key => {
             if (formData[key].length) data.append(key, JSON.stringify(formData[key]));
@@ -885,6 +916,23 @@ const Announcements = () => {
                                         <AnnouncementImage src={ann.image_url} alt={ann.title} />
                                     )}
                                     <p className="text-sm text-gray-500 mb-3 line-clamp-2">{ann.content}</p>
+                                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                                        <div className="flex items-center gap-1.5 font-medium">
+                                            <Clock size={12} className={ann.expires_at && new Date(ann.expires_at) < new Date() ? 'text-red-500' : 'text-blue-500'} />
+                                            {ann.expires_at ? (
+                                                new Date(ann.expires_at) < new Date() ? (
+                                                    <span className="text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">Expired</span>
+                                                ) : (
+                                                    <span className="text-blue-600 font-semibold">Expires {new Date(ann.expires_at).toLocaleDateString()}</span>
+                                                )
+                                            ) : (
+                                                <span className="text-gray-400">No Time Limit</span>
+                                            )}
+                                        </div>
+                                        {ann.audience_count > 0 && (
+                                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">{ann.audience_count} Reach</span>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                             {announcements.length === 0 && !fetchingFeed && (
@@ -959,8 +1007,8 @@ const Announcements = () => {
             </div >
 
             {/* General Modal (Announcements/Polls) */}
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            {isCreateModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl my-8 overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b flex justify-between items-center bg-white z-10">
                             <div className="flex items-center gap-3">
@@ -1016,6 +1064,53 @@ const Announcements = () => {
                                                         value={formData.content}
                                                         onChange={e => setFormData({ ...formData, content: e.target.value })}
                                                     />
+                                                </div>
+                                                <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-100 space-y-2">
+                                                    <label className="block text-xs font-bold text-gray-700 flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock size={14} className="text-blue-600" />
+                                                        Display Time Limit (Auto-Expire)
+                                                    </label>
+                                                    <div className="grid grid-cols-5 gap-1.5">
+                                                        {[
+                                                            { id: '1', label: '1 Day' },
+                                                            { id: '3', label: '3 Days' },
+                                                            { id: '7', label: '7 Days' },
+                                                            { id: 'none', label: 'No Limit' },
+                                                            { id: 'custom', label: 'Custom' }
+                                                        ].map(opt => (
+                                                            <button
+                                                                key={opt.id}
+                                                                type="button"
+                                                                onClick={() => setFormData({ ...formData, time_limit_option: opt.id })}
+                                                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all border text-center ${
+                                                                    formData.time_limit_option === opt.id
+                                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                }`}
+                                                            >
+                                                                {opt.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {formData.time_limit_option === 'custom' && (
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 bg-white mt-2"
+                                                            value={formData.custom_expiry_date || ''}
+                                                            onChange={e => setFormData({ ...formData, custom_expiry_date: e.target.value })}
+                                                        />
+                                                    )}
+                                                    <p className="text-[11px] text-gray-500 font-medium">
+                                                        {formData.time_limit_option !== 'none' && formData.time_limit_option !== 'custom' && (
+                                                            <span>⏱️ Popup & feed notice will be active for <strong>{formData.time_limit_option} days</strong> and then automatically stop displaying to students.</span>
+                                                        )}
+                                                        {formData.time_limit_option === 'none' && (
+                                                            <span>♾️ Announcement will stay active until manually toggled or deleted.</span>
+                                                        )}
+                                                        {formData.time_limit_option === 'custom' && formData.custom_expiry_date && (
+                                                            <span>⏱️ Auto-expires on <strong>{new Date(formData.custom_expiry_date).toLocaleString()}</strong>.</span>
+                                                        )}
+                                                    </p>
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-1">Image (Optional)</label>
@@ -1118,127 +1213,127 @@ const Announcements = () => {
                             </form>
                         </div>
                     </div>
-                </div>
-            )
+                </div>,
+                document.body
+            )}
             }
 
             {/* SMS Template Modal */}
-            {
-                isTemplateModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
-                            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-                                <h2 className="text-lg font-bold flex items-center gap-2">
-                                    <Settings className="text-blue-600" size={20} />
-                                    {editId ? 'Edit SMS Template' : 'Create SMS Template'}
-                                </h2>
-                                <button onClick={handleCancel} className="p-2 hover:bg-gray-200 rounded-full text-gray-500">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="p-6">
-                                <form onSubmit={handleSaveTemplate} className="space-y-4">
-                                    <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
-                                        <h4 className="font-bold flex items-center gap-1 mb-1"><MessageSquare size={14} /> Guide</h4>
-                                        <p>Use <code>{'{#var#}'}</code> as placeholder for variables in content.</p>
-                                        <p className="mt-1">Optional defaults below are pre-filled when sending. Final values can still be entered or changed on the <strong>Send Broadcast</strong> screen.</p>
-                                    </div>
+            {isTemplateModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <Settings className="text-blue-600" size={20} />
+                                {editId ? 'Edit SMS Template' : 'Create SMS Template'}
+                            </h2>
+                            <button onClick={handleCancel} className="p-2 hover:bg-gray-200 rounded-full text-gray-500">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <form onSubmit={handleSaveTemplate} className="space-y-4">
+                                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
+                                    <h4 className="font-bold flex items-center gap-1 mb-1"><MessageSquare size={14} /> Guide</h4>
+                                    <p>Use <code>{'{#var#}'}</code> as placeholder for variables in content.</p>
+                                    <p className="mt-1">Optional defaults below are pre-filled when sending. Final values can still be entered or changed on the <strong>Send Broadcast</strong> screen.</p>
+                                </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Template Name (Internal)</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full p-2 border rounded bg-white"
-                                            placeholder="e.g. Absent Alert"
-                                            value={formData.template_name}
-                                            onChange={e => setFormData({ ...formData, template_name: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">DLT Template ID</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full p-2 border rounded bg-white"
-                                            placeholder="1007..."
-                                            value={formData.template_id}
-                                            onChange={e => setFormData({ ...formData, template_id: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                                        <textarea
-                                            required
-                                            className="w-full p-2 border rounded bg-white h-24"
-                                            placeholder="Content with {#var#}..."
-                                            value={formData.template_content}
-                                            onChange={e => handleTemplateContentChange(e.target.value)}
-                                        />
-                                    </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Template Name (Internal)</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-2 border rounded bg-white"
+                                        placeholder="e.g. Absent Alert"
+                                        value={formData.template_name}
+                                        onChange={e => setFormData({ ...formData, template_name: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">DLT Template ID</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-2 border rounded bg-white"
+                                        placeholder="1007..."
+                                        value={formData.template_id}
+                                        onChange={e => setFormData({ ...formData, template_id: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                                    <textarea
+                                        required
+                                        className="w-full p-2 border rounded bg-white h-24"
+                                        placeholder="Content with {#var#}..."
+                                        value={formData.template_content}
+                                        onChange={e => handleTemplateContentChange(e.target.value)}
+                                    />
+                                </div>
 
-                                    {formData.variable_mappings.length > 0 ? (
-                                        <div className="space-y-3 bg-gray-50 p-3 rounded border">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">Default Variable Mappings (optional)</label>
-                                            <p className="text-xs text-gray-500">Detected {formData.variable_mappings.length} placeholder(s). These defaults appear on Send Broadcast — you can override them before sending.</p>
-                                            {formData.variable_mappings.map((mapping, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <span className="text-xs font-mono text-gray-500 w-12">var#{idx + 1}</span>
+                                {formData.variable_mappings.length > 0 ? (
+                                    <div className="space-y-3 bg-gray-50 p-3 rounded border">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Default Variable Mappings (optional)</label>
+                                        <p className="text-xs text-gray-500">Detected {formData.variable_mappings.length} placeholder(s). These defaults appear on Send Broadcast — you can override them before sending.</p>
+                                        {formData.variable_mappings.map((mapping, idx) => (
+                                            <div key={idx} className="flex gap-2 items-center">
+                                                <span className="text-xs font-mono text-gray-500 w-12">var#{idx + 1}</span>
+                                                <select
+                                                    className="p-1 border rounded text-xs bg-white"
+                                                    value={mapping.type}
+                                                    onChange={(e) => handleMappingChange(idx, 'type', e.target.value)}
+                                                >
+                                                    <option value="static">Static</option>
+                                                    <option value="field">Field</option>
+                                                </select>
+                                                {mapping.type === 'static' ? (
+                                                    <input
+                                                        type="text"
+                                                        className="flex-1 p-1 border rounded text-xs"
+                                                        placeholder="Value"
+                                                        value={mapping.value}
+                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
+                                                    />
+                                                ) : (
                                                     <select
-                                                        className="p-1 border rounded text-xs bg-white"
-                                                        value={mapping.type}
-                                                        onChange={(e) => handleMappingChange(idx, 'type', e.target.value)}
+                                                        className="flex-1 p-1 border rounded text-xs bg-white"
+                                                        value={mapping.value}
+                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
                                                     >
-                                                        <option value="static">Static</option>
-                                                        <option value="field">Field</option>
+                                                        <option value="">Select Field...</option>
+                                                        {studentFields.map(f => (
+                                                            <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
+                                                        ))}
                                                     </select>
-                                                    {mapping.type === 'static' ? (
-                                                        <input
-                                                            type="text"
-                                                            className="flex-1 p-1 border rounded text-xs"
-                                                            placeholder="Value"
-                                                            value={mapping.value}
-                                                            onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
-                                                        />
-                                                    ) : (
-                                                        <select
-                                                            className="flex-1 p-1 border rounded text-xs bg-white"
-                                                            value={mapping.value}
-                                                            onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
-                                                        >
-                                                            <option value="">Select Field...</option>
-                                                            {studentFields.map(f => (
-                                                                <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        formData.template_content && (
-                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
-                                                No {'{#var#}'} placeholders found yet. Add them in content to configure variable mapping.
-                                            </p>
-                                        )
-                                    )}
-
-                                    <div className="flex justify-end gap-3 pt-4">
-                                        <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                                        <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-bold hover:bg-blue-700">
-                                            {editId ? 'Save Changes' : 'Create Template'}
-                                        </button>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                </form>
-                            </div>
+                                ) : (
+                                    formData.template_content && (
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
+                                            No {'{#var#}'} placeholders found yet. Add them in content to configure variable mapping.
+                                        </p>
+                                    )
+                                )}
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                                    <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-bold hover:bg-blue-700">
+                                        {editId ? 'Save Changes' : 'Create Template'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                )
-            }
+                </div>,
+                document.body
+            )}
 
             {/* Mobile Target Selection Modal */}
-            {isMobileTargetModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            {isMobileTargetModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                         <div className="p-5 border-b flex justify-between items-center bg-gray-50">
                             <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
@@ -1296,7 +1391,8 @@ const Announcements = () => {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div >
     );
