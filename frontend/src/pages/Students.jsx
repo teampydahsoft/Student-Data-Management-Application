@@ -4294,7 +4294,7 @@ const Students = () => {
                     }`}
                   >
                     <GraduationCap size={15} />
-                    <span>Academics</span>
+                    <span>Registration</span>
                   </button>
                 )}
 

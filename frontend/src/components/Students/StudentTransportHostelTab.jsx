@@ -2,21 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Bus, 
   Home, 
-  CreditCard, 
-  Calendar, 
-  MapPin, 
-  BadgeCheck, 
-  Clock, 
-  AlertCircle, 
-  CheckCircle2, 
-  User, 
-  Phone, 
-  DollarSign, 
-  Building2, 
-  ShieldCheck,
-  ChevronRight,
-  Sparkles,
-  Info
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import api from '../../config/api';
 import transportService from '../../services/transportService';
@@ -25,101 +12,322 @@ const StudentTransportHostelTab = ({ student }) => {
   const [loading, setLoading] = useState(false);
   const [transportData, setTransportData] = useState(null);
   const [hostelData, setHostelData] = useState(null);
-  const [activeSubTab, setActiveSubTab] = useState('all'); // 'all' | 'transport' | 'hostel' | 'yearwise'
 
-  const admissionNumber = student?.admission_number || student?.admissionNumber || student?.pin;
+  // Helper to extract nested or JSON student properties across multiple keys
+  const getStudentField = (keys) => {
+    if (!student) return null;
+    const keyArray = Array.isArray(keys) ? keys : [keys];
+    
+    for (const k of keyArray) {
+      if (student[k] != null && student[k] !== '') return student[k];
+    }
+    
+    let studentDataObj = student.student_data;
+    if (typeof studentDataObj === 'string') {
+      try {
+        studentDataObj = JSON.parse(studentDataObj);
+      } catch (e) {
+        studentDataObj = null;
+      }
+    }
+    
+    if (studentDataObj && typeof studentDataObj === 'object') {
+      for (const k of keyArray) {
+        if (studentDataObj[k] != null && studentDataObj[k] !== '') return studentDataObj[k];
+      }
+    }
+    
+    return null;
+  };
+
+  const studentTransportRoute = getStudentField(['transport_route', 'bus_route', 'route_name', 'routeName', 'Route Name', 'Route']);
+  const studentBusNo = getStudentField(['bus_number', 'bus_no', 'busNo', 'Bus Number', 'Bus No']);
+  const studentBusStop = getStudentField(['bus_stop', 'pickup_point', 'stop_name', 'stage_name', 'Pickup Stop', 'Stop']);
+  const studentTransportFare = Number(getStudentField(['transport_fare', 'bus_fee', 'transport_fee', 'bus_fare', 'Bus Fee', 'Transport Fee', 'fare']) || 0);
+
+  const studentHostelName = getStudentField(['hostel_name', 'hostel_code', 'hostelCode', 'hostel', 'Hostel Name', 'Hostel Block']);
+  const studentHostelCategory = getStudentField(['hostel_category', 'categoryName', 'category_name', 'Hostel Category']);
+  const studentRoomNo = getStudentField(['room_number', 'room_no', 'roomNo', 'roomNumber', 'Room Number', 'Room No']);
+  const studentHostelFee = Number(getStudentField(['hostel_fee', 'hostel_fare', 'Hostel Fee', 'fee']) || 0);
+
+  const admissionNumber = getStudentField(['admission_number', 'admission_no', 'admissionNumber', 'application_number'])
+    || student?.admission_number 
+    || student?.admission_no;
+    
+  const pinNo = getStudentField(['pin_no', 'pinNo', 'pin_number', 'pin', 'ht_no', 'roll_no'])
+    || student?.pin_no 
+    || student?.pin;
+
+  const fetchLiveData = async () => {
+    const identifiers = [
+      student?.qr_token,
+      student?.admission_number,
+      student?.admission_no,
+      student?.pin_no,
+      student?.pinNo,
+      student?.pin,
+      student?.ht_no,
+      student?.roll_no,
+      student?.application_number
+    ].filter(Boolean);
+
+    if (identifiers.length === 0) return;
+
+    setLoading(true);
+    try {
+      const uniqueIds = Array.from(new Set(identifiers));
+      
+      const transPromises = uniqueIds.map(id => transportService.getMyTransportDetails(id).catch(() => null));
+      const qrPromises = uniqueIds.map(id => api.get(`/qr/public/${encodeURIComponent(id)}`).catch(() => null));
+
+      const [transResults, qrResults] = await Promise.all([
+        Promise.all(transPromises),
+        Promise.all(qrPromises)
+      ]);
+
+      // 1. Resolve Transport Data
+      const validTrans = transResults.find(r => r?.data?.requests?.length > 0 || r?.data?.hasTransportAccess || r?.data?.hasActivePass)
+        || transResults.find(r => r?.data);
+
+      const qrWithTrans = qrResults.find(r => r?.data?.data?.transportInfo?.hasTransport || r?.data?.data?.transportInfo?.requests?.length > 0);
+        
+      if (validTrans?.data?.requests?.length > 0 || validTrans?.data?.hasTransportAccess) {
+        setTransportData(validTrans.data);
+      } else if (qrWithTrans?.data?.data?.transportInfo) {
+        setTransportData(qrWithTrans.data.data.transportInfo);
+      } else if (validTrans?.data) {
+        setTransportData(validTrans.data);
+      }
+
+      // 2. Resolve Hostel Data
+      const qrWithHostel = qrResults.find(r => r?.data?.data?.hostelInfo?.hasHostel || r?.data?.data?.hostelInfo?.requests?.length > 0)
+        || qrResults.find(r => r?.data?.data?.hostelInfo);
+        
+      if (qrWithHostel?.data?.data?.hostelInfo) {
+        setHostelData(qrWithHostel.data.data.hostelInfo);
+      }
+    } catch (err) {
+      console.error('Error fetching live transport/hostel data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-      if (!admissionNumber) return;
-      setLoading(true);
-      try {
-        const [transRes, feeRes] = await Promise.all([
-          transportService.getMyTransportDetails(admissionNumber).catch(() => null),
-          api.get(`/student-history/remarks/${encodeURIComponent(admissionNumber)}`).catch(() => null)
-        ]);
+    fetchLiveData();
+  }, [admissionNumber, pinNo]);
 
-        if (isMounted && transRes?.data) {
-          setTransportData(transRes.data);
-        }
-      } catch (err) {
-        console.error('Error fetching transport/hostel details:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
+  // Determine overall live availability
+  const hasLiveTransport = useMemo(() => {
+    if (transportData?.hasTransportAccess === true || transportData?.hasActivePass === true || transportData?.hasTransport === true) return true;
+    if (Array.isArray(transportData?.requests) && transportData.requests.length > 0) return true;
+    const reqVal = getStudentField(['transport_required', 'bus_required', 'Transport Required']);
+    if (reqVal === 1 || reqVal === true || reqVal === '1' || String(reqVal).toLowerCase() === 'yes') return true;
+    if (studentTransportRoute || studentBusNo || studentTransportFare > 0) return true;
+    return false;
+  }, [transportData, student, studentTransportRoute, studentBusNo, studentTransportFare]);
 
-    fetchData();
-    return () => { isMounted = false; };
-  }, [admissionNumber]);
+  const hasLiveHostel = useMemo(() => {
+    if (hostelData?.hasHostel === true || hostelData?.activeHostel != null) return true;
+    if (Array.isArray(hostelData?.requests) && hostelData.requests.length > 0) return true;
+    const reqVal = getStudentField(['hostel_required', 'Hostel Required']);
+    if (reqVal === 1 || reqVal === true || reqVal === '1' || String(reqVal).toLowerCase() === 'yes') return true;
+    if (studentHostelName || studentHostelCategory || studentRoomNo || studentHostelFee > 0) return true;
+    return false;
+  }, [hostelData, student, studentHostelName, studentHostelCategory, studentRoomNo, studentHostelFee]);
 
-  // Derived student accommodation info
-  const accommodationType = useMemo(() => {
-    const raw = String(student?.accommodation || student?.Accommodation || '').trim().toLowerCase();
-    if (raw.includes('both')) return 'both';
-    if (raw.includes('hostel')) return 'hostel';
-    if (raw.includes('transport') || raw.includes('bus')) return 'transport';
-    return 'none';
-  }, [student]);
+  // Overall student facility category tag
+  const facilityCategoryBadge = useMemo(() => {
+    if (hasLiveTransport && hasLiveHostel) {
+      return { label: 'Both Transport & Hostel', color: 'bg-purple-100 text-purple-800 border-purple-200' };
+    }
+    if (hasLiveTransport) {
+      return { label: 'Transport Only (Bus)', color: 'bg-teal-100 text-teal-800 border-teal-200' };
+    }
+    if (hasLiveHostel) {
+      return { label: 'Hostel Resident Only', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+    }
+    return { label: 'Day Scholar (No Facility)', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+  }, [hasLiveTransport, hasLiveHostel]);
 
-  // Transport details
   const activePass = transportData?.activePass;
-  const transportRoute = activePass?.route_name || student?.transport_route || student?.bus_route || 'Kakinada - College Express (Route #4)';
-  const transportStop = activePass?.pickup_point || student?.bus_stop || student?.pickup_point || 'Main Road Junction, Stop #12';
-  const busNumber = activePass?.bus_number || student?.bus_number || 'AP 05 AB 1234 (Bus #04)';
-  const transportFareAmount = activePass?.fare_amount || student?.transport_fare || student?.bus_fee || 18000;
-  const transportStatus = activePass?.status || (student?.transport_required ? 'Active' : 'Not Opted');
+  const activeHostel = hostelData?.activeHostel;
 
-  // Hostel details
-  const hostelName = student?.hostel_name || student?.hostel_code || 'Pydah Boys Hostel (Block A)';
-  const roomNumber = student?.room_number || student?.room_no || 'Room #204 (2nd Floor)';
-  const roomType = student?.room_type || '3-Sharing AC Room';
-  const hostelFeeAmount = student?.hostel_fee || student?.hostel_fare || 65000;
-  const hostelStatus = student?.hostel_required ? 'Active Resident' : 'Not Opted';
-
-  // Year-wise fee data calculation
   const totalYears = Math.max(4, Number(student?.total_years) || 4);
   const currentYear = Math.max(1, Number(student?.current_year) || 1);
 
-  const yearwiseFees = useMemo(() => {
-    const years = [];
+  // Map live transport details for a specific program year
+  const getLiveTransportForYear = (yr, baseAcademicStart) => {
+    const academicYear = `${baseAcademicStart + yr - 1}-${baseAcademicStart + yr}`;
+    const requests = transportData?.requests || [];
+    const match = requests.find((r) => Number(r.year_of_study || r.yearOfStudy) === Number(yr))
+      || (transportData?.requestsByYear && (transportData.requestsByYear[`Year ${yr}`]?.[0] || transportData.requestsByYear[`year ${yr}`]?.[0]));
+
+    if (match) {
+      const resolvedRouteId = match.route_id || match.routeId || (activePass?.route_id ? `${activePass.route_id}-Y${yr}` : `R${yr}`);
+      const resolvedRouteName = match.route_name || match.routeName || match.routeDetails?.routeName 
+        || (studentTransportRoute && studentTransportRoute !== 'Route Assigned' ? studentTransportRoute : null) 
+        || (resolvedRouteId ? `Route ${resolvedRouteId}` : 'College Transport Route');
+
+      const resolvedBusNo = match.busDetails?.busNumber || match.bus_number || match.busNumber || match.bus_id || match.busId 
+        || (studentBusNo && studentBusNo !== 'Bus Assigned' ? studentBusNo : null) 
+        || (resolvedRouteId ? `Bus ${resolvedRouteId}` : 'Bus 1');
+
+      const resolvedStage = match.stage_name || match.stageName || match.stopName || match.pickup_point || match.stop_name || match.pickupStop 
+        || (studentBusStop && studentBusStop !== 'Stop Assigned' && studentBusStop !== 'Pickup Stop' ? studentBusStop : null) 
+        || 'Main Stage';
+
+      return {
+        hasRecord: true,
+        academicYear: match.academic_year || match.academicYear || academicYear,
+        routeId: resolvedRouteId,
+        routeName: resolvedRouteName,
+        busNumber: resolvedBusNo,
+        pickupStop: resolvedStage,
+        fareAmount: match.fare != null ? Number(match.fare) : (match.fare_amount != null ? Number(match.fare_amount) : studentTransportFare),
+        status: match.isActivePass ? 'Active Pass' : (match.status || 'Registered')
+      };
+    }
+
+    if (hasLiveTransport && yr === currentYear && activePass) {
+      const resolvedRouteId = activePass.route_id || activePass.routeId || `R${yr}`;
+      const resolvedRouteName = activePass.route_name || activePass.routeName || activePass.routeDetails?.routeName 
+        || (studentTransportRoute && studentTransportRoute !== 'Route Assigned' ? studentTransportRoute : null) 
+        || `Route ${resolvedRouteId}`;
+
+      const resolvedBusNo = activePass.busDetails?.busNumber || activePass.bus_number || activePass.busNumber || activePass.bus_id || activePass.busId 
+        || (studentBusNo && studentBusNo !== 'Bus Assigned' ? studentBusNo : null) 
+        || `Bus ${resolvedRouteId}`;
+
+      const resolvedStage = activePass.stage_name || activePass.stageName || activePass.stopName || activePass.pickup_point || activePass.stop_name 
+        || (studentBusStop && studentBusStop !== 'Stop Assigned' && studentBusStop !== 'Pickup Stop' ? studentBusStop : null) 
+        || 'Main Stage';
+
+      return {
+        hasRecord: true,
+        academicYear,
+        routeId: resolvedRouteId,
+        routeName: resolvedRouteName,
+        busNumber: resolvedBusNo,
+        pickupStop: resolvedStage,
+        fareAmount: activePass.fare != null ? Number(activePass.fare) : (activePass.fare_amount != null ? Number(activePass.fare_amount) : studentTransportFare),
+        status: 'Active Pass'
+      };
+    }
+
+    const hasYearSpecificRequests = Array.isArray(requests) && requests.length > 0;
+    if (!hasYearSpecificRequests && hasLiveTransport) {
+      return {
+        hasRecord: true,
+        academicYear,
+        routeId: `R${yr}`,
+        routeName: studentTransportRoute && studentTransportRoute !== 'Route Assigned' ? studentTransportRoute : `Route ${yr}`,
+        busNumber: studentBusNo && studentBusNo !== 'Bus Assigned' ? studentBusNo : `Bus R${yr}`,
+        pickupStop: studentBusStop && studentBusStop !== 'Stop Assigned' && studentBusStop !== 'Pickup Stop' ? studentBusStop : 'Main Stage',
+        fareAmount: studentTransportFare,
+        status: yr < currentYear ? 'Completed' : (yr === currentYear ? 'Active Pass' : 'Scheduled')
+      };
+    }
+
+    return {
+      hasRecord: false,
+      academicYear,
+      routeId: '—',
+      routeName: 'Not Opted',
+      busNumber: '—',
+      pickupStop: '—',
+      fareAmount: 0,
+      status: 'Not Opted'
+    };
+  };
+
+  // Map live hostel details for a specific program year
+  const getLiveHostelForYear = (yr, baseAcademicStart) => {
+    const academicYear = `${baseAcademicStart + yr - 1}-${baseAcademicStart + yr}`;
+    const requests = hostelData?.requests || [];
+    const match = requests.find((r) => Number(r.sdmsYearOfStudy || r.year_of_study) === Number(yr))
+      || (hostelData?.requestsByYear && (hostelData.requestsByYear[`Year ${yr}`]?.[0] || hostelData.requestsByYear[`year ${yr}`]?.[0]));
+
+    if (match) {
+      return {
+        hasRecord: true,
+        academicYear: match.academicYear || match.academic_year || academicYear,
+        hostelCategory: match.categoryName || match.hostelCategory || studentHostelCategory || 'Hostel Residency',
+        hostelName: match.hostelCode || match.hostelName || studentHostelName || 'Hostel Block',
+        roomNumber: match.roomNumber || match.roomNo || studentRoomNo || 'Room Allocated',
+        feeAmount: match.fee != null ? Number(match.fee) : studentHostelFee,
+        status: match.isActiveHostel ? 'Active Resident' : (match.status || 'Registered')
+      };
+    }
+
+    if (hasLiveHostel && yr === currentYear && activeHostel) {
+      return {
+        hasRecord: true,
+        academicYear,
+        hostelCategory: activeHostel.categoryName || studentHostelCategory || 'Hostel Residency',
+        hostelName: activeHostel.hostelCode || studentHostelName || 'Hostel Block',
+        roomNumber: activeHostel.roomNumber || activeHostel.roomNo || studentRoomNo || 'Room Allocated',
+        feeAmount: activeHostel.fee != null ? Number(activeHostel.fee) : studentHostelFee,
+        status: 'Active Resident'
+      };
+    }
+
+    const hasYearSpecificRequests = Array.isArray(requests) && requests.length > 0;
+    if (!hasYearSpecificRequests && hasLiveHostel) {
+      return {
+        hasRecord: true,
+        academicYear,
+        hostelCategory: studentHostelCategory || 'Hostel Residency',
+        hostelName: studentHostelName || 'College Hostel Block',
+        roomNumber: studentRoomNo || 'Room Allocated',
+        feeAmount: studentHostelFee,
+        status: yr < currentYear ? 'Completed' : (yr === currentYear ? 'Active Resident' : 'Scheduled')
+      };
+    }
+
+    return {
+      hasRecord: false,
+      academicYear,
+      hostelCategory: '—',
+      hostelName: 'Not Opted',
+      roomNumber: '—',
+      feeAmount: 0,
+      status: 'Not Opted'
+    };
+  };
+
+  // Year-wise live details breakdown array (Year 1 to Year 4)
+  const yearlyBreakdown = useMemo(() => {
+    const list = [];
     const baseAcademicStart = 2026 - (currentYear - 1);
 
     for (let yr = 1; yr <= totalYears; yr++) {
-      const academicYear = `${baseAcademicStart + yr - 1}-${baseAcademicStart + yr}`;
-      const isPast = yr < currentYear;
       const isCurrent = yr === currentYear;
-      const isFuture = yr > currentYear;
+      const trans = getLiveTransportForYear(yr, baseAcademicStart);
+      const host = getLiveHostelForYear(yr, baseAcademicStart);
 
-      const tFee = accommodationType === 'hostel' ? 0 : (transportFareAmount || 18000);
-      const hFee = accommodationType === 'transport' ? 0 : (hostelFeeAmount || 65000);
-      const totalFare = tFee + hFee;
-      
-      const paidFare = isPast ? totalFare : (isCurrent ? Math.round(totalFare * 0.7) : 0);
-      const dueFare = totalFare - paidFare;
-      let status = isPast ? 'Paid' : (isCurrent ? (dueFare === 0 ? 'Paid' : 'Partial Due') : 'Upcoming');
-
-      years.push({
-        year: yr,
-        academicYear,
-        transportFee: tFee,
-        hostelFee: hFee,
-        totalFare,
-        paidFare,
-        dueFare,
-        status,
+      list.push({
+        yearNumber: yr,
+        academicYear: trans.academicYear,
         isCurrent,
-        isPast,
-        isFuture
+        transport: trans,
+        hostel: host,
+        totalFare: trans.fareAmount + host.feeAmount
       });
     }
-    return years;
-  }, [currentYear, totalYears, transportFareAmount, hostelFeeAmount, accommodationType]);
+    return list;
+  }, [currentYear, totalYears, transportData, hostelData, hasLiveTransport, hasLiveHostel, student]);
 
-  const totalFareSum = yearwiseFees.reduce((acc, curr) => acc + curr.totalFare, 0);
-  const totalPaidSum = yearwiseFees.reduce((acc, curr) => acc + curr.paidFare, 0);
-  const totalDueSum = yearwiseFees.reduce((acc, curr) => acc + curr.dueFare, 0);
+  // Current year live transport & hostel fares for header summary
+  const currentYearTransportFare = useMemo(() => {
+    const curr = yearlyBreakdown.find((y) => y.isCurrent);
+    return curr?.transport?.fareAmount || 0;
+  }, [yearlyBreakdown]);
+
+  const currentYearHostelFee = useMemo(() => {
+    const curr = yearlyBreakdown.find((y) => y.isCurrent);
+    return curr?.hostel?.feeAmount || 0;
+  }, [yearlyBreakdown]);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -128,293 +336,142 @@ const StudentTransportHostelTab = ({ student }) => {
   }).format(val || 0);
 
   return (
-    <div className="space-y-6 text-gray-800">
-      {/* Top Banner Card */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white shadow-xl">
-        <div className="absolute right-0 top-0 -mr-10 -mt-10 h-48 w-48 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/30 backdrop-blur-md border border-blue-400/30 text-blue-300 shrink-0">
-              <Bus size={26} />
+    <div className="space-y-3 text-gray-800 font-sans">
+      {/* Top Header Bar */}
+      <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 shrink-0">
+            <Bus size={18} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-xs font-extrabold text-gray-900">Transport & Hostel Summary</h3>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold border ${facilityCategoryBadge.color}`}>
+                {facilityCategoryBadge.label}
+              </span>
+              {loading && <Loader2 size={12} className="animate-spin text-blue-600" />}
             </div>
-            <div>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {student?.student_name || 'Student'} ({pinNo || admissionNumber || 'N/A'}) · Year {currentYear}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={fetchLiveData}
+            disabled={loading}
+            className="px-2 py-1 rounded-md text-[11px] font-semibold text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors flex items-center gap-1"
+            title="Refresh Live Data"
+          >
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+          
+          {hasLiveTransport && (
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border bg-teal-50 text-teal-700 border-teal-200">
+              Transport: {currentYearTransportFare > 0 ? formatCurrency(currentYearTransportFare) : 'Opted'}
+            </span>
+          )}
+
+          {hasLiveHostel && (
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border bg-amber-50 text-amber-700 border-amber-200">
+              Hostel: {currentYearHostelFee > 0 ? formatCurrency(currentYearHostelFee) : 'Opted'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Year 1, Year 2, Year 3, Year 4 Cards */}
+      <div className="space-y-2.5">
+        {yearlyBreakdown.map((item) => (
+          <div 
+            key={`year-${item.yearNumber}`}
+            className={`bg-white rounded-xl border shadow-2xs overflow-hidden transition-all ${
+              item.isCurrent ? 'border-blue-300 ring-1 ring-blue-400/20' : 'border-gray-200/80'
+            }`}
+          >
+            {/* Year Title Bar */}
+            <div className={`px-3 py-2 flex items-center justify-between border-b text-[11px] ${
+              item.isCurrent ? 'bg-blue-50/60 border-blue-100' : 'bg-gray-50/70 border-gray-100'
+            }`}>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-extrabold text-white">Transport & Hostel Facility</h2>
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-bold text-blue-300 border border-blue-400/30">
-                  <Sparkles size={11} /> Year {currentYear}
+                <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                  item.isCurrent ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                }`}>
+                  Year {item.yearNumber}
                 </span>
+                <span className="font-bold text-gray-700">Academic Year: {item.academicYear}</span>
+                {item.isCurrent && (
+                  <span className="text-[9px] font-extrabold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">
+                    Current Year
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                {student?.student_name || 'Student'} ({admissionNumber || 'N/A'}) · {student?.branch_name || student?.course_name || 'Engineering'}
-              </p>
+              <span className="font-extrabold text-gray-900">
+                Total: {formatCurrency(item.totalFare)}
+              </span>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-xl bg-white/10 backdrop-blur-md px-3.5 py-2 border border-white/10 text-right">
-              <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider block">Total Fare</span>
-              <span className="text-sm font-black text-white">{formatCurrency(totalFareSum)}</span>
-            </div>
-            <div className="rounded-xl bg-emerald-500/20 backdrop-blur-md px-3.5 py-2 border border-emerald-400/30 text-right">
-              <span className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider block">Total Paid</span>
-              <span className="text-sm font-black text-emerald-300">{formatCurrency(totalPaidSum)}</span>
-            </div>
-            <div className="rounded-xl bg-amber-500/20 backdrop-blur-md px-3.5 py-2 border border-amber-400/30 text-right">
-              <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider block">Current Due</span>
-              <span className="text-sm font-black text-amber-300">{formatCurrency(totalDueSum)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-gray-100 pb-2 overflow-x-auto scrollbar-none">
-        {[
-          { id: 'all', label: 'All Details', icon: Sparkles },
-          { id: 'transport', label: 'Transport Details', icon: Bus },
-          { id: 'hostel', label: 'Hostel Details', icon: Home },
-          { id: 'yearwise', label: 'Year-wise Fee Summary', icon: CreditCard }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeSubTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}
-            >
-              <Icon size={14} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main Sections Grid */}
-      {(activeSubTab === 'all' || activeSubTab === 'transport') && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-teal-50 text-teal-600 border border-teal-100">
-                <Bus size={20} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">Transport Details</h3>
-                <p className="text-xs text-gray-500">Bus route, pickup stop, vehicle details & fare</p>
-              </div>
-            </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-              transportStatus === 'Active'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-gray-50 text-gray-600 border-gray-200'
+            {/* Dynamic Content Grid: Renders ONLY what the student has */}
+            <div className={`p-2.5 grid gap-2 text-[11px] ${
+              item.transport.hasRecord && item.hostel.hasRecord 
+                ? 'grid-cols-1 md:grid-cols-2' 
+                : 'grid-cols-1'
             }`}>
-              {transportStatus}
-            </span>
-          </div>
+              
+              {/* Transport Box (Shown ONLY if student has transport for this year) */}
+              {item.transport.hasRecord && (
+                <div className="p-2.5 rounded-lg border border-teal-100 bg-teal-50/20 space-y-1">
+                  <div className="flex items-center justify-between border-b border-teal-100/80 pb-1">
+                    <span className="font-bold text-teal-700 flex items-center gap-1">
+                      <Bus size={13} /> Transport Details
+                    </span>
+                    <span className="font-extrabold text-teal-800">
+                      {item.transport.fareAmount > 0 ? formatCurrency(item.transport.fareAmount) : 'Opted'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-gray-600">
+                    <div><span className="font-semibold text-gray-400">Academic Year:</span> {item.transport.academicYear}</div>
+                    <div><span className="font-semibold text-gray-400">Route Name:</span> {item.transport.routeName} {item.transport.routeId && item.transport.routeId !== '—' ? `(${item.transport.routeId})` : ''}</div>
+                    <div><span className="font-semibold text-gray-400">Bus No:</span> {item.transport.busNumber}</div>
+                    <div><span className="font-semibold text-gray-400">Stage:</span> {item.transport.pickupStop}</div>
+                  </div>
+                </div>
+              )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Route Name</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <MapPin size={14} className="text-teal-600 shrink-0" />
-                {transportRoute}
-              </span>
-            </div>
+              {/* Hostel Box (Shown ONLY if student has hostel for this year) */}
+              {item.hostel.hasRecord && (
+                <div className="p-2.5 rounded-lg border border-amber-100 bg-amber-50/20 space-y-1">
+                  <div className="flex items-center justify-between border-b border-amber-100/80 pb-1">
+                    <span className="font-bold text-amber-700 flex items-center gap-1">
+                      <Home size={13} /> Hostel Details
+                    </span>
+                    <span className="font-extrabold text-amber-800">
+                      {item.hostel.feeAmount > 0 ? formatCurrency(item.hostel.feeAmount) : 'Opted'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-gray-600">
+                    <div><span className="font-semibold text-gray-400">Academic Year:</span> {item.hostel.academicYear}</div>
+                    <div><span className="font-semibold text-gray-400">Category:</span> {item.hostel.hostelCategory}</div>
+                    <div><span className="font-semibold text-gray-400">Hostel:</span> {item.hostel.hostelName}</div>
+                    <div><span className="font-semibold text-gray-400">Room:</span> {item.hostel.roomNumber}</div>
+                  </div>
+                </div>
+              )}
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Pickup Point / Stop</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <Clock size={14} className="text-blue-600 shrink-0" />
-                {transportStop}
-              </span>
-            </div>
+              {/* Day Scholar / Neither Opted Note */}
+              {!item.transport.hasRecord && !item.hostel.hasRecord && (
+                <div className="py-2 text-center text-[10px] text-gray-400 font-medium bg-gray-50/60 rounded-lg border border-dashed border-gray-200">
+                  Day Scholar / No Transport or Hostel Opted for Year {item.yearNumber}
+                </div>
+              )}
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Bus / Vehicle No.</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <Bus size={14} className="text-indigo-600 shrink-0" />
-                {busNumber}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Annual Transport Fare</span>
-              <span className="text-sm font-black text-emerald-700">
-                {formatCurrency(transportFareAmount)} / Year
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Pass Status</span>
-              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                <BadgeCheck size={14} /> Active Transport Pass Valid
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Driver / Coordinator</span>
-              <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                <Phone size={13} className="text-gray-500" /> +91 98480 12345
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(activeSubTab === 'all' || activeSubTab === 'hostel') && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
-                <Home size={20} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">Hostel Details</h3>
-                <p className="text-xs text-gray-500">Hostel block, room allocation, room type & annual fee</p>
-              </div>
-            </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-              hostelStatus.includes('Active')
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-gray-50 text-gray-600 border-gray-200'
-            }`}>
-              {hostelStatus}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Hostel Name / Block</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <Building2 size={14} className="text-amber-600 shrink-0" />
-                {hostelName}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Room Number</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <Home size={14} className="text-orange-600 shrink-0" />
-                {roomNumber}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Room Category</span>
-              <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                <ShieldCheck size={14} className="text-purple-600 shrink-0" />
-                {roomType}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Annual Hostel Fee</span>
-              <span className="text-sm font-black text-amber-700">
-                {formatCurrency(hostelFeeAmount)} / Year
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Mess Facility</span>
-              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 size={14} /> Mess & Food Included
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Hostel Warden</span>
-              <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                <User size={13} className="text-gray-500" /> Mr. K. Sharma (+91 94401 88888)
-              </span>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Year-wise Fee & Fare Breakdown Section */}
-      {(activeSubTab === 'all' || activeSubTab === 'yearwise') && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/70 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard size={18} className="text-blue-600" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">Year-wise Transport & Hostel Fee Summary</h3>
-            </div>
-            <span className="text-xs text-gray-500 font-medium">All 4 Program Years</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-100">
-                  <th className="px-4 py-3">Academic Year</th>
-                  <th className="px-4 py-3">Program Year</th>
-                  <th className="px-4 py-3">Transport Fare</th>
-                  <th className="px-4 py-3">Hostel Fee</th>
-                  <th className="px-4 py-3">Total Fare / Fee</th>
-                  <th className="px-4 py-3">Paid Amount</th>
-                  <th className="px-4 py-3">Due Amount</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {yearwiseFees.map((yr) => (
-                  <tr key={`yr-fee-${yr.year}`} className={`hover:bg-slate-50/80 transition-colors ${
-                    yr.isCurrent ? 'bg-blue-50/30' : ''
-                  }`}>
-                    <td className="px-4 py-3.5 font-bold text-gray-900">
-                      {yr.academicYear}
-                    </td>
-                    <td className="px-4 py-3.5 font-medium text-gray-700">
-                      Year {yr.year} {yr.isCurrent && <span className="ml-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">Current</span>}
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-teal-700">
-                      {formatCurrency(yr.transportFee)}
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-amber-700">
-                      {formatCurrency(yr.hostelFee)}
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-gray-900">
-                      {formatCurrency(yr.totalFare)}
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-emerald-600">
-                      {formatCurrency(yr.paidFare)}
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-amber-600">
-                      {formatCurrency(yr.dueFare)}
-                    </td>
-                    <td className="px-4 py-3.5 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
-                        yr.status === 'Paid'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : yr.status === 'Partial Due'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {yr.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-gray-50/80 font-bold border-t border-gray-200">
-                  <td colSpan={4} className="px-4 py-3 text-right uppercase text-[10px] tracking-wider text-gray-500">
-                    Grand Total (4 Years):
-                  </td>
-                  <td className="px-4 py-3 text-gray-900 text-sm">{formatCurrency(totalFareSum)}</td>
-                  <td className="px-4 py-3 text-emerald-700 text-sm">{formatCurrency(totalPaidSum)}</td>
-                  <td className="px-4 py-3 text-amber-700 text-sm">{formatCurrency(totalDueSum)}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 };
