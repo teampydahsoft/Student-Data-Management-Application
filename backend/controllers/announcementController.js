@@ -12,6 +12,19 @@ const deleteLocalFile = (path) => {
     }
 };
 
+// Ensure expires_at column exists in announcements table
+(async () => {
+    try {
+        const [cols] = await masterPool.query("SHOW COLUMNS FROM announcements LIKE 'expires_at'");
+        if (cols.length === 0) {
+            await masterPool.query("ALTER TABLE announcements ADD COLUMN expires_at DATETIME DEFAULT NULL AFTER audience_count");
+            console.log('✅ Added expires_at column to announcements table');
+        }
+    } catch (e) {
+        console.error('Error checking expires_at column:', e.message);
+    }
+})();
+
 exports.createAnnouncement = async (req, res) => {
     let localFilePath = null;
     try {
@@ -23,7 +36,8 @@ exports.createAnnouncement = async (req, res) => {
             target_course,
             target_branch,
             target_year,
-            target_semester
+            target_semester,
+            expires_at
         } = req.body;
 
         const createdBy = req.user?.id || 1;
@@ -66,10 +80,12 @@ exports.createAnnouncement = async (req, res) => {
         const [countRow] = await masterPool.query(countQuery, queryParams);
         const audienceCount = countRow[0].count;
 
+        const parsedExpiresAt = expires_at && expires_at !== 'null' ? expires_at : null;
+
         const [result] = await masterPool.query(
             `INSERT INTO announcements 
-            (title, content, image_url, target_college, target_batch, target_course, target_branch, target_year, target_semester, created_by, audience_count) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (title, content, image_url, target_college, target_batch, target_course, target_branch, target_year, target_semester, created_by, audience_count, expires_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 title,
                 content,
@@ -81,7 +97,8 @@ exports.createAnnouncement = async (req, res) => {
                 target_year || null,
                 target_semester || null,
                 createdBy,
-                audienceCount
+                audienceCount,
+                parsedExpiresAt
             ]
         );
 
@@ -150,6 +167,7 @@ exports.getAnnouncements = async (req, res) => {
                 a.created_by,
                 a.audience_count,
                 a.is_active,
+                a.expires_at,
                 a.created_at,
                 a.updated_at,
                 u.username as created_by_name 
@@ -212,9 +230,9 @@ exports.getStudentAnnouncements = async (req, res) => {
             return res.json({ success: true, data: [], hasMore: false });
         }
 
-        // Fetch active announcements (WITHOUT loading the multi-megabyte image_url text)
+        // Fetch active non-expired announcements (WITHOUT loading the multi-megabyte image_url text)
         const [rows] = await masterPool.query(
-            'SELECT id, title, content, (image_url IS NOT NULL AND image_url != "") as has_image, created_at, is_active, target_college, target_batch, target_course, target_branch, target_year, target_semester FROM announcements WHERE is_active = 1 ORDER BY created_at DESC'
+            'SELECT id, title, content, (image_url IS NOT NULL AND image_url != "") as has_image, created_at, expires_at, is_active, target_college, target_batch, target_course, target_branch, target_year, target_semester FROM announcements WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC'
         );
 
         const matchedAnnouncements = rows.filter(ann => {
@@ -298,7 +316,8 @@ exports.updateAnnouncement = async (req, res) => {
             target_branch,
             target_year,
             target_semester,
-            existing_image_url
+            existing_image_url,
+            expires_at
         } = req.body;
 
         let imageClause = '';
@@ -343,6 +362,8 @@ exports.updateAnnouncement = async (req, res) => {
         const [countRow] = await masterPool.query(countQuery, queryParams);
         const audienceCount = countRow[0].count;
 
+        const parsedExpiresAt = expires_at && expires_at !== 'null' ? expires_at : null;
+
         await masterPool.query(
             `UPDATE announcements SET 
                 title = ?, 
@@ -354,7 +375,8 @@ exports.updateAnnouncement = async (req, res) => {
                 target_branch = ?, 
                 target_year = ?, 
                 target_semester = ?,
-                audience_count = ?
+                audience_count = ?,
+                expires_at = ?
             WHERE id = ?`,
             [
                 title,
@@ -367,6 +389,7 @@ exports.updateAnnouncement = async (req, res) => {
                 target_year || null,
                 target_semester || null,
                 audienceCount,
+                parsedExpiresAt,
                 id
             ]
         );

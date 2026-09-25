@@ -262,9 +262,17 @@ const StudentAnnouncements = () => {
                                             </div>
                                         )}
                                         <div className="p-5 flex-1 flex flex-col">
-                                            <div className="flex items-center gap-1.5 text-[10px] uppercase font-black tracking-[0.15em] text-slate-400 mb-3">
-                                                <Calendar size={11} className="text-indigo-400/60" />
-                                                {new Date(ann.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            <div className="flex items-center justify-between text-[10px] uppercase font-black tracking-[0.15em] text-slate-400 mb-3">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Calendar size={11} className="text-indigo-400/60" />
+                                                    {new Date(ann.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </div>
+                                                {ann.expires_at && (
+                                                    <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md font-bold text-[9px]">
+                                                        <Clock size={10} />
+                                                        <span>Valid till {new Date(ann.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                             <h3 className="text-base font-black text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-snug tracking-tight">{ann.title}</h3>
                                             <p className="text-slate-500 text-[12px] line-clamp-2 leading-relaxed font-medium mt-auto opacity-80">{ann.content}</p>

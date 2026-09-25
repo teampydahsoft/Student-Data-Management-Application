@@ -88,6 +88,8 @@ const Announcements = () => {
     const initialFormState = {
         title: '',
         content: '',
+        time_limit_option: '3', // '1', '3', '7', '30', 'none', 'custom'
+        custom_expiry_date: '',
         // Poll specific
         question: '',
         options: ['', ''],
@@ -219,10 +221,22 @@ const Announcements = () => {
         };
 
         if (type === 'announcements') {
+            let timeLimitOpt = 'none';
+            let customExpiry = '';
+            if (item.expires_at) {
+                timeLimitOpt = 'custom';
+                try {
+                    customExpiry = new Date(item.expires_at).toISOString().slice(0, 16);
+                } catch (e) {
+                    customExpiry = '';
+                }
+            }
             setFormData({
                 ...initialFormState,
                 title: item.title,
                 content: item.content,
+                time_limit_option: timeLimitOpt,
+                custom_expiry_date: customExpiry,
                 target_college: parseField(item.target_college),
                 target_batch: parseField(item.target_batch),
                 target_course: parseField(item.target_course),
@@ -356,6 +370,22 @@ const Announcements = () => {
         data.append('content', formData.content);
         if (formData.image) data.append('image', formData.image);
         if (editId && formData.existing_image_url && !formData.image) data.append('existing_image_url', formData.existing_image_url);
+
+        let computedExpiresAt = null;
+        if (formData.time_limit_option === 'custom' && formData.custom_expiry_date) {
+            computedExpiresAt = new Date(formData.custom_expiry_date).toISOString().slice(0, 19).replace('T', ' ');
+        } else if (formData.time_limit_option && formData.time_limit_option !== 'none') {
+            const days = parseInt(formData.time_limit_option, 10);
+            if (!isNaN(days) && days > 0) {
+                const expDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                computedExpiresAt = expDate.toISOString().slice(0, 19).replace('T', ' ');
+            }
+        }
+        if (computedExpiresAt) {
+            data.append('expires_at', computedExpiresAt);
+        } else {
+            data.append('expires_at', '');
+        }
 
         ['target_college', 'target_batch', 'target_course', 'target_branch', 'target_year', 'target_semester'].forEach(key => {
             if (formData[key].length) data.append(key, JSON.stringify(formData[key]));
@@ -885,6 +915,23 @@ const Announcements = () => {
                                         <AnnouncementImage src={ann.image_url} alt={ann.title} />
                                     )}
                                     <p className="text-sm text-gray-500 mb-3 line-clamp-2">{ann.content}</p>
+                                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                                        <div className="flex items-center gap-1.5 font-medium">
+                                            <Clock size={12} className={ann.expires_at && new Date(ann.expires_at) < new Date() ? 'text-red-500' : 'text-blue-500'} />
+                                            {ann.expires_at ? (
+                                                new Date(ann.expires_at) < new Date() ? (
+                                                    <span className="text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">Expired</span>
+                                                ) : (
+                                                    <span className="text-blue-600 font-semibold">Expires {new Date(ann.expires_at).toLocaleDateString()}</span>
+                                                )
+                                            ) : (
+                                                <span className="text-gray-400">No Time Limit</span>
+                                            )}
+                                        </div>
+                                        {ann.audience_count > 0 && (
+                                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">{ann.audience_count} Reach</span>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                             {announcements.length === 0 && !fetchingFeed && (
@@ -1016,6 +1063,53 @@ const Announcements = () => {
                                                         value={formData.content}
                                                         onChange={e => setFormData({ ...formData, content: e.target.value })}
                                                     />
+                                                </div>
+                                                <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-100 space-y-2">
+                                                    <label className="block text-xs font-bold text-gray-700 flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock size={14} className="text-blue-600" />
+                                                        Display Time Limit (Auto-Expire)
+                                                    </label>
+                                                    <div className="grid grid-cols-5 gap-1.5">
+                                                        {[
+                                                            { id: '1', label: '1 Day' },
+                                                            { id: '3', label: '3 Days' },
+                                                            { id: '7', label: '7 Days' },
+                                                            { id: 'none', label: 'No Limit' },
+                                                            { id: 'custom', label: 'Custom' }
+                                                        ].map(opt => (
+                                                            <button
+                                                                key={opt.id}
+                                                                type="button"
+                                                                onClick={() => setFormData({ ...formData, time_limit_option: opt.id })}
+                                                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all border text-center ${
+                                                                    formData.time_limit_option === opt.id
+                                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                }`}
+                                                            >
+                                                                {opt.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {formData.time_limit_option === 'custom' && (
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 bg-white mt-2"
+                                                            value={formData.custom_expiry_date || ''}
+                                                            onChange={e => setFormData({ ...formData, custom_expiry_date: e.target.value })}
+                                                        />
+                                                    )}
+                                                    <p className="text-[11px] text-gray-500 font-medium">
+                                                        {formData.time_limit_option !== 'none' && formData.time_limit_option !== 'custom' && (
+                                                            <span>⏱️ Popup & feed notice will be active for <strong>{formData.time_limit_option} days</strong> and then automatically stop displaying to students.</span>
+                                                        )}
+                                                        {formData.time_limit_option === 'none' && (
+                                                            <span>♾️ Announcement will stay active until manually toggled or deleted.</span>
+                                                        )}
+                                                        {formData.time_limit_option === 'custom' && formData.custom_expiry_date && (
+                                                            <span>⏱️ Auto-expires on <strong>{new Date(formData.custom_expiry_date).toLocaleString()}</strong>.</span>
+                                                        )}
+                                                    </p>
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-1">Image (Optional)</label>
