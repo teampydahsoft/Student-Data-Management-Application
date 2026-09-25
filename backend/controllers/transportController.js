@@ -12,24 +12,7 @@ const Route = transportConnection.model('Route', RouteModelInfo.schema);
 const Bus = transportConnection.model('Bus', BusModelInfo.schema);
 
 // Strict Read-Only Mongoose Model for transport_requests in pydah_transport
-const transportRequestSchema = new mongoose.Schema({
-    id: Number,
-    application_number: String,
-    student_name: String,
-    admission_number: mongoose.Schema.Types.Mixed,
-    academic_year: String,
-    route_id: String,
-    route_name: String,
-    stage_name: String,
-    bus_id: String,
-    fare: Number,
-    status: String,
-    physical_card_qr: String,
-    cancelled_at: Date,
-    not_interested: mongoose.Schema.Types.Mixed,
-    created_at: Date,
-    updated_at: Date
-}, { collection: 'transport_requests', strict: false });
+const TransportRequest = require('../MongoDb-Transport/TransportRequest');
 
 const gpsFinalDestinationSchema = new mongoose.Schema({
     campus: Number,
@@ -40,7 +23,6 @@ const gpsFinalDestinationSchema = new mongoose.Schema({
     isActive: Boolean
 }, { collection: 'gpsfinaldestinations', strict: false });
 
-const TransportRequest = transportConnection.model('TransportRequest', transportRequestSchema);
 const GpsFinalDestination = transportConnection.model('GpsFinalDestination', gpsFinalDestinationSchema);
 
 exports.getAllRoutes = async (req, res) => {
