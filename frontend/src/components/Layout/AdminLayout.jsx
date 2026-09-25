@@ -96,7 +96,7 @@ const NAV_ITEMS = [
       },
       {
         path: "/section-partition",
-        label: "Section Partition",
+        label: "Section Management",
         icon: LayoutGrid,
         permission: FRONTEND_MODULES.SECTION_PARTITION,
       },

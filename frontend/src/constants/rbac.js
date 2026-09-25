@@ -73,8 +73,8 @@ export const MODULE_PERMISSIONS = {
   [BACKEND_MODULES.SECTION_PARTITION]: {
     permissions: ['view', 'manage'],
     labels: {
-      view: 'View Section Partition',
-      manage: 'Manage Section Partition'
+      view: 'View Section Management',
+      manage: 'Manage Section Management'
     }
   },
   [BACKEND_MODULES.ATTENDANCE]: {
@@ -218,7 +218,7 @@ export const MODULE_LABELS = {
   [BACKEND_MODULES.PRE_REGISTRATION]: 'Self Registration',
   [BACKEND_MODULES.STUDENT_MANAGEMENT]: 'Student Management',
   [BACKEND_MODULES.PROMOTIONS]: 'Promotions',
-  [BACKEND_MODULES.SECTION_PARTITION]: 'Section Partition',
+  [BACKEND_MODULES.SECTION_PARTITION]: 'Section Management',
   [BACKEND_MODULES.ATTENDANCE]: 'Attendance',
   [BACKEND_MODULES.SETTINGS]: 'Settings',
   [BACKEND_MODULES.USER_MANAGEMENT]: 'User Management',

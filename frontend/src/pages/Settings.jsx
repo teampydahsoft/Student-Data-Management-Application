@@ -712,7 +712,7 @@ const BranchSectionsEditor = ({ value, onChange }) => {
 
           <p className="text-[11px] text-gray-400 leading-snug">
             Section names and strength limits are saved with this branch. Assign students to sections
-            manually from Students → Section Partition (bulk assign or per-row dropdown).
+            manually from Students → Section Management (bulk assign or per-row dropdown).
           </p>
         </>
       )}
