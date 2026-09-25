@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Megaphone,
     Send,
@@ -1006,8 +1007,8 @@ const Announcements = () => {
             </div >
 
             {/* General Modal (Announcements/Polls) */}
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            {isCreateModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl my-8 overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b flex justify-between items-center bg-white z-10">
                             <div className="flex items-center gap-3">
@@ -1212,127 +1213,127 @@ const Announcements = () => {
                             </form>
                         </div>
                     </div>
-                </div>
-            )
+                </div>,
+                document.body
+            )}
             }
 
             {/* SMS Template Modal */}
-            {
-                isTemplateModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
-                            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-                                <h2 className="text-lg font-bold flex items-center gap-2">
-                                    <Settings className="text-blue-600" size={20} />
-                                    {editId ? 'Edit SMS Template' : 'Create SMS Template'}
-                                </h2>
-                                <button onClick={handleCancel} className="p-2 hover:bg-gray-200 rounded-full text-gray-500">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="p-6">
-                                <form onSubmit={handleSaveTemplate} className="space-y-4">
-                                    <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
-                                        <h4 className="font-bold flex items-center gap-1 mb-1"><MessageSquare size={14} /> Guide</h4>
-                                        <p>Use <code>{'{#var#}'}</code> as placeholder for variables in content.</p>
-                                        <p className="mt-1">Optional defaults below are pre-filled when sending. Final values can still be entered or changed on the <strong>Send Broadcast</strong> screen.</p>
-                                    </div>
+            {isTemplateModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <Settings className="text-blue-600" size={20} />
+                                {editId ? 'Edit SMS Template' : 'Create SMS Template'}
+                            </h2>
+                            <button onClick={handleCancel} className="p-2 hover:bg-gray-200 rounded-full text-gray-500">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <form onSubmit={handleSaveTemplate} className="space-y-4">
+                                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
+                                    <h4 className="font-bold flex items-center gap-1 mb-1"><MessageSquare size={14} /> Guide</h4>
+                                    <p>Use <code>{'{#var#}'}</code> as placeholder for variables in content.</p>
+                                    <p className="mt-1">Optional defaults below are pre-filled when sending. Final values can still be entered or changed on the <strong>Send Broadcast</strong> screen.</p>
+                                </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Template Name (Internal)</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full p-2 border rounded bg-white"
-                                            placeholder="e.g. Absent Alert"
-                                            value={formData.template_name}
-                                            onChange={e => setFormData({ ...formData, template_name: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">DLT Template ID</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full p-2 border rounded bg-white"
-                                            placeholder="1007..."
-                                            value={formData.template_id}
-                                            onChange={e => setFormData({ ...formData, template_id: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                                        <textarea
-                                            required
-                                            className="w-full p-2 border rounded bg-white h-24"
-                                            placeholder="Content with {#var#}..."
-                                            value={formData.template_content}
-                                            onChange={e => handleTemplateContentChange(e.target.value)}
-                                        />
-                                    </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Template Name (Internal)</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-2 border rounded bg-white"
+                                        placeholder="e.g. Absent Alert"
+                                        value={formData.template_name}
+                                        onChange={e => setFormData({ ...formData, template_name: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">DLT Template ID</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full p-2 border rounded bg-white"
+                                        placeholder="1007..."
+                                        value={formData.template_id}
+                                        onChange={e => setFormData({ ...formData, template_id: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                                    <textarea
+                                        required
+                                        className="w-full p-2 border rounded bg-white h-24"
+                                        placeholder="Content with {#var#}..."
+                                        value={formData.template_content}
+                                        onChange={e => handleTemplateContentChange(e.target.value)}
+                                    />
+                                </div>
 
-                                    {formData.variable_mappings.length > 0 ? (
-                                        <div className="space-y-3 bg-gray-50 p-3 rounded border">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">Default Variable Mappings (optional)</label>
-                                            <p className="text-xs text-gray-500">Detected {formData.variable_mappings.length} placeholder(s). These defaults appear on Send Broadcast — you can override them before sending.</p>
-                                            {formData.variable_mappings.map((mapping, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <span className="text-xs font-mono text-gray-500 w-12">var#{idx + 1}</span>
+                                {formData.variable_mappings.length > 0 ? (
+                                    <div className="space-y-3 bg-gray-50 p-3 rounded border">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Default Variable Mappings (optional)</label>
+                                        <p className="text-xs text-gray-500">Detected {formData.variable_mappings.length} placeholder(s). These defaults appear on Send Broadcast — you can override them before sending.</p>
+                                        {formData.variable_mappings.map((mapping, idx) => (
+                                            <div key={idx} className="flex gap-2 items-center">
+                                                <span className="text-xs font-mono text-gray-500 w-12">var#{idx + 1}</span>
+                                                <select
+                                                    className="p-1 border rounded text-xs bg-white"
+                                                    value={mapping.type}
+                                                    onChange={(e) => handleMappingChange(idx, 'type', e.target.value)}
+                                                >
+                                                    <option value="static">Static</option>
+                                                    <option value="field">Field</option>
+                                                </select>
+                                                {mapping.type === 'static' ? (
+                                                    <input
+                                                        type="text"
+                                                        className="flex-1 p-1 border rounded text-xs"
+                                                        placeholder="Value"
+                                                        value={mapping.value}
+                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
+                                                    />
+                                                ) : (
                                                     <select
-                                                        className="p-1 border rounded text-xs bg-white"
-                                                        value={mapping.type}
-                                                        onChange={(e) => handleMappingChange(idx, 'type', e.target.value)}
+                                                        className="flex-1 p-1 border rounded text-xs bg-white"
+                                                        value={mapping.value}
+                                                        onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
                                                     >
-                                                        <option value="static">Static</option>
-                                                        <option value="field">Field</option>
+                                                        <option value="">Select Field...</option>
+                                                        {studentFields.map(f => (
+                                                            <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
+                                                        ))}
                                                     </select>
-                                                    {mapping.type === 'static' ? (
-                                                        <input
-                                                            type="text"
-                                                            className="flex-1 p-1 border rounded text-xs"
-                                                            placeholder="Value"
-                                                            value={mapping.value}
-                                                            onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
-                                                        />
-                                                    ) : (
-                                                        <select
-                                                            className="flex-1 p-1 border rounded text-xs bg-white"
-                                                            value={mapping.value}
-                                                            onChange={(e) => handleMappingChange(idx, 'value', e.target.value)}
-                                                        >
-                                                            <option value="">Select Field...</option>
-                                                            {studentFields.map(f => (
-                                                                <option key={`${f.label}-${f.value}`} value={f.value}>{f.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        formData.template_content && (
-                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
-                                                No {'{#var#}'} placeholders found yet. Add them in content to configure variable mapping.
-                                            </p>
-                                        )
-                                    )}
-
-                                    <div className="flex justify-end gap-3 pt-4">
-                                        <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                                        <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-bold hover:bg-blue-700">
-                                            {editId ? 'Save Changes' : 'Create Template'}
-                                        </button>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                </form>
-                            </div>
+                                ) : (
+                                    formData.template_content && (
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
+                                            No {'{#var#}'} placeholders found yet. Add them in content to configure variable mapping.
+                                        </p>
+                                    )
+                                )}
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                                    <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-bold hover:bg-blue-700">
+                                        {editId ? 'Save Changes' : 'Create Template'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                )
-            }
+                </div>,
+                document.body
+            )}
 
             {/* Mobile Target Selection Modal */}
-            {isMobileTargetModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            {isMobileTargetModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                         <div className="p-5 border-b flex justify-between items-center bg-gray-50">
                             <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
@@ -1390,7 +1391,8 @@ const Announcements = () => {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div >
     );
