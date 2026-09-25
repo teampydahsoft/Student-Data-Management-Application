@@ -980,6 +980,31 @@ const UserManagement = () => {
     }
   };
 
+  const handleOpenDeleteRoleModal = async (roleConfig) => {
+    const roleKey = roleConfig.role_key || roleConfig.value;
+    const label = roleConfig.label || ROLE_LABELS[roleKey] || roleKey;
+    setDeleteRoleModal({
+      role_key: roleKey,
+      label,
+      loading: true,
+      users: []
+    });
+    try {
+      const res = await api.get(`/rbac/role-config/${roleKey}/users`);
+      if (res.data?.success) {
+        setDeleteRoleModal(prev => (prev && prev.role_key === roleKey) ? {
+          ...prev,
+          loading: false,
+          users: res.data.data?.users || []
+        } : prev);
+      } else {
+        setDeleteRoleModal(prev => (prev && prev.role_key === roleKey) ? { ...prev, loading: false, users: [] } : prev);
+      }
+    } catch (_) {
+      setDeleteRoleModal(prev => (prev && prev.role_key === roleKey) ? { ...prev, loading: false, users: [] } : prev);
+    }
+  };
+
   const loadStudentFields = async (source = 'user') => {
     setLoadingFields(true);
     try {
@@ -2449,16 +2474,15 @@ const UserManagement = () => {
                               >
                                 Edit name & configure
                               </button>
-                              {config.is_custom && (
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteRoleModal({ role_key: roleKey, label })}
-                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors"
-                                  title="Delete role"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDeleteRoleModal(config)}
+                                className="px-2.5 py-1.5 text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 rounded-lg transition-colors flex items-center gap-1"
+                                title="Delete role"
+                              >
+                                <Trash2 size={13} />
+                                Delete
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -3082,50 +3106,187 @@ const UserManagement = () => {
 
       {/* Delete role confirm modal */}
       {deleteRoleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl overflow-hidden">
-            <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
-              <AlertTriangle className="text-red-600 flex-shrink-0" size={20} />
-              <h3 className="text-base font-bold text-red-800">Delete role</h3>
-            </div>
-            <div className="p-4 text-sm text-slate-600">
-              <p>Delete the role <strong>"{deleteRoleModal.label}"</strong>? This cannot be undone.</p>
-              <p className="mt-2 text-slate-500 text-xs">No users must have this role. If any do, reassign them first.</p>
-            </div>
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden my-auto border border-slate-200">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-gradient-to-r from-red-600 to-rose-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white leading-tight">Delete Role</h3>
+                  <p className="text-xs text-white/80 font-mono mt-0.5">{deleteRoleModal.role_key}</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setDeleteRoleModal(null)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
+                className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={deletingRole}
-                onClick={async () => {
-                  setDeletingRole(true);
-                  try {
-                    const res = await api.delete(`/rbac/role-config/${deleteRoleModal.role_key}`);
-                    if (res.data?.success) {
-                      toast.success('Role deleted');
-                      setDeleteRoleModal(null);
-                      loadRoleConfigs();
-                    } else {
-                      toast.error(res.data?.message || 'Failed to delete role');
-                    }
-                  } catch (err) {
-                    toast.error(err.response?.data?.message || 'Failed to delete role');
-                  } finally {
-                    setDeletingRole(false);
-                  }
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {deletingRole ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                Delete
+                <X size={18} />
               </button>
             </div>
+
+            {/* Modal Content */}
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Are you sure you want to delete the role <span className="text-red-600 font-bold">"{deleteRoleModal.label}"</span>?
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Deleting this role will remove its configuration from the system.
+                </p>
+              </div>
+
+              {/* Persons Participating Info Section */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <UsersIcon size={14} className="text-violet-600" />
+                    Assigned Persons / Participants
+                  </h4>
+                  {deleteRoleModal.loading ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                      <RefreshCw size={12} className="animate-spin text-violet-600" />
+                      Loading...
+                    </span>
+                  ) : (
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      deleteRoleModal.users?.length > 0
+                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    }`}>
+                      {deleteRoleModal.users?.length || 0} Person(s)
+                    </span>
+                  )}
+                </div>
+
+                {deleteRoleModal.loading ? (
+                  <div className="py-6 flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <RefreshCw size={24} className="animate-spin text-violet-500" />
+                    <p className="text-xs font-medium">Checking assigned persons for this role...</p>
+                  </div>
+                ) : deleteRoleModal.users?.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-start gap-2">
+                      <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Attention required:</p>
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          {deleteRoleModal.users.length} person(s) currently participate in this role. If you proceed with deletion, these users will be unassigned from this role.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white p-2">
+                      {deleteRoleModal.users.map((person) => (
+                        <div key={person.id} className="pt-1.5 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">
+                              {person.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-800 truncate">{person.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">@{person.username} • {person.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {person.is_active ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 text-slate-500">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                    <span>No persons are currently assigned to this role. Safe to delete.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            {(() => {
+              const hasUsers = (deleteRoleModal.users?.length || 0) > 0;
+              const isButtonDisabled = deletingRole || deleteRoleModal.loading || hasUsers;
+              return (
+                <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {deleteRoleModal.loading
+                      ? 'Checking assigned persons...'
+                      : hasUsers
+                      ? `⚠️ Cannot delete: ${deleteRoleModal.users.length} person(s) assigned. Reassign them first.`
+                      : '✅ 0 persons assigned • Safe to delete'}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteRoleModal(null)}
+                      className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isButtonDisabled}
+                      onClick={async () => {
+                        if (hasUsers) return;
+                        setDeletingRole(true);
+                        try {
+                          const res = await api.delete(`/rbac/role-config/${deleteRoleModal.role_key}`);
+                          if (res.data?.success) {
+                            toast.success(res.data?.message || 'Role deleted successfully');
+                            setDeleteRoleModal(null);
+                            loadRoleConfigs();
+                            loadUsers();
+                          } else {
+                            toast.error(res.data?.message || 'Failed to delete role');
+                          }
+                        } catch (err) {
+                          toast.error(err.response?.data?.message || 'Failed to delete role');
+                        } finally {
+                          setDeletingRole(false);
+                        }
+                      }}
+                      className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 ${
+                        deleteRoleModal.loading
+                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
+                          : hasUsers
+                          ? 'bg-red-100 text-red-400 border border-red-200 cursor-not-allowed opacity-70 select-none'
+                          : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-500/40 active:scale-95 cursor-pointer'
+                      }`}
+                      title={hasUsers ? 'Cannot delete while persons are assigned to this role' : 'Confirm Delete Role'}
+                    >
+                      {deletingRole ? (
+                        <RefreshCw size={15} className="animate-spin" />
+                      ) : hasUsers ? (
+                        <AlertTriangle size={15} className="text-red-400" />
+                      ) : (
+                        <Trash2 size={15} />
+                      )}
+                      <span>
+                        {deletingRole
+                          ? 'Deleting Role...'
+                          : hasUsers
+                          ? `Cannot Delete (${deleteRoleModal.users.length} Persons Assigned)`
+                          : 'Confirm Delete Role (Safe to Delete)'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

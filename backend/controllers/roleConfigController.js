@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS rbac_role_config (
 const ensureRoleConfigTable = async () => {
   try {
     await masterPool.query(CREATE_ROLE_CONFIG_TABLE_SQL);
+    try {
+      await masterPool.query('ALTER TABLE rbac_role_config ADD COLUMN is_deleted TINYINT(1) DEFAULT 0');
+    } catch (_) {}
   } catch (e) {
     console.error('ensureRoleConfigTable error:', e.message);
     throw e;
@@ -87,7 +90,7 @@ const getPermissionsForRole = async (roleKey) => {
   }
   try {
     const [rows] = await masterPool.query(
-      'SELECT permissions FROM rbac_role_config WHERE role_key = ?',
+      'SELECT permissions FROM rbac_role_config WHERE role_key = ? AND is_deleted = 0',
       [roleKey]
     );
     if (rows && rows.length > 0 && rows[0].permissions) {
@@ -104,14 +107,15 @@ const getPermissionsForRole = async (roleKey) => {
 /** Check if a role exists (main app built-in or custom in DB only; ticket app roles not included) */
 const roleExistsInConfig = async (roleKey) => {
   if (!roleKey) return false;
-  if (CONFIGURABLE_ROLES.includes(roleKey)) return true;
   try {
-    const [r] = await masterPool.query('SELECT 1 FROM rbac_role_config WHERE role_key = ?', [roleKey]);
-    return r && r.length > 0;
+    const [r] = await masterPool.query('SELECT is_deleted FROM rbac_role_config WHERE role_key = ?', [roleKey]);
+    if (r && r.length > 0) {
+      return Number(r[0].is_deleted || 0) === 0;
+    }
   } catch (e) {
     if (e.code === 'ER_NO_SUCH_TABLE') return false;
-    throw e;
   }
+  return CONFIGURABLE_ROLES.includes(roleKey) || TICKET_APP_ROLES.includes(roleKey);
 };
 
 module.exports.getPermissionsForRole = getPermissionsForRole;
@@ -122,7 +126,7 @@ module.exports.TICKET_APP_ROLE_LABELS = TICKET_APP_ROLE_LABELS;
 
 /**
  * GET /api/rbac/role-config
- * List all role configs (built-in + custom from DB)
+ * List all active role configs (built-in + custom from DB, excluding deleted)
  */
 exports.getRoleConfigs = async (req, res) => {
   try {
@@ -130,7 +134,7 @@ exports.getRoleConfigs = async (req, res) => {
     let rows = [];
     try {
       const [r] = await masterPool.query(
-        'SELECT role_key, label, description, permissions, updated_at FROM rbac_role_config'
+        'SELECT role_key, label, description, permissions, is_deleted, updated_at FROM rbac_role_config'
       );
       rows = r || [];
     } catch (e) {
@@ -145,13 +149,20 @@ exports.getRoleConfigs = async (req, res) => {
           const raw = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : r.permissions;
           perms = parsePermissions(raw);
         } catch (_) {}
-        byRole[r.role_key] = { permissions: perms, label: r.label, description: r.description || '', updated_at: r.updated_at };
       }
+      byRole[r.role_key] = {
+        permissions: perms,
+        label: r.label,
+        description: r.description || '',
+        is_deleted: Number(r.is_deleted || 0) === 1,
+        updated_at: r.updated_at
+      };
     });
 
     const configs = [];
     CONFIGURABLE_ROLES.forEach(roleKey => {
       const stored = byRole[roleKey];
+      if (stored && stored.is_deleted) return;
       let permissions = createDefaultPermissions();
       if (stored && stored.permissions) {
         Object.keys(stored.permissions).forEach(module => {
@@ -170,6 +181,7 @@ exports.getRoleConfigs = async (req, res) => {
 
     rows.forEach(r => {
       if (!CONFIGURABLE_ROLES.includes(r.role_key) && !TICKET_APP_ROLES.includes(r.role_key)) {
+        if (Number(r.is_deleted || 0) === 1) return;
         let permissions = createDefaultPermissions();
         if (byRole[r.role_key] && byRole[r.role_key].permissions) {
           Object.keys(byRole[r.role_key].permissions).forEach(module => {
@@ -195,6 +207,34 @@ exports.getRoleConfigs = async (req, res) => {
 };
 
 /**
+ * GET /api/rbac/role-config/:roleKey/users
+ * Get list of persons/users assigned to or participating in this role
+ */
+exports.getRoleUsers = async (req, res) => {
+  try {
+    const { roleKey } = req.params;
+    const [users] = await masterPool.query(
+      `SELECT id, name, username, email, phone, is_active, hrms_id, created_at 
+       FROM rbac_users 
+       WHERE role = ?
+       ORDER BY name ASC`,
+      [roleKey]
+    );
+    res.json({
+      success: true,
+      data: {
+        role_key: roleKey,
+        count: users ? users.length : 0,
+        users: users || []
+      }
+    });
+  } catch (error) {
+    console.error('getRoleUsers error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to fetch users for role' });
+  }
+};
+
+/**
  * GET /api/rbac/role-config/:roleKey
  * Get single role config (for create user form when role is selected)
  */
@@ -210,7 +250,7 @@ exports.getRoleConfigByRole = async (req, res) => {
     let label = ROLE_LABELS[roleKey] || TICKET_APP_ROLE_LABELS[roleKey] || roleKey;
     let description = ROLE_DESCRIPTIONS[roleKey] || TICKET_APP_ROLE_DESCRIPTIONS[roleKey] || '';
     try {
-      const [r] = await masterPool.query('SELECT label, description FROM rbac_role_config WHERE role_key = ?', [roleKey]);
+      const [r] = await masterPool.query('SELECT label, description FROM rbac_role_config WHERE role_key = ? AND is_deleted = 0', [roleKey]);
       if (r && r.length > 0) {
         if (r[0].label) label = r[0].label;
         if (r[0].description != null) description = r[0].description || '';
@@ -242,22 +282,18 @@ exports.updateRoleConfig = async (req, res) => {
     const { roleKey } = req.params;
     const { label: bodyLabel, description: bodyDescription, permissions: rawPermissions, propagateToExistingUsers = true } = req.body || {};
 
-    const exists = await roleExistsInConfig(roleKey);
-    if (!exists) {
-      return res.status(400).json({ success: false, message: 'Invalid role' });
-    }
-
     const permissions = parsePermissions(rawPermissions || createDefaultPermissions());
     const label = (bodyLabel && String(bodyLabel).trim()) || ROLE_LABELS[roleKey] || roleKey;
     const description = bodyDescription != null ? String(bodyDescription).trim() : (ROLE_DESCRIPTIONS[roleKey] || '');
 
     await masterPool.query(
-      `INSERT INTO rbac_role_config (role_key, label, description, permissions)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO rbac_role_config (role_key, label, description, permissions, is_deleted)
+       VALUES (?, ?, ?, ?, 0)
        ON DUPLICATE KEY UPDATE
          label = VALUES(label),
          description = VALUES(description),
          permissions = VALUES(permissions),
+         is_deleted = 0,
          updated_at = CURRENT_TIMESTAMP`,
       [roleKey, label, description, JSON.stringify(permissions)]
     );
@@ -301,17 +337,20 @@ exports.createRoleConfig = async (req, res) => {
     if (!key || key.length < 2) {
       return res.status(400).json({ success: false, message: 'role_key is required (e.g. custom_manager)' });
     }
-    if (CONFIGURABLE_ROLES.includes(key)) {
-      return res.status(400).json({ success: false, message: 'This role_key is reserved for a built-in role' });
-    }
 
     const labelStr = (label && String(label).trim()) || key;
     const descStr = (description != null && description !== '') ? String(description).trim() : '';
     const permissions = parsePermissions(rawPermissions || createDefaultPermissions());
 
     await masterPool.query(
-      `INSERT INTO rbac_role_config (role_key, label, description, permissions)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO rbac_role_config (role_key, label, description, permissions, is_deleted)
+       VALUES (?, ?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE
+         label = VALUES(label),
+         description = VALUES(description),
+         permissions = VALUES(permissions),
+         is_deleted = 0,
+         updated_at = CURRENT_TIMESTAMP`,
       [key, labelStr, descStr, JSON.stringify(permissions)]
     );
 
@@ -326,9 +365,6 @@ exports.createRoleConfig = async (req, res) => {
       }
     });
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ success: false, message: 'A role with this role_key already exists' });
-    }
     console.error('createRoleConfig error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to create role' });
   }
@@ -336,44 +372,39 @@ exports.createRoleConfig = async (req, res) => {
 
 /**
  * DELETE /api/rbac/role-config/:roleKey
- * Delete a custom role. Built-in roles cannot be deleted. Fails if any users have this role.
+ * Delete any role. Soft-deletes in rbac_role_config and unassigns any users assigned to this role.
  */
 exports.deleteRoleConfig = async (req, res) => {
   try {
     await ensureRoleConfigTable();
     const { roleKey } = req.params;
 
-    if (CONFIGURABLE_ROLES.includes(roleKey)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Built-in roles cannot be deleted. You can only edit their name and permissions.'
-      });
-    }
-    if (TICKET_APP_ROLES.includes(roleKey)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Ticket app roles cannot be deleted. You can only edit their name and permissions.'
-      });
+    if (!roleKey) {
+      return res.status(400).json({ success: false, message: 'Role key is required' });
     }
 
-    const [rows] = await masterPool.query('SELECT 1 FROM rbac_role_config WHERE role_key = ?', [roleKey]);
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Role not found' });
-    }
+    // 1. Unassign users who currently have this role in rbac_users
+    const [updateRes] = await masterPool.query(
+      "UPDATE rbac_users SET role = 'unassigned' WHERE role = ?",
+      [roleKey]
+    );
+    const unassignedCount = updateRes?.affectedRows || 0;
 
-    const [userRows] = await masterPool.query('SELECT COUNT(*) as cnt FROM rbac_users WHERE role = ?', [roleKey]);
-    const userCount = (userRows && userRows[0] && userRows[0].cnt) || 0;
-    if (userCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete: ${userCount} user(s) have this role. Reassign them to another role first.`
-      });
-    }
+    // 2. Mark role as deleted in rbac_role_config
+    const label = ROLE_LABELS[roleKey] || TICKET_APP_ROLE_LABELS[roleKey] || roleKey;
+    await masterPool.query(
+      `INSERT INTO rbac_role_config (role_key, label, description, permissions, is_deleted)
+       VALUES (?, ?, '', '{}', 1)
+       ON DUPLICATE KEY UPDATE
+         is_deleted = 1,
+         updated_at = CURRENT_TIMESTAMP`,
+      [roleKey, label]
+    );
 
-    await masterPool.query('DELETE FROM rbac_role_config WHERE role_key = ?', [roleKey]);
     res.json({
       success: true,
-      message: 'Role deleted successfully'
+      message: `Role deleted successfully.${unassignedCount > 0 ? ` ${unassignedCount} user(s) were unassigned.` : ''}`,
+      unassigned_count: unassignedCount
     });
   } catch (error) {
     console.error('deleteRoleConfig error:', error);

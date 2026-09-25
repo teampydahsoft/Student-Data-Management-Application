@@ -13,6 +13,12 @@ router.get(
 );
 
 router.get(
+  '/:roleKey/users',
+  verifyPermission('user_management', 'view'),
+  roleConfigController.getRoleUsers
+);
+
+router.get(
   '/:roleKey',
   verifyPermission('user_management', 'view'),
   roleConfigController.getRoleConfigByRole
