@@ -24,6 +24,8 @@ import {
   Lock,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
   Building2
 } from 'lucide-react';
 import {
@@ -261,6 +263,19 @@ const Reports = () => {
   const dayEndStatsRef = useRef(null);
   const [statsSectionHeight, setStatsSectionHeight] = useState(180);
   const [dayEndDate, setDayEndDate] = useState(formatDateToLocalISO(new Date()));
+  const [collegeDropdownOpen, setCollegeDropdownOpen] = useState(false);
+  const [collegeSearchQuery, setCollegeSearchQuery] = useState('');
+  const collegeDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (collegeDropdownRef.current && !collegeDropdownRef.current.contains(event.target)) {
+        setCollegeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const displayColleges = useMemo(() => {
     if (filterOptions.colleges && filterOptions.colleges.length > 0) return filterOptions.colleges;
@@ -268,11 +283,61 @@ const Reports = () => {
     return [];
   }, [filterOptions.colleges, collegesList]);
 
+  const selectedCollegeValues = useMemo(() => {
+    if (!filters.college) return [];
+    if (Array.isArray(filters.college)) return filters.college.map(String);
+    return String(filters.college).split(',').map(s => s.trim()).filter(Boolean);
+  }, [filters.college]);
+
+  const collegeTriggerLabel = useMemo(() => {
+    if (displayColleges.length === 0) return 'Select College';
+    if (selectedCollegeValues.length === 0 || selectedCollegeValues.length === displayColleges.length) {
+      return 'All Colleges';
+    }
+    if (selectedCollegeValues.length === 1) {
+      const found = displayColleges.find(c => String(c.id || c.name || c) === selectedCollegeValues[0]);
+      return found ? (found.name || found) : selectedCollegeValues[0];
+    }
+    return `${selectedCollegeValues.length} Colleges Selected`;
+  }, [selectedCollegeValues, displayColleges]);
+
+  const filteredDisplayColleges = useMemo(() => {
+    if (!collegeSearchQuery.trim()) return displayColleges;
+    const q = collegeSearchQuery.toLowerCase();
+    return displayColleges.filter(c => (c.name || String(c)).toLowerCase().includes(q));
+  }, [displayColleges, collegeSearchQuery]);
+
+  const getCollegeParamValue = (colVal) => {
+    if (!colVal) return '';
+    if (Array.isArray(colVal)) return colVal.filter(Boolean).join(',');
+    return String(colVal);
+  };
+
+  const toggleCollegeSelection = (collegeVal) => {
+    const valStr = String(collegeVal);
+    let nextSelected = [];
+    if (selectedCollegeValues.includes(valStr)) {
+      nextSelected = selectedCollegeValues.filter(v => v !== valStr);
+    } else {
+      nextSelected = [...selectedCollegeValues, valStr];
+    }
+    handleFilterChange('college', nextSelected);
+  };
+
+  const selectAllColleges = () => {
+    const allVals = displayColleges.map(c => String(c.id || c.name || c));
+    handleFilterChange('college', allVals);
+  };
+
+  const clearAllColleges = () => {
+    handleFilterChange('college', []);
+  };
+
   // Auto-select college on mount for registration reports to ensure fast college-wise loading
   useEffect(() => {
     if (reportType !== 'registration') return;
     const available = displayColleges;
-    if (!filters.college && available.length > 0) {
+    if (filters.college === undefined && available.length > 0) {
       const userCollegeId = user?.college_id ? String(user.college_id) : null;
       const userCollegeName = user?.college || null;
       let matched = null;
@@ -283,8 +348,8 @@ const Reports = () => {
         matched = available.find(c => (c.name || c) === userCollegeName);
       }
       const collegeVal = matched
-        ? String(matched.id || matched.name || matched)
-        : String(available[0].id || available[0].name || available[0]);
+        ? [String(matched.id || matched.name || matched)]
+        : [String(available[0].id || available[0].name || available[0])];
 
       setFilters(prev => ({ ...prev, college: collegeVal }));
     }
@@ -292,10 +357,11 @@ const Reports = () => {
 
   // Fetch Abstract Data — debounced to avoid firing on every intermediate filter change
   useEffect(() => {
-    if (reportType !== 'registration' || activeTab !== 'abstract' || !filters.college) return;
+    if (reportType !== 'registration' || activeTab !== 'abstract') return;
 
     const params = new URLSearchParams();
-    if (filters.college) params.append('filter_college', filters.college);
+    const collegeParam = getCollegeParamValue(filters.college);
+    if (collegeParam) params.append('filter_college', collegeParam);
     if (filters.batch) params.append('filter_batch', filters.batch);
     if (filters.course) params.append('filter_course', filters.course);
     if (filters.level) params.append('filter_level', filters.level);
@@ -355,18 +421,12 @@ const Reports = () => {
   const loadReport = useCallback(
     async (overrideFilters) => {
       const activeFilters = overrideFilters ?? filters;
-      if (!activeFilters.college) {
-        setReportData([]);
-        setStats(null);
-        setLoading(false);
-        setStatsLoading(false);
-        return;
-      }
       setLoading(true);
       setStatsLoading(true);
       try {
         const params = new URLSearchParams();
-        if (activeFilters.college) params.append('filter_college', activeFilters.college);
+        const collegeParam = getCollegeParamValue(activeFilters.college);
+        if (collegeParam) params.append('filter_college', collegeParam);
         if (activeFilters.batch) params.append('filter_batch', activeFilters.batch);
         if (activeFilters.course) params.append('filter_course', activeFilters.course);
         if (activeFilters.level) params.append('filter_level', activeFilters.level);
@@ -474,12 +534,13 @@ const Reports = () => {
 
   // Fetch academic year options for the registration report filter dropdown
   useEffect(() => {
-    if (reportType !== 'registration' || !filters.college) {
+    if (reportType !== 'registration') {
       setAcademicYearOptions([]);
       setAcademicYearLoading(false);
       return;
     }
-    const cacheKey = `${filters.college}::${filters.course || ''}::${filters.branch || ''}::${filters.level || ''}`;
+    const collegeParam = getCollegeParamValue(filters.college);
+    const cacheKey = `${collegeParam}::${filters.course || ''}::${filters.branch || ''}::${filters.level || ''}`;
     if (academicYearsCacheRef.current.has(cacheKey)) {
       setAcademicYearOptions(academicYearsCacheRef.current.get(cacheKey));
       setAcademicYearLoading(false);
@@ -490,7 +551,7 @@ const Reports = () => {
       setAcademicYearLoading(true);
       try {
         const params = new URLSearchParams();
-        if (filters.college) params.append('filter_college', filters.college);
+        if (collegeParam) params.append('filter_college', collegeParam);
         if (filters.course) params.append('filter_course', filters.course);
         if (filters.branch) params.append('filter_branch', filters.branch);
         if (filters.level) params.append('filter_level', filters.level);
@@ -515,7 +576,8 @@ const Reports = () => {
     const timer = setTimeout(async () => {
       try {
         const params = new URLSearchParams();
-        if (filters.college) params.append('college', filters.college);
+        const collegeParam = getCollegeParamValue(filters.college);
+        if (collegeParam) params.append('college', collegeParam);
         if (filters.level) params.append('level', filters.level);
         if (filters.batch) params.append('batch', filters.batch);
         if (filters.course) params.append('course', filters.course);
@@ -542,9 +604,9 @@ const Reports = () => {
     return () => clearTimeout(timer);
   }, [filters.college, filters.level, filters.batch, filters.course, filters.branch, filters.year]);
 
-  // Debounced report load — only runs when on 'sheet' or 'analytics' tab and college is selected
+  // Debounced report load — only runs when on 'sheet' or 'analytics' tab
   useEffect(() => {
-    if (reportType !== 'registration' || activeTab === 'abstract' || !filters.college) return;
+    if (reportType !== 'registration' || activeTab === 'abstract') return;
     const timer = setTimeout(() => {
       loadReport({ ...filters, page: 1 });
     }, 150);
@@ -1510,7 +1572,9 @@ const Reports = () => {
 
   const activeFilterEntries = useMemo(() => {
     const entries = [];
-    if (filters.college) entries.push({ key: 'college', label: `College: ${filters.college}` });
+    if (selectedCollegeValues.length > 0 && selectedCollegeValues.length < displayColleges.length) {
+      entries.push({ key: 'college', label: `College: ${collegeTriggerLabel}` });
+    }
     if (filters.batch) entries.push({ key: 'batch', label: `Batch: ${filters.batch}` });
     if (filters.course) entries.push({ key: 'course', label: `Program: ${filters.course}` });
     if (filters.branch) entries.push({ key: 'branch', label: `Branch: ${filters.branch}` });
@@ -1520,7 +1584,7 @@ const Reports = () => {
     if (filters.scholarshipStatus) entries.push({ key: 'scholarshipStatus', label: `Scholarship: ${filters.scholarshipStatus === 'pending' ? 'Not assigned' : filters.scholarshipStatus === 'eligible' ? 'Eligible' : 'Rejected'}` });
     if (filters.stagePending) entries.push({ key: 'stagePending', label: STAGE_PENDING_LABELS[filters.stagePending] || `Pending: ${filters.stagePending}` });
     return entries;
-  }, [filters]);
+  }, [filters, selectedCollegeValues, displayColleges, collegeTriggerLabel]);
 
   const availableYears = useMemo(() => {
     const list = filterOptions.years || [];
@@ -1548,29 +1612,19 @@ const Reports = () => {
 
     let filteredCourses = coursesWithLevels;
 
-    // Filter by college if college is selected
-    if (filters.college) {
-      let targetCollegeId = null;
-      const isNumericCollege = !isNaN(filters.college) && !isNaN(parseFloat(filters.college));
-      
-      if (isNumericCollege) {
-        targetCollegeId = parseInt(filters.college, 10);
-      } else {
-        const selectedCollege = collegesList.find(c => c.name === filters.college);
-        if (selectedCollege) {
-          targetCollegeId = selectedCollege.id;
-        }
-      }
+    // Filter by college if specific college(s) are selected
+    if (selectedCollegeValues.length > 0 && selectedCollegeValues.length < displayColleges.length) {
+      const targetIds = selectedCollegeValues.map(val => {
+        if (!isNaN(val) && !isNaN(parseFloat(val))) return parseInt(val, 10);
+        const found = collegesList.find(c => c.name === val);
+        return found ? found.id : null;
+      }).filter(v => v !== null);
 
-      if (targetCollegeId !== null) {
-        // Filter courses by collegeId
+      if (targetIds.length > 0) {
         filteredCourses = filteredCourses.filter(course => {
           const courseCollegeId = course.collegeId || course.college_id;
-          return courseCollegeId === targetCollegeId;
+          return targetIds.includes(courseCollegeId);
         });
-      } else {
-        // College not found in list, return empty
-        return [];
       }
     }
 
@@ -1987,21 +2041,121 @@ const Reports = () => {
           <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9 gap-3 w-full">
 
-              {/* College — Primary selection for fast college-wise data */}
-              <select
-                value={filters.college || ''}
-                onChange={(e) => handleFilterChange('college', e.target.value)}
-                className={`w-full rounded-lg border-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium ${
-                  filters.college
-                    ? 'border-blue-500 bg-blue-50/40 text-blue-950 font-semibold'
-                    : 'border-amber-400 bg-amber-50 text-amber-900 animate-pulse'
-                }`}
-              >
-                <option value="">-- Select College * --</option>
-                {displayColleges.map((college) => (
-                  <option key={college.id || college} value={college.id || college}>{college.name || college}</option>
-                ))}
-              </select>
+              {/* College — Multi-select dropdown with checkboxes */}
+              <div className="relative w-full" ref={collegeDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setCollegeDropdownOpen(!collegeDropdownOpen)}
+                  className={`w-full flex items-center justify-between gap-2 rounded-lg border-2 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    selectedCollegeValues.length > 0 && selectedCollegeValues.length < displayColleges.length
+                      ? 'border-blue-500 bg-blue-50/50 text-blue-950 font-semibold'
+                      : 'border-blue-400 bg-white text-gray-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Building2 size={16} className="text-blue-600 shrink-0" />
+                    <span className="truncate">{collegeTriggerLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {selectedCollegeValues.length > 0 && (
+                      <span className="bg-blue-100 text-blue-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        {selectedCollegeValues.length === displayColleges.length ? 'All' : selectedCollegeValues.length}
+                      </span>
+                    )}
+                    <ChevronDown size={16} className={`text-gray-500 transition-transform ${collegeDropdownOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+
+                {/* Dropdown Popover */}
+                {collegeDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-1.5 w-72 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3 flex flex-col gap-2">
+                    {/* Header with Quick Actions */}
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Building2 size={14} className="text-blue-600" />
+                        Select Colleges
+                      </span>
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={selectAllColleges}
+                          className="text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearAllColleges}
+                          className="text-gray-500 hover:text-gray-700 font-medium"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Search box if colleges list > 4 */}
+                    {displayColleges.length > 4 && (
+                      <div className="relative">
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={collegeSearchQuery}
+                          onChange={(e) => setCollegeSearchQuery(e.target.value)}
+                          placeholder="Search college..."
+                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                        />
+                      </div>
+                    )}
+
+                    {/* Checkbox Options List */}
+                    <div className="max-h-60 overflow-y-auto space-y-0.5 pr-1">
+                      {filteredDisplayColleges.length === 0 ? (
+                        <div className="py-3 text-center text-xs text-gray-400">No colleges found</div>
+                      ) : (
+                        filteredDisplayColleges.map((college) => {
+                          const colVal = String(college.id || college.name || college);
+                          const colName = college.name || college;
+                          const isChecked = selectedCollegeValues.includes(colVal);
+
+                          return (
+                            <label
+                              key={colVal}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                                isChecked ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleCollegeSelection(colVal)}
+                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span className="flex-1 leading-snug">{colName}</span>
+                              {isChecked && <Check size={14} className="text-blue-600 shrink-0" />}
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Footer Summary */}
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+                      <span>{selectedCollegeValues.length} of {displayColleges.length} selected</span>
+                      <button
+                        type="button"
+                        onClick={() => setCollegeDropdownOpen(false)}
+                        className="px-2.5 py-1 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700 transition-colors"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Academic Year — groups students by the calendar year they are currently in */}
               <select

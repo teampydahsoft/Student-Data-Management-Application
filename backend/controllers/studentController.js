@@ -8135,11 +8135,8 @@ exports.getRegistrationReport = async (req, res) => {
     const isNumeric = (val) => /^\d+$/.test(val);
 
     if (normalizedFilterCollege) {
-      if (isNumeric(normalizedFilterCollege)) {
-        baseQuery += ` AND college_id = ?`;
-        params.push(parseInt(normalizedFilterCollege, 10));
-      } else {
-        const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      const { clause, params: collegeParams } = buildCollegeNameFilter(normalizedFilterCollege);
+      if (clause) {
         baseQuery += ` AND ${clause}`;
         params.push(...collegeParams);
       }

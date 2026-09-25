@@ -18,10 +18,13 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
             const params = new URLSearchParams();
             // Add all active filters (backend expects filter_scholarship_status for scholarship)
             Object.entries(filtersToUse || {}).forEach(([key, value]) => {
-                if (value) {
-                    if (key === 'scholarshipStatus') params.append('filter_scholarship_status', value);
-                    else if (key === 'academicYear') params.append('filter_academic_year', value);
-                    else params.append(`filter_${key}`, value);
+                if (value && (typeof value !== 'object' || Array.isArray(value))) {
+                    const strVal = Array.isArray(value) ? value.filter(Boolean).join(',') : value;
+                    if (strVal) {
+                        if (key === 'scholarshipStatus') params.append('filter_scholarship_status', strVal);
+                        else if (key === 'academicYear') params.append('filter_academic_year', strVal);
+                        else params.append(`filter_${key}`, strVal);
+                    }
                 }
             });
             params.append('limit', 5); // Fetch only 5 for preview
@@ -89,10 +92,13 @@ const RegistrationDownloadModal = ({ isOpen, onClose, initialFilters = {}, filte
         try {
             const params = new URLSearchParams();
             Object.entries(localFilters).forEach(([key, value]) => {
-                if (value) {
-                    if (key === 'scholarshipStatus') params.append('filter_scholarship_status', value);
-                    else if (key === 'academicYear') params.append('filter_academic_year', value);
-                    else params.append(`filter_${key}`, value);
+                if (value && (typeof value !== 'object' || Array.isArray(value))) {
+                    const strVal = Array.isArray(value) ? value.filter(Boolean).join(',') : value;
+                    if (strVal) {
+                        if (key === 'scholarshipStatus') params.append('filter_scholarship_status', strVal);
+                        else if (key === 'academicYear') params.append('filter_academic_year', strVal);
+                        else params.append(`filter_${key}`, strVal);
+                    }
                 }
             });
             params.append('format', format);
