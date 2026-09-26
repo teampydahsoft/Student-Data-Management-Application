@@ -254,7 +254,7 @@
     transition: all 0.2s;
 }
 
-.btn-primary:hostname {
+.btn-primary:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
 }
