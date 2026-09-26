@@ -39,7 +39,7 @@ jobs:
           VITE_HRMS_PORTAL_URL=https://hrms.pydah.edu.in
           VITE_TICKET_APP_URL=https://maintenance.pydah.edu.in
           EOF
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm run build
           test -f dist/index.html
 
@@ -105,7 +105,7 @@ jobs:
 
             echo "==> Ticket Backend installation"
             cd "$APP/ticket-backend"
-            npm ci --omit=dev
+            if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
             node migrations/migrate.js || true
 
             echo "==> PM2 restart ($PM2_APP)"
