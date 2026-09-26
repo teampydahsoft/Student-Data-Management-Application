@@ -50,9 +50,10 @@ import {
 } from 'lucide-react';
 import StudentAvatar from '../components/StudentAvatar';
 import DigitalStudentCard from '../components/DigitalStudentCard';
+import DigitalIdCardBack from '../components/DigitalIdCardBack';
 import { Link, useLocation } from 'react-router-dom';
 import api, { getStaticFileUrlDirect } from '../config/api';
-import { printDigitalIdCard } from '../utils/printDigitalIdCard';
+import { printDigitalIdCard, printIdCardFrontAndBack } from '../utils/printDigitalIdCard';
 import StudentAttendanceTab from '../components/Students/StudentAttendanceTab';
 import ParentEngagementPanel from '../components/Students/ParentEngagementPanel';
 import StudentSmsTab from '../components/Students/StudentSmsTab';
@@ -444,6 +445,62 @@ const Students = () => {
   const [completionPercentages, setCompletionPercentages] = useState({});
   const [profileCompletion, setProfileCompletion] = useState({ percentage: 0, filledCount: 0, totalCount: 0 });
   const [showIdCardPreview, setShowIdCardPreview] = useState(false);
+  const [idCardColleges, setIdCardColleges] = useState([]);
+  const [idCardBackOrientation, setIdCardBackOrientation] = useState(() => {
+    try {
+      return localStorage.getItem('id_card_back_orientation') || 'straight';
+    } catch {
+      return 'straight';
+    }
+  });
+
+  useEffect(() => {
+    api.get('/colleges')
+      .then((res) => {
+        if (res.data?.success) setIdCardColleges(res.data.data || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  const resolveIdCardCollege = useCallback((student) => {
+    if (!student) return 'PYDAH GROUP';
+    const getSd = (key, fallback = '') => {
+      if (!student?.student_data) return fallback;
+      const dk = Object.keys(student.student_data).find(
+        (k) => k.toLowerCase() === String(key).toLowerCase()
+      );
+      const v = dk ? student.student_data[dk] : undefined;
+      return v !== undefined && v !== null && v !== '' ? v : fallback;
+    };
+    return student.college || getSd('College') || getSd('college') || 'PYDAH GROUP';
+  }, []);
+
+  const resolveIdCardCollegeSignature = useCallback((student) => {
+    if (!student || !idCardColleges.length) return null;
+    const colName = String(resolveIdCardCollege(student) || '').trim().toLowerCase();
+    const colObj = idCardColleges.find(c =>
+      (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
+      (c.name && c.name.trim().toLowerCase() === colName) ||
+      (c.code && c.code.trim().toLowerCase() === colName)
+    );
+    const relativeUrl = colObj?.principal_signature_url || null;
+    if (!relativeUrl) return null;
+    return getStaticFileUrlDirect(relativeUrl);
+  }, [idCardColleges, resolveIdCardCollege]);
+
+  const resolveIdCardCollegeObj = useCallback((student) => {
+    if (!student) return null;
+    const colName = String(resolveIdCardCollege(student) || '').trim().toLowerCase();
+    if (idCardColleges.length > 0) {
+      const colObj = idCardColleges.find(c =>
+        (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
+        (c.name && c.name.trim().toLowerCase() === colName) ||
+        (c.code && c.code.trim().toLowerCase() === colName)
+      );
+      if (colObj) return colObj;
+    }
+    return resolveIdCardCollege(student);
+  }, [idCardColleges, resolveIdCardCollege]);
   const [forms, setForms] = useState([]);
   const [loadingForms, setLoadingForms] = useState(false);
   const [certificateConfig, setCertificateConfig] = useState(sharedCertificateConfig);
@@ -5542,72 +5599,131 @@ const Students = () => {
               )}
 
               {activeStudentTab === 'id_card' && (() => {
-                const getStudentDataForCard = (key) => {
-                  if (!selectedStudent?.student_data) return '';
-                  const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === key.toLowerCase());
+                const getStudentDataForCard = (key, fallback = '') => {
+                  if (!selectedStudent?.student_data) return fallback;
+                  const dk = Object.keys(selectedStudent.student_data).find(k => k.toLowerCase() === String(key).toLowerCase());
                   const v = dk ? selectedStudent.student_data[dk] : undefined;
-                  return v !== undefined && v !== null && v !== '' ? v : '';
+                  return v !== undefined && v !== null && v !== '' ? String(v) : fallback;
                 };
 
                 const handleGeneratePrint = () => {
-                  const runPrint = () => {
-                    try {
-                      printDigitalIdCard('.id-card-print-root');
-                    } catch (err) {
-                      console.error(err);
-                      toast.error(err.message || 'Preview the ID card first, then print');
-                    }
-                  };
-                  if (showIdCardPreview) {
-                    runPrint();
-                    return;
+                  try {
+                    const result = printIdCardFrontAndBack(
+                      '.id-card-print-front',
+                      '.id-card-print-back',
+                      { backOrientation: idCardBackOrientation }
+                    );
+                    toast.success(
+                      `Print dialog: 2 pages (Front + Back [${idCardBackOrientation === 'rotate180' ? '180° Rotated' : 'Straight'}])`
+                    );
+                  } catch (err) {
+                    console.error(err);
+                    toast.error(err.message || 'Unable to open print dialog');
                   }
-                  setShowIdCardPreview(true);
-                  setTimeout(runPrint, 350);
                 };
 
+                const activeCol = resolveIdCardCollegeObj(selectedStudent);
+                const sigUrl = resolveIdCardCollegeSignature(selectedStudent);
+
                 return (
-                  <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col items-center gap-5">
+                  <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 flex flex-col items-center gap-5">
                     <div className="flex items-center justify-between w-full max-w-md">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-bold">
+                        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-700 font-bold">
                           <CreditCard size={20} />
                         </div>
                         <div>
                           <h3 className="text-base font-bold text-gray-900">Digital ID Card</h3>
-                          <p className="text-xs text-gray-400">Print CR80 format</p>
+                          <p className="text-xs text-gray-400">CR80 Format · Dual-Sided Print Preview</p>
                         </div>
                       </div>
                     </div>
 
-                    {!showIdCardPreview ? (
-                      <div className="w-full max-w-sm cursor-pointer group" onClick={() => setShowIdCardPreview(true)}>
-                        <div className="rounded-2xl p-8 bg-gradient-to-br from-gray-900 to-slate-800 text-white flex flex-col items-center gap-4 text-center shadow-lg group-hover:scale-[1.02] transition-transform">
-                          <CreditCard size={40} className="text-blue-400" />
-                          <div>
-                            <h4 className="font-extrabold text-base">{selectedStudent?.student_name}</h4>
-                            <p className="text-xs text-gray-300 font-mono mt-1">{selectedStudent?.admission_number}</p>
+                    <div className="w-full max-w-md space-y-6">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 text-center">Front Side</p>
+                        <div className="id-card-preview-scaler-box">
+                          <div className="id-card-preview-scaler">
+                            <DigitalStudentCard
+                              className="id-card-print-front"
+                              college={activeCol}
+                              student={selectedStudent}
+                              getStudentData={getStudentDataForCard}
+                              principalSignatureUrl={sigUrl}
+                            />
                           </div>
-                          <span className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md">Click to Preview Card</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="relative w-full flex justify-center">
-                        <DigitalStudentCard student={selectedStudent} getStudentData={getStudentDataForCard} />
-                        <button onClick={() => setShowIdCardPreview(false)} className="absolute top-2 right-2 p-2 bg-black/40 text-white rounded-full hover:bg-black/60">
-                          <X size={16} />
-                        </button>
-                      </div>
-                    )}
 
-                    <div className="flex gap-3 w-full max-w-sm">
-                      {!showIdCardPreview && (
-                        <button onClick={() => setShowIdCardPreview(true)} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700">
-                          Preview Card
-                        </button>
-                      )}
-                      <button onClick={handleGeneratePrint} className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-gray-800">
-                        Generate Print
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Back Side</p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            idCardBackOrientation === 'straight' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {idCardBackOrientation === 'straight' ? 'Straight (0°)' : 'Rotated (180°)'}
+                          </span>
+                        </div>
+                        <div className="id-card-preview-scaler-box">
+                          <div className="id-card-preview-scaler">
+                            <DigitalIdCardBack
+                              className="id-card-print-back"
+                              student={selectedStudent}
+                              getStudentData={getStudentDataForCard}
+                              college={activeCol}
+                              rotate180={idCardBackOrientation === 'rotate180'}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Flip Edge Orientation */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-gray-800">Back Side Flip Edge</span>
+                          <span className="text-[10px] text-gray-500 font-semibold">
+                            {idCardBackOrientation === 'straight' ? 'Straight (Upright)' : 'Rotate 180° (Flipped)'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIdCardBackOrientation('straight');
+                              try { localStorage.setItem('id_card_back_orientation', 'straight'); } catch {}
+                            }}
+                            className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                              idCardBackOrientation === 'straight'
+                                ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                            }`}
+                          >
+                            Straight (0°)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIdCardBackOrientation('rotate180');
+                              try { localStorage.setItem('id_card_back_orientation', 'rotate180'); } catch {}
+                            }}
+                            className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                              idCardBackOrientation === 'rotate180'
+                                ? 'bg-red-700 text-white shadow-sm ring-2 ring-red-700/20'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                            }`}
+                          >
+                            Rotate 180°
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 w-full max-w-md">
+                      <button
+                        onClick={handleGeneratePrint}
+                        className="w-full py-3 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-gray-800 flex items-center justify-center gap-2 shadow-sm"
+                      >
+                        <Printer size={16} /> Generate Print (Front + Back)
                       </button>
                     </div>
                   </div>

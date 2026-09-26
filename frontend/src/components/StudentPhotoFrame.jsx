@@ -13,6 +13,10 @@ const StudentPhotoFrame = ({
   const resolvedAlt =
     alt !== "Student Photo" ? alt : (name || alt || "Student Photo");
 
+  const reactId = React.useId ? React.useId().replace(/:/g, '') : Math.random().toString(36).substring(2, 7);
+  const rightArcId = `rightArcGrad_${reactId}`;
+  const leftArcId = `leftArcGrad_${reactId}`;
+
   return (
     <div
       className="student-photo-frame"
@@ -30,14 +34,14 @@ const StudentPhotoFrame = ({
       >
         <defs>
           {/* Upper-right radiant gradient: normal red shade to white */}
-          <linearGradient id="rightArcGrad" x1="95%" y1="42%" x2="45%" y2="95%">
+          <linearGradient id={rightArcId} x1="95%" y1="42%" x2="45%" y2="95%">
             <stop offset="0%" stopColor="#E01E2B" />
             <stop offset="50%" stopColor="#F5606B" />
             <stop offset="100%" stopColor="#FFFFFF" />
           </linearGradient>
 
           {/* Lower-left radiant gradient: normal red shade to white */}
-          <linearGradient id="leftArcGrad" x1="95%" y1="42%" x2="45%" y2="95%">
+          <linearGradient id={leftArcId} x1="95%" y1="42%" x2="45%" y2="95%">
             <stop offset="0%" stopColor="#E01E2B" />
             <stop offset="50%" stopColor="#F5606B" />
             <stop offset="100%" stopColor="#FFFFFF" />
@@ -60,7 +64,7 @@ const StudentPhotoFrame = ({
           cy="50"
           r="44.2"
           fill="none"
-          stroke="url(#rightArcGrad)"
+          stroke={`url(#${rightArcId})`}
           strokeWidth="3.2"
           strokeLinecap="round"
           strokeDasharray="76 200"
@@ -73,7 +77,7 @@ const StudentPhotoFrame = ({
           cy="50"
           r="44.2"
           fill="none"
-          stroke="url(#leftArcGrad)"
+          stroke={`url(#${leftArcId})`}
           strokeWidth="3.2"
           strokeLinecap="round"
           strokeDasharray="64 212"

@@ -18,12 +18,36 @@ function ensureMount() {
 function cloneCard(source) {
   const clone = source.cloneNode(true);
   clone.classList.add('id-card-print-root');
+
+  const uniqueSuffix = `_prnt${Math.random().toString(36).substring(2, 8)}`;
+  const idMap = new Map();
+
   clone.querySelectorAll('[id]').forEach((el) => {
+    const oldId = el.getAttribute('id');
+    if (!oldId) return;
+
     const tag = el.tagName ? el.tagName.toLowerCase() : '';
-    if (!el.closest('defs') && !['lineargradient', 'radialgradient', 'clippath', 'pattern', 'filter', 'mask', 'stop', 'svg'].includes(tag)) {
+    const isSvgResource = el.closest('defs') || ['lineargradient', 'radialgradient', 'clippath', 'pattern', 'filter', 'mask', 'stop', 'svg'].includes(tag);
+
+    if (isSvgResource) {
+      const newId = `${oldId}${uniqueSuffix}`;
+      idMap.set(oldId, newId);
+      el.setAttribute('id', newId);
+    } else {
       el.removeAttribute('id');
     }
   });
+
+  if (idMap.size > 0) {
+    let html = clone.innerHTML;
+    idMap.forEach((newId, oldId) => {
+      const escapedOldId = oldId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`url\\((['"]?)#${escapedOldId}\\1\\)`, 'g');
+      html = html.replace(regex, `url(#${newId})`);
+    });
+    clone.innerHTML = html;
+  }
+
   clone.style.removeProperty('min-height');
   clone.style.removeProperty('aspect-ratio');
   clone.style.removeProperty('transform');
@@ -88,8 +112,14 @@ export function printIdCardFrontAndBack(
   options = {}
 ) {
   const { backOrientation = 'straight' } = options;
-  const fronts = Array.from(document.querySelectorAll(frontSelector));
-  const backs = Array.from(document.querySelectorAll(backSelector));
+  let fronts = Array.from(document.querySelectorAll(frontSelector));
+  let backs = Array.from(document.querySelectorAll(backSelector));
+  if (!fronts.length) {
+    fronts = Array.from(document.querySelectorAll('.id-card-print-front, .id-card-batch-front'));
+  }
+  if (!backs.length) {
+    backs = Array.from(document.querySelectorAll('.id-card-print-back, .id-card-batch-back'));
+  }
   if (!fronts.length) {
     throw new Error('ID card front not found — select a student first');
   }

@@ -147,63 +147,71 @@ const getStudentNameFontSize = (nameStr) => {
    FRONT BOTTOM WAVE
 ========================================================= */
 
-const FrontBottomWaveSVG = () => (
-  <svg
-    viewBox="0 0 540 140"
-    preserveAspectRatio="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{
-      position: 'absolute',
-      inset: 0,
-      width: '100%',
-      height: '100%',
-      printColorAdjust: 'exact',
-      WebkitPrintColorAdjust: 'exact',
-    }}
-  >
-    <defs>
-      {/* Light red accent ribbon matching back header */}
-      <linearGradient id="frontWaveAccentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FCA5A5" />
-        <stop offset="50%" stopColor="#F87171" />
-        <stop offset="100%" stopColor="#DC2626" />
-      </linearGradient>
+const FrontBottomWaveSVG = () => {
+  const reactId = React.useId ? React.useId().replace(/:/g, '') : Math.random().toString(36).substring(2, 7);
+  const accentGradId = `frontWaveAccentGrad_${reactId}`;
+  const brightGradId = `frontWaveBrightGrad_${reactId}`;
 
-      {/* Primary foreground vibrant red wave matching back header */}
-      <linearGradient id="frontWaveBrightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#D71920" />
-        <stop offset="100%" stopColor="#991B1B" />
-      </linearGradient>
-    </defs>
+  return (
+    <svg
+      viewBox="0 0 540 140"
+      preserveAspectRatio="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        printColorAdjust: 'exact',
+        WebkitPrintColorAdjust: 'exact',
+      }}
+    >
+      <defs>
+        {/* Light red accent ribbon matching back header */}
+        <linearGradient id={accentGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FCA5A5" />
+          <stop offset="50%" stopColor="#F87171" />
+          <stop offset="100%" stopColor="#DC2626" />
+        </linearGradient>
 
-    {/* Layer 1: Light-red accent ribbon sticking out matching back header */}
-    <path
-      d="
-        M 0 18
-        C 130 64, 200 62, 270 65
-        C 340 68, 410 52, 540 22
-        L 540 140
-        L 0 140
-        Z
-      "
-      fill="url(#frontWaveAccentGrad)"
-      opacity="0.88"
-    />
+        {/* Primary foreground vibrant red wave matching back header */}
+        <linearGradient id={brightGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#D71920" />
+          <stop offset="100%" stopColor="#991B1B" />
+        </linearGradient>
+      </defs>
 
-    {/* Layer 2: Primary foreground vibrant red wave */}
-    <path
-      d="
-        M 0 32
-        C 120 90, 195 82, 270 80
-        C 345 78, 420 86, 540 36
-        L 540 140
-        L 0 140
-        Z
-      "
-      fill="url(#frontWaveBrightGrad)"
-    />
-  </svg>
-);
+      {/* Layer 1: Light-red accent ribbon sticking out matching back header */}
+      <path
+        d="
+          M 0 18
+          C 130 64, 200 62, 270 65
+          C 340 68, 410 52, 540 22
+          L 540 140
+          L 0 140
+          Z
+        "
+        fill={`url(#${accentGradId})`}
+        fillOpacity="0.88"
+        style={{ fill: `url(#${accentGradId}) #F87171` }}
+      />
+
+      {/* Layer 2: Primary foreground vibrant red wave */}
+      <path
+        d="
+          M 0 32
+          C 120 90, 195 82, 270 80
+          C 345 78, 420 86, 540 36
+          L 540 140
+          L 0 140
+          Z
+        "
+        fill={`url(#${brightGradId})`}
+        style={{ fill: `url(#${brightGradId}) #D71920` }}
+      />
+    </svg>
+  );
+};
 
 
 
@@ -950,7 +958,7 @@ const DigitalStudentCard = ({
         height: '85.6mm',
         boxSizing: 'border-box',
         position: 'relative',
-        background: 'linear-gradient(180deg, #FDEAEA 0%, #F8EEEE 18%, #F2F4F7 48%, #ECEFF2 75%, #F4F6F8 100%)',
+        background: '#ffffff',
         border: '1px solid #e5e7eb',
         borderRadius: '12px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.08)',

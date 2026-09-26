@@ -4,73 +4,89 @@ import { DEFAULT_COLLEGE, resolveCollegeDetails } from '../config/collegeConfig'
 /**
  * Top Back Layered Red Wave Header SVG matching reference design
  */
-const BackTopWaveSVG = () => (
-  <svg
-    viewBox="0 0 540 140"
-    preserveAspectRatio="none"
-    className="absolute top-0 left-0 w-full pointer-events-none"
-    style={{ height: '13.5mm', zIndex: 1, printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
-  >
-    <defs>
-      <linearGradient id="backTopAccentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FCA5A5" />
-        <stop offset="50%" stopColor="#F87171" />
-        <stop offset="100%" stopColor="#DC2626" />
-      </linearGradient>
-      <linearGradient id="backTopMainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#D71920" />
-        <stop offset="100%" stopColor="#991B1B" />
-      </linearGradient>
-    </defs>
-    {/* Soft light red background wave accent */}
-    <path
-      d="M 0 0 L 540 0 L 540 120 C 360 40, 180 140, 0 105 Z"
-      fill="url(#backTopAccentGrad)"
-      opacity="0.85"
-    />
-    {/* Main primary vibrant red wave */}
-    <path
-      d="M 0 0 L 540 0 L 540 95 C 380 30, 160 115, 0 88 Z"
-      fill="url(#backTopMainGrad)"
-    />
-  </svg>
-);
+const BackTopWaveSVG = () => {
+  const reactId = React.useId ? React.useId().replace(/:/g, '') : Math.random().toString(36).substring(2, 7);
+  const accentId = `backTopAccentGrad_${reactId}`;
+  const mainId = `backTopMainGrad_${reactId}`;
+
+  return (
+    <svg
+      viewBox="0 0 540 140"
+      preserveAspectRatio="none"
+      className="absolute top-0 left-0 w-full pointer-events-none"
+      style={{ height: '13.5mm', zIndex: 1, printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
+    >
+      <defs>
+        <linearGradient id={accentId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FCA5A5" />
+          <stop offset="50%" stopColor="#F87171" />
+          <stop offset="100%" stopColor="#DC2626" />
+        </linearGradient>
+        <linearGradient id={mainId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#D71920" />
+          <stop offset="100%" stopColor="#991B1B" />
+        </linearGradient>
+      </defs>
+      {/* Soft light red background wave accent */}
+      <path
+        d="M 0 0 L 540 0 L 540 120 C 360 40, 180 140, 0 105 Z"
+        fill={`url(#${accentId})`}
+        opacity="0.85"
+        style={{ fill: `url(#${accentId}) #F87171` }}
+      />
+      {/* Main primary vibrant red wave */}
+      <path
+        d="M 0 0 L 540 0 L 540 95 C 380 30, 160 115, 0 88 Z"
+        fill={`url(#${mainId})`}
+        style={{ fill: `url(#${mainId}) #D71920` }}
+      />
+    </svg>
+  );
+};
 
 /**
  * Bottom Back Layered Red Wave SVG matching reference design
  */
-const BackBottomWaveSVG = () => (
-  <svg
-    viewBox="0 0 540 140"
-    preserveAspectRatio="none"
-    className="absolute bottom-0 left-0 w-full pointer-events-none"
-    style={{ height: '12.5mm', zIndex: 2, printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
-  >
-    <defs>
-      <linearGradient id="backBottomAccentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#FCA5A5" />
-        <stop offset="50%" stopColor="#F87171" />
-        <stop offset="100%" stopColor="#EF4444" />
-      </linearGradient>
-      <linearGradient id="backBottomMainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#EA2635" />
-        <stop offset="50%" stopColor="#D71920" />
-        <stop offset="100%" stopColor="#991B1B" />
-      </linearGradient>
-    </defs>
-    {/* Light red accent ribbon above bottom wave */}
-    <path
-      d="M 0 55 C 160 125, 380 20, 540 60 L 540 140 L 0 140 Z"
-      fill="url(#backBottomAccentGrad)"
-      opacity="0.85"
-    />
-    {/* Main vibrant red bottom wave */}
-    <path
-      d="M 0 70 C 180 135, 360 40, 540 78 L 540 140 L 0 140 Z"
-      fill="url(#backBottomMainGrad)"
-    />
-  </svg>
-);
+const BackBottomWaveSVG = () => {
+  const reactId = React.useId ? React.useId().replace(/:/g, '') : Math.random().toString(36).substring(2, 7);
+  const accentId = `backBottomAccentGrad_${reactId}`;
+  const mainId = `backBottomMainGrad_${reactId}`;
+
+  return (
+    <svg
+      viewBox="0 0 540 140"
+      preserveAspectRatio="none"
+      className="absolute bottom-0 left-0 w-full pointer-events-none"
+      style={{ height: '12.5mm', zIndex: 2, printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
+    >
+      <defs>
+        <linearGradient id={accentId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#FCA5A5" />
+          <stop offset="50%" stopColor="#F87171" />
+          <stop offset="100%" stopColor="#EF4444" />
+        </linearGradient>
+        <linearGradient id={mainId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#EA2635" />
+          <stop offset="50%" stopColor="#D71920" />
+          <stop offset="100%" stopColor="#991B1B" />
+        </linearGradient>
+      </defs>
+      {/* Light red accent ribbon above bottom wave */}
+      <path
+        d="M 0 55 C 160 125, 380 20, 540 60 L 540 140 L 0 140 Z"
+        fill={`url(#${accentId})`}
+        opacity="0.85"
+        style={{ fill: `url(#${accentId}) #F87171` }}
+      />
+      {/* Main vibrant red bottom wave */}
+      <path
+        d="M 0 70 C 180 135, 360 40, 540 78 L 540 140 L 0 140 Z"
+        fill={`url(#${mainId})`}
+        style={{ fill: `url(#${mainId}) #D71920` }}
+      />
+    </svg>
+  );
+};
 
 /**
  * Dynamic Website font size calculation based on string length

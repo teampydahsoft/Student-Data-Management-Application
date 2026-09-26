@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../../config/api';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 import DigitalStudentCard from '../../components/DigitalStudentCard';
+import DigitalIdCardBack from '../../components/DigitalIdCardBack';
 import { buildParentDisplayData } from '../../utils/parentProfileHelpers';
 import { toast } from 'react-hot-toast';
 
@@ -42,24 +43,41 @@ const ParentIdCard = () => {
     );
   }
 
+  const getSd = (key, fallback = '') => {
+    const sd = studentData?.student_data || {};
+    const val = sd[key];
+    if (val !== undefined && val !== null && String(val).trim() !== '') return String(val);
+    return fallback;
+  };
+
   return (
     <div className="w-full min-h-full flex flex-col sm:max-w-lg sm:mx-auto">
       <div className="w-full px-3 py-3 sm:px-0 sm:mb-6 bg-white border-b border-gray-100 sm:bg-transparent sm:border-0">
         <h1 className="text-lg sm:text-xl font-black text-gray-900">Digital ID Card</h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-1">Official student identification card (view only)</p>
       </div>
-      <div className="flex-1 w-full flex justify-center px-2 sm:px-0 pb-4">
-        <div className="id-card-preview-scaler-box">
-          <div className="id-card-preview-scaler">
-            <DigitalStudentCard
-              student={studentData}
-              getStudentData={(key, fallback = '') => {
-                const sd = studentData?.student_data || {};
-                const val = sd[key];
-                if (val !== undefined && val !== null && String(val).trim() !== '') return String(val);
-                return fallback;
-              }}
-            />
+      <div className="flex-1 w-full flex flex-col items-center gap-6 px-2 sm:px-0 pb-6">
+        <div className="w-full">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 text-center">Front Side</p>
+          <div className="id-card-preview-scaler-box">
+            <div className="id-card-preview-scaler">
+              <DigitalStudentCard
+                student={studentData}
+                getStudentData={getSd}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 text-center">Back Side</p>
+          <div className="id-card-preview-scaler-box">
+            <div className="id-card-preview-scaler">
+              <DigitalIdCardBack
+                student={studentData}
+                getStudentData={getSd}
+              />
+            </div>
           </div>
         </div>
       </div>
