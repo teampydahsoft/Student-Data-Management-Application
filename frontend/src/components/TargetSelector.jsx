@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, ChevronDown, Check, X } from 'lucide-react';
+import { Users, ChevronDown, Check, X, Loader2 } from 'lucide-react';
 import api from '../config/api';
 
 const MultiSelect = ({ label, options, selected, onChange, placeholder, disabled }) => {
@@ -76,20 +76,6 @@ const MultiSelect = ({ label, options, selected, onChange, placeholder, disabled
 };
 
 const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = false }) => {
-    // ... (state vars same as before) ...
-    // Note: I need to preserve the state variables in the replacement, but the tool requires me to provide the logic.
-    // I will target the Return statement specifically to avoid re-writing the whole state logic if possible.
-    // However, I need to update the props in the function definition.
-    // So I must replace the definition line and the return block.
-    // This tool call suggests replacing a chunk. I'll replace the top definition and the return block separately? No, I can't do multiple chunks easily with "replace_file_content" unless I use "multi_replace".
-    // I will use "replace_file_content" for the whole component function body if needed, or just the relevant parts if I can match them.
-    // Re-reading usage: "Use multi_replace_file_content... for multiple non-contiguous edits".
-    // I will use `multi_replace_file_content`.
-
-    // Wait, the prompt says "Use this tool ONLY when you are making a SINGLE CONTIGUOUS block of edits".
-    // I need to update the prop list at top vs the JSX at bottom. They are far apart.
-    // I should use `multi_replace_file_content`.
-
     const [colleges, setColleges] = useState([]);
     const [batches, setBatches] = useState([]);
     const [courses, setCourses] = useState([]);
@@ -102,6 +88,59 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
     const [availableYears, setAvailableYears] = useState([]);
     const [availableSemesters, setAvailableSemesters] = useState([]);
     const [recipientCount, setRecipientCount] = useState(0);
+
+    const [studentSearch, setStudentSearch] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [searching, setSearching] = useState(false);
+
+    const targetType = formData.target_type || 'filters';
+    const selectedStudents = formData.selected_students || [];
+
+    useEffect(() => {
+        if (!studentSearch || studentSearch.trim().length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            setSearching(true);
+            try {
+                const res = await api.get(`/students?search=${encodeURIComponent(studentSearch.trim())}&limit=10&lite=true`);
+                if (res.data?.success) {
+                    setSearchResults(res.data.data || []);
+                }
+            } catch (err) {
+                console.error('Student search failed:', err);
+            } finally {
+                setSearching(false);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [studentSearch]);
+
+    const handleTargetTypeChange = (type) => {
+        setFormData(prev => ({ ...prev, target_type: type }));
+    };
+
+    const handleAddStudent = (student) => {
+        const exists = selectedStudents.some(s => s.id === student.id);
+        if (!exists) {
+            const newSelected = [...selectedStudents, student];
+            setFormData(prev => ({
+                ...prev,
+                selected_students: newSelected,
+                selected_student_ids: newSelected.map(s => s.id)
+            }));
+        }
+    };
+
+    const handleRemoveStudent = (studentId) => {
+        const newSelected = selectedStudents.filter(s => s.id !== studentId);
+        setFormData(prev => ({
+            ...prev,
+            selected_students: newSelected,
+            selected_student_ids: newSelected.map(s => s.id)
+        }));
+    };
 
     useEffect(() => {
         fetchMetadata();
@@ -123,7 +162,7 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
             if (courRes.data.success) setCourses(courRes.data.data.map(c => ({ 
               value: c.name, 
               label: c.name + (c.level ? ` (${c.level.toUpperCase()})` : ''), 
-              collegeId: c.collegeId,  // API returns camelCase collegeId
+              collegeId: c.collegeId,
               id: c.id,
               level: c.level
             })));
@@ -144,7 +183,6 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
                 .map(c => c.id);
             const filtered = courses.filter(c => selectedCollegeIds.includes(c.collegeId));
             setAvailableCourses(filtered);
-            // Clear any selected courses that are no longer available
             const filteredValues = filtered.map(c => c.value);
             const validSelectedCourses = (formData.target_course || []).filter(v => filteredValues.includes(v));
             if (validSelectedCourses.length !== (formData.target_course || []).length) {
@@ -181,10 +219,16 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
     useEffect(() => {
         const calculateCount = async () => {
             try {
-                // Skip count calculation if row layout as it is mainly for search filtering
                 if (layout === 'row') return;
 
+                if (formData.target_type === 'individual') {
+                    setRecipientCount((formData.selected_students || []).length);
+                    return;
+                }
+
                 const response = await api.post('/announcements/count', {
+                    target_type: formData.target_type,
+                    selected_student_ids: (formData.selected_students || []).map(s => s.id),
                     target_college: formData.target_college,
                     target_batch: formData.target_batch,
                     target_course: formData.target_course,
@@ -250,65 +294,257 @@ const TargetSelector = ({ formData, setFormData, layout = 'column', hideTitle = 
 
     // Default vertical layout
     return (
-        <div className="space-y-4 bg-gray-50 p-6 rounded-xl border border-gray-100 h-full">
-            <div className="flex justify-between items-center">
+        <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 h-full flex flex-col min-h-0 space-y-2.5">
+            <div className="flex justify-between items-center shrink-0">
                 {!hideTitle && (
-                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <Users size={16} /> Target Audience
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Users size={14} /> Target Audience
                     </h3>
                 )}
-                <div className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full ml-auto">
+                <div className="text-[11px] font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-auto">
                     Est. Recipients: {recipientCount}
                 </div>
             </div>
-            <p className="text-xs text-slate-500 mb-4">Leave fields empty to target everyone.</p>
 
-            <div className="space-y-4">
-                <MultiSelect
-                    label="Colleges"
-                    placeholder="All Colleges"
-                    options={colleges}
-                    selected={formData.target_college}
-                    onChange={vals => setFormData({ ...formData, target_college: vals })}
-                />
-                <MultiSelect
-                    label="Batches"
-                    placeholder="All Batches"
-                    options={batches}
-                    selected={formData.target_batch}
-                    onChange={vals => setFormData({ ...formData, target_batch: vals })}
-                />
+            {/* Mode Selector Toggle */}
+            <div className="flex rounded-lg border border-gray-200 p-0.5 bg-white shadow-2xs shrink-0">
+                <button
+                    type="button"
+                    onClick={() => handleTargetTypeChange('filters')}
+                    className={`flex-1 py-1 px-2 rounded-md text-[11px] font-semibold transition-all ${
+                        targetType !== 'individual'
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                    Target By Filters
+                </button>
+                <button
+                    type="button"
+                    onClick={() => handleTargetTypeChange('individual')}
+                    className={`flex-1 py-1 px-2 rounded-md text-[11px] font-semibold transition-all ${
+                        targetType === 'individual'
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                    Individual Students {selectedStudents.length > 0 && `(${selectedStudents.length})`}
+                </button>
             </div>
-            <MultiSelect
-                label="Programs"
-                placeholder="All Programs"
-                options={availableCourses}
-                selected={formData.target_course}
-                onChange={vals => setFormData({ ...formData, target_course: vals })}
-            />
-            <MultiSelect
-                label="Branches"
-                placeholder="All Branches"
-                options={availableBranches}
-                selected={formData.target_branch}
-                onChange={vals => setFormData({ ...formData, target_branch: vals })}
-            />
-            <div className="grid grid-cols-2 gap-4">
-                <MultiSelect
-                    label="Years"
-                    placeholder="All Years"
-                    options={availableYears}
-                    selected={formData.target_year}
-                    onChange={vals => setFormData({ ...formData, target_year: vals })}
-                />
-                <MultiSelect
-                    label="Semesters"
-                    placeholder="All Semesters"
-                    options={availableSemesters}
-                    selected={formData.target_semester}
-                    onChange={vals => setFormData({ ...formData, target_semester: vals })}
-                />
-            </div>
+
+            {targetType === 'individual' ? (
+                <div className="flex-1 min-h-0 flex flex-col space-y-2">
+                    {/* Search Field */}
+                    <div className="relative shrink-0">
+                        <div className="flex justify-between items-center mb-0.5">
+                            <label className="block text-[11px] font-semibold text-gray-700">Search Student</label>
+                            <span className="text-[10px] text-gray-400">Search by name or admission no.</span>
+                        </div>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                className="w-full py-1.5 px-2.5 pr-7 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-2xs font-medium"
+                                placeholder="Type student name or adm no..."
+                                value={studentSearch}
+                                onChange={(e) => setStudentSearch(e.target.value)}
+                            />
+                            {studentSearch ? (
+                                <button
+                                    type="button"
+                                    onClick={() => { setStudentSearch(''); setSearchResults([]); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                                >
+                                    <X size={13} />
+                                </button>
+                            ) : (
+                                searching && (
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
+                                        <Loader2 size={14} className="animate-spin text-blue-500" />
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Selected Students Chips Container */}
+                    {selectedStudents.length > 0 && (
+                        <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-2">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">
+                                    Selected ({selectedStudents.length})
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, selected_students: [], selected_student_ids: [] }))}
+                                    className="text-[10px] text-red-600 hover:underline font-semibold"
+                                >
+                                    Remove All
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-0.5">
+                                {selectedStudents.map((s) => (
+                                    <span
+                                        key={s.id}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded-md border border-blue-100 font-medium"
+                                    >
+                                        <span className="truncate max-w-[130px]">{s.student_name || s.admission_number}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveStudent(s.id)}
+                                            className="hover:text-red-600 p-0.5 rounded-full hover:bg-blue-100 transition-colors"
+                                        >
+                                            <X size={11} />
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Inline Search Results Container — Compact row height & Select All */}
+                    <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-lg overflow-hidden shadow-2xs">
+                        <div className="px-2.5 py-1.5 bg-gray-50 border-b text-[11px] font-semibold text-gray-600 flex justify-between items-center shrink-0">
+                            <span>Results {searchResults.length > 0 && `(${searchResults.length})`}</span>
+                            {searchResults.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const currentIds = new Set(selectedStudents.map(s => s.id));
+                                        const allAdded = searchResults.every(s => currentIds.has(s.id));
+                                        if (allAdded) {
+                                            // Remove search results from selected
+                                            const searchResultIds = new Set(searchResults.map(s => s.id));
+                                            const newSelected = selectedStudents.filter(s => !searchResultIds.has(s.id));
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                selected_students: newSelected,
+                                                selected_student_ids: newSelected.map(s => s.id)
+                                            }));
+                                        } else {
+                                            // Add all search results
+                                            const toAdd = searchResults.filter(s => !currentIds.has(s.id));
+                                            const newSelected = [...selectedStudents, ...toAdd];
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                selected_students: newSelected,
+                                                selected_student_ids: newSelected.map(s => s.id)
+                                            }));
+                                        }
+                                    }}
+                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                >
+                                    {searchResults.every(s => selectedStudents.some(sel => sel.id === s.id))
+                                        ? 'Deselect All'
+                                        : '+ Select All'}
+                                </button>
+                            )}
+                            {searching && searchResults.length === 0 && (
+                                <span className="text-[10px] text-blue-600 font-normal">Searching…</span>
+                            )}
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+                            {searching && searchResults.length === 0 ? (
+                                <div className="flex items-center justify-center py-6 text-[11px] text-gray-400 gap-2">
+                                    <Loader2 size={14} className="animate-spin text-blue-500" /> Searching students...
+                                </div>
+                            ) : searchResults.length === 0 ? (
+                                <div className="p-4 text-center text-[11px] text-gray-400">
+                                    {studentSearch.trim().length >= 2
+                                        ? 'No matching students found.'
+                                        : 'Type at least 2 characters above to search students.'}
+                                </div>
+                            ) : (
+                                searchResults.map((s) => {
+                                    const isAdded = selectedStudents.some(sel => sel.id === s.id);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            className={`py-1.5 px-2.5 flex items-center justify-between hover:bg-blue-50/50 transition-colors ${
+                                                isAdded ? 'bg-gray-50/80' : ''
+                                            }`}
+                                        >
+                                            <div className="min-w-0 flex-1 pr-2">
+                                                <div className="font-bold text-xs text-gray-900 truncate">
+                                                    {s.student_name || 'No Name'}
+                                                </div>
+                                                <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
+                                                    <span>Adm: <strong className="font-mono text-blue-600">{s.admission_number}</strong></span>
+                                                    <span>•</span>
+                                                    <span className="truncate">{s.course} ({s.branch || '-'})</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddStudent(s)}
+                                                disabled={isAdded}
+                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all shrink-0 ${
+                                                    isAdded
+                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                                        : 'bg-blue-600 text-white hover:bg-blue-700 shadow-2xs active:scale-95'
+                                                }`}
+                                            >
+                                                {isAdded ? 'Added ✓' : '+ Add'}
+                                            </button>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    <p className="text-xs text-slate-500">Leave fields empty to target everyone.</p>
+
+                    <div className="space-y-4">
+                        <MultiSelect
+                            label="Colleges"
+                            placeholder="All Colleges"
+                            options={colleges}
+                            selected={formData.target_college}
+                            onChange={vals => setFormData({ ...formData, target_college: vals })}
+                        />
+                        <MultiSelect
+                            label="Batches"
+                            placeholder="All Batches"
+                            options={batches}
+                            selected={formData.target_batch}
+                            onChange={vals => setFormData({ ...formData, target_batch: vals })}
+                        />
+                    </div>
+                    <MultiSelect
+                        label="Programs"
+                        placeholder="All Programs"
+                        options={availableCourses}
+                        selected={formData.target_course}
+                        onChange={vals => setFormData({ ...formData, target_course: vals })}
+                    />
+                    <MultiSelect
+                        label="Branches"
+                        placeholder="All Branches"
+                        options={availableBranches}
+                        selected={formData.target_branch}
+                        onChange={vals => setFormData({ ...formData, target_branch: vals })}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <MultiSelect
+                            label="Years"
+                            placeholder="All Years"
+                            options={availableYears}
+                            selected={formData.target_year}
+                            onChange={vals => setFormData({ ...formData, target_year: vals })}
+                        />
+                        <MultiSelect
+                            label="Semesters"
+                            placeholder="All Semesters"
+                            options={availableSemesters}
+                            selected={formData.target_semester}
+                            onChange={vals => setFormData({ ...formData, target_semester: vals })}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

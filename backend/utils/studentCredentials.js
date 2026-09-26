@@ -215,7 +215,8 @@ async function generateStudentCredentials(
         message: smsMessage,
         templateId: templateId,
         meta: {
-          student: { admissionNumber },
+          category: 'SMS Template',
+          student: { id: studentId, admissionNumber },
           type: isPasswordReset ? 'password_reset' : 'account_creation'
         }
       });

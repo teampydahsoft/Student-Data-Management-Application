@@ -260,14 +260,8 @@ exports.getStudentAnnouncements = async (req, res) => {
 
 exports.calculateRecipientCount = async (req, res) => {
     try {
-        const { target_college, target_batch, target_course, target_branch, target_year, target_semester } = req.body;
+        const { target_type, selected_student_ids, target_college, target_batch, target_course, target_branch, target_year, target_semester } = req.body;
 
-        // Build dynamic query
-        // Force "Regular" status only
-        let query = 'SELECT COUNT(*) as count FROM students WHERE student_status = "Regular"';
-        const params = [];
-
-        // Parse JSON arrays if they come as strings, or use directly if array
         const parseParam = (val) => {
             if (!val) return null;
             if (Array.isArray(val)) return val.length ? val : null;
@@ -276,6 +270,21 @@ exports.calculateRecipientCount = async (req, res) => {
                 return parsed.length ? parsed : null;
             } catch (e) { return null; }
         };
+
+        const studentIds = parseParam(selected_student_ids);
+
+        if (target_type === 'individual' && studentIds) {
+            const [rows] = await masterPool.query(
+                'SELECT COUNT(*) as count FROM students WHERE student_status = "Regular" AND id IN (?)',
+                [studentIds]
+            );
+            return res.json({ success: true, count: rows[0].count });
+        }
+
+        // Build dynamic query
+        // Force "Regular" status only
+        let query = 'SELECT COUNT(*) as count FROM students WHERE student_status = "Regular"';
+        const params = [];
 
         const colleges = parseParam(target_college);
         const batches = parseParam(target_batch);
@@ -287,7 +296,6 @@ exports.calculateRecipientCount = async (req, res) => {
         if (colleges) { query += ' AND college IN (?)'; params.push(colleges); }
         if (batches) { query += ' AND batch IN (?)'; params.push(batches); }
         if (courses) {
-            // Map course names to filtering if needed, assumes column 'course' holds names
             query += ' AND course IN (?)'; params.push(courses);
         }
         if (branches) { query += ' AND branch IN (?)'; params.push(branches); }
@@ -492,6 +500,8 @@ exports.sendSMSAnnouncement = async (req, res) => {
             template_content,
             variable_mappings,
             selected_mobile_targets,
+            target_type,
+            selected_student_ids,
             target_college,
             target_batch,
             target_course,
@@ -526,19 +536,26 @@ exports.sendSMSAnnouncement = async (req, res) => {
             } catch (e) { return null; }
         };
 
-        const colleges = parseParam(target_college);
-        const batches = parseParam(target_batch);
-        const courses = parseParam(target_course);
-        const branches = parseParam(target_branch);
-        const years = parseParam(target_year);
-        const semesters = parseParam(target_semester);
+        const studentIds = parseParam(selected_student_ids);
 
-        if (colleges) { query += ' AND college IN (?)'; params.push(colleges); }
-        if (batches) { query += ' AND batch IN (?)'; params.push(batches); }
-        if (courses) { query += ' AND course IN (?)'; params.push(courses); }
-        if (branches) { query += ' AND branch IN (?)'; params.push(branches); }
-        if (years) { query += ' AND current_year IN (?)'; params.push(years); }
-        if (semesters) { query += ' AND current_semester IN (?)'; params.push(semesters); }
+        if (target_type === 'individual' && studentIds) {
+            query += ' AND students.id IN (?)';
+            params.push(studentIds);
+        } else {
+            const colleges = parseParam(target_college);
+            const batches = parseParam(target_batch);
+            const courses = parseParam(target_course);
+            const branches = parseParam(target_branch);
+            const years = parseParam(target_year);
+            const semesters = parseParam(target_semester);
+
+            if (colleges) { query += ' AND college IN (?)'; params.push(colleges); }
+            if (batches) { query += ' AND batch IN (?)'; params.push(batches); }
+            if (courses) { query += ' AND course IN (?)'; params.push(courses); }
+            if (branches) { query += ' AND branch IN (?)'; params.push(branches); }
+            if (years) { query += ' AND current_year IN (?)'; params.push(years); }
+            if (semesters) { query += ' AND current_semester IN (?)'; params.push(semesters); }
+        }
 
         const [students] = await masterPool.query(query, params);
 
@@ -624,7 +641,7 @@ exports.sendSMSAnnouncement = async (req, res) => {
                                 templateId: template_id,
                                 peId: process.env.SMS_PE_ID,
                                 meta: {
-                                    category: 'Announcement',
+                                    category: 'SMS Template',
                                     student: {
                                         id: student.id,
                                         admissionNumber: student.admission_number,

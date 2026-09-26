@@ -48,20 +48,19 @@ const formatDateForMessage = (dateString = '') => {
   return `${day}-${month}-${year}`;
 };
 
-const logSmsToDb = async ({ studentId, mobileNumber, message, category, currentYear, currentSemester, status, messageId, errorDetails }) => {
-  if (!studentId) return;
-
+const logSmsToDb = async ({ studentId, mobileNumber, message, category, templateId, currentYear, currentSemester, status, messageId, errorDetails }) => {
   try {
     const query = `
       INSERT INTO sms_logs 
-      (student_id, mobile_number, message, category, current_year, current_semester, status, message_id, error_details)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (student_id, mobile_number, message, category, template_id, current_year, current_semester, status, message_id, error_details)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const params = [
-      studentId,
+      studentId || null,
       mobileNumber,
       message,
       category || 'General',
+      templateId || null,
       currentYear || null,
       currentSemester || null,
       status,
@@ -78,6 +77,7 @@ const logSmsToDb = async ({ studentId, mobileNumber, message, category, currentY
 const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
   const logPrefix = `[SMS] ${meta?.student?.admissionNumber || 'unknown'}`;
   const student = meta?.student || {};
+  const actualTemplateId = templateId || meta?.templateId || null;
 
   if (!to) {
     console.log(`${logPrefix} ⚠️ SKIPPED - No destination number provided`);
@@ -98,6 +98,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
       mobileNumber: to,
       message,
       category: meta.category || 'General',
+      templateId: actualTemplateId,
       currentYear: student.currentYear,
       currentSemester: student.currentSemester,
       status: 'Sent',
@@ -201,6 +202,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
         mobileNumber: to,
         message,
         category: meta.category || 'General',
+        templateId: actualTemplateId,
         currentYear: student.currentYear,
         currentSemester: student.currentSemester,
         status: 'Failed',
@@ -238,6 +240,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
         mobileNumber: to,
         message,
         category: meta.category || 'General',
+        templateId: actualTemplateId,
         currentYear: student.currentYear,
         currentSemester: student.currentSemester,
         status: 'Sent',
@@ -265,6 +268,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
         mobileNumber: to,
         message,
         category: meta.category || 'General',
+        templateId: actualTemplateId,
         currentYear: student.currentYear,
         currentSemester: student.currentSemester,
         status: 'Sent',
@@ -307,6 +311,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
         mobileNumber: to,
         message,
         category: meta.category || 'General',
+        templateId: actualTemplateId,
         currentYear: student.currentYear,
         currentSemester: student.currentSemester,
         status: 'Failed',
@@ -331,6 +336,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
         mobileNumber: to,
         message,
         category: meta.category || 'General',
+        templateId: actualTemplateId,
         currentYear: student.currentYear,
         currentSemester: student.currentSemester,
         status: 'Sent',
@@ -353,6 +359,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
       mobileNumber: to,
       message,
       category: meta.category || 'General',
+      templateId: actualTemplateId,
       currentYear: student.currentYear,
       currentSemester: student.currentSemester,
       status: 'Failed',
@@ -374,6 +381,7 @@ const dispatchSms = async ({ to, message, templateId, peId, meta = {} }) => {
       mobileNumber: to,
       message,
       category: meta.category || 'General',
+      templateId: actualTemplateId,
       currentYear: student.currentYear,
       currentSemester: student.currentSemester,
       status: 'Failed',
@@ -604,8 +612,30 @@ exports.sendAbsenceNotification = async ({
 };
 
 /**
- * Send birthday SMS to student using template:
- * "Dear {#var#} Happy Birthday! May this year bring success, happiness, and good health. Keep learning and growing. Best wishes from Pydah Group."
+ * Fetch dynamic Birthday template from database (sms_templates table)
+ * Returns { templateId, content } or null if not found
+ */
+const getBirthdayTemplateFromDb = async () => {
+  try {
+    const [rows] = await masterPool.query(
+      `SELECT template_id, content FROM sms_templates 
+       WHERE LOWER(name) LIKE '%birthday%' 
+       ORDER BY id DESC LIMIT 1`
+    );
+    if (rows && rows.length > 0 && rows[0].template_id && rows[0].content) {
+      return {
+        templateId: rows[0].template_id,
+        content: rows[0].content
+      };
+    }
+  } catch (err) {
+    console.error('Failed to fetch birthday template from DB:', err);
+  }
+  return null;
+};
+
+/**
+ * Send birthday SMS to student using template created in database (with fallback to default)
  * {#var#} is replaced with the student's full name.
  */
 exports.sendBirthdaySms = async ({ student }) => {
@@ -623,17 +653,31 @@ exports.sendBirthdaySms = async ({ student }) => {
 
   const nameForMessage = resolveStudentFullName(student);
 
-  const message = buildAbsenceMessage(BIRTHDAY_SMS_TEMPLATE, [nameForMessage]);
+  // 1. Try to load birthday template dynamically from database
+  let templateContent = BIRTHDAY_SMS_TEMPLATE;
+  let templateId = SMS_BIRTHDAY_TEMPLATE_ID;
+
+  const dbTpl = await getBirthdayTemplateFromDb();
+  if (dbTpl) {
+    templateContent = dbTpl.content;
+    templateId = dbTpl.templateId;
+    console.log(`${logPrefix} 📋 Using DB Birthday template (ID: ${templateId})`);
+  } else {
+    console.log(`${logPrefix} ⚠️ DB Birthday template not found, using default template ID`);
+  }
+
+  const message = buildAbsenceMessage(templateContent, [nameForMessage]);
 
   console.log(`${logPrefix} 📱 Sending birthday SMS to ${to}`);
   console.log(`${logPrefix} 📝 Message: "${message}"`);
   return dispatchSms({
     to,
     message,
-    templateId: SMS_BIRTHDAY_TEMPLATE_ID,
+    templateId,
     peId: SMS_PE_ID,
     meta: {
       category: 'Birthday',
+      templateId,
       template: 'birthday',
       student: {
         id: student.id,

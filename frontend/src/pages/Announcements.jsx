@@ -102,6 +102,9 @@ const Announcements = () => {
         template_content: '',
         variable_mappings: [], // Array of { type: 'static'|'field', value: '' }
         // Shared Targets
+        target_type: 'filters',
+        selected_student_ids: [],
+        selected_students: [],
         target_college: [],
         target_batch: [],
         target_course: [],
@@ -278,10 +281,18 @@ const Announcements = () => {
         const onSmsBroadcast = activeTab === 'sms' && smsMode === 'broadcast';
         if (!isCreateModalOpen && !isTemplateModalOpen && !onSmsBroadcast) return;
 
+        if (formData.target_type === 'individual') {
+            setAudienceCount((formData.selected_students || []).length);
+            setFetchingCount(false);
+            return;
+        }
+
         const timer = setTimeout(async () => {
             setFetchingCount(true);
             try {
                 const response = await api.post('/announcements/count', {
+                    target_type: formData.target_type,
+                    selected_student_ids: (formData.selected_students || []).map(s => s.id),
                     target_college: formData.target_college,
                     target_batch: formData.target_batch,
                     target_course: formData.target_course,
@@ -302,6 +313,8 @@ const Announcements = () => {
 
         return () => clearTimeout(timer);
     }, [
+        formData.target_type,
+        formData.selected_students,
         formData.target_college,
         formData.target_batch,
         formData.target_course,
@@ -517,6 +530,8 @@ const Announcements = () => {
                 template_content: formData.template_content,
                 variable_mappings: sendMappings,
                 selected_mobile_targets: selectedMobileTargets,
+                target_type: formData.target_type || 'filters',
+                selected_student_ids: (formData.selected_students || []).map(s => typeof s === 'object' ? s.id : s),
                 target_college: formData.target_college,
                 target_batch: formData.target_batch,
                 target_course: formData.target_course,
@@ -859,10 +874,8 @@ const Announcements = () => {
 
                                             {/* Right Column: Audience & Action */}
                                             <div className="lg:col-span-7 flex flex-col h-full pl-4 overflow-hidden">
-                                                <div className="flex-1 overflow-y-auto scrollbar-hide pt-2">
-                                                    <div className="bg-gray-50 p-1 rounded-xl border border-gray-200">
-                                                        <TargetSelector formData={formData} setFormData={setFormData} hideTitle={true} />
-                                                    </div>
+                                                <div className="flex-1 min-h-0 flex flex-col pt-2">
+                                                    <TargetSelector formData={formData} setFormData={setFormData} hideTitle={true} />
                                                 </div>
 
                                                 <div className="mt-auto pt-6 border-t border-gray-100 bg-white">
@@ -1216,7 +1229,6 @@ const Announcements = () => {
                 </div>,
                 document.body
             )}
-            }
 
             {/* SMS Template Modal */}
             {isTemplateModalOpen && createPortal(

@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { masterPool } = require('../config/database');
+const smsService = require('../services/smsService');
 const { logAudit } = require('../services/auditLogService');
 const {
   USER_ROLES,
@@ -55,64 +56,18 @@ const textToHtml = (text) => {
     .join('\n');
 };
 
-// Helper function to send SMS (using the same service pattern as attendance)
-const sendSms = async ({ to, message, templateId, peId }) => {
-  const SMS_API_URL = process.env.SMS_API_URL || process.env.BULKSMS_API_URL || 'http://www.bulksmsapps.com/api/apismsv2.aspx';
-  const SMS_API_KEY = process.env.SMS_API_KEY || process.env.BULKSMS_API_KEY;
-  const SMS_SENDER_ID = process.env.SMS_SENDER_ID || process.env.BULKSMS_SENDER_ID || 'PYDAHK';
-  const SMS_TEST_MODE = String(process.env.SMS_TEST_MODE || '').toLowerCase() === 'true';
-  const SMS_TEMPLATE_ID = templateId || process.env.SMS_TEMPLATE_ID || '1607100000000150000';
-  const SMS_PE_ID = peId || process.env.SMS_PE_ID || '1102395590000010000';
-
-  if (!to) {
-    return { success: false, skipped: true, reason: 'missing_destination' };
-  }
-
-  if (SMS_TEST_MODE) {
-    console.log(`[SMS] 🧪 TEST MODE - SMS simulated to ${to}: ${message}`);
-    return { success: true, mocked: true, testMode: true, sentTo: to };
-  }
-
-  if (!SMS_API_URL || !SMS_API_KEY) {
-    console.warn(`[SMS] ⚠️ SKIPPED - SMS not configured`);
-    return { success: false, skipped: true, reason: 'config_missing' };
-  }
-
-  try {
-    const params = new URLSearchParams();
-    params.append('apikey', SMS_API_KEY);
-    params.append('sender', SMS_SENDER_ID);
-    params.append('number', to);
-    params.append('message', message);
-    params.append('templateid', SMS_TEMPLATE_ID);
-    params.append('peid', SMS_PE_ID);
-
-    let apiUrl = SMS_API_URL;
-    if (apiUrl.startsWith('https://')) {
-      apiUrl = apiUrl.replace('https://', 'http://');
+// Helper function to send SMS (using smsService so all sent SMS are logged)
+const sendSms = async ({ to, message, templateId, peId, meta = {} }) => {
+  return smsService.sendSms({
+    to,
+    message,
+    templateId,
+    peId,
+    meta: {
+      category: 'SMS Template',
+      ...meta
     }
-
-    const fullUrl = `${apiUrl}?${params.toString()}`;
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'text/plain, application/json, */*',
-        'User-Agent': 'NodeJS-SMS-Client/1.0'
-      }
-    });
-
-    const text = await response.text();
-    console.log(`[SMS] Response for ${to}: ${text.substring(0, 100)}`);
-
-    if (response.ok) {
-      return { success: true, sentTo: to, data: text };
-    }
-
-    return { success: false, skipped: false, reason: 'api_error', details: text, sentTo: to };
-  } catch (error) {
-    console.error(`[SMS] Exception: ${error.message}`);
-    return { success: false, skipped: false, reason: 'exception', details: error.message, sentTo: to };
-  }
+  });
 };
 
 /**

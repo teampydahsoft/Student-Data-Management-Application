@@ -27,20 +27,28 @@ exports.getSmsReport = async (req, res) => {
     const { date_from, date_to, category } = req.query;
     const { joinClause, whereClause, params } = buildSmsLogScope(req);
 
-    let filteredWhere = whereClause;
-    const filteredParams = [...params];
+    let dateWhere = whereClause;
+    const dateParams = [...params];
 
     if (date_from) {
-      filteredWhere += ' AND DATE(sl.sent_at) >= ?';
-      filteredParams.push(date_from);
+      dateWhere += ' AND DATE(sl.sent_at) >= ?';
+      dateParams.push(date_from);
     }
     if (date_to) {
-      filteredWhere += ' AND DATE(sl.sent_at) <= ?';
-      filteredParams.push(date_to);
+      dateWhere += ' AND DATE(sl.sent_at) <= ?';
+      dateParams.push(date_to);
     }
+
+    let filteredWhere = dateWhere;
+    const filteredParams = [...dateParams];
+
     if (category) {
-      filteredWhere += ' AND sl.category = ?';
-      filteredParams.push(category);
+      if (category === 'General') {
+        filteredWhere += " AND (sl.category = 'General' OR sl.category = 'SMS Template' OR sl.category IS NULL)";
+      } else {
+        filteredWhere += ' AND sl.category = ?';
+        filteredParams.push(category);
+      }
     }
 
     const baseFrom = `FROM sms_logs sl ${joinClause}`;
@@ -56,18 +64,41 @@ exports.getSmsReport = async (req, res) => {
       filteredParams
     );
 
+    // Group by category based on date range (mapping SMS Template to General)
     const [byCategory] = await masterPool.query(
       `SELECT
-        COALESCE(sl.category, 'General') AS category,
+        CASE WHEN sl.category = 'SMS Template' OR sl.category IS NULL THEN 'General' ELSE sl.category END AS category,
         COUNT(*) AS total,
         SUM(CASE WHEN sl.status IN ('Sent', 'Delivered') THEN 1 ELSE 0 END) AS sent,
         SUM(CASE WHEN sl.status = 'Failed' THEN 1 ELSE 0 END) AS failed
       ${baseFrom}
-      ${filteredWhere}
-      GROUP BY COALESCE(sl.category, 'General')
+      ${dateWhere}
+      GROUP BY CASE WHEN sl.category = 'SMS Template' OR sl.category IS NULL THEN 'General' ELSE sl.category END
       ORDER BY total DESC`,
-      filteredParams
+      dateParams
     );
+
+    // Group by template based on date range (using template_id match with pattern fallback)
+    const [byTemplate] = await masterPool.query(
+      `SELECT
+        t.template_id,
+        COUNT(sl.id) AS total,
+        SUM(CASE WHEN sl.status IN ('Sent', 'Delivered') THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN sl.status = 'Failed' THEN 1 ELSE 0 END) AS failed
+      FROM sms_templates t
+      LEFT JOIN sms_logs sl ON (
+        sl.template_id = t.template_id
+        OR (sl.category = 'SMS Template' AND sl.template_id IS NULL AND sl.message LIKE CONCAT('%', SUBSTRING_INDEX(t.content, '{#var#}', 1), '%'))
+      )
+      ${dateWhere}
+      GROUP BY t.id, t.name, t.template_id`,
+      dateParams
+    );
+
+    const templateCountMap = {};
+    byTemplate.forEach((row) => {
+      templateCountMap[row.template_id] = Number(row.sent || 0);
+    });
 
     const [byDate] = await masterPool.query(
       `SELECT
@@ -84,12 +115,21 @@ exports.getSmsReport = async (req, res) => {
     );
 
     const [categories] = await masterPool.query(
-      `SELECT DISTINCT COALESCE(sl.category, 'General') AS category
+      `SELECT DISTINCT CASE WHEN sl.category = 'SMS Template' OR sl.category IS NULL THEN 'General' ELSE sl.category END AS category
       ${baseFrom}
-      ${whereClause}
+      ${dateWhere}
       ORDER BY category`,
-      params
+      dateParams
     );
+
+    const [templates] = await masterPool.query(
+      `SELECT id, name, template_id, content FROM sms_templates ORDER BY name ASC`
+    );
+
+    const templatesWithCounts = templates.map((tpl) => ({
+      ...tpl,
+      sent_count: templateCountMap[tpl.template_id] || 0
+    }));
 
     const balance = await smsService.getAccountBalance();
 
@@ -115,6 +155,7 @@ exports.getSmsReport = async (req, res) => {
           failed: Number(row.failed)
         })),
         categories: categories.map((r) => r.category),
+        templates: templatesWithCounts,
         accountBalance: balance
       }
     });
@@ -135,7 +176,7 @@ exports.getSmsReportLogs = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
     const offset = (page - 1) * limit;
-    const { date_from, date_to, category, status } = req.query;
+    const { date_from, date_to, category, status, template_id } = req.query;
 
     const { joinClause, whereClause, params } = buildSmsLogScope(req);
     let filteredWhere = whereClause;
@@ -150,12 +191,33 @@ exports.getSmsReportLogs = async (req, res) => {
       filteredParams.push(date_to);
     }
     if (category) {
-      filteredWhere += ' AND sl.category = ?';
-      filteredParams.push(category);
+      if (category === 'General') {
+        filteredWhere += " AND (sl.category = 'General' OR sl.category = 'SMS Template' OR sl.category IS NULL)";
+      } else {
+        filteredWhere += ' AND sl.category = ?';
+        filteredParams.push(category);
+      }
     }
     if (status) {
       filteredWhere += ' AND sl.status = ?';
       filteredParams.push(status);
+    }
+    if (template_id) {
+      const [tplRows] = await masterPool.query('SELECT template_id, content FROM sms_templates WHERE template_id = ?', [template_id]);
+      if (tplRows.length > 0) {
+        const parts = tplRows[0].content.split(/\{#var#\}|\{\{.*?\}\}/);
+        const snippet = (parts.find(p => p.trim().length >= 8) || parts[0] || '').trim();
+        if (snippet) {
+          filteredWhere += ' AND (sl.template_id = ? OR (sl.category = \'SMS Template\' AND sl.template_id IS NULL AND sl.message LIKE ?))';
+          filteredParams.push(template_id, `%${snippet}%`);
+        } else {
+          filteredWhere += ' AND sl.template_id = ?';
+          filteredParams.push(template_id);
+        }
+      } else {
+        filteredWhere += ' AND sl.template_id = ?';
+        filteredParams.push(template_id);
+      }
     }
 
     const studentJoin = joinClause || ' LEFT JOIN students s ON sl.student_id = s.id ';
@@ -172,6 +234,7 @@ exports.getSmsReportLogs = async (req, res) => {
         sl.mobile_number,
         sl.message,
         sl.category,
+        sl.template_id,
         sl.status,
         sl.message_id,
         sl.sent_at,
