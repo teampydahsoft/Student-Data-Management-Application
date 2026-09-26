@@ -304,7 +304,7 @@ const Dashboard = () => {
   });
 
   return (
-    <div className="space-y-6 bg-[#f8fafc] min-h-screen p-4 sm:p-6 text-slate-800 font-sans">
+    <div className="flex-1 w-full min-h-full space-y-4 bg-[#f8fafc] p-2 sm:p-4 text-slate-800 font-sans flex flex-col justify-between">
       
       {/* Top Title & Breadcrumb Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -451,7 +451,7 @@ const Dashboard = () => {
       </div>
 
       {/* Row 2: Middle Section (Student Attendance Status, Events Calendar, Recent Activity) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1">
         
         {/* Widget 1: Student Attendance Status */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
@@ -608,7 +608,7 @@ const Dashboard = () => {
       </div>
 
       {/* Row 3: 3 Donut Charts (Service Requests, Maintenance Tickets, Student Profile Requests) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 flex-1">
         
         {/* Service Requests Donut Card */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
