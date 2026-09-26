@@ -4829,9 +4829,48 @@ exports.deleteStudent = async (req, res) => {
 // Get dashboard statistics
 exports.getDashboardStats = async (req, res) => {
   try {
+    // Fetch attendance config (excludedCourses, excludedStudents) to match Attendance Marking page eligibility
+    let excludedCourses = [];
+    let excludedStudents = [];
+    try {
+      const [settingsRows] = await masterPool.query(
+        'SELECT value FROM settings WHERE `key` = ?',
+        ['attendance_config']
+      );
+      if (settingsRows && settingsRows.length > 0) {
+        const config = JSON.parse(settingsRows[0].value || '{}');
+        if (Array.isArray(config.excludedCourses)) excludedCourses = config.excludedCourses;
+        if (Array.isArray(config.excludedStudents)) excludedStudents = config.excludedStudents;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch attendance_config in getDashboardStats:', err);
+    }
+
+    let directExclusionSql = '';
+    const directExclusionParams = [];
+    if (excludedCourses.length > 0) {
+      directExclusionSql += ` AND course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
+      directExclusionParams.push(...excludedCourses);
+    }
+    if (excludedStudents.length > 0) {
+      directExclusionSql += ` AND admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+      directExclusionParams.push(...excludedStudents);
+    }
+
+    let sExclusionSql = '';
+    const sExclusionParams = [];
+    if (excludedCourses.length > 0) {
+      sExclusionSql += ` AND s.course NOT IN (${excludedCourses.map(() => '?').join(',')})`;
+      sExclusionParams.push(...excludedCourses);
+    }
+    if (excludedStudents.length > 0) {
+      sExclusionSql += ` AND s.admission_number NOT IN (${excludedStudents.map(() => '?').join(',')})`;
+      sExclusionParams.push(...excludedStudents);
+    }
+
     // Build scope-aware query for regular students
-    let statsQuery = "SELECT COUNT(*) as total FROM students WHERE student_status = 'Regular'";
-    const statsParams = [];
+    let statsQuery = "SELECT COUNT(*) as total FROM students WHERE student_status = 'Regular'" + directExclusionSql;
+    const statsParams = [...directExclusionParams];
     if (req.userScope) {
       const { scopeCondition, params: scopeParams } = getScopeConditionString(req.userScope, 'students');
       if (scopeCondition) {
@@ -4882,9 +4921,9 @@ exports.getDashboardStats = async (req, res) => {
       masterPool.query(`
         SELECT COALESCE(registration_status, 'pending') as status, COUNT(*) as count 
         FROM students 
-        WHERE student_status = 'Regular'
+        WHERE student_status = 'Regular'${directExclusionSql}
         GROUP BY COALESCE(registration_status, 'pending')
-      `),
+      `, directExclusionParams),
       masterPool.query(`
         SELECT 
           DATE_FORMAT(created_at, '%b') as month,
@@ -4893,11 +4932,11 @@ exports.getDashboardStats = async (req, res) => {
           SUM(CASE WHEN LOWER(COALESCE(registration_status, 'pending')) = 'pending' THEN 1 ELSE 0 END) as pending,
           SUM(CASE WHEN LOWER(COALESCE(registration_status, 'pending')) IN ('temporary', 'rejected') THEN 1 ELSE 0 END) as rejected
         FROM students
-        WHERE student_status = 'Regular' AND created_at IS NOT NULL
+        WHERE student_status = 'Regular' AND created_at IS NOT NULL${directExclusionSql}
         GROUP BY MONTH(created_at), DATE_FORMAT(created_at, '%b')
         ORDER BY MIN(created_at) ASC
         LIMIT 12
-      `),
+      `, directExclusionParams),
       masterPool.query('SELECT status, COUNT(*) as count FROM form_submissions GROUP BY status'),
       masterPool.query(
         `SELECT fs.submission_id, fs.admission_number, fs.status, fs.created_at, fs.form_id,
@@ -4913,9 +4952,9 @@ exports.getDashboardStats = async (req, res) => {
          FROM attendance_records ar
          INNER JOIN students s ON s.id = ar.student_id
          WHERE ar.attendance_date = ?
-           AND s.student_status = 'Regular'${attendanceScopeJoin}
+           AND s.student_status = 'Regular'${attendanceScopeJoin}${sExclusionSql}
          GROUP BY ar.status`,
-        [todayKey, ...attendanceScopeParams]
+        [todayKey, ...attendanceScopeParams, ...sExclusionParams]
       ),
       masterPool.query(
         `SELECT c.id, c.name, c.code,
@@ -4924,28 +4963,28 @@ exports.getDashboardStats = async (req, res) => {
                 SUM(CASE WHEN ar.status = 'absent' THEN 1 ELSE 0 END) as absentToday,
                 COUNT(ar.id) as recordsToday
          FROM colleges c
-         LEFT JOIN students s ON (s.college_id = c.id OR s.college COLLATE utf8mb4_unicode_ci = c.name OR s.college COLLATE utf8mb4_unicode_ci = c.code) AND s.student_status = 'Regular'
+         LEFT JOIN students s ON (s.college_id = c.id OR s.college COLLATE utf8mb4_unicode_ci = c.name OR s.college COLLATE utf8mb4_unicode_ci = c.code) AND s.student_status = 'Regular'${sExclusionSql}
          LEFT JOIN attendance_records ar ON ar.student_id = s.id AND ar.attendance_date = ?
          GROUP BY c.id, c.name, c.code`,
-        [todayKey]
+        [...sExclusionParams, todayKey]
       ),
       masterPool.query(
         `SELECT ar.status, COUNT(*) AS count
          FROM attendance_records ar
          INNER JOIN students s ON s.id = ar.student_id
          WHERE ar.attendance_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 DAY) AND CURDATE()
-           AND s.student_status = 'Regular'${attendanceScopeJoin}
+           AND s.student_status = 'Regular'${attendanceScopeJoin}${sExclusionSql}
          GROUP BY ar.status`,
-        [...attendanceScopeParams]
+        [...attendanceScopeParams, ...sExclusionParams]
       ),
       masterPool.query(
         `SELECT ar.status, COUNT(*) AS count
          FROM attendance_records ar
          INNER JOIN students s ON s.id = ar.student_id
          WHERE ar.attendance_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 29 DAY) AND CURDATE()
-           AND s.student_status = 'Regular'${attendanceScopeJoin}
+           AND s.student_status = 'Regular'${attendanceScopeJoin}${sExclusionSql}
          GROUP BY ar.status`,
-        [...attendanceScopeParams]
+        [...attendanceScopeParams, ...sExclusionParams]
       ),
       masterPool.query('SELECT status, COUNT(*) as count FROM service_requests GROUP BY status'),
       masterPool.query(
