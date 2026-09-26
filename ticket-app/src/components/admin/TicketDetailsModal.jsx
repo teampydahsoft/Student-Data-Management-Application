@@ -9,7 +9,8 @@ import {
     Clock,
     User,
     CheckCircle,
-    AlertCircle
+    AlertCircle,
+    MapPin
 } from 'lucide-react';
 import TicketStepper from './TicketStepper';
 import { resolveTicketPhotoUrl } from '../../utils/ticketPhoto';
@@ -127,6 +128,41 @@ const TicketDetailsModal = ({ ticket, isLoading = false, onClose, onAssign, onRe
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Physical Location Details */}
+                            {(ticket.college_name || ticket.block_no || ticket.floor_no || ticket.room_no) && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', backgroundColor: '#eff6ff', borderRadius: '1.25rem', border: '1px solid #dbeafe' }}>
+                                    <label style={{ fontSize: '0.6875rem', textTransform: 'uppercase', fontWeight: 900, color: '#1d4ed8', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                        <MapPin size={14} color="#1d4ed8" /> Physical Location
+                                    </label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', fontSize: '0.875rem', color: '#1e3a8a', fontWeight: 700 }}>
+                                        {ticket.college_name && (
+                                            <div>
+                                                <span style={{ fontSize: '0.6875rem', color: '#3b82f6', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>College</span>
+                                                <span>{ticket.college_name}</span>
+                                            </div>
+                                        )}
+                                        {ticket.block_no && (
+                                            <div>
+                                                <span style={{ fontSize: '0.6875rem', color: '#3b82f6', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Block</span>
+                                                <span>{ticket.block_no}</span>
+                                            </div>
+                                        )}
+                                        {ticket.floor_no && (
+                                            <div>
+                                                <span style={{ fontSize: '0.6875rem', color: '#3b82f6', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Floor</span>
+                                                <span>{ticket.floor_no}</span>
+                                            </div>
+                                        )}
+                                        {ticket.room_no && (
+                                            <div>
+                                                <span style={{ fontSize: '0.6875rem', color: '#3b82f6', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Room No</span>
+                                                <span>{ticket.room_no}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Description */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

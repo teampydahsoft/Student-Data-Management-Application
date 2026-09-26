@@ -4,6 +4,22 @@ const path = require('path');
 const fs = require('fs');
 const { enrichTicketsRequesterNames, normalizeRequesterFields } = require('../utils/requesterNames');
 
+// Safely ensure location columns exist on tickets table
+(async () => {
+    const cols = [
+        'ALTER TABLE tickets ADD COLUMN college_id INT NULL',
+        'ALTER TABLE tickets ADD COLUMN college_name VARCHAR(255) NULL',
+        'ALTER TABLE tickets ADD COLUMN block_no VARCHAR(100) NULL',
+        'ALTER TABLE tickets ADD COLUMN floor_no VARCHAR(100) NULL',
+        'ALTER TABLE tickets ADD COLUMN room_no VARCHAR(100) NULL'
+    ];
+    for (const sql of cols) {
+        try {
+            await masterPool.query(sql);
+        } catch (_) {}
+    }
+})();
+
 const MAX_PHOTO_BYTES = 1024 * 1024;
 
 // tickets.raised_by_hrms_id and rbac_users.hrms_id may use different collations on MySQL 8
@@ -61,7 +77,18 @@ const generateTicketNumber = async () => {
  */
 exports.createTicket = async (req, res) => {
     try {
-        const { category_id, sub_category_id, title, description } = req.body;
+        const {
+            category_id,
+            sub_category_id,
+            title,
+            description,
+            college_id,
+            college_name,
+            college,
+            block_no,
+            floor_no,
+            room_no
+        } = req.body;
         const user = req.user || req.student;
 
         if (!user) {
@@ -69,6 +96,21 @@ exports.createTicket = async (req, res) => {
                 success: false,
                 message: 'Authentication required'
             });
+        }
+
+        let finalCollegeId = college_id || null;
+        let finalCollegeName = college_name || college || null;
+        let finalBlockNo = block_no ? String(block_no).trim() : null;
+        let finalFloorNo = floor_no ? String(floor_no).trim() : null;
+        let finalRoomNo = room_no ? String(room_no).trim() : null;
+
+        if (finalCollegeId && !finalCollegeName) {
+            try {
+                const [col] = await masterPool.query('SELECT name FROM colleges WHERE id = ?', [finalCollegeId]);
+                if (col.length > 0) {
+                    finalCollegeName = col[0].name;
+                }
+            } catch (_) {}
         }
 
         const isStudent = user.role === 'student' || user.admission_number || user.admissionNumber;
@@ -198,13 +240,13 @@ exports.createTicket = async (req, res) => {
         // Generate ticket number
         const ticketNumber = await generateTicketNumber();
 
-        // Create ticket — support legacy schema before staff-requester migration completes
+        // Create ticket — support location fields
         let result;
         try {
             [result] = await masterPool.query(
                 `INSERT INTO tickets 
-           (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, requester_display_name, category_id, sub_category_id, title, description, photo_url, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+           (ticket_number, student_id, admission_number, requester_type, raised_by_rbac_id, raised_by_hrms_id, requester_display_name, category_id, sub_category_id, college_id, college_name, block_no, floor_no, room_no, title, description, photo_url, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
                 [
                     ticketNumber,
                     studentId,
@@ -215,6 +257,11 @@ exports.createTicket = async (req, res) => {
                     requesterDisplayName,
                     category_id,
                     sub_category_id || null,
+                    finalCollegeId,
+                    finalCollegeName,
+                    finalBlockNo,
+                    finalFloorNo,
+                    finalRoomNo,
                     title.trim(),
                     description ? description.trim() : '',
                     photoUrl
@@ -386,6 +433,11 @@ exports.getTickets = async (req, res) => {
         t.requester_display_name,
         t.category_id,
         t.sub_category_id,
+        t.college_id,
+        t.college_name,
+        t.block_no,
+        t.floor_no,
+        t.room_no,
         t.title,
         t.description,
         (CASE WHEN t.photo_url IS NOT NULL AND t.photo_url != '' THEN 1 ELSE 0 END) as has_photo,

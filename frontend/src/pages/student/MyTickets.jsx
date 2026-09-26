@@ -13,7 +13,9 @@ import {
   MessageSquare,
   Star,
   Sparkles,
-  X
+  X,
+  MapPin,
+  Building2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../config/api';
@@ -209,7 +211,7 @@ const MyTickets = () => {
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap gap-4 mb-4">
+                    <div className="flex flex-wrap gap-3 mb-4">
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">ID:</span>
                         <code className="text-xs font-mono font-bold text-blue-600">{ticket.ticket_number}</code>
@@ -222,6 +224,32 @@ const MyTickets = () => {
                         <Clock size={12} className="text-gray-400" />
                         <span className="text-xs font-bold text-gray-600">{new Date(ticket.created_at).toLocaleDateString()}</span>
                       </div>
+                      {/* Location Badges */}
+                      {ticket.college_name && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-900 rounded-lg border border-blue-100 text-xs font-bold">
+                          <Building2 size={12} className="text-blue-600" />
+                          <span className="text-[9px] uppercase font-black text-blue-500">College:</span>
+                          <span>{ticket.college_name}</span>
+                        </div>
+                      )}
+                      {ticket.block_no && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-900 rounded-lg border border-indigo-100 text-xs font-bold">
+                          <span className="text-[9px] uppercase font-black text-indigo-500">Block:</span>
+                          <span>{ticket.block_no}</span>
+                        </div>
+                      )}
+                      {ticket.floor_no && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-900 rounded-lg border border-purple-100 text-xs font-bold">
+                          <span className="text-[9px] uppercase font-black text-purple-500">Floor:</span>
+                          <span>{ticket.floor_no}</span>
+                        </div>
+                      )}
+                      {ticket.room_no && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-900 rounded-lg border border-emerald-100 text-xs font-bold">
+                          <span className="text-[9px] uppercase font-black text-emerald-500">Room:</span>
+                          <span>{ticket.room_no}</span>
+                        </div>
+                      )}
                     </div>
 
                     {ticket.description && (
@@ -338,6 +366,41 @@ const TicketDetailsModal = ({ ticket, onClose, onFeedback }) => {
                 <label className="text-[10px] uppercase font-black text-gray-400 tracking-tighter">Subject</label>
                 <p className="text-lg font-bold text-gray-900 leading-tight">{ticket.title}</p>
               </div>
+
+              {/* Physical Location Details */}
+              {(ticket.college_name || ticket.block_no || ticket.floor_no || ticket.room_no) && (
+                <div className="p-4 bg-blue-50/70 border border-blue-100 rounded-2xl space-y-2">
+                  <div className="text-[11px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin size={14} className="text-blue-600" /> Physical Location
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs font-bold text-blue-900">
+                    {ticket.college_name && (
+                      <div>
+                        <span className="text-[10px] text-blue-500 uppercase block font-semibold">College</span>
+                        <span>{ticket.college_name}</span>
+                      </div>
+                    )}
+                    {ticket.block_no && (
+                      <div>
+                        <span className="text-[10px] text-blue-500 uppercase block font-semibold">Block</span>
+                        <span>{ticket.block_no}</span>
+                      </div>
+                    )}
+                    {ticket.floor_no && (
+                      <div>
+                        <span className="text-[10px] text-blue-500 uppercase block font-semibold">Floor</span>
+                        <span>{ticket.floor_no}</span>
+                      </div>
+                    )}
+                    {ticket.room_no && (
+                      <div>
+                        <span className="text-[10px] text-blue-500 uppercase block font-semibold">Room No</span>
+                        <span>{ticket.room_no}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {ticket.photo_url && (

@@ -43,6 +43,7 @@ const rbacUserRoutes = require('./routes/rbacUserRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const pushRoutes = require('./routes/pushRoutes');
 const roleRoutes = require('./routes/roleRoutes');
+const collegeRoutes = require('./routes/collegeRoutes');
 
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/complaint-categories', complaintCategoryRoutes);
@@ -51,6 +52,7 @@ app.use('/api/rbac/users', rbacUserRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/colleges', collegeRoutes);
 
 // Health Check
 app.get('/health', (req, res) => {

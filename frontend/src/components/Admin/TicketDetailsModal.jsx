@@ -9,7 +9,8 @@ import {
     Clock,
     User,
     CheckCircle,
-    AlertCircle
+    AlertCircle,
+    MapPin
 } from 'lucide-react';
 import TicketStepper from './TicketStepper';
 
@@ -98,6 +99,41 @@ const TicketDetailsModal = ({ ticket, onClose, onAssign, onStatusUpdate, onAddCo
                                         <div className="text-sm text-gray-500">{ticket.admission_number}</div>
                                     </div>
                                 </div>
+
+                                {/* Physical Location Details */}
+                                {(ticket.college_name || ticket.block_no || ticket.floor_no || ticket.room_no) && (
+                                    <div className="p-4 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2">
+                                        <div className="text-[11px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                                            <MapPin size={14} className="text-blue-600" /> Physical Location
+                                        </div>
+                                        <div className="flex flex-wrap gap-4 text-xs font-bold text-blue-900">
+                                            {ticket.college_name && (
+                                                <div>
+                                                    <span className="text-[10px] text-blue-500 uppercase block font-semibold">College</span>
+                                                    <span>{ticket.college_name}</span>
+                                                </div>
+                                            )}
+                                            {ticket.block_no && (
+                                                <div>
+                                                    <span className="text-[10px] text-blue-500 uppercase block font-semibold">Block</span>
+                                                    <span>{ticket.block_no}</span>
+                                                </div>
+                                            )}
+                                            {ticket.floor_no && (
+                                                <div>
+                                                    <span className="text-[10px] text-blue-500 uppercase block font-semibold">Floor</span>
+                                                    <span>{ticket.floor_no}</span>
+                                                </div>
+                                            )}
+                                            {ticket.room_no && (
+                                                <div>
+                                                    <span className="text-[10px] text-blue-500 uppercase block font-semibold">Room No</span>
+                                                    <span>{ticket.room_no}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block">Description</label>

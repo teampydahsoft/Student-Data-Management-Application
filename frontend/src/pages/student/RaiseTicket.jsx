@@ -9,7 +9,8 @@ import {
   CheckCircle,
   Camera,
   Sparkles,
-  Plus
+  Plus,
+  MapPin
 } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
@@ -17,11 +18,23 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 
+const DEFAULT_COLLEGES = [
+  { id: '1', name: 'Pydah College of Engineering', code: 'PCE' },
+  { id: '2', name: 'Pydah Degree College', code: 'PDC' },
+  { id: '3', name: 'Pydah College of Pharmacy', code: 'PCP' },
+  { id: '4', name: 'Pydah College of Education', code: 'PCOE' },
+  { id: '5', name: 'Pydah Polytechnic', code: 'POLY' }
+];
+
 const RaiseTicket = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     category_id: '',
     sub_category_id: '',
+    college_id: '',
+    block_no: '',
+    floor_no: '',
+    room_no: '',
     title: '',
     description: '',
     photo: null
@@ -38,6 +51,26 @@ const RaiseTicket = () => {
     }
   });
 
+  // Fetch active colleges for location dropdown
+  const { data: collegesData } = useQuery({
+    queryKey: ['colleges-active'],
+    queryFn: async () => {
+      try {
+        const response = await api.get('/colleges/public');
+        return response.data?.data || [];
+      } catch (_) {
+        try {
+          const response = await api.get('/colleges/active');
+          return response.data?.data || [];
+        } catch (err) {
+          return [];
+        }
+      }
+    }
+  });
+
+  const collegesList = (collegesData && collegesData.length > 0) ? collegesData : DEFAULT_COLLEGES;
+
   // Create ticket mutation
   const createMutation = useMutation({
     mutationFn: async (formDataToSend) => {
@@ -46,8 +79,24 @@ const RaiseTicket = () => {
       if (formDataToSend.sub_category_id) {
         formDataObj.append('sub_category_id', formDataToSend.sub_category_id);
       }
-      formDataObj.append('title', formDataToSend.title);
-      formDataObj.append('description', formDataToSend.description);
+      if (formDataToSend.college_id) {
+        formDataObj.append('college_id', formDataToSend.college_id);
+        const selectedCol = collegesList.find(c => String(c.id) === String(formDataToSend.college_id));
+        if (selectedCol) {
+          formDataObj.append('college_name', selectedCol.name);
+        }
+      }
+      if (formDataToSend.block_no) {
+        formDataObj.append('block_no', formDataToSend.block_no);
+      }
+      if (formDataToSend.floor_no) {
+        formDataObj.append('floor_no', formDataToSend.floor_no);
+      }
+      if (formDataToSend.room_no) {
+        formDataObj.append('room_no', formDataToSend.room_no);
+      }
+      formDataObj.append('title', formDataToSend.title || '');
+      formDataObj.append('description', formDataToSend.description || '');
       if (formDataToSend.photo) {
         formDataObj.append('photo', formDataToSend.photo);
       }
@@ -224,6 +273,76 @@ const RaiseTicket = () => {
             </select>
           </motion.div>
         )}
+
+        {/* Physical Location Details Section */}
+        <div className="relative z-10 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-200/60 pb-2">
+            <MapPin size={15} className="text-blue-600" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Physical Location</span>
+            <span className="text-[10px] text-slate-400 font-medium">(Pinpoint issue location)</span>
+          </div>
+
+          {/* College Dropdown */}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+              College <span className="text-slate-300 text-[8px] italic ml-1">(Optional)</span>
+            </label>
+            <select
+              value={formData.college_id}
+              onChange={(e) => setFormData({ ...formData, college_id: e.target.value })}
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-50/50 transition-all outline-none font-medium appearance-none text-xs"
+            >
+              <option value="">Select College</option>
+              {collegesList.map((col) => (
+                <option key={col.id} value={col.id}>
+                  {col.name} {col.code ? `(${col.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Block, Floor, Room Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">
+                Block No
+              </label>
+              <input
+                type="text"
+                value={formData.block_no}
+                onChange={(e) => setFormData({ ...formData, block_no: e.target.value })}
+                placeholder="e.g. Block A"
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-50/50 transition-all outline-none font-medium text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">
+                Floor No
+              </label>
+              <input
+                type="text"
+                value={formData.floor_no}
+                onChange={(e) => setFormData({ ...formData, floor_no: e.target.value })}
+                placeholder="e.g. 2nd Floor"
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-50/50 transition-all outline-none font-medium text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">
+                Room No
+              </label>
+              <input
+                type="text"
+                value={formData.room_no}
+                onChange={(e) => setFormData({ ...formData, room_no: e.target.value })}
+                placeholder="e.g. Room 204"
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-50/50 transition-all outline-none font-medium text-xs"
+              />
+            </div>
+          </div>
+        </div>
 
         {/* Title */}
         <div className="relative z-10">
