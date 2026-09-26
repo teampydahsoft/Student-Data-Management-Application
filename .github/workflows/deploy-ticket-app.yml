@@ -11,40 +11,135 @@ on:
       - '.github/workflows/deploy-ticket-app.yml'
   workflow_dispatch:
 
+env:
+  NODE_VERSION: '20'
+  PM2_APP_NAME: sdbms-ticket
+
 jobs:
-  deploy-ticket-app:
-    name: Deploy Ticket Frontend & Backend
+  build-ticket-frontend:
+    name: Build Ticket Frontend (CI)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            ticket-app/package-lock.json
-            ticket-backend/package-lock.json
+          cache-dependency-path: ticket-app/package-lock.json
 
-      - name: Configure SSH Key
+      - name: Create Production Env & Build Frontend
+        working-directory: ticket-app
+        run: |
+          cat << 'EOF' > .env.production
+          VITE_API_URL=/api
+          VITE_MAIN_APP_URL=https://sdms.pydah.edu.in
+          VITE_HRMS_PORTAL_URL=https://hrms.pydah.edu.in
+          VITE_TICKET_APP_URL=https://maintenance.pydah.edu.in
+          EOF
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Pack Dist Artifact
+        run: tar -czf ticket-dist.tar.gz -C ticket-app dist
+
+      - name: Upload Dist Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticket-dist
+          path: ticket-dist.tar.gz
+          retention-days: 1
+
+  deploy-ticket-app:
+    name: Deploy Ticket App to Lightsail
+    needs: build-ticket-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Frontend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ticket-dist
+
+      - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/lightsail_key.pem
-          chmod 600 ~/.ssh/lightsail_key.pem
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          SSH_HOST="${{ secrets.LIGHTSAIL_TICKET_HOST || secrets.LIGHTSAIL_HOST || '43.201.200.99' }}"
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload Dist Archive to Server
+        run: |
+          SSH_HOST="${{ secrets.LIGHTSAIL_TICKET_HOST || secrets.LIGHTSAIL_HOST || '43.201.200.99' }}"
+          SSH_USER="${{ secrets.LIGHTSAIL_USER || 'ec2-user' }}"
+          scp ticket-dist.tar.gz "$SSH_USER@$SSH_HOST:/tmp/"
+
+      - name: Deploy Backend & Frontend on Server
+        run: |
+          SSH_HOST="${{ secrets.LIGHTSAIL_TICKET_HOST || secrets.LIGHTSAIL_HOST || '43.201.200.99' }}"
+          SSH_USER="${{ secrets.LIGHTSAIL_USER || 'ec2-user' }}"
           
-          # Add Lightsail host to known_hosts to prevent interactive prompts
-          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'ENDSSH'
+            set -euo pipefail
+            APP="/home/ec2-user/Student-Data-Management-Application"
+            PM2_APP="sdbms-ticket"
 
-      - name: Deploy Backend
-        shell: pwsh
-        run: |
-          cd ticket-backend
-          ./deploy/deploy-backend.ps1 -LightsailHost "${{ secrets.LIGHTSAIL_HOST }}" -SshUser "${{ secrets.LIGHTSAIL_USER }}" -KeyPath "~/.ssh/lightsail_key.pem"
+            echo "==> Pulling latest code"
+            cd "$APP"
+            git fetch origin
+            git reset --hard origin/master 2>/dev/null || git reset --hard origin/main
 
-      - name: Deploy Frontend
-        shell: pwsh
-        run: |
-          cd ticket-backend
-          ./deploy/deploy-from-windows.ps1 -LightsailHost "${{ secrets.LIGHTSAIL_HOST }}" -SshUser "${{ secrets.LIGHTSAIL_USER }}" -KeyPath "~/.ssh/lightsail_key.pem"
+            echo "==> Extracting frontend build to /var/www/ticket-app"
+            sudo mkdir -p /var/www/ticket-app
+            sudo rm -rf /tmp/ticket-app-dist
+            sudo mkdir -p /tmp/ticket-app-dist
+            sudo tar -xzf /tmp/ticket-dist.tar.gz -C /tmp/ticket-app-dist
+            sudo rsync -a --delete /tmp/ticket-app-dist/dist/ /var/www/ticket-app/
+            sudo rm -rf /tmp/ticket-app-dist /tmp/ticket-dist.tar.gz
+
+            echo "==> Ticket Backend installation"
+            cd "$APP/ticket-backend"
+            npm ci --omit=dev
+            node migrations/migrate.js || true
+
+            echo "==> PM2 restart ($PM2_APP)"
+            if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
+              pm2 restart "$PM2_APP" --update-env
+            else
+              pm2 start server.js --name "$PM2_APP" --update-env
+            fi
+            pm2 save
+
+            echo "==> Nginx test and reload"
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "==> Verifying Health Endpoint"
+            HEALTH_OK=0
+            for i in $(seq 1 20); do
+              if curl -fsS --max-time 5 http://127.0.0.1:5001/health >/dev/null 2>&1; then
+                HEALTH_OK=1
+                echo "Ticket backend healthy on attempt $i"
+                break
+              fi
+              echo "Attempt $i/20 — waiting for :5001..."
+              sleep 2
+            done
+
+            if [ "$HEALTH_OK" != "1" ]; then
+              echo "Ticket backend failed health check!"
+              pm2 logs "$PM2_APP" --lines 50 --nostream
+              exit 1
+            fi
+            curl -fsS http://127.0.0.1:5001/health
+            echo ""
+            curl -fsSk https://maintenance.pydah.edu.in/health
+            echo ""
+          ENDSSH
+
