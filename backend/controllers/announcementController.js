@@ -603,6 +603,9 @@ exports.sendSMSAnnouncement = async (req, res) => {
                                     if (key === 'login_link') {
                                         return process.env.LOGIN_LINK || 'pydahgroup.com';
                                     }
+                                    if (key === 'user_type') {
+                                        return student.user_type || 'Student';
+                                    }
                                     if (key === 'default_password') {
                                         const namePart = (student.student_name || '').substring(0, 4);
                                         const mobileStr = String(student.student_mobile || '');

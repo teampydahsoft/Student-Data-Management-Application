@@ -607,6 +607,7 @@ const Announcements = () => {
         { label: 'Student Name', value: 'student_name' },
         { label: 'Admission Number', value: 'admission_number' },
         { label: 'User Name', value: 'admission_number' },
+        { label: 'User Type (Student/Parent)', value: 'user_type' },
         { label: 'Login Link', value: 'login_link' },
         { label: 'Default Password', value: 'default_password' },
         { label: 'Parent Name', value: 'father_name' },

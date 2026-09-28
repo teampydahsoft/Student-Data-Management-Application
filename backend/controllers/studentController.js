@@ -555,6 +555,7 @@ const {
   OTP_PE_ID,
   SEMESTER_OTP_SMS_TEMPLATE_ID,
   buildSemesterRegistrationOtpMessage,
+  getSemesterRegistrationOtpTemplateFromDb,
   sendOtpSms
 } = require('../utils/otpSmsTemplates');
 
@@ -7107,11 +7108,19 @@ exports.sendOtp = async (req, res) => {
     const cacheKey = `otp:${admissionNumber}:${mobileNumber}`;
     otpCache.set(cacheKey, otp);
 
-    const message = buildSemesterRegistrationOtpMessage(otp, { type, year, semester });
+    const dbTemplate = await getSemesterRegistrationOtpTemplateFromDb();
+    const templateId = dbTemplate?.templateId || SEMESTER_OTP_SMS_TEMPLATE_ID;
+    const message = buildSemesterRegistrationOtpMessage(otp, {
+      type,
+      year,
+      semester,
+      templateContent: dbTemplate?.content
+    });
+
     await sendOtpSms(smsService, {
       to: mobileNumber,
       message,
-      templateId: SEMESTER_OTP_SMS_TEMPLATE_ID,
+      templateId,
       peId: OTP_PE_ID,
       meta: { template: 'semester_registration_otp' }
     });
