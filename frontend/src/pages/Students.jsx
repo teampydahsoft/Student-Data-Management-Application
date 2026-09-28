@@ -781,10 +781,10 @@ const Students = () => {
   }, [editData?.course, editData?.branch, editData?.current_year, selectedStudent?.course, selectedStudent?.branch, selectedStudent?.current_year, coursesWithLevels]);
 
   const batchOptions = useMemo(() => {
-    return [...new Set([...(academicYearOptions || []), ...(quickFilterOptions.batches || [])])]
+    return [...new Set(quickFilterOptions.batches || [])]
       .filter(Boolean)
-      .sort((a, b) => String(a).localeCompare(String(b)));
-  }, [academicYearOptions, quickFilterOptions.batches]);
+      .sort((a, b) => String(b).localeCompare(String(a)));
+  }, [quickFilterOptions.batches]);
 
   const studentSectionOptions = useMemo(() => {
     const courseName = editData?.course || selectedStudent?.course;
@@ -5864,6 +5864,7 @@ const Students = () => {
         onUpdateComplete={() => refreshStudents()}
         initialFilters={{
           college: filters.college || '',
+          batch: filters.batch || '',
           course: filters.course || '',
           branch: filters.branch || '',
         }}

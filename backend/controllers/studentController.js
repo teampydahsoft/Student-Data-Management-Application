@@ -9265,82 +9265,13 @@ exports.exportRegistrationReport = async (req, res) => {
       const XLSX = require('xlsx');
       const wb = XLSX.utils.book_new();
 
-      // -- Summary Sheet --
-      const summaryData = [
-        ['Registration Abstract Report'],
-        ['Generated On', new Date().toLocaleString()],
-        [''],
-        ['Filters'],
-        ['Batch', normalizedFilterBatch || 'All'],
-        ['College', normalizedFilterCollege || 'All'],
-        ['Course', normalizedFilterCourse || 'All'],
-        ['Branch', normalizedFilterBranch || 'All'],
-        [''],
-        ['Statistics'],
-        ['Total Students', statistics.total],
-        ['Overall Completed', statistics.overall.completed],
-        ['Overall Temporary', statistics.overall.temporary],
-        ['Registration Pending', statistics.overall.pending],
-        ['Mobile Verified', statistics.verification.completed],
-        ['Fees Cleared', statistics.fees.cleared]
-      ];
-      const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+      const hasAllFourFilters = Boolean(
+        normalizedFilterCollege &&
+        normalizedFilterBatch &&
+        normalizedFilterCourse &&
+        normalizedFilterBranch
+      );
 
-      // Abstract sheet — same SQL aggregation as preview UI (not client-side regrouping)
-      const abstractRows = await fetchRegistrationAbstractRows(req);
-      const abstractSheetData = abstractRows.map(mapRegistrationAbstractRowToExcel);
-
-      const totals = abstractRows.reduce((acc, row) => {
-        const total = parseInt(row.total || 0, 10);
-        acc.total += total;
-        acc.overall_completed += parseInt(row.overall_completed || 0, 10);
-        acc.overall_temporary += parseInt(row.overall_temporary || 0, 10);
-        acc.verification_completed += parseInt(row.verification_completed || 0, 10);
-        acc.certificates_verified += parseInt(row.certificates_verified || 0, 10);
-        acc.fee_cleared += parseInt(row.fee_cleared || 0, 10);
-        acc.promotion_completed += parseInt(row.promotion_completed || 0, 10);
-        acc.scholarship_assigned += parseInt(row.scholarship_assigned || 0, 10);
-        acc.scholarship_pending += parseInt(row.scholarship_pending ?? (total - parseInt(row.scholarship_assigned || 0, 10)), 10);
-        return acc;
-      }, {
-        total: 0,
-        overall_completed: 0,
-        overall_temporary: 0,
-        verification_completed: 0,
-        certificates_verified: 0,
-        fee_cleared: 0,
-        promotion_completed: 0,
-        scholarship_assigned: 0,
-        scholarship_pending: 0
-      });
-
-      abstractSheetData.push({
-        College: 'TOTAL',
-        Batch: '',
-        Course: '',
-        Branch: '',
-        Year: '',
-        Sem: '',
-        'Total Students': totals.total,
-        'Overall Completed': totals.overall_completed,
-        Temporary: totals.overall_temporary,
-        Pending: Math.max(0, totals.total - totals.overall_completed - totals.overall_temporary),
-        Verification: `${totals.verification_completed}/${Math.max(0, totals.total - totals.verification_completed)}`,
-        Certificates: `${totals.certificates_verified}/${Math.max(0, totals.total - totals.certificates_verified)}`,
-        Fees: `${totals.fee_cleared}/${Math.max(0, totals.total - totals.fee_cleared)}`,
-        Promotion: `${totals.promotion_completed}/${Math.max(0, totals.total - totals.promotion_completed)}`,
-        Scholarship: `${totals.scholarship_assigned}/${totals.scholarship_pending}`
-      });
-
-      const abstractWs = XLSX.utils.json_to_sheet(abstractSheetData);
-
-      // Add Abstract Sheet FIRST (Primary)
-      XLSX.utils.book_append_sheet(wb, abstractWs, 'Abstract Report');
-
-      // Add Summary stats sheet (Legacy, optional, rename to 'Summary Stats')
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary Stats');
-
-      // -- Data Sheet (Detailed Student List) --
       // Process processedData for Excel
       const excelRows = processedData.map(d => {
         const row = { ...d };
@@ -9363,8 +9294,89 @@ exports.exportRegistrationReport = async (req, res) => {
       const wscols = Object.keys(excelRows[0] || {}).map(() => ({ wch: 20 }));
       ws['!cols'] = wscols;
 
-      // Add detailed sheet second (or third)
-      XLSX.utils.book_append_sheet(wb, ws, 'Detailed Data');
+      if (hasAllFourFilters) {
+        // When four filters (College, Batch, Program/Course, Branch) are selected,
+        // output the entire student list in a SINGLE sheet instead of multiple sheets
+        XLSX.utils.book_append_sheet(wb, ws, 'Student Data');
+      } else {
+        // -- Summary Sheet --
+        const summaryData = [
+          ['Registration Abstract Report'],
+          ['Generated On', new Date().toLocaleString()],
+          [''],
+          ['Filters'],
+          ['Batch', normalizedFilterBatch || 'All'],
+          ['College', normalizedFilterCollege || 'All'],
+          ['Course', normalizedFilterCourse || 'All'],
+          ['Branch', normalizedFilterBranch || 'All'],
+          [''],
+          ['Statistics'],
+          ['Total Students', statistics.total],
+          ['Overall Completed', statistics.overall.completed],
+          ['Overall Temporary', statistics.overall.temporary],
+          ['Registration Pending', statistics.overall.pending],
+          ['Mobile Verified', statistics.verification.completed],
+          ['Fees Cleared', statistics.fees.cleared]
+        ];
+        const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+
+        // Abstract sheet — same SQL aggregation as preview UI (not client-side regrouping)
+        const abstractRows = await fetchRegistrationAbstractRows(req);
+        const abstractSheetData = abstractRows.map(mapRegistrationAbstractRowToExcel);
+
+        const totals = abstractRows.reduce((acc, row) => {
+          const total = parseInt(row.total || 0, 10);
+          acc.total += total;
+          acc.overall_completed += parseInt(row.overall_completed || 0, 10);
+          acc.overall_temporary += parseInt(row.overall_temporary || 0, 10);
+          acc.verification_completed += parseInt(row.verification_completed || 0, 10);
+          acc.certificates_verified += parseInt(row.certificates_verified || 0, 10);
+          acc.fee_cleared += parseInt(row.fee_cleared || 0, 10);
+          acc.promotion_completed += parseInt(row.promotion_completed || 0, 10);
+          acc.scholarship_assigned += parseInt(row.scholarship_assigned || 0, 10);
+          acc.scholarship_pending += parseInt(row.scholarship_pending ?? (total - parseInt(row.scholarship_assigned || 0, 10)), 10);
+          return acc;
+        }, {
+          total: 0,
+          overall_completed: 0,
+          overall_temporary: 0,
+          verification_completed: 0,
+          certificates_verified: 0,
+          fee_cleared: 0,
+          promotion_completed: 0,
+          scholarship_assigned: 0,
+          scholarship_pending: 0
+        });
+
+        abstractSheetData.push({
+          College: 'TOTAL',
+          Batch: '',
+          Course: '',
+          Branch: '',
+          Year: '',
+          Sem: '',
+          'Total Students': totals.total,
+          'Overall Completed': totals.overall_completed,
+          Temporary: totals.overall_temporary,
+          Pending: Math.max(0, totals.total - totals.overall_completed - totals.overall_temporary),
+          Verification: `${totals.verification_completed}/${Math.max(0, totals.total - totals.verification_completed)}`,
+          Certificates: `${totals.certificates_verified}/${Math.max(0, totals.total - totals.certificates_verified)}`,
+          Fees: `${totals.fee_cleared}/${Math.max(0, totals.total - totals.fee_cleared)}`,
+          Promotion: `${totals.promotion_completed}/${Math.max(0, totals.total - totals.promotion_completed)}`,
+          Scholarship: `${totals.scholarship_assigned}/${totals.scholarship_pending}`
+        });
+
+        const abstractWs = XLSX.utils.json_to_sheet(abstractSheetData);
+
+        // Add Abstract Sheet FIRST (Primary)
+        XLSX.utils.book_append_sheet(wb, abstractWs, 'Abstract Report');
+
+        // Add Summary stats sheet
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary Stats');
+
+        // Add detailed sheet
+        XLSX.utils.book_append_sheet(wb, ws, 'Detailed Data');
+      }
 
       const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 

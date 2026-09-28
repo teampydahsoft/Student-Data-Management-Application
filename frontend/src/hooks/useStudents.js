@@ -74,19 +74,27 @@ export const useStudents = ({
         queryParams.append('lite', 'true');
       }
 
-      queryParams.append('limit', pageSize.toString());
-      queryParams.append('offset', Math.max(0, (page - 1) * pageSize).toString());
+      if (pageSize === 'all' || pageSize === 'ALL') {
+        queryParams.append('limit', 'all');
+      } else {
+        const numSize = Number(pageSize) || 25;
+        queryParams.append('limit', numSize.toString());
+        queryParams.append('offset', Math.max(0, (page - 1) * numSize).toString());
+      }
 
       const response = await api.get(`/students?${queryParams.toString()}`);
+      const fetchedStudents = response.data?.data || [];
+      const totalCount = response.data?.pagination?.total || fetchedStudents.length;
 
       return {
-        students: response.data?.data || [],
+        students: fetchedStudents,
         pagination: {
-          total: response.data?.pagination?.total || 0,
+          total: totalCount,
           limit: response.data?.pagination?.limit || pageSize,
           offset: response.data?.pagination?.offset || 0,
-          totalPages: response.data?.pagination?.totalPages ||
-            Math.ceil((response.data?.pagination?.total || 0) / pageSize),
+          totalPages: pageSize === 'all' || pageSize === 'ALL'
+            ? 1
+            : Math.max(1, response.data?.pagination?.totalPages || Math.ceil(totalCount / (Number(pageSize) || 25))),
         },
       };
     },

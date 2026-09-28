@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, AlertCircle, CheckCircle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Save, AlertCircle, CheckCircle, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import api from '../config/api';
 import toast from 'react-hot-toast';
 import LoadingAnimation from './LoadingAnimation';
 import { useStudents } from '../hooks/useStudents';
+import { fetchQuickFilterOptions } from '../utils/filterUtils';
 
 const PAGE_SIZE = 50;
 
@@ -36,10 +37,12 @@ const ManualRollNumberModal = ({
 
   const [pinFilters, setPinFilters] = useState({
     college: '',
+    batch: '',
     course: '',
     branch: '',
   });
   const [localColleges, setLocalColleges] = useState([]);
+  const [availableBatches, setAvailableBatches] = useState([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
@@ -48,7 +51,7 @@ const ManualRollNumberModal = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, showOnlyPending, pinFilters.college, pinFilters.course, pinFilters.branch]);
+  }, [debouncedSearch, showOnlyPending, pinFilters.college, pinFilters.batch, pinFilters.course, pinFilters.branch]);
 
   // Seed filters from the Students page when the modal opens
   useEffect(() => {
@@ -56,6 +59,7 @@ const ManualRollNumberModal = ({
 
     setPinFilters({
       college: initialFilters.college || '',
+      batch: initialFilters.batch || '',
       course: initialFilters.course || '',
       branch: initialFilters.branch || '',
     });
@@ -74,9 +78,34 @@ const ManualRollNumberModal = ({
         })
         .catch(() => setLocalColleges([]));
     }
-  }, [isOpen, initialFilters.college, initialFilters.course, initialFilters.branch, collegesProp?.length]);
+  }, [isOpen, initialFilters.college, initialFilters.batch, initialFilters.course, initialFilters.branch, collegesProp?.length]);
+
+  // Fetch actual student database batches whenever modal opens or parent filters change
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetchQuickFilterOptions(pinFilters)
+      .then((opts) => {
+        if (opts && Array.isArray(opts.batches)) {
+          const list = opts.batches
+            .map((b) => (typeof b === 'string' ? b : b?.batch || b?.name))
+            .filter(Boolean);
+          setAvailableBatches(list);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch student database batches for modal:', err);
+        setAvailableBatches([]);
+      });
+  }, [isOpen, pinFilters.college, pinFilters.course, pinFilters.branch]);
 
   const colleges = collegesProp?.length ? collegesProp : localColleges;
+
+  const batchOptions = useMemo(() => {
+    return Array.from(new Set(availableBatches))
+      .filter(Boolean)
+      .sort((a, b) => String(b).localeCompare(String(a)));
+  }, [availableBatches]);
 
   const selectedCollege = useMemo(
     () => colleges.find((c) => c.name === pinFilters.college) || null,
@@ -135,10 +164,18 @@ const ManualRollNumberModal = ({
     const next = {};
     if (showOnlyPending) next.pinNumberStatus = 'unassigned';
     if (pinFilters.college) next.college = pinFilters.college;
+    if (pinFilters.batch) next.batch = pinFilters.batch;
     if (pinFilters.course) next.course = pinFilters.course;
     if (pinFilters.branch) next.branch = pinFilters.branch;
     return next;
   }, [showOnlyPending, pinFilters]);
+
+  const hasAllFourFilters = Boolean(
+    pinFilters.college &&
+    pinFilters.batch &&
+    pinFilters.course &&
+    pinFilters.branch
+  );
 
   const {
     data: studentsData,
@@ -148,8 +185,8 @@ const ManualRollNumberModal = ({
     error,
     refetch,
   } = useStudents({
-    page: currentPage,
-    pageSize: PAGE_SIZE,
+    page: hasAllFourFilters ? 1 : currentPage,
+    pageSize: hasAllFourFilters ? 'all' : PAGE_SIZE,
     filters,
     search: debouncedSearch,
     lite: true,
@@ -159,6 +196,62 @@ const ManualRollNumberModal = ({
   const students = studentsData?.students || [];
   const totalStudents = studentsData?.pagination?.total || 0;
   const totalPages = Math.max(1, studentsData?.pagination?.totalPages || 1);
+
+  const [sortField, setSortField] = useState('admission_number');
+  const [sortOrder, setSortOrder] = useState('asc');
+
+  const sortedStudents = useMemo(() => {
+    const list = [...students];
+    return list.sort((a, b) => {
+      let aVal = '';
+      let bVal = '';
+
+      if (sortField === 'admission_number') {
+        aVal = String(a.admission_number || '');
+        bVal = String(b.admission_number || '');
+      } else if (sortField === 'name') {
+        aVal = String(extractName(a) || '');
+        bVal = String(extractName(b) || '');
+      } else if (sortField === 'pin_no') {
+        aVal = String(rollNumbers[a.admission_number] ?? a.pin_no ?? '');
+        bVal = String(rollNumbers[b.admission_number] ?? b.pin_no ?? '');
+      } else if (sortField === 'status') {
+        aVal = a.pin_no ? '1_assigned' : '0_pending';
+        bVal = b.pin_no ? '1_assigned' : '0_pending';
+      }
+
+      const aNum = Number(aVal);
+      const bNum = Number(bVal);
+      let cmp = 0;
+      if (!isNaN(aNum) && !isNaN(bNum) && String(aNum) === aVal.trim() && String(bNum) === bVal.trim()) {
+        cmp = aNum - bNum;
+      } else {
+        cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+      }
+
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [students, sortField, sortOrder, rollNumbers]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ArrowUpDown size={13} className="text-gray-400 opacity-50 group-hover:opacity-100 transition-opacity" />;
+    }
+    return sortOrder === 'asc' ? (
+      <ArrowUp size={13} className="text-primary-600 font-bold" />
+    ) : (
+      <ArrowDown size={13} className="text-primary-600 font-bold" />
+    );
+  };
 
   useEffect(() => {
     if (!isOpen || students.length === 0) return;
@@ -265,7 +358,7 @@ const ManualRollNumberModal = ({
     setShowOnlyPending(true);
     setCurrentPage(1);
     setRollNumbers({});
-    setPinFilters({ college: '', course: '', branch: '' });
+    setPinFilters({ college: '', batch: '', course: '', branch: '' });
     onClose();
   };
 
@@ -280,7 +373,7 @@ const ManualRollNumberModal = ({
           <div>
             <h3 className="text-2xl font-bold text-gray-900">Update PIN Numbers</h3>
             <p className="text-sm text-gray-600 mt-1">
-              Filter by college / program / branch, then assign PIN numbers page by page
+              Filter by college / batch / program / branch, then assign PIN numbers page by page
             </p>
           </div>
           <button
@@ -293,7 +386,7 @@ const ManualRollNumberModal = ({
         </div>
 
         <div className="p-6 border-b border-gray-200 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="flex flex-col">
               <label className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
                 College
@@ -311,6 +404,23 @@ const ManualRollNumberModal = ({
                       {college.name}
                     </option>
                   ))}
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
+                Batch
+              </label>
+              <select
+                value={pinFilters.batch}
+                onChange={(e) => handlePinFilterChange('batch', e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              >
+                <option value="">All Batches</option>
+                {batchOptions.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col">
@@ -352,7 +462,7 @@ const ManualRollNumberModal = ({
             </div>
           </div>
 
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-3 flex-wrap items-center">
             <div className="flex-1 min-w-[220px] relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -362,6 +472,27 @@ const ManualRollNumberModal = ({
                 placeholder="Search by admission number, name, or PIN..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
               />
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-300">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sort:</span>
+              <select
+                value={`${sortField}-${sortOrder}`}
+                onChange={(e) => {
+                  const [f, o] = e.target.value.split('-');
+                  setSortField(f);
+                  setSortOrder(o);
+                }}
+                className="text-xs font-medium text-gray-700 bg-transparent outline-none cursor-pointer"
+              >
+                <option value="admission_number-asc">Admission No (Ascending 0-9)</option>
+                <option value="admission_number-desc">Admission No (Descending 9-0)</option>
+                <option value="name-asc">Student Name (A to Z)</option>
+                <option value="name-desc">Student Name (Z to A)</option>
+                <option value="pin_no-asc">PIN Number (Ascending)</option>
+                <option value="pin_no-desc">PIN Number (Descending)</option>
+                <option value="status-asc">Status (Pending First)</option>
+                <option value="status-desc">Status (Assigned First)</option>
+              </select>
             </div>
             <label className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-100 transition-colors">
               <input
@@ -376,7 +507,11 @@ const ManualRollNumberModal = ({
 
           <div className="flex items-center justify-between gap-3 flex-wrap text-sm text-gray-600">
             <div>
-              Showing <strong>{students.length}</strong> of <strong>{totalStudents}</strong> student(s)
+              {hasAllFourFilters ? (
+                <>Showing all <strong>{sortedStudents.length}</strong> student(s)</>
+              ) : (
+                <>Showing <strong>{sortedStudents.length}</strong> of <strong>{totalStudents}</strong> student(s)</>
+              )}
               {showOnlyPending && (
                 <span className="ml-2 text-orange-600">(without PIN numbers)</span>
               )}
@@ -384,27 +519,34 @@ const ManualRollNumberModal = ({
                 <span className="ml-2 text-gray-400">Refreshing…</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1 || loadingStudents}
-                className="p-2 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <span className="text-sm font-medium text-gray-700">
-                Page {currentPage} / {totalPages}
+            {!hasAllFourFilters && totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1 || loadingStudents}
+                  className="p-2 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="text-sm font-medium text-gray-700">
+                  Page {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages || loadingStudents}
+                  className="p-2 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
+            {hasAllFourFilters && (
+              <span className="px-3 py-1 bg-green-50 text-green-700 text-xs font-semibold rounded-full border border-green-200">
+                All Students Displayed
               </span>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages || loadingStudents}
-                className="p-2 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
+            )}
           </div>
         </div>
 
@@ -428,65 +570,128 @@ const ManualRollNumberModal = ({
                 Retry
               </button>
             </div>
-          ) : students.length === 0 ? (
+          ) : sortedStudents.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-gray-500">
               <AlertCircle size={48} className="mb-4" />
               <p className="text-lg font-medium">No students found</p>
               <p className="text-sm text-center max-w-md">
-                Try adjusting college / program / branch filters
+                Try adjusting college / batch / program / branch filters
                 {showOnlyPending ? ', clearing search, or unchecking "Show only pending"' : ' or search'}.
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {students.map((student) => (
-                <div
-                  key={student.admission_number}
-                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-primary-300 transition-colors"
-                >
-                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Admission Number
-                      </label>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {student.admission_number}
-                      </p>
-                      {(student.course || student.branch) && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {[student.course, student.branch].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Student Name
-                      </label>
-                      <p className="text-sm text-gray-900">{extractName(student)}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        PIN Number *
-                      </label>
-                      <input
-                        type="text"
-                        value={rollNumbers[student.admission_number] ?? ''}
-                        onChange={(e) =>
-                          handleRollNumberChange(student.admission_number, e.target.value)
-                        }
-                        placeholder="Enter PIN number"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-                  </div>
-                  {student.pin_no ? (
-                    <div className="flex items-center gap-1 text-green-600 shrink-0">
-                      <CheckCircle size={16} />
-                      <span className="text-xs font-medium">Assigned</span>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase tracking-wider sticky top-0 z-10 select-none">
+                    <th
+                      onClick={() => handleSort('admission_number')}
+                      className="py-3 px-4 text-center w-14 bg-gray-100 cursor-pointer hover:bg-gray-200/80 transition-colors group"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>S.No</span>
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('admission_number')}
+                      className="py-3 px-4 bg-gray-100 cursor-pointer hover:bg-gray-200/80 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Admission No</span>
+                        {renderSortIcon('admission_number')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('name')}
+                      className="py-3 px-4 bg-gray-100 cursor-pointer hover:bg-gray-200/80 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Student Name</span>
+                        {renderSortIcon('name')}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 bg-gray-100">Program / Branch</th>
+                    <th
+                      onClick={() => handleSort('pin_no')}
+                      className="py-3 px-4 bg-gray-100 min-w-[200px] cursor-pointer hover:bg-gray-200/80 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>PIN Number *</span>
+                        {renderSortIcon('pin_no')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('status')}
+                      className="py-3 px-4 text-center w-28 bg-gray-100 cursor-pointer hover:bg-gray-200/80 transition-colors group"
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span>Status</span>
+                        {renderSortIcon('status')}
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white text-sm">
+                  {sortedStudents.map((student, idx) => {
+                    const serialNumber = hasAllFourFilters
+                      ? idx + 1
+                      : (currentPage - 1) * PAGE_SIZE + idx + 1;
+                    const isAssigned = Boolean(student.pin_no);
+                    const draftVal = rollNumbers[student.admission_number];
+                    const isEdited = draftVal !== undefined && draftVal.trim() !== (student.pin_no || '').trim();
+
+                    return (
+                      <tr
+                        key={student.admission_number}
+                        className="hover:bg-gray-50/80 transition-colors"
+                      >
+                        <td className="py-3 px-4 text-center text-xs font-medium text-gray-500">
+                          {serialNumber}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-gray-900 whitespace-nowrap">
+                          {student.admission_number}
+                        </td>
+                        <td className="py-3 px-4 text-gray-900 font-medium">
+                          {extractName(student)}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-gray-600">
+                          {[student.course, student.branch].filter(Boolean).join(' · ') || '-'}
+                        </td>
+                        <td className="py-2 px-4">
+                          <input
+                            type="text"
+                            value={rollNumbers[student.admission_number] ?? ''}
+                            onChange={(e) =>
+                              handleRollNumberChange(student.admission_number, e.target.value)
+                            }
+                            placeholder="Enter PIN number"
+                            className={`w-full px-3 py-1.5 text-sm border rounded-lg outline-none font-mono transition-all ${
+                              isEdited
+                                ? 'border-primary-500 bg-primary-50/30 ring-2 ring-primary-500/20'
+                                : 'border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20'
+                            }`}
+                          />
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          {isAssigned ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                              <CheckCircle size={13} /> Assigned
+                            </span>
+                          ) : isEdited ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                              Draft
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -510,7 +715,7 @@ const ManualRollNumberModal = ({
               ) : (
                 <>
                   <Save size={20} />
-                  Save Changes on This Page
+                  {hasAllFourFilters ? 'Save All Changes' : 'Save Changes on This Page'}
                 </>
               )}
             </button>
