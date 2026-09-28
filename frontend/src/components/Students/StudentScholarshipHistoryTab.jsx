@@ -398,6 +398,7 @@ const YearHistoryModal = ({ year, entries, student, meta, onClose }) => {
 const StudentScholarshipHistoryTab = ({
   student,
   readOnly = false,
+  canEditFeeStatus = undefined,
   hideHeader = false,
   registrationOptionalStages = [],
   onUpdated
@@ -411,6 +412,14 @@ const StudentScholarshipHistoryTab = ({
   const [remoteAppIdStatus, setRemoteAppIdStatus] = useState({});
   const [casteAccountTypes, setCasteAccountTypes] = useState({}); // caste → 'mother' | 'college'
   const [selectedCaste, setSelectedCaste] = useState('');
+  const [feeStatus, setFeeStatus] = useState(student?.fee_status || 'due');
+  const [permitEndingDate, setPermitEndingDate] = useState(student?.permit_ending_date || '');
+  const [permitRemarks, setPermitRemarks] = useState(student?.permit_remarks || '');
+  const [showPermitModal, setShowPermitModal] = useState(false);
+  const [modalPermitDate, setModalPermitDate] = useState('');
+  const [modalPermitRemarks, setModalPermitRemarks] = useState('');
+  const [feeStatusUpdating, setFeeStatusUpdating] = useState(false);
+
   const { casteOptions: dynamicCasteOptions } = useCasteCategories();
   const casteOptions = useMemo(
     () => buildCasteSelectOptions(dynamicCasteOptions, selectedCaste || student?.caste || meta?.student?.caste),
@@ -421,6 +430,8 @@ const StudentScholarshipHistoryTab = ({
   const admissionNumber = student?.admission_number || student?.admissionNumber;
   const quotaLocked = isScholarshipQuotaLocked(student, meta);
   const isEditingDisabled = readOnly || quotaLocked;
+  const isFeeEditingDisabled = canEditFeeStatus !== undefined ? !canEditFeeStatus : isEditingDisabled;
+
   const programYear = Math.max(1, Number(student?.current_year) || 1);
   const maxAccessibleProgramYear = getMaxAccessibleScholarshipProgramYear(student, meta);
   const isYearEditable = useCallback(
@@ -444,6 +455,93 @@ const StudentScholarshipHistoryTab = ({
       setSelectedCaste(fromStudent);
     }
   }, [student?.caste, meta?.student?.caste]);
+
+  useEffect(() => {
+    if (student?.fee_status) {
+      setFeeStatus(student.fee_status);
+    }
+    if (student?.permit_ending_date) {
+      setPermitEndingDate(student.permit_ending_date);
+    }
+    if (student?.permit_remarks) {
+      setPermitRemarks(student.permit_remarks);
+    }
+  }, [student?.fee_status, student?.permit_ending_date, student?.permit_remarks]);
+
+  const handleFeeStatusChange = async (newStatus) => {
+    if (isFeeEditingDisabled || feeStatusUpdating) return;
+
+    if (newStatus === 'permitted') {
+      setModalPermitDate(normalizeRtfReleasedDateForInput(permitEndingDate) || '');
+      setModalPermitRemarks(permitRemarks || '');
+      setShowPermitModal(true);
+      return;
+    }
+
+    setFeeStatusUpdating(true);
+    try {
+      const response = await api.put(`/students/${encodeURIComponent(admissionNumber)}/fee-status`, {
+        fee_status: newStatus
+      });
+      setFeeStatus(newStatus);
+      toast.success('Fee status updated successfully');
+      onUpdated?.({
+        ...meta,
+        student: {
+          ...(meta?.student || student),
+          fee_status: newStatus
+        }
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update fee status');
+    } finally {
+      setFeeStatusUpdating(false);
+    }
+  };
+
+  const handleConfirmPermit = async () => {
+    if (!modalPermitDate) {
+      toast.error('Please enter permit ending date');
+      return;
+    }
+    if (!modalPermitRemarks || !modalPermitRemarks.trim()) {
+      toast.error('Please enter permit remarks');
+      return;
+    }
+
+    setFeeStatusUpdating(true);
+    try {
+      const response = await api.put(`/students/${encodeURIComponent(admissionNumber)}/fee-status`, {
+        fee_status: 'permitted',
+        permit_ending_date: modalPermitDate,
+        permit_remarks: modalPermitRemarks.trim()
+      });
+      setFeeStatus('permitted');
+      setPermitEndingDate(modalPermitDate);
+      setPermitRemarks(modalPermitRemarks.trim());
+      setShowPermitModal(false);
+      toast.success('Fee status updated to permitted');
+      onUpdated?.({
+        ...meta,
+        student: {
+          ...(meta?.student || student),
+          fee_status: 'permitted',
+          permit_ending_date: modalPermitDate,
+          permit_remarks: modalPermitRemarks.trim()
+        }
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update fee status');
+    } finally {
+      setFeeStatusUpdating(false);
+    }
+  };
+
+  const handleOpenEditPermit = () => {
+    setModalPermitDate(normalizeRtfReleasedDateForInput(permitEndingDate) || '');
+    setModalPermitRemarks(permitRemarks || '');
+    setShowPermitModal(true);
+  };
 
   const fetchScholarshipRemarks = useCallback(async () => {
     if (!admissionNumber) return { map: {}, list: [] };
@@ -1314,32 +1412,86 @@ const StudentScholarshipHistoryTab = ({
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-wrap items-end gap-4">
-        <div className="flex flex-col gap-1 min-w-[180px]">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Caste</label>
-          {isEditingDisabled ? (
-            <span className="text-sm font-medium text-gray-800">{selectedCaste || student?.caste || '—'}</span>
-          ) : (
-            <select
-              value={selectedCaste}
-              onChange={(e) => handleCasteChange(e.target.value)}
-              className="w-full min-w-[180px] px-2.5 py-2 border border-gray-200 rounded-lg text-xs text-gray-800 bg-white"
-            >
-              <option value="">Select caste</option>
-              {casteOptions.map((caste) => (
-                <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
-              ))}
-            </select>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Caste</label>
+            {isEditingDisabled ? (
+              <span className="text-sm font-medium text-gray-800">{selectedCaste || student?.caste || '—'}</span>
+            ) : (
+              <select
+                value={selectedCaste}
+                onChange={(e) => handleCasteChange(e.target.value)}
+                className="w-full min-w-[180px] px-2.5 py-2 border border-gray-200 rounded-lg text-xs text-gray-800 bg-white focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Select caste</option>
+                {casteOptions.map((caste) => (
+                  <option key={caste} value={caste.id || caste}>{caste.name || caste}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {selectedCaste && casteAccountTypes[selectedCaste] && (
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+              casteAccountTypes[selectedCaste] === 'college'
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                : 'text-blue-700 bg-blue-50 border-blue-200'
+            }`}>
+              {casteAccountTypes[selectedCaste] === 'college' ? 'College Account' : 'Mother Account'}
+            </span>
           )}
+
+          {/* Fee Status Edit Option */}
+          <div className="flex flex-col gap-1 min-w-[170px]">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fee Status</label>
+            {isFeeEditingDisabled ? (
+              <span className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-bold capitalize w-fit ${
+                feeStatus === 'no due' || feeStatus === 'no_due' || feeStatus === 'nodue'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : feeStatus === 'permitted'
+                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}>
+                {feeStatus || 'due'}
+              </span>
+            ) : (
+              <select
+                value={feeStatus || 'due'}
+                onChange={(e) => handleFeeStatusChange(e.target.value)}
+                disabled={feeStatusUpdating}
+                className="w-full min-w-[170px] px-2.5 py-2 border border-gray-200 rounded-lg text-xs text-gray-800 bg-white font-semibold capitalize focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="no due">No Due</option>
+                <option value="due">Due</option>
+                <option value="permitted">Permitted</option>
+              </select>
+            )}
+          </div>
         </div>
-        {selectedCaste && casteAccountTypes[selectedCaste] && (
-          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
-            casteAccountTypes[selectedCaste] === 'college'
-              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-              : 'text-blue-700 bg-blue-50 border-blue-200'
-          }`}>
-            {casteAccountTypes[selectedCaste] === 'college' ? 'College Account' : 'Mother Account'}
-          </span>
+
+        {/* Permit Details (if Fee Status is 'permitted') */}
+        {feeStatus === 'permitted' && (
+          <div className="flex flex-wrap items-center gap-3 bg-purple-50/70 border border-purple-200/80 px-3 py-1.5 rounded-xl">
+            <div>
+              <span className="text-[9px] font-bold uppercase text-purple-600 block">Permit Ending Date</span>
+              <span className="text-xs font-bold text-purple-900">{formatCalendarDate(permitEndingDate) || 'Not set'}</span>
+            </div>
+            <div>
+              <span className="text-[9px] font-bold uppercase text-purple-600 block">Permit Remarks</span>
+              <span className="text-xs font-bold text-purple-900 max-w-[180px] truncate block" title={permitRemarks}>
+                {permitRemarks || 'No remarks'}
+              </span>
+            </div>
+            {!isFeeEditingDisabled && (
+              <button
+                type="button"
+                onClick={handleOpenEditPermit}
+                className="text-[11px] font-bold text-purple-700 hover:text-purple-900 underline ml-1"
+              >
+                Edit Permit Info
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -2308,6 +2460,69 @@ const StudentScholarshipHistoryTab = ({
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {showPermitModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-gray-900 text-base">Permit Fee Status Details</h3>
+              <button
+                type="button"
+                onClick={() => setShowPermitModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Permit Ending Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={modalPermitDate}
+                  onChange={(e) => setModalPermitDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-xs font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Permit Remarks <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={modalPermitRemarks}
+                  onChange={(e) => setModalPermitRemarks(e.target.value)}
+                  placeholder="Enter reason for permitting student..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-xs font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setShowPermitModal(false)}
+                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={feeStatusUpdating}
+                onClick={handleConfirmPermit}
+                className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                {feeStatusUpdating && <Loader2 size={13} className="animate-spin" />}
+                Save Permit Status
+              </button>
+            </div>
           </div>
         </div>
       )}

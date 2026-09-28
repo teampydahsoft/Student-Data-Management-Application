@@ -5535,7 +5535,8 @@ const Students = () => {
               {activeStudentTab === 'scholarship' && canViewScholarship && (
                 <StudentScholarshipHistoryTab
                   student={selectedStudent}
-                  readOnly={isCashier || !canEditScholarship}
+                  readOnly={!canEditScholarship}
+                  canEditFeeStatus={((canEditStudents && canEditField('fee_status')) || isCashier) && (!frozenBatches[selectedStudent?.batch]?.includes("ALL") && !frozenBatches[selectedStudent?.batch]?.includes("fee_status"))}
                   registrationOptionalStages={regOptionalStages}
                   onUpdated={(data) => {
                     setScholarshipData(data);
@@ -5543,8 +5544,12 @@ const Students = () => {
                     setSelectedStudent((prev) => (prev ? {
                       ...prev,
                       scholar_status: status,
-                      ...(data?.student?.caste ? { caste: data.student.caste } : {})
+                      ...(data?.student?.caste ? { caste: data.student.caste } : {}),
+                      ...(data?.student?.fee_status ? { fee_status: data.student.fee_status } : {}),
+                      ...(data?.student?.permit_ending_date ? { permit_ending_date: data.student.permit_ending_date } : {}),
+                      ...(data?.student?.permit_remarks ? { permit_remarks: data.student.permit_remarks } : {})
                     } : prev));
+                    invalidateStudents();
                   }}
                 />
               )}
