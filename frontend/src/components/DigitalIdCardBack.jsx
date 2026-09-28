@@ -212,7 +212,7 @@ const DigitalIdCardBack = ({
         border: '1px solid #e5e7eb',
         borderRadius: '12px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
         printColorAdjust: 'exact',
         WebkitPrintColorAdjust: 'exact',
       }}
@@ -224,11 +224,12 @@ const DigitalIdCardBack = ({
       <div
         className="absolute z-10 flex flex-col"
         style={{
-          left: '4.8mm',
-          right: '4.8mm',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '45.6mm',
           top: '15.5mm',
           bottom: '13.5mm',         /* just above the bottom wave */
-          fontSize: '6.1pt',
+          fontSize: '7.0pt',
           lineHeight: '1.42',
           justifyContent: 'space-between',
         }}
@@ -236,31 +237,31 @@ const DigitalIdCardBack = ({
         {/* ── Upper block: personal details ── */}
         <div>
           {/* Date of Birth */}
-          <div className="grid grid-cols-[22mm_2mm_1fr] items-center mb-[1.2mm]">
-            <span className="font-medium text-[#4B5563]">Date of Birth</span>
-            <span className="font-medium text-[#4B5563] text-center">:</span>
-            <span className="font-semibold text-[#111827]">{dateOfBirth}</span>
+          <div className="grid grid-cols-[22mm_2.2mm_1fr] items-center mb-[1.2mm]">
+            <span className="font-extrabold text-[#000000]">Date of Birth</span>
+            <span className="font-extrabold text-[#000000] text-center">:</span>
+            <span className="font-extrabold text-[#000000] text-[7.3pt]">{dateOfBirth}</span>
           </div>
 
           {/* Parent/Guardian */}
-          <div className="grid grid-cols-[22mm_2mm_1fr] items-start mb-[1.2mm]">
-            <span className="font-medium text-[#4B5563]">Parent/Guardian</span>
-            <span className="font-medium text-[#4B5563] text-center">:</span>
-            <span className="font-semibold text-[#111827] leading-tight">{parentGuardian}</span>
+          <div className="grid grid-cols-[22mm_2.2mm_1fr] items-start mb-[1.2mm]">
+            <span className="font-extrabold text-[#000000]">Parent/Guardian</span>
+            <span className="font-extrabold text-[#000000] text-center">:</span>
+            <span className="font-extrabold text-[#000000] text-[7.3pt] leading-tight">{parentGuardian}</span>
           </div>
 
           {/* Emergency Contact */}
-          <div className="grid grid-cols-[22mm_2mm_1fr] items-center mb-[1.2mm]">
-            <span className="font-medium text-[#4B5563]">Emergency Contact</span>
-            <span className="font-medium text-[#4B5563] text-center">:</span>
-            <span className="font-semibold text-[#111827] font-mono">{emergencyContact}</span>
+          <div className="grid grid-cols-[22mm_2.2mm_1fr] items-center mb-[1.2mm]">
+            <span className="font-extrabold text-[#000000]">Emergency Contact</span>
+            <span className="font-extrabold text-[#000000] text-center">:</span>
+            <span className="font-extrabold text-[#000000] text-[7.3pt] font-mono">{emergencyContact}</span>
           </div>
 
           {/* Student Address — same grid as other rows */}
-          <div className="grid grid-cols-[22mm_2mm_1fr] items-start">
-            <span className="font-medium text-[#4B5563]">Student Address</span>
-            <span className="font-medium text-[#4B5563] text-center">:</span>
-            <div className="flex flex-col text-[#111827] font-semibold leading-tight text-[5.8pt]">
+          <div className="grid grid-cols-[22mm_2.2mm_1fr] items-start">
+            <span className="font-extrabold text-[#000000]">Student Address</span>
+            <span className="font-extrabold text-[#000000] text-center">:</span>
+            <div className="flex flex-col text-[#000000] font-extrabold leading-tight text-[6.8pt]">
               {addressLines.map((line, idx) => (
                 <span key={idx}>{line}</span>
               ))}
@@ -279,7 +280,7 @@ const DigitalIdCardBack = ({
             <span className="text-[#64748B] font-normal text-[5.5pt]">
               If found, please return to:
             </span>
-            <h3 className="text-[#111827] font-bold text-[7.2pt] leading-tight m-0">
+            <h3 className="text-[#111827] font-extrabold text-[8.2pt] leading-tight m-0">
               {collegeName}
             </h3>
             <span className="text-[#334155] font-medium text-[5.8pt] leading-tight">
