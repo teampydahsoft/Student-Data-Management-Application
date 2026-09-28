@@ -12,8 +12,8 @@ const verifyScholarshipReadPermission = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Authentication required' });
   }
 
-  // Super admin (including legacy 'admin') has full access
-  if (isSuperAdmin(user)) {
+  // Super admin or College AO has full access
+  if (isSuperAdmin(user) || user.role === 'college_ao' || user.role === 'COLLEGE_AO') {
     return next();
   }
 
@@ -48,7 +48,7 @@ const verifyScholarshipReadPermission = (req, res, next) => {
 
   // If explicit scholarship permission is configured (view_scholarship or edit_scholarship)
   if (smPerms.view_scholarship !== undefined || smPerms.edit_scholarship !== undefined) {
-    if (smPerms.view_scholarship === true || smPerms.edit_scholarship === true) {
+    if (smPerms.view_scholarship === true || smPerms.edit_scholarship === true || smPerms.edit_details === true || smPerms.edit_student === true) {
       return next();
     }
     return res.status(403).json({
@@ -58,7 +58,7 @@ const verifyScholarshipReadPermission = (req, res, next) => {
   }
 
   // Legacy fallback: users with general view or edit permissions can view
-  if (smPerms.view === true || smPerms.edit_student === true) {
+  if (smPerms.view === true || smPerms.edit_student === true || smPerms.edit_details === true) {
     return next();
   }
 
@@ -75,8 +75,8 @@ const verifyScholarshipWritePermission = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Authentication required' });
   }
 
-  // Super admin (including legacy 'admin') has full access
-  if (isSuperAdmin(user)) {
+  // Super admin or College AO has full access
+  if (isSuperAdmin(user) || user.role === 'college_ao' || user.role === 'COLLEGE_AO') {
     return next();
   }
 
@@ -91,7 +91,7 @@ const verifyScholarshipWritePermission = (req, res, next) => {
 
   // If explicit edit_scholarship permission is configured
   if (smPerms.edit_scholarship !== undefined) {
-    if (smPerms.edit_scholarship === true) {
+    if (smPerms.edit_scholarship === true || smPerms.edit_details === true || smPerms.edit_student === true) {
       return next();
     }
     return res.status(403).json({
@@ -100,8 +100,8 @@ const verifyScholarshipWritePermission = (req, res, next) => {
     });
   }
 
-  // Legacy fallback: users with edit_student permission can edit
-  if (smPerms.edit_student === true) {
+  // Legacy fallback: users with edit_student or edit_details permission can edit
+  if (smPerms.edit_student === true || smPerms.edit_details === true) {
     return next();
   }
 

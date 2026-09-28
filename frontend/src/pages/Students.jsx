@@ -326,25 +326,26 @@ const Students = () => {
   // Check if user has edit permissions - check for both edit_details and edit_student permissions
   const canEditDetails = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_details');
   const canEditStudentsReal = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_student');
-  // User can edit if they have either edit_details or edit_student permission
-  const canEditStudents = canEditDetails || canEditStudentsReal;
-  const canEditStudentDetails = canEditStudents || user?.role === 'admin' || user?.role === 'super_admin';
+  // User can edit if they have edit_details, edit_student, or college_ao role
+  const isCollegeAo = user?.role === USER_ROLES.COLLEGE_AO || user?.role === 'college_ao';
+  const canEditStudents = canEditDetails || canEditStudentsReal || isCollegeAo;
+  const canEditStudentDetails = canEditStudents || user?.role === 'admin' || user?.role === 'super_admin' || isCollegeAo;
   const canDeleteStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'delete_student');
   const canUpdatePin = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'update_pin');
   const canExportStudents = hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'export');
   const isCashier = user?.role === USER_ROLES.CASHIER;
   // SMS tab should be visible for super admin, admin, or users with view_sms permission
-  const canViewSms = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_sms');
-  const canViewMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_merit_status') || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
-  const canEditMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
+  const canViewSms = user?.role === 'super_admin' || user?.role === 'admin' || isCollegeAo || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_sms');
+  const canViewMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || isCollegeAo || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_merit_status') || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
+  const canEditMeritStatus = user?.role === 'super_admin' || user?.role === 'admin' || isCollegeAo || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_merit_status');
   const smPerms = userPermissions?.[BACKEND_MODULES.STUDENT_MANAGEMENT];
-  // Shows by default (same as before) unless explicitly disabled (false) on the role or user
-  const canViewScholarship = user?.role === 'super_admin' || user?.role === 'admin' || (
+  // Shows by default unless explicitly disabled on the role or user
+  const canViewScholarship = user?.role === 'super_admin' || user?.role === 'admin' || isCollegeAo || (
     canViewStudents && (smPerms?.view_scholarship !== false || smPerms?.edit_scholarship === true)
-  );
-  const canEditScholarship = user?.role === 'super_admin' || user?.role === 'admin' || (
+  ) || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'view_scholarship');
+  const canEditScholarship = user?.role === 'super_admin' || user?.role === 'admin' || isCollegeAo || (
     canEditStudents && smPerms?.edit_scholarship !== false
-  );
+  ) || hasModulePermission(userPermissions, BACKEND_MODULES.STUDENT_MANAGEMENT, 'edit_scholarship');
   // Table column: show for anyone who can open the Students list (seeded values must be visible)
   const showMeritColumn = canViewStudents && !isCashier;
   // Check if user has access to Attendance module
@@ -354,7 +355,7 @@ const Students = () => {
 
   // Helper to check field-level permissions
   const canViewField = useCallback((fieldKey) => {
-    if (user?.role === 'admin' || user?.role === 'super_admin') return true;
+    if (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === USER_ROLES.COLLEGE_AO || user?.role === 'college_ao') return true;
     const fieldPerms = userPermissions?.student_management?.field_permissions;
     if (!fieldPerms) return true;
     return fieldPerms[fieldKey]?.view === true;
@@ -362,7 +363,7 @@ const Students = () => {
 
   // Helper to check field-level edit permissions
   const canEditField = useCallback((fieldKey) => {
-    if (user?.role === 'admin' || user?.role === 'super_admin') return true;
+    if (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === USER_ROLES.COLLEGE_AO || user?.role === 'college_ao') return true;
     const fieldPerms = userPermissions?.student_management?.field_permissions;
     if (!fieldPerms) return true;
     return fieldPerms[fieldKey]?.edit === true;
