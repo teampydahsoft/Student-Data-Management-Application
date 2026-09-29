@@ -268,10 +268,12 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.CLUBS]: {
-    permissions: ['view', 'manage'],
+    permissions: ['view', 'manage', 'view_students', 'manage_settings'],
     labels: {
-      view: 'View Clubs',
-      manage: 'Manage Clubs'
+      view: 'View Student Clubs',
+      manage: 'Manage Student Clubs',
+      view_students: 'View Club Students',
+      manage_settings: 'Manage Club Settings & Roles'
     }
   }
 };
@@ -287,14 +289,13 @@ const MODULE_LABELS = {
   [MODULES.FEE_MANAGEMENT]: 'Fee Management',
   [MODULES.SETTINGS]: 'Settings',
   [MODULES.USER_MANAGEMENT]: 'User Management',
-  [MODULES.USER_MANAGEMENT]: 'User Management',
   [MODULES.REPORTS]: 'Reports',
   [MODULES.TICKET_MANAGEMENT]: 'Ticket Management',
   [MODULES.SERVICES]: 'Services',
   [MODULES.ANNOUNCEMENTS]: 'Announcements',
   [MODULES.FACULTY_MANAGEMENT]: 'Faculty Management',
   [MODULES.FACULTY_ACADEMICS]: 'Faculty Academics',
-  [MODULES.CLUBS]: 'Clubs'
+  [MODULES.CLUBS]: 'Student Clubs'
 };
 
 // All modules as array

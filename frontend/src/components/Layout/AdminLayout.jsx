@@ -44,6 +44,8 @@ import {
   Award,
   CreditCard,
   FileCheck,
+  UserCheck,
+  CheckCircle,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -217,8 +219,31 @@ const NAV_ITEMS = [
   {
     path: "/clubs",
     icon: Users,
-    label: "Clubs",
+    label: "Student Clubs",
     permission: FRONTEND_MODULES.CLUBS,
+    subItems: [
+      {
+        path: "/clubs",
+        label: "Club Management",
+        icon: ShieldCheck,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'view'
+      },
+      {
+        path: "/clubs/students",
+        label: "Members",
+        icon: UserCheck,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'view_students'
+      },
+      {
+        path: "/clubs/settings",
+        label: "Club Settings",
+        icon: Settings,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'manage_settings'
+      }
+    ]
   },
   {
     path: "/services",

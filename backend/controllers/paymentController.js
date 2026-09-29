@@ -290,13 +290,26 @@ exports.verifyPayment = async (req, res) => {
                         });
                         const totalPaid = txs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
 
-                        // Only mark as PAID if fully paid
+                        // Mark as APPROVED & PAID once fee is fully paid
                         if (totalPaid >= requiredFee) {
                             await masterPool.query(
-                                'UPDATE club_members SET payment_status = ? WHERE club_id = ? AND student_id = ?',
-                                ['paid', clubId, student.id]
+                                'UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND student_id = ?',
+                                ['approved', 'paid', clubId, student.id]
                             );
-                            console.log(`[PAYMENT] Fully Paid Club Fee for ${studentId}, Club: ${clubName}. Status Updated.`);
+
+                            // Add student to chat channel if exists
+                            const [chan] = await masterPool.query(
+                                'SELECT id FROM chat_channels WHERE club_id = ? AND is_active = 1 LIMIT 1',
+                                [clubId]
+                            );
+                            if (chan.length) {
+                                await masterPool.query(
+                                    'INSERT IGNORE INTO chat_channel_members (channel_id, member_type, student_id) VALUES (?, ?, ?)',
+                                    [chan[0].id, 'student', student.id]
+                                ).catch(() => {});
+                            }
+
+                            console.log(`[PAYMENT] Fully Paid & Auto-Approved Club Fee for ${studentId}, Club: ${clubName}. Status Updated.`);
                         } else {
                             console.log(`[PAYMENT] Partial Club Payment recorded for ${studentId}, Club: ${clubName}. Total: ${totalPaid}/${requiredFee}`);
                         }

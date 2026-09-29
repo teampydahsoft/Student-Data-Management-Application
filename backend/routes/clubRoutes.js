@@ -17,6 +17,9 @@ const isStudent = (req, res, next) => {
 
 // Public/Shared
 router.get('/', verifyToken, clubController.getClubs);
+router.get('/roles', verifyToken, clubController.getClubRoles);
+router.get('/check-hrms-user', verifyToken, clubController.checkHrmsUserAccount);
+router.get('/students/all', verifyToken, isAdmin, clubController.getAllClubStudents);
 router.get('/:clubId/image', clubController.getClubImage);
 router.get('/:clubId', verifyToken, clubController.getClubDetails);
 
@@ -25,6 +28,9 @@ router.post('/:clubId/join', verifyToken, isStudent, clubController.joinClub);
 
 // Admin
 router.post('/', verifyToken, isAdmin, upload.single('image'), clubController.createClub);
+router.post('/roles', verifyToken, isAdmin, clubController.createClubRole);
+router.put('/roles/:roleId', verifyToken, isAdmin, clubController.updateClubRole);
+router.delete('/roles/:roleId', verifyToken, isAdmin, clubController.deleteClubRole);
 router.patch('/:clubId/members', verifyToken, isAdmin, clubController.updateMembershipStatus); // Body: { studentId, status }
 router.post('/:clubId/activities', verifyToken, isAdmin, upload.single('image'), clubController.createActivity);
 router.put('/:clubId', verifyToken, isAdmin, upload.single('image'), clubController.updateClub);

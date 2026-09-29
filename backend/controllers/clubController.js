@@ -14,7 +14,7 @@ const getClubs = async (req, res) => {
         const isAdmin = ['admin', 'super_admin'].includes(role);
 
         // Fetch clubs without transferring large base64 image strings in list JSON
-        let query = 'SELECT id, name, description, membership_fee, fee_type, (image_url IS NOT NULL AND image_url != "") as has_image, activities, form_fields, is_active, created_at FROM clubs';
+        let query = 'SELECT id, name, description, membership_fee, fee_type, admin_roles, (image_url IS NOT NULL AND image_url != "") as has_image, activities, form_fields, is_active, created_at FROM clubs';
         if (!isAdmin) {
             query += ' WHERE is_active = TRUE';
         }
@@ -85,16 +85,16 @@ const getClubs = async (req, res) => {
             const requiredFee = Number(club.membership_fee) || 0;
             let balance_due = requiredFee;
 
-            if (userStatus === 'approved' && studentTransactions.length > 0) {
+            if (studentTransactions.length > 0) {
                 const clubRegex = new RegExp(club.name, 'i');
                 const matchingTxs = studentTransactions.filter(tx => tx.remarks && clubRegex.test(tx.remarks));
                 paid_amount = matchingTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
                 balance_due = Math.max(0, requiredFee - paid_amount);
 
-                if (paymentStatus === 'payment_due' && paid_amount >= requiredFee && requiredFee > 0) {
+                if (paid_amount >= requiredFee && requiredFee > 0 && userStatus !== 'approved') {
                     paymentStatus = 'paid';
-                    // Asynchronously update status in background without delaying response
-                    masterPool.query('UPDATE club_members SET payment_status = ? WHERE club_id = ? AND student_id = ?', ['paid', club.id, id])
+                    userStatus = 'approved';
+                    masterPool.query('UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND student_id = ?', ['approved', 'paid', club.id, id])
                         .catch(err => console.error('Error updating club payment status:', err));
                 }
             }
@@ -105,6 +105,7 @@ const getClubs = async (req, res) => {
                 ...club,
                 image_url: club.has_image ? `${baseUrl}/api/clubs/${club.id}/image` : null,
                 form_fields: safeParse(club.form_fields),
+                admin_roles: safeParse(club.admin_roles),
                 members: new Array(count).fill({}),
                 memberCount: count,
                 activities,
@@ -124,7 +125,7 @@ const getClubs = async (req, res) => {
 
 const createClub = async (req, res) => {
     try {
-        const { name, description, membership_fee, fee_type } = req.body;
+        const { name, description, membership_fee, fee_type, admin_roles } = req.body;
 
         // target_audience removed
 
@@ -153,10 +154,11 @@ const createClub = async (req, res) => {
         const members = JSON.stringify([]);
         const activities = JSON.stringify([]);
         const form_fields = JSON.stringify([]);
+        const parsedAdminRoles = typeof admin_roles === 'string' ? admin_roles : JSON.stringify(admin_roles || []);
 
         await masterPool.query(
-            'INSERT INTO clubs (name, description, image_url, form_fields, members, activities, created_by, membership_fee, fee_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, description, image_url, form_fields, members, activities, req.user?.id || null, membership_fee || 0, fee_type || 'Yearly']
+            'INSERT INTO clubs (name, description, image_url, form_fields, members, activities, created_by, membership_fee, fee_type, admin_roles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, description, image_url, form_fields, members, activities, req.user?.id || null, membership_fee || 0, fee_type || 'Yearly', parsedAdminRoles]
         );
 
         res.json({ success: true, message: 'Club created successfully', data: { image_url } });
@@ -190,27 +192,36 @@ const joinClub = async (req, res) => {
         const club = clubs[0];
         const membershipFee = parseFloat(club.membership_fee) || 0;
         const feeType = club.fee_type || 'Yearly';
-        // Initially set to 'not_required' - payment only happens after admin approval
-        const paymentStatus = 'not_required';
 
-        await masterPool.query(
-            'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
-            [clubId, studentId, 'pending', paymentStatus, feeType]
-        );
+        if (membershipFee === 0) {
+            // Free club: Auto-approve entry immediately
+            await masterPool.query(
+                'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
+                [clubId, studentId, 'approved', 'NA', feeType]
+            );
 
-        // Notify Club Creator (Admin/Faculty)
-        // In this simplified version, we assume created_by is the user ID of the admin.
-        // We need to fetch the admin ID who created the club.
-        if (club.created_by) {
-            sendNotificationToUser(club.created_by, {
-                title: `New Join Request: ${req.user.name}`,
-                body: `${req.user.name} wants to join ${club.name}. Review request.`,
-                icon: '/icon-192x192.png',
-                data: { url: '/admin/clubs' } // Adjust URL as needed
-            }).catch(console.error);
+            // Add student to chat channel if exists
+            const [chan] = await masterPool.query(
+                'SELECT id FROM chat_channels WHERE club_id = ? AND is_active = 1 LIMIT 1',
+                [clubId]
+            );
+            if (chan.length) {
+                await masterPool.query(
+                    'INSERT IGNORE INTO chat_channel_members (channel_id, member_type, student_id) VALUES (?, ?, ?)',
+                    [chan[0].id, 'student', studentId]
+                ).catch(() => {});
+            }
+
+            return res.json({ success: true, message: 'Successfully joined club!' });
+        } else {
+            // Paid club: Set payment_due. Entry will auto-approve when student pays fee.
+            await masterPool.query(
+                'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
+                [clubId, studentId, 'pending', 'payment_due', feeType]
+            );
+
+            return res.json({ success: true, message: 'Club registration initiated! Your entry will be automatically approved upon fee payment.' });
         }
-
-        res.json({ success: true, message: 'Join request sent successfully' });
     } catch (error) {
         console.error('Error joining club:', error);
         res.status(500).json({ success: false, message: 'Failed to join club' });
@@ -460,23 +471,31 @@ const getClubDetails = async (req, res) => {
             } catch (e) { return []; }
         };
 
-        // Fetch members from relation table
-        const [members] = await masterPool.query(
-            `SELECT cm.id, cm.club_id, cm.student_id, cm.status, cm.payment_status, 
-                    cm.fee_type, cm.joined_at, cm.updated_at,
-                    s.student_name, s.admission_number, s.student_photo,
-                    s.college, s.course, s.branch, s.current_year, s.current_semester
-             FROM club_members cm 
-             JOIN students s ON cm.student_id = s.id 
-             WHERE cm.club_id = ?
-             ORDER BY cm.joined_at DESC`,
-            [clubId]
-        );
+        let members = [];
+        try {
+            const [rows] = await masterPool.query(
+                `SELECT cm.id, cm.club_id, cm.student_id, cm.status, cm.payment_status, 
+                        cm.fee_type, cm.joined_at,
+                        COALESCE(s.student_name, '') as student_name, 
+                        COALESCE(s.admission_number, '') as admission_number,
+                        COALESCE(s.student_mobile, '') as student_mobile
+                 FROM club_members cm 
+                 LEFT JOIN students s ON (cm.student_id = s.id OR cm.student_id = s.admission_number)
+                 WHERE cm.club_id = ?
+                 ORDER BY cm.joined_at DESC`,
+                [clubId]
+            );
+            members = rows || [];
+        } catch (memErr) {
+            console.error('Error fetching club members for club details:', memErr.message);
+            members = [];
+        }
 
         const parsedClub = {
             ...club,
             form_fields: safeParse(club.form_fields),
-            members: members, // Now array of objects from DB
+            admin_roles: safeParse(club.admin_roles),
+            members: members,
             activities: safeParse(club.activities)
         };
 
@@ -484,18 +503,23 @@ const getClubDetails = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching club details:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch club details' });
+        res.status(500).json({ success: false, message: 'Failed to fetch club details', error: error.message });
     }
-}
+};
 
 const updateClub = async (req, res) => {
     try {
         const { clubId } = req.params;
-        const { name, description, membership_fee, fee_type } = req.body;
+        const { name, description, membership_fee, fee_type, admin_roles } = req.body;
 
-        // Build update query dynamically
         let query = 'UPDATE clubs SET name = ?, description = ?, membership_fee = ?, fee_type = ?';
         let params = [name, description, membership_fee || 0, fee_type || 'Yearly'];
+
+        if (admin_roles !== undefined) {
+            const parsedAdminRoles = typeof admin_roles === 'string' ? admin_roles : JSON.stringify(admin_roles || []);
+            query += ', admin_roles = ?';
+            params.push(parsedAdminRoles);
+        }
 
 
 
@@ -591,6 +615,199 @@ const getClubImage = async (req, res) => {
     }
 };
 
+// ================= Dynamic Club Roles Controllers =================
+
+const getClubRoles = async (req, res) => {
+    try {
+        const [roles] = await masterPool.query('SELECT * FROM club_roles ORDER BY is_system DESC, role_name ASC');
+        res.json({ success: true, data: roles });
+    } catch (error) {
+        console.error('Error fetching dynamic club roles:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club roles' });
+    }
+};
+
+const createClubRole = async (req, res) => {
+    try {
+        const { role_name, description } = req.body;
+        if (!role_name || !role_name.trim()) {
+            return res.status(400).json({ success: false, message: 'Role name is required' });
+        }
+
+        const role_code = role_name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
+
+        const [existing] = await masterPool.query('SELECT id FROM club_roles WHERE role_code = ?', [role_code]);
+        if (existing.length > 0) {
+            return res.status(400).json({ success: false, message: 'A club role with this name already exists' });
+        }
+
+        const [result] = await masterPool.query(
+            'INSERT INTO club_roles (role_name, role_code, description, is_system) VALUES (?, ?, ?, FALSE)',
+            [role_name.trim(), role_code, description || '']
+        );
+
+        res.json({
+            success: true,
+            message: 'Club role created successfully',
+            data: { id: result.insertId, role_name: role_name.trim(), role_code, description, is_system: false }
+        });
+    } catch (error) {
+        console.error('Error creating club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to create club role' });
+    }
+};
+
+const updateClubRole = async (req, res) => {
+    try {
+        const { roleId } = req.params;
+        const { role_name, description } = req.body;
+
+        const [existing] = await masterPool.query('SELECT * FROM club_roles WHERE id = ?', [roleId]);
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Role not found' });
+        }
+
+        await masterPool.query(
+            'UPDATE club_roles SET role_name = ?, description = ? WHERE id = ?',
+            [role_name.trim(), description || '', roleId]
+        );
+
+        res.json({ success: true, message: 'Club role updated successfully' });
+    } catch (error) {
+        console.error('Error updating club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to update club role' });
+    }
+};
+
+const deleteClubRole = async (req, res) => {
+    try {
+        const { roleId } = req.params;
+
+        const [existing] = await masterPool.query('SELECT id FROM club_roles WHERE id = ?', [roleId]);
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Role not found' });
+        }
+
+        await masterPool.query('DELETE FROM club_roles WHERE id = ?', [roleId]);
+
+        res.json({ success: true, message: 'Club role deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete club role' });
+    }
+};
+
+// ================= HRMS User Account Check =================
+
+const checkHrmsUserAccount = async (req, res) => {
+    try {
+        const { hrms_id, email, emp_no } = req.query;
+
+        if (!hrms_id && !email && !emp_no) {
+            return res.status(400).json({ success: false, message: 'Please provide hrms_id, email, or emp_no' });
+        }
+
+        // Query rbac_users for linked SDMS account
+        let userQuery = 'SELECT id, name, email, username, role, hrms_id FROM rbac_users WHERE 1=0';
+        let params = [];
+
+        if (hrms_id) {
+            userQuery += ' OR hrms_id = ?';
+            params.push(hrms_id);
+        }
+        if (email) {
+            userQuery += ' OR email = ?';
+            params.push(email);
+        }
+        if (emp_no) {
+            userQuery += ' OR username = ?';
+            params.push(emp_no);
+        }
+
+        const [users] = await masterPool.query(userQuery, params);
+
+        if (users.length > 0) {
+            return res.json({
+                success: true,
+                hasUserAccount: true,
+                userAccount: users[0],
+                message: 'SDMS user account found for this employee.'
+            });
+        }
+
+        return res.json({
+            success: true,
+            hasUserAccount: false,
+            userAccount: null,
+            message: 'No SDMS user account exists for this employee.'
+        });
+    } catch (error) {
+        console.error('Error checking HRMS user account:', error);
+        res.status(500).json({ success: false, message: 'Failed to check employee user account' });
+    }
+};
+
+// ================= Approvals & All Students =================
+
+const getAllClubApprovals = async (req, res) => {
+    try {
+        const [rows] = await masterPool.query(
+            `SELECT cm.id as membership_id, cm.club_id, c.name as club_name, c.image_url as club_image,
+                    cm.student_id, COALESCE(s.student_name, '') as student_name, s.admission_number,
+                    COALESCE(s.student_mobile, '') as phone_number,
+                    s.course_id, s.branch_id, cm.status, cm.payment_status, cm.joined_at
+             FROM club_members cm 
+             JOIN clubs c ON cm.club_id = c.id 
+             JOIN students s ON cm.student_id = s.id 
+             WHERE cm.status = 'pending'
+             ORDER BY cm.joined_at DESC`
+        );
+
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching club approvals:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club approvals' });
+    }
+};
+
+const getAllClubStudents = async (req, res) => {
+    try {
+        const { club_id, status } = req.query;
+
+        let query = `
+            SELECT cm.id as membership_id, cm.club_id, c.name as club_name,
+                   cm.student_id, COALESCE(s.student_name, '') as student_name, s.admission_number,
+                   COALESCE(s.student_mobile, '') as phone_number,
+                   s.course_id, s.branch_id, cm.status, cm.payment_status, cm.joined_at
+            FROM club_members cm 
+            JOIN clubs c ON cm.club_id = c.id 
+            JOIN students s ON cm.student_id = s.id 
+            WHERE 1=1
+        `;
+        let params = [];
+
+        if (club_id) {
+            query += ' AND cm.club_id = ?';
+            params.push(club_id);
+        }
+        if (status) {
+            query += ' AND cm.status = ?';
+            params.push(status);
+        } else {
+            // By default, do not show pending students in the general student list
+            query += ' AND cm.status = "approved"';
+        }
+
+        query += ' ORDER BY cm.joined_at DESC';
+
+        const [rows] = await masterPool.query(query, params);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching club students:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club students' });
+    }
+};
+
 module.exports = {
     createClub,
     getClubs,
@@ -603,5 +820,12 @@ module.exports = {
     deleteClub,
     updateActivity,
     deleteActivity,
-    toggleClubStatus
+    toggleClubStatus,
+    getClubRoles,
+    createClubRole,
+    updateClubRole,
+    deleteClubRole,
+    checkHrmsUserAccount,
+    getAllClubApprovals,
+    getAllClubStudents
 };

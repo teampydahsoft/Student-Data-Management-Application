@@ -636,77 +636,145 @@ exports.getUser = async (req, res) => {
 exports.searchHRMSEmployee = async (req, res) => {
   try {
     const { query } = req.query;
-    if (!query || query.length < 3) {
-      return res.status(400).json({ success: false, message: 'Search query must be at least 3 characters long' });
+    if (!query || !query.trim()) {
+      return res.json({ success: true, data: [] });
     }
 
-    const hrmsConn = getHRMSConnection();
-    if (!hrmsConn) {
-      return res.status(503).json({ success: false, message: 'HRMS Database connection is currently unavailable' });
-    }
+    const searchTerm = query.trim();
+    const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const combinedResults = [];
+    const seenMap = new Set();
 
-    const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
-    const HRMSUser = getHRMSUserModel(hrmsConn);
-    const regex = new RegExp(query, 'i');
+    // 1. Search local MySQL rbac_users first
+    try {
+      const sqlLike = `%${searchTerm}%`;
+      const [localUsers] = await masterPool.query(
+        `SELECT id, name, username as emp_no, email, phone, hrms_id, role 
+         FROM rbac_users 
+         WHERE name LIKE ? OR username LIKE ? OR email LIKE ? OR phone LIKE ?
+         LIMIT 20`,
+        [sqlLike, sqlLike, sqlLike, sqlLike]
+      );
 
-    // Search both collections concurrently
-    const [employees, users] = await Promise.all([
-      HRMSEmployee.find({
-        $or: [
-          { emp_no: regex },
-          { employee_name: regex },
-          { email: regex }
-        ],
-        is_active: true
-      }).limit(10).lean().exec(),
-      HRMSUser.find({
-        $or: [
-          { name: regex },
-          { email: regex }
-        ],
-        isActive: true
-      }).limit(10).lean().exec()
-    ]);
-
-    // Transform and combine results
-    // Fetch and merge data for better autofill
-    const employeeResults = await Promise.all(employees.map(async (emp) => {
-      // Try to find a linked user to get more data (like email if missing)
-      let linkedEmail = emp.email;
-      const linkedUser = await HRMSUser.findOne({ 
-        $or: [
-          { employeeId: emp.emp_no },
-          { email: emp.email }
-        ]
-      }).lean().exec();
-
-      if (linkedUser && !linkedEmail) {
-        linkedEmail = linkedUser.email;
+      for (const u of localUsers) {
+        const key = (u.email || u.emp_no || String(u.id)).toLowerCase();
+        if (!seenMap.has(key)) {
+          seenMap.add(key);
+          combinedResults.push({
+            _id: u.hrms_id || `sdms_${u.id}`,
+            emp_no: u.emp_no || u.email,
+            name: u.name,
+            email: u.email || '',
+            phone: u.phone || '',
+            type: 'SDMS User',
+            hasUserAccount: true,
+            userAccount: u
+          });
+        }
       }
+    } catch (sqlErr) {
+      console.error('MySQL User Search Error:', sqlErr.message);
+    }
 
-      return {
-        _id: emp._id.toString(),
-        emp_no: emp.emp_no,
-        name: emp.employee_name,
-        email: linkedEmail || emp.emp_no, // Fallback to emp_no if still null
-        phone: emp.phone_number || '',
-        type: 'Employee'
-      };
-    }));
+    // 2. Search HRMS MongoDB if connection available
+    try {
+      const hrmsConn = getHRMSConnection();
+      if (hrmsConn && hrmsConn.readyState === 1) {
+        const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
+        const HRMSUser = getHRMSUserModel(hrmsConn);
 
-    const userResults = users.map(user => ({
-      _id: user._id.toString(),
-      emp_no: user.employeeId || user.email, // Use employeeId if available
-      name: user.name,
-      email: user.email,
-      phone: '', // Users collection usually doesn't have phone
-      type: 'User'
-    }));
+        const [employees, users] = await Promise.all([
+          HRMSEmployee.find({
+            $or: [
+              { emp_no: regex },
+              { employee_name: regex },
+              { email: regex }
+            ],
+            is_active: true
+          }).limit(20).lean().exec(),
+          HRMSUser.find({
+            $or: [
+              { name: regex },
+              { email: regex },
+              { employeeId: regex }
+            ],
+            isActive: true
+          }).limit(20).lean().exec()
+        ]);
 
-    return res.json({ success: true, data: [...employeeResults, ...userResults] });
+        for (const emp of employees) {
+          const key = (emp.email || emp.emp_no || emp._id.toString()).toLowerCase();
+          if (!seenMap.has(key)) {
+            seenMap.add(key);
+
+            // Cross-check if SDMS user account exists for this HRMS employee
+            let hasUser = false;
+            let userAcc = null;
+
+            try {
+              const [matchedUsers] = await masterPool.query(
+                'SELECT id, name, email, username, role FROM rbac_users WHERE hrms_id = ? OR email = ? OR username = ? LIMIT 1',
+                [emp._id.toString(), emp.email || '', emp.emp_no || '']
+              );
+              if (matchedUsers.length > 0) {
+                hasUser = true;
+                userAcc = matchedUsers[0];
+              }
+            } catch (err) {}
+
+            combinedResults.push({
+              _id: emp._id.toString(),
+              emp_no: emp.emp_no,
+              name: emp.employee_name,
+              email: emp.email || '',
+              phone: emp.phone_number || '',
+              type: 'HRMS Employee',
+              hasUserAccount: hasUser,
+              userAccount: userAcc
+            });
+          }
+        }
+
+        for (const user of users) {
+          const key = (user.email || user.employeeId || user._id.toString()).toLowerCase();
+          if (!seenMap.has(key)) {
+            seenMap.add(key);
+
+            let hasUser = false;
+            let userAcc = null;
+
+            try {
+              const [matchedUsers] = await masterPool.query(
+                'SELECT id, name, email, username, role FROM rbac_users WHERE hrms_id = ? OR email = ? OR username = ? LIMIT 1',
+                [user._id.toString(), user.email || '', user.employeeId || '']
+              );
+              if (matchedUsers.length > 0) {
+                hasUser = true;
+                userAcc = matchedUsers[0];
+              }
+            } catch (err) {}
+
+            combinedResults.push({
+              _id: user._id.toString(),
+              emp_no: user.employeeId || user.email,
+              name: user.name,
+              email: user.email || '',
+              phone: '',
+              type: 'HRMS User',
+              hasUserAccount: hasUser,
+              userAccount: userAcc
+            });
+          }
+        }
+      }
+    } catch (hrmsErr) {
+      console.error('HRMS Mongo Search Non-Fatal Error:', hrmsErr.message);
+    }
+
+    return res.json({ success: true, data: combinedResults });
   } catch (error) {
-    console.error('Failed to search HRMS employees:', error);
-    res.status(500).json({ success: false, message: 'Server error while searching HRMS' });
+    console.error('Failed to search employees:', error);
+    res.status(500).json({ success: false, message: 'Server error while searching employees' });
   }
 };
 
@@ -856,9 +924,27 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    // Hash the provided password (or null if HRMS)
+    // Hash the provided password (or null if HRMS), or pull directly from HRMS
     let hashedPassword = null;
-    if (!hrms_id) {
+    if (req.body.use_hrms_credentials && hrms_id) {
+      // Pull password hash directly from HRMS employee record
+      try {
+        const hrmsConn = getHRMSConnection();
+        if (hrmsConn && hrmsConn.readyState === 1) {
+          const HRMSEmployee = getHRMSEmployeeModel(hrmsConn);
+          const mongoose = require('mongoose');
+          const empDoc = await HRMSEmployee.findById(
+            mongoose.Types.ObjectId.isValid(hrms_id) ? hrms_id : null
+          ).select('+password').lean().exec();
+          if (empDoc && empDoc.password) {
+            // Use HRMS password hash directly (already bcrypt hashed in HRMS)
+            hashedPassword = empDoc.password;
+          }
+        }
+      } catch (hrmsErr) {
+        console.warn('Could not fetch HRMS password, will use null:', hrmsErr.message);
+      }
+    } else if (!hrms_id) {
       hashedPassword = await bcrypt.hash(password, 10);
     }
 

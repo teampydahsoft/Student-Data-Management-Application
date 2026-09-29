@@ -1,78 +1,353 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    Plus, Users, Calendar, X, Trash2, Check, XCircle,
-    Edit2, Layout, UserPlus, FileText, ArrowRight,
-    TrendingUp, Award, Zap, Heart, Camera, Search, Filter,
-    MoreHorizontal, Shield, Wallet, Send, Image, MessageSquare,
-    Clock, BarChart2, Settings
+    Plus, Users, X, Trash2, Check, Edit2, Shield, Wallet,
+    ArrowRight, Zap, Search, Settings, UserCheck, CheckCircle,
+    AlertTriangle, UserPlus, RefreshCw, Eye, Bell, BellOff,
+    MessageSquare, Calendar, Clock, Send, Hash, Paperclip
 } from 'lucide-react';
-
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate, useLocation } from 'react-router-dom';
 import clubService from '../services/clubService';
 import chatService from '../services/chatService';
+import api from '../config/api';
 import toast from 'react-hot-toast';
 
-const formatChatTime = (dateStr) => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-    if (isToday) return 'Today';
-    if (isYesterday) return 'Yesterday';
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-const formatMessageTime = (dateStr) => new Date(dateStr).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   INLINE CLUB CHAT BOX
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+const ClubChatBox = ({ club }) => {
+    const [channel, setChannel] = useState(null);
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState(null);
+    const messagesEndRef = useRef(null);
+    const pollRef = useRef(null);
 
-const ClubCard = ({ club, onSelect, isAdmin, onToggleStatus }) => (
-    <div
-        onClick={() => onSelect(club)}
-        className={`group bg-white rounded-xl border ${club.is_active ? 'border-gray-200 hover:border-blue-400' : 'border-red-200 hover:border-red-300 opacity-75 hover:opacity-100'} p-5 transition-all cursor-pointer hover:shadow-lg relative overflow-hidden`}
-    >
-        <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex gap-2">
-            {isAdmin && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onToggleStatus(club.id, club.is_active); }}
-                    className={`p-1.5 rounded-md ${club.is_active ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
-                    title={club.is_active ? "Deactivate Club" : "Activate Club"}
-                >
-                    <Zap size={16} className={club.is_active ? "fill-red-600" : "fill-green-600"} />
-                </button>
-            )}
-            <div className="bg-blue-50 text-blue-600 p-1.5 rounded-md">
-                <ArrowRight size={16} />
-            </div>
+    const currentUserId = localStorage.getItem('userId');
+    const currentUserName = localStorage.getItem('userName') || localStorage.getItem('username') || 'You';
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const loadMessages = useCallback(async (ch) => {
+        const activeChannel = ch || channel;
+        if (!activeChannel) return;
+        try {
+            const res = await chatService.getMessages(activeChannel.id, { limit: 80 });
+            if (res.success && res.data) {
+                setMessages(res.data);
+                setTimeout(scrollToBottom, 50);
+            }
+        } catch (e) {
+            // silent poll failure
+        }
+    }, [channel]);
+
+    useEffect(() => {
+        if (!club?.id) return;
+        setLoading(true);
+        setError(null);
+        chatService.getChannelByClub(club.id)
+            .then(res => {
+                if (res.success && res.data) {
+                    setChannel(res.data);
+                    return chatService.getMessages(res.data.id, { limit: 80 })
+                        .then(msgRes => {
+                            if (msgRes.success && msgRes.data) {
+                                setMessages(msgRes.data);
+                                setTimeout(scrollToBottom, 80);
+                            }
+                        });
+                } else {
+                    // create channel if not found
+                    return chatService.createChannel({ club_id: club.id, name: club.name, type: 'club' })
+                        .then(createRes => {
+                            if (createRes.success && createRes.data) {
+                                setChannel(createRes.data);
+                            } else {
+                                setError('Could not load or create chat channel.');
+                            }
+                        });
+                }
+            })
+            .catch(() => setError('Failed to connect to chat.'))
+            .finally(() => setLoading(false));
+    }, [club?.id]);
+
+    // Poll every 6 seconds
+    useEffect(() => {
+        if (!channel) return;
+        pollRef.current = setInterval(() => loadMessages(channel), 6000);
+        return () => clearInterval(pollRef.current);
+    }, [channel, loadMessages]);
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || !channel || sending) return;
+        setSending(true);
+        const optimistic = {
+            id: `opt-${Date.now()}`,
+            message: input.trim(),
+            sender_name: currentUserName,
+            sender_id: currentUserId,
+            created_at: new Date().toISOString(),
+            _optimistic: true
+        };
+        setMessages(prev => [...prev, optimistic]);
+        setInput('');
+        setTimeout(scrollToBottom, 50);
+        try {
+            await chatService.postMessage(channel.id, optimistic.message);
+            await loadMessages(channel);
+        } catch (err) {
+            toast.error('Failed to send message');
+            setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const formatTime = (iso) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+    const formatDate = (iso) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const today = new Date();
+        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+        if (d.toDateString() === today.toDateString()) return 'Today';
+        if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        return d.toLocaleDateString();
+    };
+
+    // Group messages by date
+    const groupedMessages = messages.reduce((acc, msg) => {
+        const dateKey = formatDate(msg.created_at);
+        if (!acc[dateKey]) acc[dateKey] = [];
+        acc[dateKey].push(msg);
+        return acc;
+    }, {});
+
+    if (loading) return (
+        <div className="flex flex-col items-center justify-center h-72 gap-3 text-gray-400">
+            <RefreshCw size={24} className="animate-spin text-blue-500" />
+            <p className="text-sm">Loading chatâ€¦</p>
         </div>
+    );
 
-        {!club.is_active && (
-            <div className="absolute top-0 left-0 bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 uppercase tracking-wide">
-                Inactive
+    if (error) return (
+        <div className="flex flex-col items-center justify-center h-72 gap-3 text-red-400">
+            <AlertTriangle size={28} />
+            <p className="text-sm font-medium">{error}</p>
+        </div>
+    );
+
+    return (
+        <div className="flex flex-col" style={{ height: '520px' }}>
+            {/* Chat Header */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                    <Hash size={18} />
+                </div>
+                <div>
+                    <p className="text-sm font-bold text-gray-900">{club?.name} â€” Club Chat</p>
+                    <p className="text-[11px] text-gray-500">{messages.length} messages Â· Updates every 6s</p>
+                </div>
             </div>
-        )}
 
-        <div className="flex items-start gap-4">
-            <div className={`w-16 h-16 rounded-xl ${club.is_active ? 'bg-gray-100' : 'bg-gray-50 grayscale'} flex items-center justify-center shrink-0 border border-gray-100 overflow-hidden text-gray-400`}>
-                {club.image_url ? (
-                    <img src={club.image_url} alt="" className="w-full h-full object-cover" />
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 bg-gray-50/50">
+                {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+                        <MessageSquare size={40} className="opacity-30" />
+                        <p className="text-sm">No messages yet. Say hi! ðŸ‘‹</p>
+                    </div>
                 ) : (
-                    <Users size={28} />
+                    Object.entries(groupedMessages).map(([date, dayMsgs]) => (
+                        <div key={date}>
+                            <div className="flex items-center gap-3 my-3">
+                                <div className="flex-1 h-px bg-gray-200" />
+                                <span className="text-[10px] text-gray-400 font-semibold px-2 py-0.5 bg-white border rounded-full">{date}</span>
+                                <div className="flex-1 h-px bg-gray-200" />
+                            </div>
+                            {dayMsgs.map((msg, idx) => {
+                                const isOwn = String(msg.sender_id) === String(currentUserId);
+                                return (
+                                    <div key={msg.id || idx} className={`flex gap-2 mb-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                            isOwn ? 'bg-blue-600 text-white' : 'bg-indigo-100 text-indigo-700'
+                                        }`}>
+                                            {(msg.sender_name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className={`max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                                            {!isOwn && (
+                                                <p className="text-[10px] text-gray-500 font-semibold mb-0.5 px-1">{msg.sender_name}</p>
+                                            )}
+                                            <div className={`px-3.5 py-2.5 rounded-2xl text-sm break-words ${
+                                                isOwn
+                                                    ? 'bg-blue-600 text-white rounded-tr-sm'
+                                                    : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-xs'
+                                            } ${msg._optimistic ? 'opacity-70' : ''}`}>
+                                                {msg.message}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 mt-0.5 px-1">{formatTime(msg.created_at)}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))
                 )}
+                <div ref={messagesEndRef} />
             </div>
-            <div className="flex-1 min-w-0">
-                <h3 className={`font-bold text-lg leading-tight group-hover:text-blue-600 transition-colors truncate ${!club.is_active && 'text-gray-500'}`}>{club.name}</h3>
-                <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
-                    <span className="flex items-center gap-1"><Users size={14} /> {(club.members || []).length} Members</span>
-                    {club.membership_fee > 0 && (
-                        <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-md">
-                            <Wallet size={12} /> ₹{club.membership_fee}
-                        </span>
+
+            {/* Input Bar */}
+            <form onSubmit={handleSend} className="flex items-center gap-2 px-3 py-2.5 border-t bg-white rounded-b-xl">
+                <input
+                    type="text"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    placeholder={`Message #${club?.name}â€¦`}
+                    disabled={sending}
+                    className="flex-1 px-3.5 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50 placeholder-gray-400"
+                />
+                <button
+                    type="submit"
+                    disabled={!input.trim() || sending}
+                    className="p-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl transition-all shadow-sm"
+                >
+                    <Send size={16} />
+                </button>
+            </form>
+        </div>
+    );
+};
+
+const ClubCard = ({ club, onViewDetails, isAdmin, onToggleStatus, onEdit }) => {
+    const memberCount = (club.members || []).filter(m => m.status === 'approved').length;
+    const initials = club.name ? club.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
+    const gradients = [
+        'from-blue-500 to-indigo-600',
+        'from-violet-500 to-purple-600',
+        'from-emerald-500 to-teal-600',
+        'from-orange-500 to-rose-500',
+        'from-sky-500 to-cyan-600',
+        'from-pink-500 to-fuchsia-600',
+    ];
+    const gradient = gradients[club.id % gradients.length] || gradients[0];
+
+    return (
+        <div
+            onClick={() => onViewDetails(club)}
+            className={`relative rounded-2xl overflow-hidden flex flex-col cursor-pointer group transition-all duration-200 hover:-translate-y-1 hover:shadow-xl shadow-md ${
+                club.is_active ? '' : 'opacity-60 grayscale'
+            }`}
+            style={{ background: 'white', border: '1px solid #e5e7eb' }}
+        >
+            {/* Gradient Banner */}
+            <div className={`h-24 bg-gradient-to-br ${gradient} relative flex items-end px-4 pb-3 shrink-0`}>
+                {!club.is_active && (
+                    <div className="absolute top-2 left-2 bg-black/40 text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest">
+                        Inactive
+                    </div>
+                )}
+                {/* Quick action buttons */}
+                <div className="absolute top-2 right-2 flex gap-1.5">
+                    {isAdmin && onEdit && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onEdit(club); }}
+                            className="p-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white hover:bg-white/40 transition-all"
+                            title="Edit Club"
+                        >
+                            <Edit2 size={13} />
+                        </button>
+                    )}
+                    {isAdmin && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggleStatus(club.id, club.is_active); }}
+                            className={`p-1.5 rounded-lg backdrop-blur-sm transition-all ${
+                                club.is_active
+                                    ? 'bg-white/20 text-white hover:bg-red-500/80'
+                                    : 'bg-white/20 text-white hover:bg-green-500/80'
+                            }`}
+                            title={club.is_active ? 'Deactivate' : 'Activate'}
+                        >
+                            <Zap size={13} className="fill-current" />
+                        </button>
+                    )}
+                </div>
+                {/* Avatar */}
+                <div className="w-14 h-14 rounded-xl border-2 border-white/60 overflow-hidden bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-md">
+                    {club.image_url ? (
+                        <img src={club.image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                        <span className="text-white font-extrabold text-lg leading-none">{initials}</span>
                     )}
                 </div>
             </div>
+
+            {/* Card Body */}
+            <div className="flex flex-col flex-1 p-4 gap-2">
+                <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-bold text-gray-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-1">{club.name}</h3>
+                    {club.membership_fee > 0 ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap shrink-0">
+                            â‚¹{club.membership_fee}
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap shrink-0">Free</span>
+                    )}
+                </div>
+
+                <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{club.description || 'No description provided.'}</p>
+
+                {/* Members count + fee type */}
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                        <Users size={12} className="text-blue-500" />
+                        <span className="font-semibold text-gray-700">{memberCount}</span> Members
+                    </span>
+                    {club.fee_type && (
+                        <span className="flex items-center gap-1">
+                            <Clock size={12} className="text-purple-400" /> {club.fee_type}
+                        </span>
+                    )}
+                </div>
+
+                {/* Admin roles chips */}
+                {club.admin_roles && club.admin_roles.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                        {club.admin_roles.slice(0, 2).map((roleItem, idx) => (
+                            <span key={idx} className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100">
+                                {roleItem.roleName}: {roleItem.name?.split(' ')[0]}
+                            </span>
+                        ))}
+                        {club.admin_roles.length > 2 && (
+                            <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">+{club.admin_roles.length - 2} more</span>
+                        )}
+                    </div>
+                ) : (
+                    <p className="text-[10px] text-gray-400 italic">No officers assigned</p>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 pb-4">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onViewDetails(club); }}
+                    className="w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-gray-50 text-gray-700 border border-gray-200 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600"
+                >
+                    <Eye size={13} /> View Details
+                </button>
+            </div>
         </div>
-        <p className="mt-4 text-gray-600 text-sm line-clamp-2">{club.description}</p>
-    </div>
-);
+    );
+};
 
 const Modal = ({ show, onClose, title, children }) => (
     <AnimatePresence>
@@ -99,73 +374,101 @@ const Modal = ({ show, onClose, title, children }) => (
     </AnimatePresence>
 );
 
-const Clubs = () => {
+const Clubs = ({ initialSubPage }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // Determine subPage directly from pathname or initialSubPage prop
+    const getSubPageFromPath = () => {
+        if (location.pathname.endsWith('/students')) return 'students';
+        if (location.pathname.endsWith('/settings')) return 'settings';
+        return initialSubPage || 'management';
+    };
+
+    const [subPage, setSubPage] = useState(getSubPageFromPath());
+
+    useEffect(() => {
+        setSubPage(getSubPageFromPath());
+    }, [location.pathname]);
+
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [userType, setUserType] = useState('');
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'details'
     const [selectedClub, setSelectedClub] = useState(null);
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'members' | 'activities' | 'communication' | 'settings'
+    const [detailsTab, setDetailsTab] = useState('overview'); // 'overview' | 'members' | 'requests' | 'activities' | 'chat' | 'settings'
+
+    // Notification Toggles State
+    const [announcementNotify, setAnnouncementNotify] = useState(localStorage.getItem('club_announcement_notify') !== 'false');
+    const [feeNotify, setFeeNotify] = useState(localStorage.getItem('club_fee_notify') !== 'false');
+    const [activityNotify, setActivityNotify] = useState(localStorage.getItem('club_activity_notify') !== 'false');
+
+    // Dynamic Roles & HRMS Data
+    const [dynamicRoles, setDynamicRoles] = useState([]);
+    const [studentsList, setStudentsList] = useState([]);
+    const [studentsLoading, setStudentsLoading] = useState(false);
+
+    // Filter states for Students tab
+    const [studentSearch, setStudentSearch] = useState('');
+    const [studentClubFilter, setStudentClubFilter] = useState('');
+    const [studentStatusFilter, setStudentStatusFilter] = useState('');
 
     // Modal States
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showRoleModal, setShowRoleModal] = useState(false);
+    const [editingRole, setEditingRole] = useState(null);
+    const [showCreateUserModal, setShowCreateUserModal] = useState(false);
 
-    // Form Data
+    // Form Data for Club
     const [formData, setFormData] = useState({
         name: '',
         description: '',
         image: null,
         membership_fee: '',
         fee_type: 'Yearly',
+        admin_roles: [] // Array of multiple assigned admin roles [{ userId, hrmsId, empNo, name, email, roleCode, roleName }]
     });
 
-    // Activity State
+    // Temp state for adding multiple dynamic admin roles inside Club Creation/Edit modal
+    const [selectedRoleCode, setSelectedRoleCode] = useState('');
+    const [hrmsSearchQuery, setHrmsSearchQuery] = useState('');
+    const [hrmsSearchResults, setHrmsSearchResults] = useState([]);
+    const [searchingHrms, setSearchingHrms] = useState(false);
+    const [selectedHrmsEmployee, setSelectedHrmsEmployee] = useState(null);
+    const [hrmsUserStatus, setHrmsUserStatus] = useState(null);
+
+    // New/Edit Role Form Data
+    const [roleForm, setRoleForm] = useState({ role_name: '', description: '' });
+
+    // Inline Create User Form Data (for HRMS employee without SDMS user account)
+    // Uses HRMS credentials â€” no manual password needed
+    const [createUserForm, setCreateUserForm] = useState({
+        name: '',
+        email: '',
+        phone: '',
+        role: 'faculty',
+        hrms_id: ''
+    });
+    const [creatingUser, setCreatingUser] = useState(false);
+
+    // Activity Modal State
     const [showActivityModal, setShowActivityModal] = useState(false);
-    const [editingActivity, setEditingActivity] = useState(null);
-    const [activityForm, setActivityForm] = useState({
-        title: '',
-        description: '',
-        image: null
-    });
-
-    // Filtering State
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterCourse, setFilterCourse] = useState('');
-    const [filterBranch, setFilterBranch] = useState('');
-    const [filterYear, setFilterYear] = useState('');
-
-    // Communication (Club Chat) State
-    const [clubChannel, setClubChannel] = useState(null);
-    const [clubMessages, setClubMessages] = useState([]);
-    const [channelLoading, setChannelLoading] = useState(false);
-    const [messagesLoading, setMessagesLoading] = useState(false);
-    const [newMessage, setNewMessage] = useState('');
-    const [creatingChannel, setCreatingChannel] = useState(false);
-    const [editingMsgId, setEditingMsgId] = useState(null);
-    const [editDraft, setEditDraft] = useState('');
-    const [postMode, setPostMode] = useState('message'); // 'message' | 'poll' | 'schedule'
-    const [pollQuestion, setPollQuestion] = useState('');
-    const [pollOptions, setPollOptions] = useState(['Yes', 'No']);
-    const [scheduledAt, setScheduledAt] = useState('');
-    const [scheduledMessages, setScheduledMessages] = useState([]);
-    const [scheduledLoading, setScheduledLoading] = useState(false);
-    const [channelSettings, setChannelSettings] = useState(null);
-    const [savingSettings, setSavingSettings] = useState(false);
-    const [autoDeletePreset, setAutoDeletePreset] = useState('30'); // '7' | '10' | '30' | 'custom'
-    const [autoDeleteCustomDays, setAutoDeleteCustomDays] = useState(15); // 1-30 when preset is custom
-    const [attachmentFile, setAttachmentFile] = useState(null);
-    const [uploadingAttachment, setUploadingAttachment] = useState(false);
-    const [editingPollId, setEditingPollId] = useState(null);
-    const [editPollQuestion, setEditPollQuestion] = useState('');
-    const [editPollOptions, setEditPollOptions] = useState([]);
-    const messagesEndRef = useRef(null);
+    const [activityForm, setActivityForm] = useState({ title: '', description: '', date: '', location: '' });
+    const [savingActivity, setSavingActivity] = useState(false);
 
     useEffect(() => {
         const type = localStorage.getItem('userType');
         setUserType(type || '');
         fetchClubs();
+        fetchDynamicRoles();
     }, []);
+
+    useEffect(() => {
+        if (subPage === 'students') {
+            fetchStudents();
+        }
+    }, [subPage]);
 
     const fetchClubs = async () => {
         setLoading(true);
@@ -181,9 +484,253 @@ const Clubs = () => {
         }
     };
 
+    const fetchDynamicRoles = async () => {
+        try {
+            const res = await clubService.getClubRoles();
+            if (res.success && res.data) {
+                setDynamicRoles(res.data);
+                if (res.data.length > 0 && !selectedRoleCode) {
+                    setSelectedRoleCode(res.data[0].role_code);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch club roles:', error);
+        }
+    };
+
+    const fetchStudents = async () => {
+        setStudentsLoading(true);
+        try {
+            const res = await clubService.getAllClubStudents({
+                club_id: studentClubFilter || undefined,
+                status: studentStatusFilter || undefined
+            });
+            if (res.success && res.data) {
+                setStudentsList(res.data);
+            }
+        } catch (error) {
+            toast.error('Failed to load club students');
+        } finally {
+            setStudentsLoading(false);
+        }
+    };
+
     const isAdmin = ['admin', 'super_admin'].includes(userType);
 
-    // --- Actions ---
+    // --- Dynamic Employee / HRMS Search ---
+    const handleSearchHrms = async (query) => {
+        setHrmsSearchQuery(query);
+        if (!query || !query.trim()) {
+            setHrmsSearchResults([]);
+            return;
+        }
+        setSearchingHrms(true);
+        try {
+            const res = await clubService.searchHrmsEmployees(query.trim());
+            if (res.success && res.data) {
+                setHrmsSearchResults(res.data);
+            }
+        } catch (error) {
+            console.error('Employee Search Error:', error);
+        } finally {
+            setSearchingHrms(false);
+        }
+    };
+
+    const handleSelectHrmsEmployee = async (emp) => {
+        setSelectedHrmsEmployee(emp);
+        setHrmsSearchResults([]);
+
+        if (emp.hasUserAccount) {
+            setHrmsUserStatus({
+                checking: false,
+                hasUserAccount: true,
+                userAccount: emp.userAccount || { id: emp._id, username: emp.emp_no }
+            });
+            return;
+        }
+
+        setHrmsUserStatus({ checking: true });
+        try {
+            const checkRes = await clubService.checkHrmsUserAccount({
+                hrms_id: emp._id,
+                email: emp.email,
+                emp_no: emp.emp_no
+            });
+
+            if (checkRes.success) {
+                setHrmsUserStatus({
+                    checking: false,
+                    hasUserAccount: checkRes.hasUserAccount,
+                    userAccount: checkRes.userAccount
+                });
+            }
+        } catch (err) {
+            console.error('Error checking user account:', err);
+            setHrmsUserStatus({ checking: false, hasUserAccount: false, userAccount: null });
+        }
+    };
+
+    // Open inline modal to create SDMS user account for HRMS employee
+    const handleOpenCreateUserModal = () => {
+        if (!selectedHrmsEmployee) return;
+        setCreateUserForm({
+            name: selectedHrmsEmployee.name || '',
+            email: selectedHrmsEmployee.email && !selectedHrmsEmployee.email.includes('@hrms') ? selectedHrmsEmployee.email : `${selectedHrmsEmployee.emp_no}@pydah.edu.in`,
+            phone: selectedHrmsEmployee.phone || '',
+            role: 'faculty',
+            hrms_id: selectedHrmsEmployee._id || ''
+        });
+        setShowCreateUserModal(true);
+    };
+
+    const handleCreateSDMSUserAccount = async (e) => {
+        e.preventDefault();
+        setCreatingUser(true);
+        try {
+            // Use emp_no as username and HRMS-linked credentials (no manual password)
+            const payload = {
+                ...createUserForm,
+                username: selectedHrmsEmployee?.emp_no || createUserForm.email,
+                use_hrms_credentials: true  // backend will derive password from HRMS link
+            };
+            const response = await api.post('/rbac/users', payload);
+            if (response.data && response.data.success) {
+                toast.success(`SDMS User Account created for ${createUserForm.name}`);
+                setShowCreateUserModal(false);
+                const newUser = response.data.data;
+                setHrmsUserStatus({
+                    checking: false,
+                    hasUserAccount: true,
+                    userAccount: newUser
+                });
+            } else {
+                toast.error(response.data?.message || 'Failed to create user account');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to create user account');
+        } finally {
+            setCreatingUser(false);
+        }
+    };
+
+    // Handle adding a new activity to the selected club
+    const handleAddActivity = async (e) => {
+        e.preventDefault();
+        if (!selectedClub?.id) return;
+        setSavingActivity(true);
+        try {
+            const res = await clubService.createActivity(selectedClub.id, activityForm);
+            if (res.success) {
+                toast.success('Activity added successfully');
+                setShowActivityModal(false);
+                setActivityForm({ title: '', description: '', date: '', location: '' });
+                // Refresh club details
+                const updated = await clubService.getClubDetails(selectedClub.id);
+                if (updated.success) setSelectedClub(updated.data);
+            } else {
+                toast.error(res.message || 'Failed to add activity');
+            }
+        } catch (err) {
+            toast.error('Failed to add activity');
+        } finally {
+            setSavingActivity(false);
+        }
+    };
+
+    const handleAddAdminRoleAssignment = () => {
+        if (!selectedRoleCode) return toast.error('Please select a role');
+        if (!selectedHrmsEmployee) return toast.error('Please select an employee');
+        if (!hrmsUserStatus?.hasUserAccount) {
+            return toast.error('Employee must have an active SDMS User Account before assignment.');
+        }
+
+        const roleObj = dynamicRoles.find(r => r.role_code === selectedRoleCode) || { role_name: selectedRoleCode };
+
+        const newAssignment = {
+            userId: hrmsUserStatus.userAccount?.id,
+            hrmsId: selectedHrmsEmployee._id,
+            empNo: selectedHrmsEmployee.emp_no,
+            name: selectedHrmsEmployee.name,
+            email: selectedHrmsEmployee.email,
+            roleCode: selectedRoleCode,
+            roleName: roleObj.role_name
+        };
+
+        setFormData(prev => ({
+            ...prev,
+            admin_roles: [...(prev.admin_roles || []), newAssignment]
+        }));
+
+        setSelectedHrmsEmployee(null);
+        setHrmsSearchQuery('');
+        setHrmsUserStatus(null);
+        toast.success(`Assigned ${newAssignment.name} as ${newAssignment.roleName}`);
+    };
+
+    const handleRemoveAdminRoleAssignment = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            admin_roles: prev.admin_roles.filter((_, i) => i !== index)
+        }));
+    };
+
+    // --- Dynamic Club Roles Management ---
+    const handleSaveDynamicRole = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingRole) {
+                const res = await clubService.updateClubRole(editingRole.id, roleForm);
+                if (res.success) {
+                    toast.success('Dynamic role updated');
+                    setShowRoleModal(false);
+                    setEditingRole(null);
+                    setRoleForm({ role_name: '', description: '' });
+                    fetchDynamicRoles();
+                } else {
+                    toast.error(res.message || 'Failed to update role');
+                }
+            } else {
+                const res = await clubService.createClubRole(roleForm);
+                if (res.success) {
+                    toast.success('Dynamic role created');
+                    setShowRoleModal(false);
+                    setRoleForm({ role_name: '', description: '' });
+                    fetchDynamicRoles();
+                } else {
+                    toast.error(res.message || 'Failed to create role');
+                }
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error saving dynamic role');
+        }
+    };
+
+    const handleOpenEditRole = (role) => {
+        setEditingRole(role);
+        setRoleForm({
+            role_name: role.role_name || '',
+            description: role.description || ''
+        });
+        setShowRoleModal(true);
+    };
+
+    const handleDeleteDynamicRole = async (roleId) => {
+        if (!window.confirm('Are you sure you want to delete this dynamic role?')) return;
+        try {
+            const res = await clubService.deleteClubRole(roleId);
+            if (res.success) {
+                toast.success('Role deleted');
+                fetchDynamicRoles();
+            } else {
+                toast.error(res.message || 'Failed to delete role');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error deleting role');
+        }
+    };
+
+    // --- Club Actions ---
     const handleCreateClub = async (e) => {
         e.preventDefault();
         try {
@@ -193,24 +740,19 @@ const Clubs = () => {
             data.append('description', formData.description);
             data.append('membership_fee', formData.membership_fee);
             data.append('fee_type', formData.fee_type);
+            data.append('admin_roles', JSON.stringify(formData.admin_roles || []));
 
-            const target_audience = {
-                colleges: formData.target_college,
-                batches: formData.target_batch,
-                courses: formData.target_course,
-                branches: formData.target_branch,
-                years: formData.target_year,
-                semesters: formData.target_semester
-            };
-            data.append('target_audience', JSON.stringify(target_audience));
+            if (formData.image) {
+                data.append('image', formData.image);
+            }
 
-            if (formData.image) data.append('image', formData.image);
-
-            await clubService.createClub(data);
-            toast.success('Club created successfully');
-            setShowCreateModal(false);
-            resetForm();
-            fetchClubs();
+            const response = await clubService.createClub(data);
+            if (response.success) {
+                toast.success('Student Club created successfully');
+                setShowCreateModal(false);
+                resetForm();
+                fetchClubs();
+            }
         } catch (error) {
             toast.error('Failed to create club');
         }
@@ -224,129 +766,49 @@ const Clubs = () => {
             data.append('description', formData.description);
             data.append('membership_fee', formData.membership_fee);
             data.append('fee_type', formData.fee_type);
+            data.append('admin_roles', JSON.stringify(formData.admin_roles || []));
 
-            const target_audience = {
-                colleges: formData.target_college,
-                batches: formData.target_batch,
-                courses: formData.target_course,
-                branches: formData.target_branch,
-                years: formData.target_year,
-                semesters: formData.target_semester
-            };
-            data.append('target_audience', JSON.stringify(target_audience));
+            if (formData.image) {
+                data.append('image', formData.image);
+            }
 
-            if (formData.image) data.append('image', formData.image);
-
-            await clubService.updateClub(selectedClub.id, data);
-            toast.success('Club updated');
-            setShowEditModal(false);
-            fetchClubs();
-            // Update selected club locally
-            setSelectedClub(prev => ({ ...prev, ...formData, target_audience }));
+            const response = await clubService.updateClub(selectedClub.id, data);
+            if (response.success) {
+                toast.success('Club updated successfully');
+                setShowEditModal(false);
+                fetchClubs();
+                if (selectedClub) {
+                    const updated = await clubService.getClubDetails(selectedClub.id);
+                    if (updated.success) setSelectedClub(updated.data);
+                }
+            }
         } catch (error) {
             toast.error('Failed to update club');
         }
     };
 
-    const handleDeleteClub = async (id) => {
-        if (!window.confirm('Delete this club completely? This cannot be undone.')) return;
-        try {
-            await clubService.deleteClub(id);
-            toast.success('Club deleted');
-            if (selectedClub?.id === id) {
-                setSelectedClub(null);
-                setViewMode('list');
-            }
-            fetchClubs();
-        } catch (error) {
-            toast.error('Delete failed');
-        }
-    };
-
     const handleToggleStatus = async (clubId, currentStatus) => {
         try {
-            const newStatus = !currentStatus;
-            await clubService.toggleClubStatus(clubId, newStatus);
-            toast.success(`Club ${newStatus ? 'activated' : 'deactivated'}`);
-
-            if (selectedClub && selectedClub.id === clubId) {
-                setSelectedClub(prev => ({ ...prev, is_active: newStatus }));
-            }
-
-            setClubs(prev => prev.map(c => c.id === clubId ? { ...c, is_active: newStatus } : c));
-        } catch (error) {
-            toast.error('Failed to change status');
-        }
-    };
-
-    const handleActivitySubmit = async (e) => {
-        e.preventDefault();
-        try {
-            const data = new FormData();
-            data.append('title', activityForm.title);
-            data.append('description', activityForm.description);
-            if (activityForm.image) {
-                data.append('image', activityForm.image);
-            }
-
-            if (editingActivity) {
-                await clubService.updateActivity(selectedClub.id, editingActivity.id, data);
-                toast.success('Activity updated');
-            } else {
-                await clubService.createActivity(selectedClub.id, data);
-                toast.success('Activity posted');
-            }
-
-            // Refresh details
-            const response = await clubService.getClubDetails(selectedClub.id);
-            if (response.success) setSelectedClub(response.data);
-
-            setShowActivityModal(false);
-            resetActivityForm();
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to save activity');
-        }
-    };
-
-    const handleDeleteActivity = async (activityId) => {
-        if (!window.confirm('Delete this activity?')) return;
-        try {
-            await clubService.deleteActivity(selectedClub.id, activityId);
-            toast.success('Activity deleted');
-            const response = await clubService.getClubDetails(selectedClub.id);
-            if (response.success) setSelectedClub(response.data);
-        } catch (error) {
-            toast.error('Failed to delete activity');
-        }
-    };
-
-    const prepareActivityEdit = (activity) => {
-        setEditingActivity(activity);
-        setActivityForm({
-            title: activity.title,
-            description: activity.description,
-            image: null // New image logic handled separately or UI indicator needed if keeping old
-        });
-        setShowActivityModal(true);
-    };
-
-    const resetActivityForm = () => {
-        setEditingActivity(null);
-        setActivityForm({ title: '', description: '', image: null });
-    };
-
-    const handleMemberAction = async (studentId, action) => {
-        try {
-            await clubService.updateMembershipStatus(selectedClub.id, studentId, action);
-            toast.success(`Member ${action === 'approved' ? 'approved' : 'rejected'} successfully`);
-            // Refresh club details to show updated status
-            const response = await clubService.getClubDetails(selectedClub.id);
+            const response = await clubService.toggleClubStatus(clubId, !currentStatus);
             if (response.success) {
-                setSelectedClub(response.data);
+                toast.success(response.message);
+                fetchClubs();
             }
         } catch (error) {
-            toast.error(`Failed to ${action} member`);
+            toast.error('Failed to toggle club status');
+        }
+    };
+
+    const handleApprovalAction = async (clubId, studentId, status) => {
+        try {
+            const res = await clubService.updateMembershipStatus(clubId, studentId, status);
+            if (res.success) {
+                toast.success(`Request ${status} successfully`);
+                fetchApprovals();
+                fetchClubs();
+            }
+        } catch (error) {
+            toast.error(`Failed to ${status} request`);
         }
     };
 
@@ -357,1180 +819,1054 @@ const Clubs = () => {
             image: null,
             membership_fee: '',
             fee_type: 'Yearly',
-
+            admin_roles: []
         });
+        setSelectedHrmsEmployee(null);
+        setHrmsSearchQuery('');
+        setHrmsUserStatus(null);
     };
 
     const prepareEdit = (club) => {
+        setSelectedClub(club);
         setFormData({
-            name: club.name,
-            description: club.description,
+            name: club.name || '',
+            description: club.description || '',
             image: null,
             membership_fee: club.membership_fee || '',
-            fee_type: club.fee_type || 'Yearly'
+            fee_type: club.fee_type || 'Yearly',
+            admin_roles: club.admin_roles || []
         });
-        setSelectedClub(club);
         setShowEditModal(true);
     };
 
-
     const handleViewDetails = async (club) => {
-        // Set basic info immediately
+        if (!club) return;
         setSelectedClub(club);
+        setDetailsTab('overview');
         setViewMode('details');
-        setActiveTab('members');
-
-        // Fetch full details
         try {
-            const response = await clubService.getClubDetails(club.id);
-            if (response.success) {
-                setSelectedClub(response.data);
+            const res = await clubService.getClubDetails(club.id);
+            if (res.success && res.data) {
+                setSelectedClub(res.data);
             }
         } catch (error) {
-            console.error("Failed to fetch club details", error);
-            toast.error("Failed to load full club details");
+            console.error('Failed to load full club details:', error);
         }
     };
 
-    // Fetch club channel when Communication or Settings tab is active
-    useEffect(() => {
-        if ((activeTab !== 'communication' && activeTab !== 'settings') || !selectedClub?.id) return;
-        const load = async () => {
-            setChannelLoading(true);
-            setClubChannel(null);
-            try {
-                const res = await chatService.getChannelByClub(selectedClub.id);
-                if (res.success && res.data) {
-                    setClubChannel(res.data);
-                    if (activeTab === 'communication') fetchClubMessages(res.data.id);
-                }
-            } catch (e) {
-                if (activeTab === 'communication') toast.error('Failed to load club communication');
-            } finally {
-                setChannelLoading(false);
-            }
-        };
-        load();
-    }, [activeTab, selectedClub?.id]);
-
-    useEffect(() => {
-        if ((activeTab === 'communication' || activeTab === 'settings') && clubChannel?.id) {
-            if (activeTab === 'communication') fetchScheduledMessages();
-            chatService.getChannelSettings(clubChannel.id).then((r) => {
-                if (r.success && r.data) {
-                    setChannelSettings(r.data);
-                    const days = r.data.auto_delete_after_days ?? 30;
-                    if (days === 7 || days === 10 || days === 30) setAutoDeletePreset(String(days));
-                    else { setAutoDeletePreset('custom'); setAutoDeleteCustomDays(Math.min(30, Math.max(1, Number(days) || 15))); }
-                }
-            });
-        }
-    }, [activeTab, clubChannel?.id]);
-
-    const fetchClubMessages = async (channelId) => {
-        if (!channelId) return;
-        setMessagesLoading(true);
-        try {
-            const res = await chatService.getMessages(channelId);
-            if (res.success && res.data) setClubMessages(res.data);
-        } catch (e) {
-            toast.error('Failed to load messages');
-        } finally {
-            setMessagesLoading(false);
-        }
-    };
-    const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    useEffect(() => {
-        if (clubMessages.length && activeTab === 'communication') scrollToBottom();
-    }, [clubMessages.length, activeTab]);
-
-    const handleCreateClubChannel = async () => {
-        if (!selectedClub?.id) return;
-        setCreatingChannel(true);
-        try {
-            const res = await chatService.createChannel({
-                channel_type: 'club',
-                name: `${selectedClub.name} – Chat`,
-                club_id: selectedClub.id,
-            });
-            if (res.success && res.data) {
-                setClubChannel({ id: res.data.id, channel_type: 'club', name: `${selectedClub.name} – Chat`, club_id: selectedClub.id });
-                toast.success('Communication channel created');
-                fetchClubMessages(res.data.id);
-            }
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to create channel');
-        } finally {
-            setCreatingChannel(false);
-        }
-    };
-
-    const MAX_ATTACHMENT_BYTES = 20 * 1024; // 20 KB
-    const handlePostClubMessage = async (e) => {
-        e.preventDefault();
-        if (!clubChannel?.id) return;
-        const text = newMessage?.trim() || '';
-        if (!text && !attachmentFile) return;
-        setUploadingAttachment(!!attachmentFile);
-        try {
-            let attachmentUrl = null;
-            let attachmentType = null;
-            if (attachmentFile) {
-                if (attachmentFile.size > MAX_ATTACHMENT_BYTES) {
-                    toast.error('File must be 20 KB or less');
-                    return;
-                }
-                const up = await chatService.uploadAttachment(clubChannel.id, attachmentFile);
-                if (up.success && up.data) {
-                    attachmentUrl = up.data.url;
-                    attachmentType = up.data.attachment_type;
-                } else {
-                    toast.error('Upload failed');
-                    return;
-                }
-            }
-            await chatService.postMessage(clubChannel.id, text || ' ', 'text', attachmentUrl, attachmentType);
-            setNewMessage('');
-            setAttachmentFile(null);
-            fetchClubMessages(clubChannel.id);
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to send message');
-        } finally {
-            setUploadingAttachment(false);
-        }
-    };
-
-    const handleDeleteMessage = async (msgId) => {
-        try {
-            await chatService.deleteMessage(msgId);
-            toast.success('Message deleted');
-            fetchClubMessages(clubChannel.id);
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to delete message');
-        }
-    };
-
-    const handleEditMessage = async (e) => {
-        e.preventDefault();
-        if (!editingMsgId || !editDraft?.trim()) return;
-        try {
-            await chatService.editMessage(editingMsgId, editDraft.trim());
-            toast.success('Message updated');
-            setEditingMsgId(null);
-            setEditDraft('');
-            fetchClubMessages(clubChannel.id);
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Cannot edit (only within 5 min)');
-        }
-    };
-
-    const handleVotePoll = async (msgId, optionIndex) => {
-        try {
-            await chatService.votePoll(msgId, optionIndex);
-            fetchClubMessages(clubChannel.id);
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to vote');
-        }
-    };
-
-    const fetchScheduledMessages = async () => {
-        if (!clubChannel?.id) return;
-        setScheduledLoading(true);
-        try {
-            const res = await chatService.listScheduledMessages(clubChannel.id);
-            if (res.success && res.data) setScheduledMessages(res.data);
-        } catch (e) {
-            setScheduledMessages([]);
-        } finally {
-            setScheduledLoading(false);
-        }
-    };
-
-    const handleScheduleMessage = async (e) => {
-        e.preventDefault();
-        if (!clubChannel?.id || !newMessage?.trim() || !scheduledAt) {
-            toast.error('Enter message and schedule date/time');
-            return;
-        }
-        const at = new Date(scheduledAt);
-        if (isNaN(at.getTime()) || at.getTime() <= Date.now()) {
-            toast.error('Schedule time must be in the future');
-            return;
-        }
-        try {
-            await chatService.createScheduledMessage(clubChannel.id, newMessage.trim(), at.toISOString());
-            toast.success('Message scheduled');
-            setNewMessage('');
-            setScheduledAt('');
-            setPostMode('message');
-            fetchScheduledMessages();
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to schedule');
-        }
-    };
-
-    const handlePostPoll = async (e) => {
-        e.preventDefault();
-        const question = (postMode === 'poll' ? pollQuestion : newMessage)?.trim();
-        const opts = postMode === 'poll' ? pollOptions.filter(Boolean) : [];
-        if (!clubChannel?.id || !question) return;
-        if (opts.length < 2) {
-            toast.error('Add at least 2 options');
-            return;
-        }
-        try {
-            await chatService.postPoll(clubChannel.id, question, opts);
-            setPollQuestion('');
-            setPollOptions(['Yes', 'No']);
-            setNewMessage('');
-            setPostMode('message');
-            fetchClubMessages(clubChannel.id);
-            toast.success('Poll created');
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to create poll');
-        }
-    };
-
-    const addPollOption = () => {
-        if (pollOptions.length >= 20) return;
-        setPollOptions([...pollOptions, '']);
-    };
-    const removePollOption = (idx) => {
-        if (pollOptions.length <= 2) return;
-        setPollOptions(pollOptions.filter((_, i) => i !== idx));
-    };
-    const setPollOptionAt = (idx, value) => {
-        setPollOptions(pollOptions.map((o, i) => (i === idx ? value : o)));
-    };
-
-    const handleEditPollSubmit = async (e, msgId) => {
-        e.preventDefault();
-        try {
-            await chatService.editPoll(msgId, { message: editPollQuestion, options: editPollOptions.filter(Boolean) });
-            toast.success('Poll updated');
-            setEditingPollId(null);
-            fetchClubMessages(clubChannel.id);
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed');
-        }
-    };
-
-    const handleUpdateChannelSettings = async (patch) => {
-        if (!clubChannel?.id) return;
-        setSavingSettings(true);
-        try {
-            const res = await chatService.updateChannelSettings(clubChannel.id, { ...channelSettings, ...patch });
-            if (res.success && res.data) setChannelSettings((s) => ({ ...s, ...res.data }));
-            toast.success('Settings saved');
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Failed to save settings');
-        } finally {
-            setSavingSettings(false);
-        }
-    };
-
-    // --- Render Components ---
-
-
-
-    const tabList = [
-        { id: 'overview', label: 'Overview', icon: Layout },
-        { id: 'members', label: 'Members', icon: Users },
-        { id: 'requests', label: 'Requests', icon: UserPlus },
-        { id: 'activities', label: 'Activities', icon: Calendar },
-        { id: 'communication', label: 'Chat', icon: MessageSquare },
-        { id: 'settings', label: 'Settings', icon: Settings },
-    ];
+    const filteredStudents = studentsList.filter(s => {
+        const matchesSearch = !studentSearch || 
+            s.student_name?.toLowerCase().includes(studentSearch.toLowerCase()) || 
+            s.admission_number?.toLowerCase().includes(studentSearch.toLowerCase());
+        const matchesClub = !studentClubFilter || String(s.club_id) === String(studentClubFilter);
+        const matchesStatus = !studentStatusFilter || s.status === studentStatusFilter;
+        return matchesSearch && matchesClub && matchesStatus;
+    });
 
     return (
-        <div className={`p-4 sm:p-6 w-full max-w-[100vw] mx-auto overflow-x-hidden ${viewMode === 'list' ? 'space-y-4 sm:space-y-6' : 'flex flex-col min-h-0 max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)]'}`}>
-            {/* Header - mobile friendly */}
-            {viewMode === 'list' && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Clubs & Communities</h1>
-                        <p className="text-sm text-gray-500 mt-0.5">Manage organizations, memberships, and activities.</p>
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+            {/* ================= 1. SUBPAGE: CLUB MANAGEMENT ================= */}
+            {subPage === 'management' && (
+                <>
+                    {viewMode === 'list' ? (
+                        <div className="space-y-4">
+                            {/* Top Bar */}
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm">
+                                        <Users size={20} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-extrabold text-gray-900 leading-tight">Student Clubs</h2>
+                                        <p className="text-xs text-gray-500">{clubs.length} {clubs.length === 1 ? 'club' : 'clubs'} registered</p>
+                                    </div>
+                                </div>
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => { resetForm(); setShowCreateModal(true); }}
+                                        className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm"
+                                    >
+                                        <Plus size={16} strokeWidth={2.5} /> Create Club
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Clubs Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                                {clubs.map(club => (
+                                    <ClubCard
+                                        key={club.id}
+                                        club={club}
+                                        onViewDetails={handleViewDetails}
+                                        isAdmin={isAdmin}
+                                        onToggleStatus={handleToggleStatus}
+                                        onEdit={prepareEdit}
+                                    />
+                                ))}
+                                {clubs.length === 0 && !loading && (
+                                    <div className="col-span-full py-20 text-center text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
+                                        <Shield size={48} className="mx-auto mb-4 opacity-20" />
+                                        <p className="text-lg font-medium text-gray-500">No student clubs found</p>
+                                        <p className="text-sm">Click "Create New Club" to register a new student club</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        /* Club Details View */
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                            {/* Gradient Banner Header */}
+                            {(() => {
+                                const gradients = [
+                                    'from-blue-500 to-indigo-600',
+                                    'from-violet-500 to-purple-600',
+                                    'from-emerald-500 to-teal-600',
+                                    'from-orange-500 to-rose-500',
+                                    'from-sky-500 to-cyan-600',
+                                    'from-pink-500 to-fuchsia-600',
+                                ];
+                                const gradient = gradients[(selectedClub?.id || 0) % gradients.length];
+                                const initials = selectedClub?.name ? selectedClub.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
+                                return (
+                                    <div className={`bg-gradient-to-br ${gradient} px-6 pt-6 pb-4 relative`}>
+                                        <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
+                                            <div className="flex items-end gap-4">
+                                                <button
+                                                    onClick={() => setViewMode('list')}
+                                                    className="p-2 rounded-xl bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-all mb-0.5"
+                                                >
+                                                    <ArrowRight size={18} className="rotate-180" />
+                                                </button>
+                                                <div className="w-16 h-16 rounded-2xl border-2 border-white/50 overflow-hidden bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                                                    {selectedClub?.image_url ? (
+                                                        <img src={selectedClub.image_url} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <span className="text-white font-extrabold text-xl">{initials}</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h2 className="text-2xl font-extrabold text-white">{selectedClub?.name}</h2>
+                                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide ${
+                                                            selectedClub?.is_active ? 'bg-white/20 text-white' : 'bg-red-200/70 text-red-900'
+                                                        }`}>
+                                                            {selectedClub?.is_active ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-white/80 mt-0.5 max-w-xl line-clamp-1">{selectedClub?.description}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2 pb-1">
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => prepareEdit(selectedClub)}
+                                                        className="px-3.5 py-2 bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/30"
+                                                    >
+                                                        <Edit2 size={14} /> Edit Club
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => setDetailsTab('chat')}
+                                                    className="px-3.5 py-2 bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/30"
+                                                >
+                                                    <MessageSquare size={14} /> Chat
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Inner Navigation Tabs Bar */}
+                            {(() => {
+                                const approvedMembers = (selectedClub?.members || []).filter(m => m.status === 'approved');
+                                const pendingRequests = (selectedClub?.members || []).filter(m => m.status === 'pending');
+                                const clubActivities = selectedClub?.activities || [];
+
+                                return (
+                                    <>
+                                        {/* Tab Strip */}
+                                        <div className="border-b border-gray-200 bg-white">
+                                            <div className="flex items-center gap-0 overflow-x-auto px-6 scrollbar-hide">
+                                                {[
+                                                    { key: 'overview', label: 'Overview', icon: Shield },
+                                                    { key: 'members', label: `Members`, count: approvedMembers.length, icon: Users },
+                                                    { key: 'requests', label: `Requests`, count: pendingRequests.length, icon: Clock },
+                                                    { key: 'activities', label: `Activities`, count: clubActivities.length, icon: Calendar },
+                                                    { key: 'chat', label: 'Chat', icon: MessageSquare },
+                                                    { key: 'settings', label: 'Settings', icon: Settings }
+                                                ].map(tab => {
+                                                    const Icon = tab.icon;
+                                                    const isActive = detailsTab === tab.key;
+                                                    return (
+                                                        <button
+                                                            key={tab.key}
+                                                            onClick={() => setDetailsTab(tab.key)}
+                                                            className={`flex items-center gap-2 px-4 py-3.5 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${
+                                                                isActive
+                                                                    ? 'border-blue-600 text-blue-600'
+                                                                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+                                                            }`}
+                                                        >
+                                                            <Icon size={14} />
+                                                            {tab.label}
+                                                            {tab.count !== undefined && (
+                                                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold leading-none ${
+                                                                    isActive
+                                                                        ? 'bg-blue-100 text-blue-700'
+                                                                        : tab.count > 0
+                                                                            ? 'bg-amber-100 text-amber-700'
+                                                                            : 'bg-gray-100 text-gray-500'
+                                                                }`}>
+                                                                    {tab.count}
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Tab Content */}
+                                        <div className="p-6 space-y-6">
+
+                                        {/* TAB 1: OVERVIEW */}
+                                        {detailsTab === 'overview' && (
+                                            <div className="space-y-6 pt-2">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div className="p-4 rounded-xl border border-gray-100 bg-blue-50/50">
+                                                        <p className="text-xs text-blue-600 font-medium">Approved Members</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{approvedMembers.length}</p>
+                                                    </div>
+                                                    <div className="p-4 rounded-xl border border-gray-100 bg-amber-50/50">
+                                                        <p className="text-xs text-amber-600 font-medium">Pending Requests</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{pendingRequests.length}</p>
+                                                    </div>
+                                                    <div className="p-4 rounded-xl border border-gray-100 bg-green-50/50">
+                                                        <p className="text-xs text-green-600 font-medium">Membership Fee</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">â‚¹{selectedClub?.membership_fee || 0}</p>
+                                                    </div>
+                                                    <div className="p-4 rounded-xl border border-gray-100 bg-purple-50/50">
+                                                        <p className="text-xs text-purple-600 font-medium">Fee Schedule</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{selectedClub?.fee_type || 'Yearly'}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                                                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                        <Shield size={18} className="text-blue-600" /> Club Officers & Dynamic Admin Roles
+                                                    </h3>
+                                                    {selectedClub?.admin_roles && selectedClub.admin_roles.length > 0 ? (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                                            {selectedClub.admin_roles.map((roleItem, i) => (
+                                                                <div key={i} className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs shadow-xs">
+                                                                    <p className="font-extrabold text-blue-700">{roleItem.roleName}</p>
+                                                                    <p className="font-semibold text-slate-800 mt-1">{roleItem.name}</p>
+                                                                    <p className="text-[11px] text-slate-500 truncate mt-0.5">{roleItem.email}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-slate-500 italic">No admin leadership roles assigned yet. Go to Settings tab to manage officers.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TAB 2: MEMBERS */}
+                                        {detailsTab === 'members' && (
+                                            <div className="space-y-4 pt-2">
+                                                <div className="flex justify-between items-center">
+                                                    <h3 className="text-base font-bold text-gray-900">Approved Student Members ({approvedMembers.length})</h3>
+                                                </div>
+                                                <div className="overflow-x-auto border rounded-xl">
+                                                    <table className="w-full text-left text-xs">
+                                                        <thead className="bg-gray-50 border-b text-gray-600 uppercase font-semibold">
+                                                            <tr>
+                                                                <th className="p-3">Student Name</th>
+                                                                <th className="p-3">Admission No</th>
+                                                                <th className="p-3">Contact</th>
+                                                                <th className="p-3">Joined Date</th>
+                                                                <th className="p-3">Payment Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y">
+                                                            {approvedMembers.map((m, idx) => (
+                                                                <tr key={idx} className="hover:bg-gray-50/50">
+                                                                    <td className="p-3 font-semibold text-gray-900">{m.student_name || m.name}</td>
+                                                                    <td className="p-3 text-gray-600">{m.admission_number}</td>
+                                                                    <td className="p-3 text-gray-500">{m.email || m.phone_number || m.student_mobile}</td>
+                                                                    <td className="p-3 text-gray-500">{m.joined_at ? new Date(m.joined_at).toLocaleDateString() : 'N/A'}</td>
+                                                                    <td className="p-3">
+                                                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-bold text-[10px]">
+                                                                            {m.payment_status || 'Paid'}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                            {approvedMembers.length === 0 && (
+                                                                <tr>
+                                                                    <td colSpan={5} className="p-8 text-center text-gray-400">No approved members found for this club yet.</td>
+                                                                </tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TAB 3: REQUESTS */}
+                                        {detailsTab === 'requests' && (
+                                            <div className="space-y-4 pt-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <h3 className="text-base font-bold text-gray-900">Pending Requests ({pendingRequests.length})</h3>
+                                                        <p className="text-xs text-gray-500">Student join requests pending fee payment or review.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {pendingRequests.map((reqItem, idx) => (
+                                                        <div key={idx} className="p-4 border rounded-xl bg-slate-50/50 flex flex-col justify-between space-y-3">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <h4 className="font-bold text-sm text-gray-900">{reqItem.student_name}</h4>
+                                                                    <p className="text-xs text-gray-500">{reqItem.admission_number} | {reqItem.email || reqItem.phone_number || reqItem.student_mobile}</p>
+                                                                </div>
+                                                                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">
+                                                                    {reqItem.payment_status || 'payment_due'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center pt-2 border-t text-xs text-gray-500">
+                                                                <span>Requested: {reqItem.joined_at ? new Date(reqItem.joined_at).toLocaleDateString() : 'N/A'}</span>
+                                                                {isAdmin && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                const res = await clubService.updateMembershipStatus(selectedClub.id, reqItem.student_id, 'approved');
+                                                                                if (res.success) {
+                                                                                    toast.success('Member approved');
+                                                                                    const updated = await clubService.getClubDetails(selectedClub.id);
+                                                                                    if (updated.success) setSelectedClub(updated.data);
+                                                                                    fetchClubs();
+                                                                                }
+                                                                            } catch (e) {
+                                                                                toast.error('Failed to approve member');
+                                                                            }
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center gap-1 shadow-xs"
+                                                                    >
+                                                                        <Check size={14} /> Approve Member
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {pendingRequests.length === 0 && (
+                                                        <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed">
+                                                            <CheckCircle size={36} className="mx-auto mb-2 text-green-500 opacity-60" />
+                                                            <p className="text-sm font-semibold text-gray-600">No pending requests!</p>
+                                                            <p className="text-xs text-gray-400">All student join requests have been approved.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TAB 4: ACTIVITIES */}
+                                        {detailsTab === 'activities' && (
+                                            <div className="space-y-4 pt-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <h3 className="text-base font-bold text-gray-900">Club Activities ({clubActivities.length})</h3>
+                                                        <p className="text-xs text-gray-500">Events, workshops and programs organized by this club.</p>
+                                                    </div>
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={() => setShowActivityModal(true)}
+                                                            className="px-3.5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5 shadow-sm transition-all"
+                                                        >
+                                                            <Plus size={14} /> Add Activity
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {clubActivities.map((act, i) => (
+                                                        <div key={i} className="p-4 border rounded-xl bg-gray-50/50 space-y-2">
+                                                            <h4 className="font-bold text-sm text-gray-900">{act.title}</h4>
+                                                            <p className="text-xs text-gray-600">{act.description}</p>
+                                                            <div className="flex items-center gap-4 text-xs text-gray-500 pt-2 border-t">
+                                                                <span>ðŸ“… {act.date}</span>
+                                                                {act.location && <span>ðŸ“ {act.location}</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {clubActivities.length === 0 && (
+                                                        <div className="col-span-full py-10 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed">
+                                                            <p className="text-sm">No activities published for this club yet.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TAB 5: CHAT */}
+                                        {detailsTab === 'chat' && (
+                                            <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm mt-2">
+                                                <ClubChatBox club={selectedClub} />
+                                            </div>
+                                        )}
+
+                                        {/* TAB 6: SETTINGS */}
+                                        {detailsTab === 'settings' && (
+                                            <div className="space-y-6 pt-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <h3 className="text-base font-bold text-gray-900">Club Configuration & Admin Roles</h3>
+                                                        <p className="text-xs text-gray-500">Edit club details and assign dynamic admin leadership roles.</p>
+                                                    </div>
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={() => prepareEdit(selectedClub)}
+                                                            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5 shadow-sm"
+                                                        >
+                                                            <Edit2 size={14} /> Update Settings & Assign Roles
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-3 text-xs">
+                                                    <p className="text-gray-700">Membership Fee: <b>â‚¹{selectedClub?.membership_fee || 0}</b> ({selectedClub?.fee_type || 'Yearly'})</p>
+                                                    <p className="text-gray-700">Active Status: <b>{selectedClub?.is_active ? 'Active' : 'Inactive'}</b></p>
+                                                    <p className="text-gray-700">Total Officers: <b>{selectedClub?.admin_roles?.length || 0}</b></p>
+                                                </div>
+                                            </div>
+                                        )}
+                                        </div>
+
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* ================= 2. SUBPAGE: STUDENTS ================= */}
+            {subPage === 'students' && (
+                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-5">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900">Student Club Members</h2>
+                            <p className="text-xs text-gray-500">View and manage all registered student club members across clubs.</p>
+                        </div>
+                        <button onClick={fetchStudents} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                            <RefreshCw size={14} /> Refresh
+                        </button>
                     </div>
-                    <button
-                        onClick={() => { resetForm(); setShowCreateModal(true); }}
-                        className="w-full sm:w-auto px-4 py-3 sm:px-5 sm:py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                    >
-                        <Plus size={18} strokeWidth={2.5} /> Create New Club
-                    </button>
+
+                    {/* Filter controls */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search student name / admission no..."
+                                value={studentSearch}
+                                onChange={(e) => setStudentSearch(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <select
+                            value={studentClubFilter}
+                            onChange={(e) => setStudentClubFilter(e.target.value)}
+                            className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">All Student Clubs</option>
+                            {clubs.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={studentStatusFilter}
+                            onChange={(e) => setStudentStatusFilter(e.target.value)}
+                            className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">All Statuses</option>
+                            <option value="approved">Approved</option>
+                            <option value="pending">Pending</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                    </div>
+
+                    {/* Students Table */}
+                    <div className="overflow-x-auto border rounded-xl">
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-gray-50 border-b text-gray-600 uppercase font-semibold">
+                                <tr>
+                                    <th className="p-3">Student Name</th>
+                                    <th className="p-3">Admission No</th>
+                                    <th className="p-3">Club</th>
+                                    <th className="p-3">Membership Status</th>
+                                    <th className="p-3">Payment Status</th>
+                                    <th className="p-3">Joined Date</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {filteredStudents.map((s) => (
+                                    <tr key={s.membership_id} className="hover:bg-gray-50/50">
+                                        <td className="p-3 font-semibold text-gray-900">{s.student_name}</td>
+                                        <td className="p-3 text-gray-600">{s.admission_number}</td>
+                                        <td className="p-3 font-medium text-blue-700">{s.club_name}</td>
+                                        <td className="p-3">
+                                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                                s.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                            }`}>
+                                                {s.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-3">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                s.payment_status === 'paid' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                {s.payment_status || 'free'}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-gray-500">{new Date(s.joined_at).toLocaleDateString()}</td>
+                                    </tr>
+                                ))}
+                                {filteredStudents.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="p-8 text-center text-gray-400">
+                                            {studentsLoading ? 'Loading members...' : 'No club students found.'}
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
-            {viewMode === 'list' ? (
-                <div className="space-y-4 sm:space-y-6 min-h-0">
-                    {/* Stats Row - single column on mobile */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+            {/* ================= 3. SUBPAGE: CLUB SETTINGS & DYNAMIC ROLES ================= */}
+            {subPage === 'settings' && (
+                <div className="space-y-6">
+                    {/* Dynamic Roles Creation & Management Card */}
+                    <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
+                        <div className="flex justify-between items-center">
                             <div>
-                                <p className="text-sm text-gray-500 font-medium">Total Clubs</p>
-                                <h3 className="text-2xl font-bold text-gray-900">{clubs.length}</h3>
-                            </div>
-                            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
-                                <Shield size={20} />
+                                <h2 className="text-lg font-bold text-gray-900">Dynamic Club Admin Roles</h2>
+                                <p className="text-xs text-gray-500">Define dynamic leadership and coordinator roles for student clubs with full edit and delete capabilities.</p>
                             </div>
                         </div>
-                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-500 font-medium">Total Members</p>
-                                <h3 className="text-2xl font-bold text-gray-900">
-                                    {clubs.reduce((acc, c) => acc + (c.members?.length || 0), 0)}
-                                </h3>
-                            </div>
-                            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-lg flex items-center justify-center">
-                                <Users size={20} />
-                            </div>
-                        </div>
-                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-500 font-medium">Monthly Active</p>
-                                <h3 className="text-2xl font-bold text-gray-900">
-                                    {clubs.reduce((acc, c) => acc + (c.activities?.length || 0), 0)}
-                                </h3>
-                            </div>
-                            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
-                                <Zap size={20} />
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Clubs Grid - 1 col mobile */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                        {clubs.map(club => (
-                            <ClubCard
-                                key={club.id}
-                                club={club}
-                                onSelect={handleViewDetails}
-                                isAdmin={isAdmin}
-                                onToggleStatus={handleToggleStatus}
-                            />
-                        ))}
-                        {clubs.length === 0 && !loading && (
-                            <div className="col-span-full py-20 text-center text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
-                                <Shield size={48} className="mx-auto mb-4 opacity-20" />
-                                <p className="text-lg font-medium text-gray-500">No clubs found</p>
-                                <p className="text-sm">Create a new club to get started</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                /* Club Detail View - fills root; root is height-constrained so only chat messages scroll */
-                <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col flex-1 min-h-0">
-                    {/* Detail Header - single row on desktop, description wraps; actions aligned with title */}
-                    <div className="border-b border-gray-100 p-4 sm:p-6 bg-gray-50/30">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
-                            <button onClick={() => setViewMode('list')} className="shrink-0 self-start sm:self-center p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:text-gray-900 transition-colors touch-manipulation" aria-label="Back to list">
-                                <ArrowRight className="rotate-180" size={20} />
-                            </button>
-                            <div className="flex gap-3 min-w-0 flex-1 sm:min-w-0">
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shadow-sm shrink-0">
-                                    {selectedClub.image_url ? (
-                                        <img src={selectedClub.image_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <Users className="text-gray-300" size={28} />
-                                    )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{selectedClub.name}</h1>
-                                    <p className="text-gray-500 text-xs sm:text-sm mt-0.5 line-clamp-2 sm:line-clamp-2 break-words">{selectedClub.description}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-shrink-0 gap-2 flex-wrap sm:flex-nowrap">
-                                {isAdmin && (
-                                    <button onClick={() => handleToggleStatus(selectedClub.id, selectedClub.is_active)} className={`px-3 py-2 border rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors touch-manipulation whitespace-nowrap ${selectedClub.is_active ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-green-50 border-green-200 text-green-600 hover:bg-green-100'}`}>
-                                        <Zap size={14} className={selectedClub.is_active ? "fill-red-600" : "fill-green-600"} /> {selectedClub.is_active ? 'Deactivate' : 'Activate'}
-                                    </button>
-                                )}
-                                <button onClick={() => prepareEdit(selectedClub)} className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-xs sm:text-sm font-bold flex items-center gap-1.5 touch-manipulation whitespace-nowrap">
-                                    <Edit2 size={14} /> Edit
-                                </button>
-                                <button onClick={() => handleDeleteClub(selectedClub.id)} className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs sm:text-sm font-bold flex items-center gap-1.5 touch-manipulation whitespace-nowrap">
-                                    <Trash2 size={14} /> Delete
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                        {/* Roles Grid with Edit and Delete Buttons for ALL roles */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {dynamicRoles.map(role => (
+                                <div key={role.id} className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2 relative group hover:bg-white hover:shadow-md transition-all flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-start gap-2">
+                                            <h3 className="font-bold text-sm text-gray-900">{role.role_name}</h3>
+                                            <span className="text-[10px] font-extrabold uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded shrink-0">
+                                                Dynamic Role
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{role.description || 'No description provided.'}</p>
+                                    </div>
 
-                    {/* Navigation Tabs - horizontal scroll on mobile */}
-                    <div className="border-b border-gray-100 bg-white sticky top-0 z-10 overflow-x-auto scrollbar-hide">
-                        <div className="flex gap-0 min-w-max sm:min-w-0 sm:flex-wrap px-2 sm:px-6">
-                            {tabList.map(({ id, label, icon: Icon }) => (
-                                <button
-                                    key={id}
-                                    onClick={() => setActiveTab(id)}
-                                    className={`shrink-0 py-3 px-3 sm:py-4 sm:px-2 sm:mr-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 touch-manipulation ${activeTab === id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <Icon size={16} className="shrink-0" />
-                                    <span>{label}</span>
-                                    {id === 'requests' && selectedClub?.members?.filter(m => m.status === 'pending').length > 0 && (
-                                        <span className="ml-0.5 px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-bold">
-                                            {selectedClub.members.filter(m => m.status === 'pending').length}
+                                    <div className="pt-3 border-t border-gray-200/60 flex items-center justify-between text-xs">
+                                        <span className="text-[10px] font-mono text-slate-400">
+                                            {role.role_code}
                                         </span>
-                                    )}
-                                </button>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleOpenEditRole(role)}
+                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Edit Role"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteDynamicRole(role.id)}
+                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Delete Role"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     </div>
 
-                    <div className={`p-4 sm:p-6 flex-1 bg-gray-50/30 min-h-0 flex flex-col ${activeTab === 'communication' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-                        {activeTab === 'overview' && (
-                            <div className="max-w-7xl space-y-6 animate-in fade-in duration-300">
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    {/* Left Column: Fees & Stats */}
-                                    <div className="lg:col-span-1 space-y-6">
-                                        {/* Membership & Fees Card */}
-                                        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Membership & Fees</h3>
-                                            <div className="space-y-4">
-                                                <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                                                    <span className="text-gray-600">Fee Amount</span>
-                                                    <span className="font-bold text-gray-900">
-                                                        {selectedClub.membership_fee > 0 ? `₹${selectedClub.membership_fee}` : 'Free'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                                                    <span className="text-gray-600">Frequency</span>
-                                                    <span className="font-medium text-gray-900">{selectedClub.fee_type || 'N/A'}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center py-2">
-                                                    <span className="text-gray-600">Total Revenue (Est.)</span>
-                                                    <span className="font-bold text-green-600">
-                                                        ₹{(selectedClub.membership_fee || 0) * (selectedClub.members?.length || 0)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
+                    {/* Announcements & Notifications Configuration */}
+                    <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-5">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    <Bell size={20} className="text-blue-600" /> Club Announcements & Push Notifications
+                                </h2>
+                                <p className="text-xs text-gray-500">Configure global automated notification preferences for student club events and announcements.</p>
+                            </div>
+                        </div>
 
-                                        {/* Club Statistics Card */}
-                                        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Club Statistics</h3>
-                                            <div className="space-y-4">
-                                                <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                                                    <span className="text-gray-600">Total Members</span>
-                                                    <span className="font-bold text-gray-900">{selectedClub.members?.length || 0}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                                                    <span className="text-gray-600">Total Activities</span>
-                                                    <span className="font-medium text-gray-900">{selectedClub.activities?.length || 0}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center py-2">
-                                                    <span className="text-gray-600">Status</span>
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${selectedClub.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {selectedClub.is_active ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Right Column: Description + Club Image */}
-                                    <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Description</h3>
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{selectedClub.description}</p>
-                                            <div className="w-full min-h-[200px] rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shadow-sm">
-                                                {selectedClub.image_url ? (
-                                                    <img
-                                                        src={selectedClub.image_url}
-                                                        alt={selectedClub.name}
-                                                        className="w-full h-full min-h-[200px] object-cover"
-                                                    />
-                                                ) : (
-                                                    <div className="w-full h-full min-h-[200px] flex items-center justify-center text-gray-300">
-                                                        <Users size={48} />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
+                        <div className="space-y-4 divide-y divide-gray-100">
+                            <div className="flex justify-between items-center pt-2">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-900">Club Announcements Notifications</p>
+                                    <p className="text-xs text-gray-500">Automatically notify registered members when new club announcements are posted.</p>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newVal = !announcementNotify;
+                                        setAnnouncementNotify(newVal);
+                                        localStorage.setItem('club_announcement_notify', String(newVal));
+                                        toast.success(`Announcement notifications ${newVal ? 'ENABLED' : 'DISABLED'}`);
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                        announcementNotify ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    {announcementNotify ? 'ON' : 'OFF'}
+                                </button>
                             </div>
-                        )}
 
-                        {activeTab === 'members' && (
-                            <div className="space-y-4 animate-in fade-in duration-300">
-                                {/* Search & Filter Bar */}
-                                <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search by name or admission no..."
-                                            value={searchTerm}
-                                            onChange={e => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                    </div>
-                                    <select
-                                        value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
-                                    >
-                                        <option value="">All Programs</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
-                                    </select>
-                                    <select
-                                        value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
-                                    >
-                                        <option value="">All Branches</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
-                                    </select>
+                            <div className="flex justify-between items-center pt-4">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-900">Fee Payment Alert Notifications</p>
+                                    <p className="text-xs text-gray-500">Send push reminders to students when club membership fee payments are due.</p>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newVal = !feeNotify;
+                                        setFeeNotify(newVal);
+                                        localStorage.setItem('club_fee_notify', String(newVal));
+                                        toast.success(`Fee notifications ${newVal ? 'ENABLED' : 'DISABLED'}`);
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                        feeNotify ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    {feeNotify ? 'ON' : 'OFF'}
+                                </button>
+                            </div>
 
-                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                    {!selectedClub.members || selectedClub.members.length === 0 ? (
-                                        <div className="p-12 text-center text-gray-400">No members yet.</div>
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left">
-                                                <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold">
-                                                    <tr>
-                                                        <th className="px-6 py-4">Student Details</th>
-                                                        <th className="px-6 py-4">Academic Info</th>
-                                                        <th className="px-6 py-4">Status</th>
-                                                        <th className="px-6 py-4">Payment</th>
-                                                        <th className="px-6 py-4">Joined Date</th>
-                                                        <th className="px-6 py-4">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100">
-                                                    {selectedClub.members
-                                                        .filter(m => m.status && m.status !== 'pending')
-                                                        .filter(member => {
-                                                            const matchesSearch = (member.student_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                                                                (member.admission_number?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-                                                            const matchesCourse = !filterCourse || member.course === filterCourse;
-                                                            const matchesBranch = !filterBranch || member.branch === filterBranch;
-                                                            return matchesSearch && matchesCourse && matchesBranch;
-                                                        })
-                                                        .map((member, idx) => (
-                                                            <tr key={idx} className="hover:bg-gray-50">
-                                                                <td className="px-6 py-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0">
-                                                                            {member.student_photo ? <img src={member.student_photo} className="w-full h-full object-cover" alt="" /> : <Users size={18} className="m-auto mt-2.5 text-gray-400" />}
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="font-bold text-gray-900">{member.student_name}</div>
-                                                                            <div className="text-xs text-gray-500">{member.admission_number}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <div className="text-sm text-gray-900 font-medium">{member.course} - {member.branch}</div>
-                                                                    <div className="text-xs text-gray-500">{member.college}</div>
-                                                                    <div className="text-xs text-gray-500">Year: {member.current_year} | Sem: {member.current_semester}</div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${member.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                                        }`}>
-                                                                        {(member.status || 'N/A').toUpperCase()}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <span className={`text-sm font-medium ${member.payment_status === 'paid' ? 'text-green-600' :
-                                                                        member.payment_status === 'payment_due' ? 'text-orange-600' : 'text-gray-600'
-                                                                        }`}>
-                                                                        {member.payment_status === 'payment_due' ? 'Payment Due' :
-                                                                            member.payment_status === 'paid' ? 'Paid' : 'N/A'}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-gray-500">
-                                                                    {new Date(member.joined_at).toLocaleDateString()}
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    {member.status === 'approved' && (
-                                                                        <button
-                                                                            onClick={() => handleMemberAction(member.student_id, 'rejected')}
-                                                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                                            title="Remove Member"
-                                                                        >
-                                                                            <XCircle size={18} />
-                                                                        </button>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
+                            <div className="flex justify-between items-center pt-4">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-900">Member Activity Push Notifications</p>
+                                    <p className="text-xs text-gray-500">Notify club members when new events, activities, or schedule changes are published.</p>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newVal = !activityNotify;
+                                        setActivityNotify(newVal);
+                                        localStorage.setItem('club_activity_notify', String(newVal));
+                                        toast.success(`Activity notifications ${newVal ? 'ENABLED' : 'DISABLED'}`);
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                        activityNotify ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    {activityNotify ? 'ON' : 'OFF'}
+                                </button>
                             </div>
-                        )}
-
-                        {activeTab === 'requests' && (
-                            <div className="space-y-4 animate-in fade-in duration-300">
-                                {/* Search & Filter Bar */}
-                                <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search by name or admission no..."
-                                            value={searchTerm}
-                                            onChange={e => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                    </div>
-                                    <select
-                                        value={filterCourse} onChange={e => setFilterCourse(e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
-                                    >
-                                        <option value="">All Programs</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.course).filter(Boolean))].map((c) => <option key={c} value={c.id || c}>{c.name || c}</option>)}
-                                    </select>
-                                    <select
-                                        value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[150px]"
-                                    >
-                                        <option value="">All Branches</option>
-                                        {[...new Set(selectedClub.members?.map(m => m.branch).filter(Boolean))].map((b) => <option key={b} value={b.id || b}>{b.name || b}</option>)}
-                                    </select>
-                                </div>
-
-                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                    {(() => {
-                                        const pendingMembers = selectedClub.members
-                                            ?.filter(m => m.status === 'pending')
-                                            .filter(member => {
-                                                const matchesSearch = (member.student_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                                                    (member.admission_number?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-                                                const matchesCourse = !filterCourse || member.course === filterCourse;
-                                                const matchesBranch = !filterBranch || member.branch === filterBranch;
-                                                return matchesSearch && matchesCourse && matchesBranch;
-                                            }) || [];
-
-                                        if (pendingMembers.length === 0) {
-                                            return <div className="p-12 text-center text-gray-400">No pending requests found.</div>;
-                                        }
-                                        return (
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left">
-                                                    <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold">
-                                                        <tr>
-                                                            <th className="px-6 py-4">Student Details</th>
-                                                            <th className="px-6 py-4">Academic Info</th>
-                                                            <th className="px-6 py-4">Status</th>
-                                                            <th className="px-6 py-4">Requested Date</th>
-                                                            <th className="px-6 py-4">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-100">
-                                                        {pendingMembers.map((member, idx) => (
-                                                            <tr key={idx} className="hover:bg-gray-50">
-                                                                <td className="px-6 py-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0">
-                                                                            {member.student_photo ? <img src={member.student_photo} className="w-full h-full object-cover" alt="" /> : <Users size={18} className="m-auto mt-2.5 text-gray-400" />}
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="font-bold text-gray-900">{member.student_name}</div>
-                                                                            <div className="text-xs text-gray-500">{member.admission_number}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <div className="text-sm text-gray-900 font-medium">{member.course} - {member.branch}</div>
-                                                                    <div className="text-xs text-gray-500">{member.college}</div>
-                                                                    <div className="text-xs text-gray-500">Year: {member.current_year} | Sem: {member.current_semester}</div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">
-                                                                        PENDING
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-gray-500">
-                                                                    {new Date(member.joined_at).toLocaleDateString()}
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <div className="flex gap-2">
-                                                                        <button
-                                                                            onClick={() => handleMemberAction(member.student_id, 'approved')}
-                                                                            className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-xs font-bold flex items-center gap-1"
-                                                                        >
-                                                                            <Check size={14} /> Approve
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleMemberAction(member.student_id, 'rejected')}
-                                                                            className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-xs font-bold flex items-center gap-1"
-                                                                        >
-                                                                            <XCircle size={14} /> Reject
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'activities' && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                {isAdmin && (
-                                    <div className="flex justify-end">
-                                        <button
-                                            onClick={() => { resetActivityForm(); setShowActivityModal(true); }}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 shadow-sm"
-                                        >
-                                            <Plus size={16} /> Add Activity
-                                        </button>
-                                    </div>
-                                )}
-
-                                {(!selectedClub.activities || selectedClub.activities.length === 0) ? (
-                                    <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
-                                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                            <Calendar className="text-gray-400" size={32} />
-                                        </div>
-                                        <h3 className="text-lg font-medium text-gray-900">No activities yet</h3>
-                                        <p className="text-gray-500 max-w-sm mx-auto mt-1">
-                                            {isAdmin ? 'Get started by posting an update or event for this club.' : 'This club hasn\'t posted any activities yet.'}
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {selectedClub.activities.map((activity) => (
-                                            <div key={activity.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                                {activity.image_url && (
-                                                    <div className="h-48 overflow-hidden bg-gray-100">
-                                                        <img src={activity.image_url} alt={activity.title} className="w-full h-full object-cover" />
-                                                    </div>
-                                                )}
-                                                <div className="p-5">
-                                                    <div className="flex justify-between items-start gap-4 mb-2">
-                                                        <div>
-                                                            <div className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">
-                                                                {new Date(activity.posted_at).toLocaleDateString()}
-                                                            </div>
-                                                            <h3 className="font-bold text-gray-900 text-lg leading-tight">{activity.title}</h3>
-                                                        </div>
-                                                        {isAdmin && (
-                                                            <div className="flex bg-gray-50 rounded-lg border border-gray-100 p-1 shrink-0">
-                                                                <button
-                                                                    onClick={() => prepareActivityEdit(activity)}
-                                                                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-white rounded-md transition-all"
-                                                                >
-                                                                    <Edit2 size={14} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDeleteActivity(activity.id)}
-                                                                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-white rounded-md transition-all"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-gray-600 text-sm line-clamp-3">{activity.description}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === 'communication' && (
-                            <div className={`animate-in fade-in duration-300 ${clubChannel ? 'flex flex-col flex-1 min-h-0' : 'space-y-6'}`}>
-                                {channelLoading ? (
-                                    <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
-                                        Loading communication...
-                                    </div>
-                                ) : !clubChannel ? (
-                                    <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-                                        <MessageSquare size={48} className="mx-auto mb-4 text-gray-300" />
-                                        <h3 className="text-lg font-bold text-gray-900 mb-2">No Communication Channel Yet</h3>
-                                        <p className="text-gray-500 max-w-md mx-auto mb-6">
-                                            Create a chat channel for club members to communicate.
-                                        </p>
-                                        {isAdmin && (
-                                            <button
-                                                onClick={handleCreateClubChannel}
-                                                disabled={creatingChannel}
-                                                className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 mx-auto"
-                                            >
-                                                <MessageSquare size={18} />
-                                                {creatingChannel ? 'Creating...' : 'Create Communication Channel'}
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                                        {/* WhatsApp-style header */}
-                                        <div className="py-3 px-4 bg-[#075e54] text-white flex items-center gap-2 shrink-0">
-                                            <MessageSquare size={22} className="text-white/90 shrink-0" />
-                                            <span className="font-semibold truncate">{clubChannel.name || 'Club Chat'}</span>
-                                        </div>
-                                        {/* Messages area - fills remaining height, scrolls on mobile */}
-                                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 bg-[#efeae2] flex flex-col gap-1">
-                                            {messagesLoading ? (
-                                                <div className="text-center text-gray-500 py-8">Loading messages...</div>
-                                            ) : clubMessages.length === 0 ? (
-                                                <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
-                                            ) : (
-                                                (() => {
-                                                    const items = [];
-                                                    let lastDate = null;
-                                                    clubMessages.forEach((msg) => {
-                                                        const d = formatChatTime(msg.created_at);
-                                                        if (d !== lastDate) { items.push({ type: 'date', key: `d-${msg.id}`, label: d }); lastDate = d; }
-                                                        items.push({ type: 'msg', key: msg.id, msg });
-                                                    });
-                                                    return items.map((item) => {
-                                                        if (item.type === 'date') return <div key={item.key} className="flex justify-center my-2"><span className="text-xs text-gray-600 bg-white/80 px-3 py-1 rounded-full shadow-sm">{item.label}</span></div>;
-                                                        const msg = item.msg;
-                                                        const isOwn = msg.is_own;
-                                                        return (
-                                                            <div key={item.key} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} w-full min-w-0`}>
-                                                                <div className={`group relative max-w-[85%] min-w-0 ${isOwn ? 'order-2' : 'order-1'}`}>
-                                                                    <div className={`rounded-2xl px-3 py-2 shadow-md break-words overflow-hidden ${msg.is_deleted ? 'bg-gray-200' : isOwn ? 'bg-[#dcf8c6] rounded-br-md' : 'bg-white rounded-bl-md'}`}>
-                                                                        {!isOwn && <p className="text-xs font-semibold text-[#075e54] mb-0.5">{msg.sender_name || 'Unknown'}</p>}
-                                                                        {msg.is_deleted ? (
-                                                                            <p className="text-sm text-gray-600 italic">This message was deleted{msg.deleted_by_name ? ` by ${msg.deleted_by_name}` : ''}.</p>
-                                                                        ) : editingMsgId === msg.id ? (
-                                                                            <form onSubmit={handleEditMessage} className="flex gap-2">
-                                                                                <input type="text" value={editDraft} onChange={(e) => setEditDraft(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded-lg text-sm min-w-[120px]" autoFocus />
-                                                                                <button type="submit" className="px-2 py-1 bg-[#075e54] text-white rounded text-sm">Save</button>
-                                                                                <button type="button" onClick={() => { setEditingMsgId(null); setEditDraft(''); }} className="px-2 py-1 border rounded text-sm">Cancel</button>
-                                                                            </form>
-                                                                        ) : msg.message_type === 'poll' ? (
-                                                                            <div className="space-y-1.5 min-w-0">
-                                                                                <p className="text-sm font-medium text-gray-900 break-words">{msg.message}</p>
-                                                                                <div className="flex flex-col gap-2 mt-1">
-                                                                                    {(msg.poll_options || ['Yes', 'No']).map((label, idx) => {
-                                                                                        const count = (msg.poll_option_counts && msg.poll_option_counts[idx]) != null ? msg.poll_option_counts[idx] : (idx === 0 ? msg.poll_yes_count : msg.poll_no_count);
-                                                                                        const voters = (msg.voters_by_option && msg.voters_by_option[idx]) || [];
-                                                                                        const totalVoters = (msg.voters_count_by_option && msg.voters_count_by_option[idx]) != null ? msg.voters_count_by_option[idx] : voters.length;
-                                                                                        const isSelected = msg.current_user_option_index === idx || (msg.current_user_vote === 'yes' && idx === 0) || (msg.current_user_vote === 'no' && idx === 1);
-                                                                                        const moreCount = totalVoters > voters.length ? totalVoters - voters.length : 0;
-                                                                                        const voterLabel = voters.length > 0 ? (voters.join(', ') + (moreCount > 0 ? ` and ${moreCount} more` : '')) : '';
-                                                                                        return (
-                                                                                            <div key={idx} className="flex flex-col gap-0.5 min-w-0">
-                                                                                                <button type="button" onClick={() => handleVotePoll(msg.id, idx)} disabled={msg.current_user_vote != null || msg.current_user_option_index != null} className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium touch-manipulation ${isSelected ? 'bg-[#075e54] text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>{label} {count != null ? `(${count})` : ''}</button>
-                                                                                                {voterLabel && <span className="text-[10px] text-gray-500 pl-1 truncate" title={voterLabel}>— {voterLabel}</span>}
-                                                                                            </div>
-                                                                                        );
-                                                                                    })}
-                                                                                </div>
-                                                                                {(msg.current_user_vote != null || msg.current_user_option_index != null) && <span className="text-[10px] text-gray-500 block mt-0.5">You voted: {(msg.poll_options || ['Yes', 'No'])[msg.current_user_option_index ?? (msg.current_user_vote === 'yes' ? 0 : 1)]}</span>}
-                                                                                {(msg.can_edit_any || (msg.is_own && msg.message_type === 'poll')) && editingPollId !== msg.id && <button type="button" onClick={() => { setEditingPollId(msg.id); setEditPollQuestion(msg.message); setEditPollOptions(msg.poll_options || ['Yes', 'No']); }} className="text-[10px] text-[#075e54] hover:underline mt-0.5 touch-manipulation">Edit poll</button>}
-                                                                                {editingPollId === msg.id && (
-                                                                                    <form onSubmit={(e) => handleEditPollSubmit(e, msg.id)} className="mt-2 p-2 bg-white/90 rounded-lg border border-gray-200 space-y-2">
-                                                                                        <input type="text" value={editPollQuestion} onChange={(e) => setEditPollQuestion(e.target.value)} placeholder="Question" className="w-full min-w-0 px-2 py-1 text-sm border rounded" />
-                                                                                        {editPollOptions.map((o, i) => <div key={i} className="flex gap-1 min-w-0"><input type="text" value={o} onChange={(e) => setEditPollOptions(editPollOptions.map((opt, j) => j === i ? e.target.value : opt))} className="flex-1 min-w-0 px-2 py-1 text-sm border rounded" placeholder={`Option ${i + 1}`} /></div>)}
-                                                                                        <div className="flex flex-wrap gap-1"><button type="submit" className="px-2 py-1 bg-[#075e54] text-white text-sm rounded touch-manipulation">Save</button><button type="button" onClick={() => setEditingPollId(null)} className="px-2 py-1 border rounded text-sm touch-manipulation">Cancel</button></div>
-                                                                                    </form>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <>
-                                                                                {msg.attachment_url && (msg.attachment_type === 'image' ? <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block mb-1 max-w-full"><img src={msg.attachment_url} alt="" className="max-w-[220px] max-h-36 rounded-lg object-cover w-full" /></a> : <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#075e54] hover:underline block mb-1 break-all">View attachment</a>)}
-                                                                                {(msg.message && msg.message.trim()) && <p className={`text-sm ${msg.is_hidden ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{msg.message}</p>}
-                                                                            </>
-                                                                        )}
-                                                                        <div className="flex items-center justify-end gap-1 mt-0.5">
-                                                                            {msg.edited_at && <span className="text-[10px] text-gray-500">(edited)</span>}
-                                                                            <span className="text-[10px] text-gray-500">{formatMessageTime(msg.created_at)}</span>
-                                                                            {!msg.is_deleted && (msg.can_edit || msg.can_edit_any) && editingMsgId !== msg.id && <button type="button" onClick={() => { setEditingMsgId(msg.id); setEditDraft(msg.message); }} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-500 hover:bg-gray-200/80" title="Edit"><Edit2 size={12} /></button>}
-                                                                            {!msg.is_deleted && (isAdmin || msg.can_edit_any) && <button type="button" onClick={() => handleDeleteMessage(msg.id)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-500 hover:text-red-600 hover:bg-red-50" title="Delete"><Trash2 size={12} /></button>}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    });
-                                                })()
-                                            )}
-                                            <div ref={messagesEndRef} className="h-0" />
-                                        </div>
-                                        {isAdmin && (
-                                            <>
-                                                <div className="px-2 pt-1.5 pb-1 border-t border-gray-200 bg-white flex gap-1 flex-wrap shrink-0">
-                                                    <button type="button" onClick={() => setPostMode('message')} className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-medium touch-manipulation ${postMode === 'message' ? 'bg-[#075e54] text-white' : 'bg-gray-100 text-gray-600'}`}>Message</button>
-                                                    <button type="button" onClick={() => setPostMode('poll')} className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-medium touch-manipulation ${postMode === 'poll' ? 'bg-[#075e54] text-white' : 'bg-gray-100 text-gray-600'}`}><BarChart2 size={12} className="inline mr-0.5" /> Poll</button>
-                                                    <button type="button" onClick={() => setPostMode('schedule')} className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-medium touch-manipulation ${postMode === 'schedule' ? 'bg-[#075e54] text-white' : 'bg-gray-100 text-gray-600'}`}><Clock size={12} className="inline mr-0.5" /> Schedule</button>
-                                                </div>
-                                                {postMode === 'poll' && (
-                                                    <div className="px-3 py-2 space-y-2 border-t border-gray-100 bg-gray-50/50">
-                                                        <input type="text" value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="Poll question" className="w-full px-3 py-2 border border-gray-300 rounded-2xl text-sm" />
-                                                        {pollOptions.map((opt, idx) => (
-                                                            <div key={idx} className="flex gap-1">
-                                                                <input type="text" value={opt} onChange={(e) => setPollOptionAt(idx, e.target.value)} placeholder={`Option ${idx + 1}`} className="flex-1 px-3 py-1.5 border border-gray-300 rounded-xl text-sm" />
-                                                                <button type="button" onClick={() => removePollOption(idx)} disabled={pollOptions.length <= 2} className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-40">×</button>
-                                                            </div>
-                                                        ))}
-                                                        <button type="button" onClick={addPollOption} disabled={pollOptions.length >= 20} className="text-xs text-[#075e54] font-medium">+ Add option</button>
-                                                    </div>
-                                                )}
-                                                {postMode === 'schedule' && (
-                                                    <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50">
-                                                        <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} min={new Date().toISOString().slice(0, 16)} className="w-full px-3 py-2 border border-gray-300 rounded-2xl text-sm" />
-                                                        {scheduledMessages.length > 0 && <div className="text-[10px] text-gray-500 mt-1">Scheduled: {scheduledMessages.length}</div>}
-                                                    </div>
-                                                )}
-                                                <form onSubmit={postMode === 'poll' ? handlePostPoll : postMode === 'schedule' ? handleScheduleMessage : handlePostClubMessage} className="p-2 bg-white border-t border-gray-200 flex items-end gap-2 shrink-0 min-h-0">
-                                                    {postMode !== 'poll' && (
-                                                        <>
-                                                            <label className="shrink-0 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 cursor-pointer touch-manipulation" title="Attach (max 20 KB)">
-                                                                <Image size={20} />
-                                                                <input type="file" accept="image/*,.pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f && f.size <= MAX_ATTACHMENT_BYTES) setAttachmentFile(f); else if (f) toast.error('File must be 20 KB or less'); e.target.value = ''; }} />
-                                                            </label>
-                                                            <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder={postMode === 'schedule' ? 'Message to schedule...' : 'Type a message'} className="flex-1 min-w-0 px-4 py-2.5 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-[#075e54]/30 focus:border-[#075e54] outline-none text-sm" />
-                                                            {attachmentFile && <span className="text-[10px] text-gray-500 truncate max-w-[80px] shrink-0">{attachmentFile.name}</span>}
-                                                        </>
-                                                    )}
-                                                    {postMode === 'poll' && <div className="flex-1 min-w-0" />}
-                                                    <button type="submit" className="shrink-0 w-10 h-10 rounded-full bg-[#075e54] text-white flex items-center justify-center hover:bg-[#064e47] disabled:opacity-50 transition-colors touch-manipulation" disabled={postMode === 'poll' && (!pollQuestion?.trim() || pollOptions.filter(Boolean).length < 2) || (postMode === 'message' && !newMessage?.trim() && !attachmentFile) || uploadingAttachment} title="Send">
-                                                        {uploadingAttachment ? <span className="text-xs">...</span> : <Send size={18} className="ml-0.5" />}
-                                                    </button>
-                                                </form>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === 'settings' && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                {channelLoading ? (
-                                    <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">Loading...</div>
-                                ) : !clubChannel ? (
-                                    <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-                                        <Settings size={48} className="mx-auto mb-4 text-gray-300" />
-                                        <h3 className="text-lg font-bold text-gray-900 mb-2">No Communication Channel</h3>
-                                        <p className="text-gray-500 max-w-md mx-auto">Create a communication channel from the Communication tab to configure settings.</p>
-                                    </div>
-                                ) : (
-                                    <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-xl">
-                                        <h3 className="text-lg font-bold text-gray-900 mb-6">Club communication settings</h3>
-                                        <div className="space-y-6">
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" checked={channelSettings?.students_can_send !== false} onChange={(e) => handleUpdateChannelSettings({ students_can_send: e.target.checked })} disabled={savingSettings} className="rounded border-gray-300" />
-                                                <span className="text-sm font-medium text-gray-700">Allow students to send messages</span>
-                                            </label>
-                                            <div>
-                                                <label className="block text-sm font-bold text-gray-700 mb-2">Auto-disappearing messages</label>
-                                                <p className="text-xs text-gray-500 mb-2">Messages older than this will be automatically removed. Max 30 days.</p>
-                                                <select
-                                                    value={autoDeletePreset}
-                                                    onChange={(e) => {
-                                                        const v = e.target.value;
-                                                        setAutoDeletePreset(v);
-                                                        if (v !== 'custom') handleUpdateChannelSettings({ auto_delete_after_days: Number(v) });
-                                                    }}
-                                                    disabled={savingSettings}
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
-                                                >
-                                                    <option value="7">7 days</option>
-                                                    <option value="10">10 days</option>
-                                                    <option value="30">Monthly (30 days)</option>
-                                                    <option value="custom">Custom</option>
-                                                </select>
-                                                {autoDeletePreset === 'custom' && (
-                                                    <div className="mt-2">
-                                                        <label className="block text-xs text-gray-600 mb-1">Number of days (1–30)</label>
-                                                        <input
-                                                            type="number"
-                                                            min={1}
-                                                            max={30}
-                                                            value={autoDeleteCustomDays}
-                                                            onChange={(e) => setAutoDeleteCustomDays(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
-                                                            onBlur={() => handleUpdateChannelSettings({ auto_delete_after_days: autoDeleteCustomDays })}
-                                                            disabled={savingSettings}
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Create/Edit Modal */}
+            {/* ================= MODAL: CREATE / EDIT CLUB WITH MULTIPLE DYNAMIC ADMIN ROLES & HRMS USER CHECK ================= */}
             <Modal
                 show={showCreateModal || showEditModal}
-                onClose={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                title={showEditModal ? 'Edit Club Configuration' : 'Create New Club'}
+                onClose={() => { setShowCreateModal(false); setShowEditModal(false); resetForm(); }}
+                title={showEditModal ? 'Edit Student Club & Admin Roles' : 'Create New Student Club'}
             >
                 <form onSubmit={showEditModal ? handleUpdateClub : handleCreateClub} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="col-span-full">
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Club Name <span className="text-red-500">*</span></label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1 sm:col-span-2">
+                            <label className="text-xs font-bold text-gray-700">Club Name *</label>
                             <input
                                 type="text"
                                 value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
-                                placeholder="e.g. Robotics Club"
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="e.g. Robotics & Innovation Club"
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
                                 required
                             />
                         </div>
 
-                        <div className="col-span-full">
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
+                        <div className="space-y-1 sm:col-span-2">
+                            <label className="text-xs font-bold text-gray-700">Description</label>
                             <textarea
                                 value={formData.description}
-                                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none h-24"
-                                placeholder="Describe the club's mission and activities..."
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Describe the objectives and activities of this student club..."
+                                rows={3}
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Membership Fee (₹)</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-gray-400">₹</span>
-                                <input
-                                    type="number"
-                                    value={formData.membership_fee}
-                                    onChange={e => setFormData({ ...formData, membership_fee: e.target.value })}
-                                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    placeholder="0.00"
-                                />
-                            </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700">Membership Fee (â‚¹)</label>
+                            <input
+                                type="number"
+                                value={formData.membership_fee}
+                                onChange={(e) => setFormData({ ...formData, membership_fee: e.target.value })}
+                                placeholder="0 for free club"
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Fee Frequency</label>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700">Fee Frequency</label>
                             <select
                                 value={formData.fee_type}
-                                onChange={e => setFormData({ ...formData, fee_type: e.target.value })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white"
+                                onChange={(e) => setFormData({ ...formData, fee_type: e.target.value })}
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="Yearly">Yearly</option>
-                                <option value="Semesterly">Semesterly</option>
+                                <option value="One-Time">One-Time</option>
+                                <option value="Semester">Semester-wise</option>
                             </select>
                         </div>
+                    </div>
 
-                        <div className="col-span-full">
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Club Logo</label>
-                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:bg-gray-50 transition-colors cursor-pointer relative">
-                                <div className="space-y-1 text-center">
-                                    <Camera className="mx-auto h-12 w-12 text-gray-400" />
-                                    <div className="flex text-sm text-gray-600">
-                                        <label className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                                            <span>Upload a file</span>
-                                            <input
-                                                type="file"
-                                                className="sr-only"
-                                                accept="image/*"
-                                                onChange={e => setFormData({ ...formData, image: e.target.files[0] })}
-                                            />
-                                        </label>
-                                        <p className="pl-1">or drag and drop</p>
-                                    </div>
-                                    <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
-                                    {formData.image && (
-                                        <p className="text-sm font-bold text-green-600 mt-2">{formData.image.name}</p>
-                                    )}
-                                </div>
+                    {/* Section: Assign Multiple Dynamic Club Admin Roles */}
+                    <div className="border-t pt-4 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                                    <Shield size={16} className="text-blue-600" /> Multiple Club Admin Roles
+                                </h3>
+                                <p className="text-[11px] text-gray-500">Assign multiple officers (President, Vice Presidents, Faculty Coordinators, etc.) to this club.</p>
                             </div>
                         </div>
 
+                        {/* Existing Assigned Multiple Roles List */}
+                        {formData.admin_roles && formData.admin_roles.length > 0 ? (
+                            <div className="space-y-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                                <p className="text-xs font-bold text-blue-900">Currently Assigned Admin Roles ({formData.admin_roles.length}):</p>
+                                {formData.admin_roles.map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-200 text-xs shadow-2xs">
+                                        <div>
+                                            <span className="font-extrabold text-blue-700 mr-2">[{item.roleName}]</span>
+                                            <span className="font-bold text-gray-900">{item.name}</span>
+                                            <span className="text-gray-500 text-[11px] ml-2">({item.empNo || item.email})</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveAdminRoleAssignment(idx)}
+                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                            title="Remove this role assignment"
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-400 italic bg-gray-50 p-2.5 rounded-lg border border-dashed">
+                                No admin roles assigned to this club yet. Use the form below to search and add officers.
+                            </p>
+                        )}
 
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                        <button
-                            type="button"
-                            onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                            className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition-all"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-sm flex items-center gap-2 transition-all"
-                        >
-                            {showEditModal ? 'Save Changes' : 'Create Club'} <ArrowRight size={16} />
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-
-            {/* Activity Modal */}
-            <Modal
-                show={showActivityModal}
-                onClose={() => setShowActivityModal(false)}
-                title={editingActivity ? 'Edit Activity' : 'Post New Activity'}
-            >
-                <form onSubmit={handleActivitySubmit} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Title <span className="text-red-500">*</span></label>
-                        <input
-                            type="text"
-                            value={activityForm.title}
-                            onChange={e => setActivityForm({ ...activityForm, title: e.target.value })}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
-                            placeholder="e.g. Weekly Workshop"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Description <span className="text-red-500">*</span></label>
-                        <textarea
-                            value={activityForm.description}
-                            onChange={e => setActivityForm({ ...activityForm, description: e.target.value })}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none h-32"
-                            placeholder="Details about the activity..."
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Image (Optional)</label>
-                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
-                            <input
-                                type="file"
-                                onChange={e => setActivityForm({ ...activityForm, image: e.target.files[0] })}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                accept="image/*"
-                            />
-                            {activityForm.image ? (
-                                <div className="text-sm text-green-600 font-medium flex flex-col items-center gap-2">
-                                    <Check size={24} />
-                                    {activityForm.image.name}
+                        {/* Add Officer Assign Form */}
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                            <p className="text-xs font-bold text-slate-800">Add New Admin Role Assignment</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-700">Select Dynamic Role</label>
+                                    <select
+                                        value={selectedRoleCode}
+                                        onChange={(e) => setSelectedRoleCode(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white"
+                                    >
+                                        {dynamicRoles.map(r => (
+                                            <option key={r.role_code} value={r.role_code}>{r.role_name}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            ) : (
-                                <div className="text-gray-400 flex flex-col items-center gap-2">
-                                    <Image size={24} />
-                                    <span className="text-sm font-medium">Click to upload image</span>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-700">Search HRMS Employee / SDMS User</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Type name, emp_no, email..."
+                                        value={hrmsSearchQuery}
+                                        onChange={(e) => handleSearchHrms(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white"
+                                    />
+                                    {searchingHrms && <span className="text-[10px] text-gray-400">Searching employees...</span>}
+                                </div>
+                            </div>
+
+                            {/* HRMS Search Results Dropdown */}
+                            {hrmsSearchResults.length > 0 && (
+                                <div className="max-h-40 overflow-y-auto bg-white border border-slate-300 rounded-lg divide-y shadow-lg">
+                                    {hrmsSearchResults.map((emp, i) => (
+                                        <div
+                                            key={i}
+                                            onClick={() => handleSelectHrmsEmployee(emp)}
+                                            className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex justify-between items-center"
+                                        >
+                                            <div>
+                                                <p className="font-bold text-gray-900">{emp.name}</p>
+                                                <p className="text-[10px] text-gray-500">ID: {emp.emp_no} | {emp.email}</p>
+                                            </div>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                                emp.type === 'SDMS User' || emp.hasUserAccount ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'
+                                            }`}>
+                                                {emp.type || 'Employee'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Selected Employee Card & Account Check */}
+                            {selectedHrmsEmployee && (
+                                <div className="bg-white p-3 border rounded-xl space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-900">Selected: {selectedHrmsEmployee.name}</p>
+                                            <p className="text-[11px] text-gray-500">{selectedHrmsEmployee.emp_no} | {selectedHrmsEmployee.email}</p>
+                                        </div>
+                                        <button type="button" onClick={() => setSelectedHrmsEmployee(null)} className="text-xs text-red-500 font-bold">Change</button>
+                                    </div>
+
+                                    {hrmsUserStatus?.checking && (
+                                        <p className="text-xs text-blue-600 animate-pulse">Checking SDMS User Account...</p>
+                                    )}
+
+                                    {/* ALERT IF NO SDMS USER ACCOUNT */}
+                                    {hrmsUserStatus && !hrmsUserStatus.checking && !hrmsUserStatus.hasUserAccount && (
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                                            <div className="flex items-start gap-2 text-amber-800 text-xs">
+                                                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p className="font-bold">No SDMS User Account Found!</p>
+                                                    <p className="text-[11px] text-amber-700 mt-0.5">
+                                                        Employee <b>{selectedHrmsEmployee.name}</b> doesn't have a user login account in SDMS. Please create an account for this employee first, then add them to the role.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleOpenCreateUserModal}
+                                                className="w-full py-1.5 bg-amber-600 text-white font-bold text-xs rounded-md hover:bg-amber-700 flex items-center justify-center gap-1.5 shadow-xs"
+                                            >
+                                                <UserPlus size={14} /> Create SDMS Account for {selectedHrmsEmployee.name}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* SUCCESS IF SDMS USER ACCOUNT EXISTS */}
+                                    {hrmsUserStatus && !hrmsUserStatus.checking && hrmsUserStatus.hasUserAccount && (
+                                        <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                                            <div className="flex items-center gap-1.5">
+                                                <CheckCircle size={15} className="text-green-600" />
+                                                <span className="font-bold">SDMS Account Active ({hrmsUserStatus.userAccount?.username || 'User'})</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleAddAdminRoleAssignment}
+                                                className="px-3 py-1 bg-green-700 text-white rounded font-bold hover:bg-green-800 text-xs"
+                                            >
+                                                Add to Role
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4">
+                    <div className="flex justify-end gap-2 pt-4 border-t">
                         <button
                             type="button"
-                            onClick={() => setShowActivityModal(false)}
-                            className="px-5 py-2.5 text-gray-600 font-bold hover:bg-gray-100 rounded-xl transition-colors"
+                            onClick={() => { setShowCreateModal(false); setShowEditModal(false); resetForm(); }}
+                            className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg hover:bg-gray-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md transition-all active:scale-95 flex items-center gap-2"
+                            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
                         >
-                            {editingActivity ? <Edit2 size={16} /> : <Send size={16} />}
-                            {editingActivity ? 'Update Activity' : 'Post Activity'}
+                            {showEditModal ? 'Update Club & Save Admin Roles' : 'Create Club'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* ================= MODAL: CREATE / EDIT DYNAMIC ROLE ================= */}
+            <Modal
+                show={showRoleModal}
+                onClose={() => { setShowRoleModal(false); setEditingRole(null); }}
+                title={editingRole ? 'Edit Dynamic Club Role' : 'Add New Dynamic Club Role'}
+            >
+                <form onSubmit={handleSaveDynamicRole} className="space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">Role Name *</label>
+                        <input
+                            type="text"
+                            value={roleForm.role_name}
+                            onChange={(e) => setRoleForm({ ...roleForm, role_name: e.target.value })}
+                            placeholder="e.g. Media Head, Event Director, Treasurer"
+                            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">Description</label>
+                        <textarea
+                            value={roleForm.description}
+                            onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+                            placeholder="Role responsibilities and guidelines..."
+                            rows={3}
+                            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-3">
+                        <button type="button" onClick={() => { setShowRoleModal(false); setEditingRole(null); }} className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg">Cancel</button>
+                        <button type="submit" className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                            {editingRole ? 'Update Role' : 'Create Role'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* ================= MODAL: INLINE SDMS USER ACCOUNT CREATION FOR HRMS EMPLOYEE ================= */}
+            <Modal
+                show={showCreateUserModal}
+                onClose={() => setShowCreateUserModal(false)}
+                title={`Create SDMS Account for ${createUserForm.name}`}
+            >
+                <form onSubmit={handleCreateSDMSUserAccount} className="space-y-4">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
+                        <p className="font-bold">Linking HRMS Employee to SDMS</p>
+                        <p className="text-[11px] mt-0.5">The employee's HRMS credentials (Employee ID as username) will be used automatically â€” no manual password required.</p>
+                        <div className="mt-2 flex items-center gap-2 bg-white/60 p-2 rounded-lg border border-blue-100">
+                            <CheckCircle size={14} className="text-green-600 shrink-0" />
+                            <span className="font-semibold text-blue-900">Username: <code className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-800">{selectedHrmsEmployee?.emp_no}</code> (from HRMS)</span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label className="font-bold text-gray-700">Full Name *</label>
+                            <input
+                                type="text"
+                                value={createUserForm.name}
+                                onChange={(e) => setCreateUserForm({ ...createUserForm, name: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-lg mt-1"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="font-bold text-gray-700">Email Address *</label>
+                            <input
+                                type="email"
+                                value={createUserForm.email}
+                                onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-lg mt-1"
+                                required
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className="font-bold text-gray-700">System Role *</label>
+                            <select
+                                value={createUserForm.role}
+                                onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-lg mt-1"
+                            >
+                                <option value="faculty">Faculty</option>
+                                <option value="college_ao">College AO</option>
+                                <option value="office_assistant">Office Assistant</option>
+                                <option value="branch_hod">Branch HOD</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <button type="button" onClick={() => setShowCreateUserModal(false)} className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg">Cancel</button>
+                        <button type="submit" disabled={creatingUser} className="px-5 py-2 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center gap-1.5">
+                            {creatingUser ? 'Creating Account...' : 'Create Account & Continue'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+            {/* ================= MODAL: ADD ACTIVITY ================= */}
+            <Modal
+                show={showActivityModal}
+                onClose={() => { setShowActivityModal(false); setActivityForm({ title: '', description: '', date: '', location: '' }); }}
+                title="Add Club Activity"
+            >
+                <form onSubmit={handleAddActivity} className="space-y-4">
+                    <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800">
+                        <p className="font-bold">Adding activity to: <span className="text-blue-600">{selectedClub?.name}</span></p>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">Activity Title *</label>
+                        <input
+                            type="text"
+                            value={activityForm.title}
+                            onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
+                            placeholder="e.g. Annual Tech Fest, Workshop on Robotics..."
+                            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">Description</label>
+                        <textarea
+                            value={activityForm.description}
+                            onChange={(e) => setActivityForm({ ...activityForm, description: e.target.value })}
+                            placeholder="Brief overview of the activity, objectives, and details..."
+                            rows={3}
+                            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700">Date *</label>
+                            <input
+                                type="date"
+                                value={activityForm.date}
+                                onChange={(e) => setActivityForm({ ...activityForm, date: e.target.value })}
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                required
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700">Location / Venue</label>
+                            <input
+                                type="text"
+                                value={activityForm.location}
+                                onChange={(e) => setActivityForm({ ...activityForm, location: e.target.value })}
+                                placeholder="e.g. Seminar Hall A"
+                                className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-3 border-t">
+                        <button
+                            type="button"
+                            onClick={() => { setShowActivityModal(false); setActivityForm({ title: '', description: '', date: '', location: '' }); }}
+                            className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg hover:bg-gray-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={savingActivity}
+                            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 flex items-center gap-1.5 shadow-sm"
+                        >
+                            <Plus size={14} /> {savingActivity ? 'Saving...' : 'Add Activity'}
                         </button>
                     </div>
                 </form>
