@@ -100,6 +100,44 @@ const getWebsiteFontSize = (webStr) => {
 };
 
 /**
+ * Format Date of Birth string strictly as DD-MM-YYYY
+ */
+const formatDobDdMmYyyy = (raw) => {
+  if (!raw) return '15-08-2008';
+  const str = String(raw).trim();
+
+  // If already DD-MM-YYYY format (e.g. 15-08-2008)
+  if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+    return str;
+  }
+  // If DD/MM/YYYY format -> replace slashes with hyphens
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    return str.replace(/\//g, '-');
+  }
+
+  let date = new Date(raw);
+  if (isNaN(date.getTime())) {
+    const parts = str.split(/[\/\-.]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      } else if (parts[2].length === 4) {
+        // DD-MM-YYYY or MM-DD-YYYY
+        date = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+      }
+    }
+  }
+
+  if (isNaN(date.getTime())) return str;
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+/**
  * Format address into structured lines
  */
 const formatAddressLines = (rawAddress) => {
@@ -167,12 +205,14 @@ const DigitalIdCardBack = ({
   const websiteFontSize = getWebsiteFontSize(website);
 
   // Resolve Student Personal Details
-  const dateOfBirth =
+  const rawDob =
     studObj.dateOfBirth ||
     studObj.dob ||
     get('date_of_birth') ||
     get('dob') ||
-    '15-08-2008';
+    '';
+
+  const dateOfBirth = formatDobDdMmYyyy(rawDob);
 
   const parentGuardian =
     studObj.parentGuardian ||

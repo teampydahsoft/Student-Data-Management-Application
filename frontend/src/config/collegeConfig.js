@@ -108,12 +108,21 @@ export const resolveCollegeDetails = (collegeProp, studentProp = {}) => {
     preset.contact ||
     '';
 
+  const resolvedSignature =
+    colObj.principal_signature_url ||
+    colObj.principalSignatureUrl ||
+    colObj.signature_url ||
+    studObj.principal_signature_url ||
+    studObj.principalSignatureUrl ||
+    null;
+
   return {
     name: resolvedName,
     website: resolvedWebsite,
     logo: resolvedLogo,
     address: resolvedAddress,
     contact: resolvedContact,
+    principalSignatureUrl: resolvedSignature,
   };
 };
 

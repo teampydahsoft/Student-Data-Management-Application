@@ -104,11 +104,30 @@ const PrintIdCards = () => {
   }, [searchTerm]);
 
   useEffect(() => {
-    api.get('/colleges')
-      .then((res) => {
-        if (res.data?.success) setColleges(res.data.data || []);
-      })
-      .catch(() => {});
+    let cancelled = false;
+    const loadColleges = async () => {
+      try {
+        const res = await api.get('/colleges');
+        if (!cancelled && res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          setColleges(res.data.data);
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to load /colleges, trying /colleges/public:', err);
+      }
+
+      try {
+        const pubRes = await api.get('/colleges/public');
+        if (!cancelled && pubRes.data?.success && Array.isArray(pubRes.data.data) && pubRes.data.data.length > 0) {
+          setColleges(pubRes.data.data);
+        }
+      } catch (err) {
+        console.warn('Failed to load /colleges/public:', err);
+      }
+    };
+
+    loadColleges();
+    return () => { cancelled = true; };
   }, []);
 
   const fetchQuickFilters = useCallback(async (current = {}) => {
@@ -129,6 +148,9 @@ const PrintIdCards = () => {
           years: d.years || [],
           sections: d.sections || [],
         });
+        if (Array.isArray(d.colleges) && d.colleges.length > 0) {
+          setColleges((prev) => (prev && prev.length > 0 ? prev : d.colleges));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -234,33 +256,37 @@ const PrintIdCards = () => {
     return student.college || g('College') || g('college') || 'PYDAH GROUP';
   }, [getStudentData]);
 
-  const resolveCollegeSignature = useCallback((student) => {
-    if (!student || !colleges.length) return null;
-    const colName = String(resolveCollege(student) || '').trim().toLowerCase();
-    const colObj = colleges.find(c =>
-      (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
-      (c.name && c.name.trim().toLowerCase() === colName) ||
-      (c.code && c.code.trim().toLowerCase() === colName)
-    );
-    const relativeUrl = colObj?.principal_signature_url || null;
-    if (!relativeUrl) return null;
-    // Resolve to an absolute URL so <img> can load it from the backend
-    return getStaticFileUrlDirect(relativeUrl);
-  }, [colleges, resolveCollege]);
-
   const resolveCollegeObj = useCallback((student) => {
     if (!student) return null;
+    const studentColId = student.college_id ?? student.collegeId;
     const colName = String(resolveCollege(student) || '').trim().toLowerCase();
-    if (colleges.length > 0) {
-      const colObj = colleges.find(c =>
-        (c.id && (c.id === student.college_id || c.id === student.collegeId)) ||
-        (c.name && c.name.trim().toLowerCase() === colName) ||
-        (c.code && c.code.trim().toLowerCase() === colName)
-      );
+    if (colleges && colleges.length > 0) {
+      const colObj = colleges.find(c => {
+        if (!c) return false;
+        if (studentColId != null && c.id != null && String(c.id) === String(studentColId)) return true;
+        const cName = String(c.name || '').trim().toLowerCase();
+        const cCode = String(c.code || '').trim().toLowerCase();
+        if (cName && (cName === colName || colName.includes(cName) || cName.includes(colName))) return true;
+        if (cCode && (cCode === colName || colName.includes(cCode))) return true;
+        return false;
+      });
       if (colObj) return colObj;
     }
     return resolveCollege(student);
   }, [colleges, resolveCollege]);
+
+  const resolveCollegeSignature = useCallback((student) => {
+    if (!student) return null;
+    const colObj = typeof resolveCollegeObj(student) === 'object' ? resolveCollegeObj(student) : null;
+    const relativeUrl =
+      colObj?.principal_signature_url ||
+      colObj?.principalSignatureUrl ||
+      student.principal_signature_url ||
+      student.principalSignatureUrl ||
+      null;
+    if (!relativeUrl) return null;
+    return getStaticFileUrlDirect(relativeUrl);
+  }, [resolveCollegeObj]);
 
   const activeCollege = useMemo(
     () => resolveCollegeObj(previewStudent),
@@ -427,7 +453,7 @@ const PrintIdCards = () => {
               onChange={(e) => handleFilterChange('college', e.target.value)}
             >
               <option value="">All</option>
-              {colleges.map((c, idx) => (
+              {Array.from(new Map(colleges.filter(c => c && c.isActive !== false).map((c, idx) => [optionValue(c), { c, idx }])).values()).map(({ c, idx }) => (
                 <option key={optionKey(c, idx)} value={optionValue(c)}>
                   {optionLabel(c)}
                 </option>

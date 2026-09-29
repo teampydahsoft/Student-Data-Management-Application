@@ -120,13 +120,13 @@ const splitCollegeNameToTwoLines = (nameStr) => {
 
 const getTwoLineCollegeNameFontSize = (l1, l2) => {
   const maxLineLen = Math.max(String(l1 || '').trim().length, String(l2 || '').trim().length);
-  if (maxLineLen <= 12) return '8.5pt';
-  if (maxLineLen <= 15) return '7.6pt';
-  if (maxLineLen <= 18) return '6.8pt';
-  if (maxLineLen <= 22) return '5.9pt';
-  if (maxLineLen <= 26) return '5.2pt';
-  if (maxLineLen <= 30) return '4.6pt';
-  return '4.2pt';
+  if (maxLineLen <= 12) return '8.2pt';
+  if (maxLineLen <= 15) return '7.4pt';
+  if (maxLineLen <= 18) return '6.6pt';
+  if (maxLineLen <= 22) return '5.8pt';
+  if (maxLineLen <= 26) return '5.1pt';
+  if (maxLineLen <= 30) return '4.5pt';
+  return '4.1pt';
 };
 
 const getCollegeNameFontSize = (nameStr) => {
@@ -138,15 +138,13 @@ const getCollegeNameFontSize = (nameStr) => {
   return '5.0pt';
 };
 
-const getDetailValueFontSize = (valStr, baseSize = '7.5pt') => {
+const getDetailValueFontSize = (valStr, baseSize = '6.2pt') => {
   const len = String(valStr || '').trim().length;
-  if (len <= 13) return baseSize;
-  if (len <= 16) return '6.9pt';
-  if (len <= 20) return '6.2pt';
-  if (len <= 25) return '5.5pt';
+  if (len <= 14) return baseSize;
+  if (len <= 18) return '5.8pt';
+  if (len <= 24) return '5.4pt';
   if (len <= 30) return '4.9pt';
-  if (len <= 36) return '4.4pt';
-  return '4.0pt';
+  return '4.5pt';
 };
 
 const getWebsiteFontSize = (webStr) => {
@@ -296,6 +294,79 @@ const StudentPhotoRing = () => (
 
   </svg>
 );
+
+
+/**
+ * Helper to calculate actual course duration in years based on program/course and level
+ */
+const getCourseDuration = (courseStr = '', levelStr = '') => {
+  const text = `${courseStr} ${levelStr}`.toLowerCase();
+
+  // Pharm.D -> 6 years
+  if (
+    text.includes('pharm.d') ||
+    text.includes('pharm d') ||
+    text.includes('pharmd') ||
+    text.includes('doctor of pharmacy')
+  ) {
+    return 6;
+  }
+
+  // B.Tech / B.Pharm / B.Pharmacy / B.E. / Engineering -> 4 years
+  if (
+    text.includes('b.tech') ||
+    text.includes('btech') ||
+    text.includes('b.pharm') ||
+    text.includes('bpharm') ||
+    text.includes('b.pharmacy') ||
+    text.includes('b.e.') ||
+    text.includes('b.e') ||
+    text.includes('engineering')
+  ) {
+    return 4;
+  }
+
+  // M.Tech / M.Pharm / MCA / MBA / M.Sc / M.Com / PG / Master -> 2 years
+  if (
+    text.includes('m.tech') ||
+    text.includes('mtech') ||
+    text.includes('m.pharm') ||
+    text.includes('mpharm') ||
+    text.includes('m.pharmacy') ||
+    text.includes('mca') ||
+    text.includes('mba') ||
+    text.includes('m.sc') ||
+    text.includes('msc') ||
+    text.includes('m.com') ||
+    text.includes('mcom') ||
+    text.includes('pg') ||
+    text.includes('post graduate') ||
+    text.includes('master')
+  ) {
+    return 2;
+  }
+
+  // Diploma / Polytechnic / B.Sc / B.Com / B.A / BBA / BCA -> 3 years
+  if (
+    text.includes('diploma') ||
+    text.includes('polytechnic') ||
+    text.includes('b.sc') ||
+    text.includes('bsc') ||
+    text.includes('b.com') ||
+    text.includes('bcom') ||
+    text.includes('b.a') ||
+    text.includes('ba') ||
+    text.includes('bba') ||
+    text.includes('bca') ||
+    text.includes('ug') ||
+    text.includes('under graduate')
+  ) {
+    return 3;
+  }
+
+  // Default duration if unrecognized
+  return 4;
+};
 
 
 
@@ -647,6 +718,12 @@ const DigitalStudentCard = ({
   const collegeName = collegeDetails.name;
   const website = collegeDetails.website;
   const collegeLogo = collegeDetails.logo;
+  const signatureUrl =
+    principalSignatureUrl ||
+    (collegeDetails.principalSignatureUrl ? resolvePhotoUrl(collegeDetails.principalSignatureUrl) : null) ||
+    (typeof college === 'object' && college?.principal_signature_url ? resolvePhotoUrl(college.principal_signature_url) : null) ||
+    (studObj.principal_signature_url ? resolvePhotoUrl(studObj.principal_signature_url) : null) ||
+    (studObj.principalSignatureUrl ? resolvePhotoUrl(studObj.principalSignatureUrl) : null);
 
 
 
@@ -717,36 +794,52 @@ const DigitalStudentCard = ({
 
 
   /* =======================================================
-     BATCH
+     BATCH & VALIDITY (DYNAMICALLY DURATION BASED)
 ========================================================= */
+
+  const courseDuration = getCourseDuration(
+    program || studObj.course || get('course', ''),
+    studObj.level || get('level', '')
+  );
 
   const rawBatch =
     studObj.batch ||
     get(
       'batch',
-      '2026 – 30'
+      ''
     );
 
+  let startYear = 2026;
+  let endYear = startYear + courseDuration;
+
+  if (rawBatch) {
+    const rawStr = String(rawBatch).trim();
+    const fourDigitYears = rawStr.match(/\b(20\d{2})\b/g);
+
+    if (fourDigitYears && fourDigitYears.length >= 2) {
+      startYear = Number(fourDigitYears[0]);
+      endYear = Number(fourDigitYears[1]);
+    } else if (fourDigitYears && fourDigitYears.length === 1) {
+      startYear = Number(fourDigitYears[0]);
+      endYear = startYear + courseDuration;
+    } else {
+      const numericVal = parseInt(rawStr, 10);
+      if (!isNaN(numericVal) && numericVal > 2000 && numericVal < 2100) {
+        startYear = numericVal;
+        endYear = startYear + courseDuration;
+      }
+    }
+  }
 
   const batch =
-    String(rawBatch).includes('–') ||
-    String(rawBatch).includes('-')
-      ? rawBatch
-      : `${rawBatch} – ${
-          Number(rawBatch) + 4
-        }`;
-
-
-  /* =======================================================
-     VALIDITY
-========================================================= */
+    rawBatch && (String(rawBatch).includes('–') || String(rawBatch).includes('-'))
+      ? String(rawBatch)
+      : `${startYear} – ${endYear}`;
 
   const validity =
     studObj.validity ||
-    get(
-      'validity',
-      'Upto May 2030'
-    );
+    get('validity', '') ||
+    `Upto May ${endYear}`;
 
 
   /* =======================================================
@@ -1037,7 +1130,7 @@ const DigitalStudentCard = ({
             width: '1px',
             height: '8.0mm',
             backgroundColor: '#CBD5E1',
-            margin: '0 1.5mm',
+            margin: '0 2.2mm',
             flexShrink: 0,
           }}
         />
@@ -1050,7 +1143,9 @@ const DigitalStudentCard = ({
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
+            gap: '0.4mm',
             height: '100%',
+            fontFamily: "'Inter', sans-serif",
           }}
         >
           {(() => {
@@ -1061,11 +1156,12 @@ const DigitalStudentCard = ({
                 <span
                   style={{
                     display: 'block',
-                    color: '#C01823',
-                    fontWeight: 1000,
+                    fontFamily: "'Inter', sans-serif",
+                    color: '#d41723',
+                    fontWeight: 900,
                     fontSize: dynamicCollegeFontSize,
-                    lineHeight: '1.14',
-                    letterSpacing: '-0.015em',
+                    lineHeight: '1.2',
+                    letterSpacing: '-0.01em',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -1077,11 +1173,12 @@ const DigitalStudentCard = ({
                   <span
                     style={{
                       display: 'block',
-                      color: '#C01823',
-                      fontWeight: 1000,
+                      fontFamily: "'Inter', sans-serif",
+                      color: '#d41723',
+                      fontWeight: 900,
                       fontSize: dynamicCollegeFontSize,
-                      lineHeight: '1.14',
-                      letterSpacing: '-0.015em',
+                      lineHeight: '1.2',
+                      letterSpacing: '-0.01em',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -1125,9 +1222,9 @@ const DigitalStudentCard = ({
         className="absolute z-30 text-center"
         style={{
           left: '2mm',
-          top: '41mm',
+          top: '40.6mm',
           width: '50mm',
-          height: '4.6mm',
+          height: '4.2mm',
           overflow: 'hidden',
           display: 'flex',
           alignItems: 'center',
@@ -1152,35 +1249,36 @@ const DigitalStudentCard = ({
       </div>
 
       {/* ===================================================
-          4. STUDENT DETAILS (INCREASED FONT SIZE & BOLDER CONTRAST)
+          4. STUDENT DETAILS (PROPORTIONALLY SIZED & BALANCED)
       =================================================== */}
       <div
         className="absolute z-30"
         style={{
           left: '55%',
           transform: 'translateX(-50%)',
-          top: '46.5mm',
+          top: '45.0mm',
           width: '45mm',
-          fontSize: '7.1pt',
-          lineHeight: '1.35',
+          fontSize: '5.9pt',
+          lineHeight: '1.3',
         }}
       >
         {/* PIN */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '15.5mm 2.2mm 1fr',
-            height: '3.2mm',
+            gridTemplateColumns: '14.5mm 2.0mm 1fr',
+            minHeight: '2.55mm',
             alignItems: 'center',
+            marginBottom: '0.15mm',
           }}
         >
-          <span style={{ fontWeight: 800, fontSize: '7.1pt', color: '#000000', letterSpacing: '0.01em' }}>PIN No</span>
-          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '7.1pt', color: '#000000' }}>:</span>
+          <span style={{ fontWeight: 800, fontSize: '5.9pt', color: '#000000', letterSpacing: '0.01em' }}>PIN No</span>
+          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '5.9pt', color: '#000000' }}>:</span>
           <span
             style={{
-              color: '#000000',
+              color: '#000000ff',
               fontWeight: 800,
-              fontSize: getDetailValueFontSize(pinNo, '7.5pt'),
+              fontSize: getDetailValueFontSize(pinNo, '6.2pt'),
               letterSpacing: '0.01em',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -1195,20 +1293,48 @@ const DigitalStudentCard = ({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '15.5mm 2.2mm 1fr',
-            height: '3.2mm',
-            alignItems: 'center',
+            gridTemplateColumns: '14.5mm 2.0mm 1fr',
+            minHeight: '2.55mm',
+            alignItems: 'flex-start',
+            marginBottom: '0.15mm',
           }}
         >
-          <span style={{ fontWeight: 800, fontSize: '7.1pt', color: '#000000', letterSpacing: '0.01em' }}>Program</span>
-          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '7.1pt', color: '#000000' }}>:</span>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: '5.9pt',
+              color: '#000000ff',
+              letterSpacing: '0.01em',
+              lineHeight: '1.2',
+              paddingTop: '0.05mm',
+            }}
+          >
+            Program
+          </span>
+          <span
+            style={{
+              textAlign: 'center',
+              fontWeight: 800,
+              fontSize: '5.9pt',
+              color: '#000000',
+              lineHeight: '1.2',
+              paddingTop: '0.05mm',
+            }}
+          >
+            :
+          </span>
           <span
             style={{
               color: '#000000',
               fontWeight: 800,
-              fontSize: getDetailValueFontSize(program, '7.5pt'),
+              fontSize: '6.2pt',
               letterSpacing: '0.01em',
-              whiteSpace: 'nowrap',
+              lineHeight: '1.18',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
@@ -1221,20 +1347,48 @@ const DigitalStudentCard = ({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '15.5mm 2.2mm 1fr',
-            height: '3.2mm',
-            alignItems: 'center',
+            gridTemplateColumns: '14.5mm 2.0mm 1fr',
+            minHeight: '2.55mm',
+            alignItems: 'flex-start',
+            marginBottom: '0.15mm',
           }}
         >
-          <span style={{ fontWeight: 800, fontSize: '7.1pt', color: '#000000', letterSpacing: '0.01em' }}>Branch</span>
-          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '7.1pt', color: '#000000' }}>:</span>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: '5.9pt',
+              color: '#000000',
+              letterSpacing: '0.01em',
+              lineHeight: '1.2',
+              paddingTop: '0.05mm',
+            }}
+          >
+            Branch
+          </span>
+          <span
+            style={{
+              textAlign: 'center',
+              fontWeight: 800,
+              fontSize: '5.9pt',
+              color: '#000000',
+              lineHeight: '1.2',
+              paddingTop: '0.05mm',
+            }}
+          >
+            :
+          </span>
           <span
             style={{
               color: '#000000',
               fontWeight: 800,
-              fontSize: getDetailValueFontSize(branch, '7.5pt'),
+              fontSize: '6.2pt',
               letterSpacing: '0.01em',
-              whiteSpace: 'nowrap',
+              lineHeight: '1.18',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
@@ -1247,18 +1401,19 @@ const DigitalStudentCard = ({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '15.5mm 2.2mm 1fr',
-            height: '3.2mm',
+            gridTemplateColumns: '14.5mm 2.0mm 1fr',
+            minHeight: '2.55mm',
             alignItems: 'center',
+            marginBottom: '0.15mm',
           }}
         >
-          <span style={{ fontWeight: 800, fontSize: '7.1pt', color: '#000000', letterSpacing: '0.01em' }}>Batch</span>
-          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '7.1pt', color: '#000000' }}>:</span>
+          <span style={{ fontWeight: 800, fontSize: '5.9pt', color: '#000000', letterSpacing: '0.01em' }}>Batch</span>
+          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '5.9pt', color: '#000000' }}>:</span>
           <span
             style={{
               color: '#000000',
               fontWeight: 800,
-              fontSize: getDetailValueFontSize(batch, '7.5pt'),
+              fontSize: getDetailValueFontSize(batch, '6.2pt'),
               letterSpacing: '0.01em',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -1273,18 +1428,18 @@ const DigitalStudentCard = ({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '15.5mm 2.2mm 1fr',
-            height: '3.2mm',
+            gridTemplateColumns: '14.5mm 2.0mm 1fr',
+            minHeight: '2.55mm',
             alignItems: 'center',
           }}
         >
-          <span style={{ fontWeight: 800, fontSize: '7.1pt', color: '#000000', letterSpacing: '0.01em' }}>Validity</span>
-          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '7.1pt', color: '#000000' }}>:</span>
+          <span style={{ fontWeight: 800, fontSize: '5.9pt', color: '#000000', letterSpacing: '0.01em' }}>Validity</span>
+          <span style={{ textAlign: 'center', fontWeight: 800, fontSize: '5.9pt', color: '#000000' }}>:</span>
           <span
             style={{
               color: '#000000',
               fontWeight: 800,
-              fontSize: getDetailValueFontSize(validity, '7.5pt'),
+              fontSize: getDetailValueFontSize(validity, '6.2pt'),
               letterSpacing: '0.01em',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -1298,30 +1453,28 @@ const DigitalStudentCard = ({
 
       {/* ===================================================
           5. QR CODE + PRINCIPAL SIGNATURE
-          • Anchored from BOTTOM so it never overlaps the details above
-          • QR: 13mm × 13mm container (high-res size=300 SVG scales down)
-          • With sig: QR left | Sig right, both bottom-aligned
-          • Without sig: QR centered
+          • Anchored from BOTTOM so it sits safely above the wave
+          • Clean vertical separation from the details above
       =================================================== */}
-      {principalSignatureUrl ? (
+      {signatureUrl ? (
         /* ── WITH SIGNATURE: QR left, Sig right, bottom-pinned ── */
         <div
           className="absolute z-30"
           style={{
             left: '12mm',
             right: '9mm',
-            bottom:'9.6mm',       /* sits just above the wave (13.5mm tall) */
+            bottom: '10.5mm',
             display: 'flex',
             flexDirection: 'row',
-            alignItems: 'flex-end', /* flush baseline for QR & "Principal" label */
+            alignItems: 'flex-end',
             justifyContent: 'space-between',
           }}
         >
-          {/* QR in a fixed 13mm × 13mm box */}
+          {/* QR in a fixed 10.2mm × 10.2mm box */}
           <div
             style={{
-              width: '11mm',
-              height: '11mm',
+              width: '10.2mm',
+              height: '10.2mm',
               flexShrink: 0,
               overflow: 'hidden',
             }}
@@ -1332,7 +1485,7 @@ const DigitalStudentCard = ({
               level="M"
               includeMargin={false}
               fgColor="#111111"
-              bgColor="#ffffffff"
+              bgColor="#ffffff"
               style={{ width: '100%', height: '100%', display: 'block' }}
             />
           </div>
@@ -1345,16 +1498,16 @@ const DigitalStudentCard = ({
               alignItems: 'center',
               justifyContent: 'flex-end',
               width: '13mm',
-              height: '13mm',       /* same height as QR box */
+              height: '10.5mm',
             }}
           >
-            {/* Signature image — fills width, up to 8mm tall */}
+            {/* Signature image — fills width, up to 6.5mm tall */}
             <img
-              src={principalSignatureUrl}
+              src={signatureUrl}
               alt="Principal Signature"
               style={{
-                width: '21mm',
-                height: '8mm',
+                width: '18mm',
+                height: '6.5mm',
                 objectFit: 'contain',
                 objectPosition: 'center bottom',
                 display: 'block',
@@ -1367,12 +1520,12 @@ const DigitalStudentCard = ({
               style={{
                 width: '10mm',
                 borderTop: '0.5pt solid #374151',
-                marginTop: '1mm',
-                paddingTop: '0.6mm',
+                marginTop: '0.5mm',
+                paddingTop: '0.4mm',
                 textAlign: 'center',
-                fontSize: '4.9pt',
+                fontSize: '4.4pt',
                 fontWeight: 1000,
-                color: '#000000ff',
+                color: '#000000',
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
                 lineHeight: 1,
@@ -1384,15 +1537,15 @@ const DigitalStudentCard = ({
           </div>
         </div>
       ) : (
-        /* ── WITHOUT SIGNATURE: QR centered, 13mm × 13mm, bottom-pinned ── */
+        /* ── WITHOUT SIGNATURE: QR centered, 10.5mm × 10.5mm, bottom-pinned ── */
         <div
           className="absolute z-30"
           style={{
             left: '50%',
             transform: 'translateX(-50%)',
-            bottom: '14.5mm',
-            width: '13mm',
-            height: '13mm',
+            bottom: '10.5mm',
+            width: '10.5mm',
+            height: '10.5mm',
             overflow: 'hidden',
           }}
         >
