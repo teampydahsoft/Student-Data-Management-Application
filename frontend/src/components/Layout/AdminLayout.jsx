@@ -188,7 +188,7 @@ const NAV_ITEMS = [
       },
       {
         path: "/reports/certificates",
-        label: "Certificates Page",
+        label: "Certificate Reports",
         icon: FileCheck,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_registration'
