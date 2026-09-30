@@ -476,7 +476,7 @@ const CertificatesReport = () => {
               <FileCheck size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Certificates Page</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Certificate Reports</h1>
               <p className="text-sm text-gray-500">
                 View student database and certificate submission status for enrolled students
               </p>
