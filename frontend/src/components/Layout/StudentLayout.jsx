@@ -48,7 +48,6 @@ import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 import NotificationPermissionModal from '../NotificationPermissionModal';
-import NotificationIcon from '../Notifications/NotificationIcon';
 import InstallPrompt from '../PWA/InstallPrompt';
 import { getSubscriptionStatus, registerServiceWorker, subscribeUser } from '../../services/pushService';
 import RegistrationPendingModal from '../RegistrationPendingModal';
@@ -56,6 +55,7 @@ import { getTicketAppUrl } from '../../utils/ticketAppUrl';
 import { navigateToCrtApp } from '../../utils/crtAppUrl';
 import { resolveRegistrationBranchYear } from '../../config/registrationBranchYear';
 import { computeRegistrationStageDisplays, isRegistrationPortalUnlocked } from '../../config/registrationStages.jsx';
+import TopHeaderBar from '../student/TopHeaderBar';
 
 const StudentLayout = ({ children }) => {
     // State
@@ -577,6 +577,9 @@ const StudentLayout = ({ children }) => {
                 ${desktopSidebarOpen ? 'lg:ml-72' : 'lg:ml-0'}
                 pb-[calc(80px+env(safe-area-inset-bottom))] lg:pb-8
             `}>
+                {/* Persistent Top Navigation Bar Header across all Student pages */}
+                <TopHeaderBar />
+
                 {/* Birthday banner strip */}
                 {isBirthday && (
                     <div className="mb-4 rounded-xl bg-gradient-to-r from-amber-400/90 via-orange-400/90 to-pink-400/90 text-white px-4 py-2.5 shadow-lg shadow-amber-200/40 flex items-center justify-center gap-2 text-sm font-bold">
@@ -585,11 +588,6 @@ const StudentLayout = ({ children }) => {
                         <span className="text-lg">🎈</span>
                     </div>
                 )}
-
-                {/* Notification Icon */}
-                <div className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] lg:bottom-8 right-4 lg:right-8 z-[50]">
-                    <NotificationIcon />
-                </div>
 
                 <div className="w-full max-w-none">
                     <Outlet />

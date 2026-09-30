@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut, ChevronRight, IndianRupee, Megaphone, Award, Bell } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
+import TopHeaderBar from '../../components/student/TopHeaderBar';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import { serviceService } from '../../services/serviceService';
@@ -741,58 +742,6 @@ const Dashboard = () => {
                 onClose={() => setShowVerifyProfile(false)}
                 studentData={displayData}
             />
-
-            {/* Top Navigation Bar Header */}
-            <div className="flex items-center justify-between py-1 px-1 mb-1">
-                {/* Left: College Logo & Time Wish (Close to Logo) */}
-                <div className="flex items-center gap-2 shrink-0">
-                    <img
-                        src="/logo.png"
-                        alt="Pydah Group"
-                        className="h-8 sm:h-9 w-auto object-contain drop-shadow-xs"
-                    />
-                    <div className="flex flex-col leading-none border-l border-slate-200 pl-2">
-                        <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1">
-                            <span>{timeGreeting.greeting}</span>
-                            <span className="text-[#f97316] font-bold tracking-normal ml-0.5 text-sm sm:text-base" style={{ fontFamily: "'Dancing Script', 'Brush Script MT', 'Caveat', 'Segoe Script', cursive" }}>
-                                Pydian
-                            </span>
-                        </span>
-                    </div>
-                </div>
-
-                {/* Right: Notification Bell & Profile Avatar */}
-                <div className="flex items-center gap-2 sm:gap-2.5">
-                    {/* Notification Bell */}
-                    <button
-                        onClick={() => navigate('/student/announcements')}
-                        className="relative p-1.5 rounded-full text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="Notifications"
-                    >
-                        <Bell className="w-4.5 h-4.5 text-[#1e293b]" />
-                        <span className="absolute top-0.5 right-0.5 flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[9px] font-bold text-white bg-red-500 rounded-full shadow-xs">
-                            {announcements?.length || 3}
-                        </span>
-                    </button>
-
-                    {/* Profile Avatar */}
-                    <button
-                        onClick={() => navigate('/student/profile')}
-                        className="w-8 h-8 rounded-full bg-[#60a5fa] text-white flex items-center justify-center shadow-xs overflow-hidden border border-blue-200 cursor-pointer hover:opacity-90 transition-opacity"
-                        title="View Profile"
-                    >
-                        {displayData?.student_photo || user?.student_photo ? (
-                            <img
-                                src={displayData?.student_photo || user?.student_photo}
-                                alt="Profile"
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <User className="w-4 h-4 text-white stroke-[2.5]" />
-                        )}
-                    </button>
-                </div>
-            </div>
 
             {/* Premium Welcome Header (Image 1 Exact Replica) */}
             <header className={`relative overflow-hidden rounded-[20px] p-3.5 sm:p-4 w-full shadow-md border border-blue-400/20 text-white ${isBirthday ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-r from-[#0b63e5] via-[#024ebd] to-[#013fae]'}`}>
