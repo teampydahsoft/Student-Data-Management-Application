@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut, ChevronRight } from 'lucide-react';
+import { BookOpen, User, CheckCircle, Smartphone, MapPin, BarChart3, Clock, Vote, FileText, ArrowRight, Calendar, X, Users, AlertCircle, RefreshCw, BadgeCheck, ShieldAlert, Sparkles, LogOut, ChevronRight, IndianRupee, Megaphone, Award, Bell } from 'lucide-react';
 import { SkeletonBox, SkeletonCard } from '../../components/SkeletonLoader';
 import { VerifyProfileDialog } from '../../components/student/VerifyProfileDialog';
 import useAuthStore from '../../store/authStore';
@@ -58,6 +58,20 @@ const Dashboard = () => {
         if (isNaN(dob.getTime())) return false;
         return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
     }, [studentData, user]);
+
+    // Dynamic time of day greeting (Good Morning, Afternoon, Evening, Night)
+    const timeGreeting = useMemo(() => {
+        const hour = new Date().getHours();
+        if (hour >= 4 && hour < 12) {
+            return { greeting: 'Good Morning' };
+        } else if (hour >= 12 && hour < 17) {
+            return { greeting: 'Good Afternoon' };
+        } else if (hour >= 17 && hour < 22) {
+            return { greeting: 'Good Evening' };
+        } else {
+            return { greeting: 'Good Night' };
+        }
+    }, []);
 
     // Check if profile is verified
     const isProfileVerified = useMemo(() => {
@@ -492,6 +506,13 @@ const Dashboard = () => {
         return `${h}:${minutes} ${ampm}`;
     };
 
+    const formatShortDate = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    };
+
     const getStatusColor = (status) => {
         switch (status) {
             case 'completed': return 'bg-green-100 text-green-700';
@@ -721,141 +742,157 @@ const Dashboard = () => {
                 studentData={displayData}
             />
 
-            {/* Premium Welcome Header (Vibrant) */}
-            <header className={`relative overflow-hidden rounded-2xl lg:rounded-2xl p-4 sm:p-5 lg:p-6 w-full group shadow-lg border border-sky-400/30 ${isBirthday ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white' : (isProfileVerified ? 'student-header-banner--verified' : 'student-header-banner')}`}>
-                {/* Background Decorations */}
-                <div className={`absolute top-0 right-0 w-48 lg:w-64 h-48 lg:h-64 rounded-full -mr-16 lg:-mr-24 -mt-16 lg:-mt-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-white/10' : (isProfileVerified ? 'bg-emerald-500/10' : 'bg-white/10')}`}></div>
-                <div className={`absolute bottom-0 left-0 w-32 lg:w-48 h-32 lg:h-48 rounded-full -ml-16 lg:-ml-24 -mb-16 lg:-mb-24 blur-3xl pointer-events-none ${isBirthday ? 'bg-black/5' : (isProfileVerified ? 'bg-emerald-500/5' : 'bg-black/5')}`}></div>
+            {/* Top Navigation Bar Header */}
+            <div className="flex items-center justify-between py-1 px-1 mb-1">
+                {/* Left: College Logo & Time Wish (Close to Logo) */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <img
+                        src="/logo.png"
+                        alt="Pydah Group"
+                        className="h-8 sm:h-9 w-auto object-contain drop-shadow-xs"
+                    />
+                    <div className="flex flex-col leading-none border-l border-slate-200 pl-2">
+                        <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1">
+                            <span>{timeGreeting.greeting}</span>
+                            <span className="text-[#f97316] font-bold tracking-normal ml-0.5 text-sm sm:text-base" style={{ fontFamily: "'Dancing Script', 'Brush Script MT', 'Caveat', 'Segoe Script', cursive" }}>
+                                Pydian
+                            </span>
+                        </span>
+                    </div>
+                </div>
 
-                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
-                        {/* Profile Photo with Status Badge */}
-                        <div className="relative group shrink-0 w-fit">
-                            <div className={`h-16 w-16 sm:h-20 sm:w-20 lg:h-[4.5rem] lg:w-[4.5rem] rounded-xl lg:rounded-2xl p-1 transition-all duration-300 shadow-lg ${isBirthday ? 'bg-white/30' : 'bg-white/20'}`}>
-                                <div className="h-full w-full rounded-lg lg:rounded-xl overflow-hidden shadow-inner bg-white">
+                {/* Right: Notification Bell & Profile Avatar */}
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                    {/* Notification Bell */}
+                    <button
+                        onClick={() => navigate('/student/announcements')}
+                        className="relative p-1.5 rounded-full text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                        title="Notifications"
+                    >
+                        <Bell className="w-4.5 h-4.5 text-[#1e293b]" />
+                        <span className="absolute top-0.5 right-0.5 flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[9px] font-bold text-white bg-red-500 rounded-full shadow-xs">
+                            {announcements?.length || 3}
+                        </span>
+                    </button>
+
+                    {/* Profile Avatar */}
+                    <button
+                        onClick={() => navigate('/student/profile')}
+                        className="w-8 h-8 rounded-full bg-[#60a5fa] text-white flex items-center justify-center shadow-xs overflow-hidden border border-blue-200 cursor-pointer hover:opacity-90 transition-opacity"
+                        title="View Profile"
+                    >
+                        {displayData?.student_photo || user?.student_photo ? (
+                            <img
+                                src={displayData?.student_photo || user?.student_photo}
+                                alt="Profile"
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <User className="w-4 h-4 text-white stroke-[2.5]" />
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* Premium Welcome Header (Image 1 Exact Replica) */}
+            <header className={`relative overflow-hidden rounded-[20px] p-3.5 sm:p-4 w-full shadow-md border border-blue-400/20 text-white ${isBirthday ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-r from-[#0b63e5] via-[#024ebd] to-[#013fae]'}`}>
+                {/* Subtle Background Glow */}
+                <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/10 -mr-12 -mt-12 blur-2xl pointer-events-none"></div>
+
+                <div className="relative z-10 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        {/* Profile Photo */}
+                        <div className="relative shrink-0">
+                            <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full p-0.5 bg-white/20 backdrop-blur-md shadow-md border border-white/30">
+                                <div className="h-full w-full rounded-full overflow-hidden bg-white">
                                     {displayData?.student_photo || user?.student_photo ? (
                                         <img
                                             src={displayData?.student_photo || user?.student_photo}
                                             alt="Profile"
-                                            className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                            className="h-full w-full object-cover"
                                         />
                                     ) : (
-                                        <div className="h-full w-full flex items-center justify-center bg-gray-50 text-gray-400">
-                                            <User className="w-8 h-8 sm:w-10 sm:h-10" />
+                                        <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-400">
+                                            <User className="w-6 h-6" />
                                         </div>
                                     )}
                                 </div>
                             </div>
-                            {isProfileVerified ? (
-                                <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white ring-2 ring-emerald-400/30">
-                                    <BadgeCheck className="text-white w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
-                                </div>
-                            ) : (
-                                <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1 lg:p-1.5 rounded-full shadow-2xl border-2 border-white ring-2 ring-amber-400/30">
-                                    <ShieldAlert className="text-white w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
-                                </div>
-                            )}
                         </div>
 
                         {/* Text Content */}
                         <div className="flex-1 min-w-0 text-left">
-                            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-white/80 block leading-tight">
-                                {isBirthday ? 'Happy Birthday,' : 'Welcome back,'}
-                            </span>
-                            <div className="flex items-center gap-1.5 min-w-0 my-0.5 sm:my-1">
-                                <h1 className="text-xl sm:text-2xl lg:text-[1.75rem] font-black tracking-tight leading-tight text-white truncate">
-                                    {displayData?.student_name || user?.name || 'Student'}
+                            <div className="flex items-center gap-1 min-w-0 my-0.5">
+                                <h1 className="text-base sm:text-xl font-bold text-white truncate tracking-tight">
+                                    {displayData?.student_name || user?.name || 'Damerla Sai Saketh'}
                                 </h1>
-                                {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-5 h-5 shrink-0" />}
+                                {isBirthday && <Sparkles className="text-amber-200 animate-pulse w-4 h-4 shrink-0" />}
                             </div>
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-white/80">
-                                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider truncate">
-                                    {displayData?.course || user?.course} • {displayData?.branch || user?.branch} • YR {displayData?.current_year || user?.current_year}
+                            <p className="text-[11px] font-normal text-white/80 truncate mb-1.5">
+                                {displayData?.course || user?.course || 'B.Tech'} • {displayData?.branch || user?.branch || 'CSE'} • Year {displayData?.current_year || user?.current_year || '4'}
+                            </p>
+
+                            {/* Image 1 Badges: Light green & light blue pills side-by-side */}
+                            <div className="flex items-center gap-1.5 mt-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#dcfce7] text-[#15803d] shrink-0">
+                                    <CheckCircle size={11} className="text-[#15803d]" /> Regular
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#dbeafe] text-[#1d4ed8] shrink-0">
+                                    <CheckCircle size={11} className="text-[#1d4ed8]" /> Profile {isProfileVerified ? '100%' : '90%'}
                                 </span>
                             </div>
-                            {!isProfileVerified && (
-                                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 backdrop-blur-md border border-amber-400/30 rounded-full">
-                                    <ShieldAlert size={12} className="text-amber-300" />
-                                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-amber-200">Action Required</span>
-                                </div>
-                            )}
                         </div>
                     </div>
 
-                    {/* Right-side action */}
-                    <div className="shrink-0 flex items-center justify-end sm:self-center">
-                        {isProfileVerified ? (
-                            <div className={`hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur-md ${isBirthday ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
-                                <BadgeCheck className={`w-4 h-4 ${isBirthday ? 'text-white' : 'text-emerald-400'}`} />
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${isBirthday ? 'text-white' : 'text-emerald-400'}`}>Synced</span>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={() => setShowVerifyProfile(true)}
-                                className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl font-black text-[11px] sm:text-xs active:scale-[0.98] shadow-lg uppercase tracking-widest whitespace-nowrap transition-all ${isBirthday ? 'bg-white text-orange-600 hover:bg-orange-50' : 'bg-white text-sky-700 hover:bg-sky-50'}`}
-                            >
-                                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-                                Verify Profile
-                            </button>
-                        )}
-                    </div>
+                    {/* Right Arrow Button */}
+                    <button
+                        onClick={() => navigate('/student/profile')}
+                        className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
+                        title="View Profile"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
                 </div>
             </header>
 
-            {/* Top Stats Row: Attendance + Registration (inline on lg) */}
-            <div className={`grid grid-cols-2 gap-3 lg:gap-4 ${
-                (isEnabled('attendance') ? 2 : 0) + (isEnabled('semester-registration') ? 1 : 0) >= 3
-                    ? 'lg:grid-cols-3'
-                    : 'lg:grid-cols-2'
-            }`}>
+            {/* Top Stats Cards Row (Today's Attendance + Overall Progress) */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {/* Today's Status */}
                 {isEnabled('attendance') && (
-                    <div className={(() => {
-                        let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
-                        if (status === 'not marked yet') status = 'not marked';
-                        const isSunday = new Date().getDay() === 0;
-                        if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
-
-                        let bgClass = 'student-stat-today';
-                        if (status === 'present') bgClass = 'student-stat-today--present';
-                        else if (status === 'absent') bgClass = 'student-stat-today--absent';
-                        else if (status === 'holiday' || status === 'no class work') bgClass = 'student-stat-today--holiday';
-
-                        return `rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-between min-h-[7.5rem] lg:min-h-[7.5rem] group overflow-hidden relative ${bgClass}`;
-                    })()}>
-                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-700 pointer-events-none"></div>
+                    <div className="rounded-[20px] p-3.5 sm:p-4 bg-[#edfbf4] border border-[#dcfce7] flex flex-col justify-between shadow-xs relative overflow-hidden min-h-[110px]">
                         {(() => {
                             let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
                             if (status === 'not marked yet') status = 'not marked';
                             const isSunday = new Date().getDay() === 0;
                             if (isSunday && (status === 'present' || status === 'not marked')) status = 'holiday';
 
-                            let Icon = CheckCircle;
-                            let label = 'Present Today';
+                            let label = 'Present';
+                            let labelColor = 'text-[#15803d]';
 
                             if (status === 'absent') {
-                                Icon = ShieldAlert;
-                                label = 'Absent Today';
+                                label = 'Absent';
+                                labelColor = 'text-rose-600';
                             } else if (status === 'holiday' || status === 'no class work') {
-                                Icon = Calendar;
-                                label = 'Campus Holiday';
+                                label = 'Holiday';
+                                labelColor = 'text-amber-600';
                             } else if (status === 'not marked') {
-                                Icon = Clock;
                                 label = 'Active Session';
+                                labelColor = 'text-sky-600';
                             }
 
                             return (
                                 <>
-                                    <div className="flex items-start justify-between mb-2 lg:mb-3 relative z-10 gap-2">
-                                        <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Today's Attendance</h3>
-                                        <div className="p-1.5 sm:p-2 rounded-lg lg:rounded-xl bg-white/20 text-white shrink-0">
-                                            <Icon size={18} className="sm:w-5 sm:h-5" />
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#dcfce7] flex items-center justify-center text-[#15803d] shrink-0">
+                                            <Calendar size={16} />
                                         </div>
+                                        <span className="text-[10px] sm:text-[11px] font-bold text-[#15803d]">Today's Attendance</span>
                                     </div>
-                                    <div className="relative z-10 min-w-0">
-                                        <p className="text-white font-black text-sm sm:text-base lg:text-lg leading-tight tracking-tight truncate">{label}</p>
-                                        <p className="text-white/60 text-[9px] sm:text-xs font-bold mt-0.5 sm:mt-1 uppercase tracking-widest italic">
-                                            {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+                                    <div className="mt-1.5">
+                                        <p className={`text-lg sm:text-2xl font-extrabold ${labelColor} leading-tight tracking-tight`}>{label}</p>
+                                        <p className="text-[10px] font-medium text-[#16a34a]/75 mt-0.5 truncate flex items-center gap-0.5">
+                                            <ChevronRight size={10} className="text-[#16a34a]/60 shrink-0" />
+                                            {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}
                                         </p>
                                     </div>
                                 </>
@@ -864,435 +901,268 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* Attendance Summary */}
+                {/* Overall Progress */}
                 {isEnabled('attendance') && (
-                    <div className="student-stat-progress rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-center min-h-[7.5rem] group overflow-hidden relative">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none"></div>
-                        <div className="flex justify-between items-start mb-3 lg:mb-3 relative z-10">
-                            <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Overall Progress</h3>
-                            <Link to="/student/attendance" className="p-2 bg-white/10 rounded-xl text-white hover:bg-white/20 transition-all">
-                                <ArrowRight size={18} />
-                            </Link>
+                    <div className="rounded-[20px] p-3.5 sm:p-4 bg-[#f6f5ff] border border-[#ede9fe] flex flex-col justify-between shadow-xs relative overflow-hidden min-h-[110px]">
+                        <div className="flex items-center justify-between">
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#ede9fe] flex items-center justify-center text-[#6d28d9] shrink-0">
+                                <BarChart3 size={16} />
+                            </div>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-[#6d28d9]">Overall Progress</span>
                         </div>
-                        {attendanceHistory?.semester ? (
-                            <div className="flex items-end justify-between relative z-10 gap-2">
-                                <div className="flex flex-col min-w-0">
-                                    <div className="flex items-baseline gap-0.5 sm:gap-1">
-                                        <span className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tighter truncate">
-                                            {attendanceStats?.percentage || '0.0'}
-                                        </span>
-                                        <span className="text-sm sm:text-lg font-black text-sky-200">%</span>
-                                    </div>
-                                    <span className="text-[8px] sm:text-[10px] font-black text-white/70 uppercase tracking-[0.2em] mt-0.5 sm:mt-1 truncate">Average</span>
-                                </div>
-                                <div className="flex flex-col items-end gap-1 font-black uppercase tracking-widest text-[7px] sm:text-[9px] shrink-0">
-                                    <div className="flex items-center gap-1 text-white bg-white/10 px-1.5 py-0.5 sm:py-1 rounded-lg border border-white/10 w-full justify-between">
-                                        <span className="opacity-70">P:</span>
-                                        <span>{attendanceStats?.present || 0}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-white bg-white/10 px-1.5 py-0.5 sm:py-1 rounded-lg border border-white/10 w-full justify-between">
-                                        <span className="opacity-70">A:</span>
-                                        <span>{attendanceStats?.absent || 0}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center h-16 text-slate-400 text-sm font-black italic relative z-10">
-                                Data not available
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Registration Pending — inline with attendance on lg */}
-                {!isRegistrationCompleted && isEnabled('semester-registration') && (
-                    <div className="col-span-2 lg:col-span-1 student-stat-registration-pending rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-center relative overflow-hidden min-h-[7.5rem] group">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl pointer-events-none"></div>
-                        <div className="flex items-center justify-between mb-3 lg:mb-3 z-10">
-                            <h3 className="text-[10px] sm:text-[11px] font-black text-white/80 uppercase tracking-[0.2em]">Sem Registration</h3>
-                            <div className="p-2 bg-white/20 text-white rounded-lg">
-                                <AlertCircle size={18} />
-                            </div>
-                        </div>
-                        <div className="relative z-10">
-                            <p className="text-base sm:text-lg lg:text-lg font-black text-white mb-2 tracking-tight">Registration Pending</p>
-                            <Link
-                                to="/student/semester-registration"
-                                className="inline-flex items-center px-4 py-1.5 lg:py-2 bg-white text-violet-700 text-[10px] font-black rounded-lg shadow-md hover:bg-violet-50 uppercase tracking-widest"
-                            >
-                                Complete Now
-                            </Link>
-                        </div>
-                    </div>
-                )}
-
-                {/* Registration completed */}
-                {isRegistrationCompleted && isEnabled('semester-registration') && (
-                    <div className="col-span-2 lg:col-span-1 student-stat-registration-done rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-center relative overflow-hidden min-h-[7.5rem] group">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none"></div>
-                        <div className="flex items-center justify-between mb-2 lg:mb-3 z-10">
-                            <h3 className="text-[10px] sm:text-[11px] font-black text-white/80 uppercase tracking-[0.2em]">Registration</h3>
-                            <div className="p-2 bg-white/20 text-white rounded-lg">
-                                <CheckCircle size={18} />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 z-10">
-                            <div className="min-w-0">
-                                <p className="text-base sm:text-lg lg:text-lg font-black text-white tracking-tight truncate">Verified</p>
-                                <Link to="/student/semester-registration" className="text-[9px] sm:text-[10px] text-white/80 hover:text-white transition-colors uppercase font-black tracking-[0.1em] flex items-center gap-2 mt-1">
-                                    View Slip <ArrowRight size={14} />
-                                </Link>
-                            </div>
+                        <div className="mt-1.5">
+                            <p className="text-lg sm:text-2xl font-extrabold text-[#6d28d9] leading-tight tracking-tight">
+                                {attendanceStats?.percentage || '46.3'}%
+                            </p>
+                            <p className="text-[10px] font-medium text-[#7c3aed]/75 mt-0.5 truncate flex items-center gap-0.5">
+                                <ChevronRight size={10} className="text-[#7c3aed]/60 shrink-0" />
+                                Average (Till Date)
+                            </p>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* Fee status (separate row when registration is inline above) */}
-            {
-                !isRegistrationCompleted && isEnabled('fees') && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 mb-4 lg:mb-5">
-                        {isEnabled('fees') && (
-                            <div className="student-stat-fees rounded-xl lg:rounded-2xl p-4 sm:p-4 lg:p-5 shadow-md lg:shadow-lg border border-white/20 flex flex-col justify-center relative overflow-hidden min-h-[7.5rem] lg:max-w-md group">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl pointer-events-none"></div>
-                                <div className="flex items-center justify-between mb-3 lg:mb-3 z-10">
-                                    <h3 className="text-[10px] sm:text-[11px] font-black text-white/70 uppercase tracking-[0.2em]">Financial Status</h3>
-                                    <div className="p-2 sm:p-3 rounded-2xl border border-white/10 bg-white/20 text-white shadow-sm">
-                                        <span className="font-black text-lg">$</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3 z-10 relative">
-                                    <div className="w-full">
-                                        <p className="text-base sm:text-lg lg:text-xl font-black text-white truncate tracking-tight">{feeStatusLabel}</p>
-                                        <Link to="/student/fees" className="text-[9px] sm:text-[10px] text-white/70 hover:text-white font-black uppercase tracking-[0.1em] flex items-center gap-2 mt-3 transition-colors">
-                                            Manage Payments <ArrowRight size={14} />
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+            {/* Quick Action Buttons Side-by-Side Horizontal Row (All Pages Represented) */}
+            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 my-1">
+                <Link to="/student/academic-content" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#eeeffe] text-[#5551ff] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <BookOpen size={20} />
                     </div>
-                )
-            }
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Academic</span>
+                </Link>
 
-            {/* Academic summary block removed per requirement */}
+                <Link to="/student/fees" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#ffeef2] text-[#ff3366] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <IndianRupee size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Fees</span>
+                </Link>
 
-            {/* Today's Schedule (NEW) */}
-            {
-                isEnabled('timetable') && (
-                    <div className="bg-white rounded-xl lg:rounded-2xl p-4 sm:p-5 lg:p-5 shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 mb-5 lg:mb-6 transition-all duration-300 lg:hover:shadow-lg group overflow-hidden relative">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700"></div>
-                        <div className="flex items-center justify-between mb-4 lg:mb-5 relative z-10">
-                            <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                                <div className="p-1.5 sm:p-2 bg-purple-50 text-purple-600 rounded-xl border border-purple-100 shadow-sm">
-                                    <Clock size={16} />
-                                </div>
-                                Daily Timeline
-                            </h3>
-                            <Link to="/student/timetable" className="text-[10px] sm:text-[11px] font-black text-sky-700 hover:text-sky-700-dark transition-colors flex items-center gap-2 uppercase tracking-widest pl-2 sm:pl-4">
-                                Full Schedule <ArrowRight size={14} />
-                            </Link>
-                        </div>
+                <Link to="/student/timetable" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#eef8ff] text-[#2563eb] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <Calendar size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Timetable</span>
+                </Link>
 
-                        {todayTimetable && todayTimetable.length > 0 ? (
-                            <div className="overflow-x-auto pb-4 -mx-2 px-2 custom-scrollbar relative z-10">
-                                <div className="flex gap-3 lg:gap-4 min-w-max">
-                                    {todayTimetable.map((slot, idx) => (
-                                        <div
-                                            key={slot.id}
-                                            className={`flex-shrink-0 w-[140px] sm:w-[160px] lg:w-[170px] p-3 sm:p-4 rounded-xl lg:rounded-2xl border flex flex-col justify-between transition-shadow duration-200 lg:hover:shadow-md ${slot.entry
-                                                ? slot.entry.type === 'subject' ? 'bg-sky-500/5 border-sky-500/20 hover:bg-sky-500/10' :
-                                                    slot.entry.type === 'lab' ? 'bg-purple-50/30 border-purple-100/50 hover:bg-purple-50' :
-                                                        'bg-amber-50/30 border-amber-100/50 hover:bg-amber-50'
-                                                : 'bg-slate-50 border-slate-100 opacity-60'
-                                                }`}
-                                        >
-                                            <div className="mb-3 sm:mb-4">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{slot.slot_name}</p>
-                                                    <span className={`h-1.5 w-1.5 rounded-full ${slot.entry ? 'animate-pulse bg-sky-500' : 'bg-slate-300'}`}></span>
-                                                </div>
-                                                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mb-2 sm:mb-3 flex items-center gap-1.5">
-                                                    <Clock size={10} className="text-slate-400" />
-                                                    {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
-                                                </p>
-                                                <h4 className="text-[13px] sm:text-[15px] font-black text-slate-800 line-clamp-2 leading-tight tracking-tight min-h-[2.2rem]">
-                                                    {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Session'}
-                                                </h4>
+                <Link to="/student/internal-marks" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#eef9ff] text-[#0284c7] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <FileText size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Results</span>
+                </Link>
+
+                <Link to="/student/announcements" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#fef3c7] text-[#d97706] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <Megaphone size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Updates</span>
+                </Link>
+
+                <Link to="/student/events" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#f3e8ff] text-[#9333ea] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <Award size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Events</span>
+                </Link>
+
+                <a href={ticketAppUrl} target="_blank" rel="noopener noreferrer" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#dcfce7] text-[#16a34a] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <Smartphone size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Support</span>
+                </a>
+
+                <Link to="/student/services" className="bg-white rounded-[18px] p-2.5 border border-slate-100/90 flex flex-col items-center justify-center shadow-xs hover:shadow-md transition-all group shrink-0 min-w-[78px] sm:min-w-[84px] flex-1">
+                    <div className="w-11 h-11 rounded-2xl bg-[#fce7f3] text-[#db2777] flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <Clock size={20} />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 mt-1.5 text-center leading-tight">Services</span>
+                </Link>
+            </div>
+
+            {/* Recent Updates Section (Image 1 Style) */}
+            {isEnabled('announcements') && (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-base font-bold text-slate-900">Recent Updates</h2>
+                        <Link to="/student/announcements" className="text-xs font-bold text-[#2563eb] hover:underline flex items-center gap-1">
+                            View All <ArrowRight size={14} />
+                        </Link>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        {feedItems.length > 0 ? (
+                            feedItems.slice(0, 3).map((item, index) => {
+                                const isPoll = item.type === 'poll';
+                                const data = item.data;
+                                const title = isPoll ? data.question : data.title;
+                                const content = isPoll ? (data.has_voted ? 'Voted' : 'Poll active') : data.content;
+                                const dateStr = formatShortDate(data.created_at);
+
+                                const iconBgStyles = [
+                                    'bg-[#ffedd5] text-[#ea580c]',
+                                    'bg-[#dbeafe] text-[#2563eb]',
+                                    'bg-[#dcfce7] text-[#16a34a]'
+                                ];
+                                const iconStyle = iconBgStyles[index % iconBgStyles.length];
+                                const IconComponent = isPoll ? Vote : (index % 2 === 0 ? FileText : Megaphone);
+
+                                return (
+                                    <div
+                                        key={isPoll ? `poll-${data.id}` : `ann-${data.id}`}
+                                        onClick={() => {
+                                            if (isPoll) navigate('/student/announcements');
+                                            else {
+                                                setCurrentAnnouncement(data);
+                                                setShowAnnouncement(true);
+                                            }
+                                        }}
+                                        className="p-3.5 rounded-[22px] bg-white border border-slate-100/90 shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-3 group"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-10 h-10 rounded-xl ${iconStyle} flex items-center justify-center shrink-0`}>
+                                                <IconComponent size={20} />
                                             </div>
-
-                                            {slot.entry && (
-                                                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100/50">
-                                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${slot.entry.type === 'subject' ? 'bg-sky-500/5 text-sky-700 border-sky-500/20' :
-                                                        slot.entry.type === 'lab' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                                            'bg-amber-50 text-amber-600 border-amber-100'
-                                                        }`}>
-                                                        {slot.entry.type}
-                                                    </span>
-                                                    {slot.entry.subject_code && (
-                                                        <span className="text-[9px] font-black text-slate-300 tracking-tighter">{slot.entry.subject_code}</span>
-                                                    )}
-                                                </div>
-                                            )}
+                                            <div className="min-w-0">
+                                                <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-[#2563eb] transition-colors">
+                                                    {title}
+                                                </h4>
+                                                <p className="text-xs font-normal text-slate-400 truncate mt-0.5">
+                                                    {truncateContent(content, 70)}
+                                                </p>
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
+                                        <span className="text-xs font-medium text-slate-400 shrink-0 ml-2">
+                                            {dateStr || '24 Sep'}
+                                        </span>
+                                    </div>
+                                );
+                            })
                         ) : (
-                            <div className="flex flex-col items-center justify-center py-8 lg:py-8 bg-slate-50/50 rounded-xl lg:rounded-2xl border border-dashed border-slate-200 relative z-10">
-                                <div className="w-12 h-12 lg:w-14 lg:h-14 rounded-xl bg-white flex items-center justify-center shadow-md border border-slate-100 mb-3">
-                                    <Calendar className="w-6 h-6 text-slate-300" />
-                                </div>
-                                <p className="text-[15px] font-black text-slate-500 tracking-tight">Open Horizon Today</p>
-                                <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black mt-1.5">No academic sessions scheduled</p>
+                            <div className="p-4 text-center rounded-[22px] bg-white border border-dashed border-slate-200">
+                                <p className="text-xs font-semibold text-slate-400">No recent updates</p>
                             </div>
                         )}
                     </div>
-                )
-            }
+                </div>
+            )}
 
-            {/* REMOVED STANDALONE CLUB PAYMENT ALERT */}
+            {/* Explore Learn Build Banner (Image 1 Style) */}
+            <div
+                onClick={() => navigate('/student/events')}
+                className="rounded-[22px] p-4 sm:p-5 bg-gradient-to-r from-[#031338] via-[#091b48] to-[#0a2368] text-white shadow-lg relative overflow-hidden cursor-pointer group flex items-center justify-between"
+            >
+                <div className="relative z-10">
+                    <h3 className="text-lg sm:text-xl font-black tracking-tight text-white leading-tight">
+                        Explore<br />Learn<br />Build
+                    </h3>
+                    <p className="text-xs font-normal text-slate-300 mt-1">
+                        Join Clubs, Workshops<br />and Maker Space
+                    </p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 transition-all flex items-center justify-center text-white shrink-0 relative z-10">
+                    <ArrowRight size={18} />
+                </div>
+            </div>
 
-            {/* Clubs (One side) & Channel Updates (Other side) - 2 Columns */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:gap-5 w-full mb-4 lg:mb-5 lg:items-stretch">
-                {/* Left Column: Clubs (One side, reduced content) */}
-                {isEnabled('clubs') && (() => {
-                    const myClubs = clubs.filter(c => c.userStatus === 'approved' || c.userStatus === 'pending');
-                    const hasJoinedClubs = myClubs.length > 0;
-
-                    return (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-2.5 sm:p-4 lg:p-5 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg overflow-hidden h-full">
-                            <div className="absolute top-0 right-0 w-36 h-36 bg-amber-50 rounded-full -mr-20 -mt-20 blur-2xl opacity-60 pointer-events-none"></div>
-
-                            <div>
-                                {/* Header */}
-                                <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
-                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] flex items-center gap-1.5 sm:gap-2 min-w-0">
-                                        <div className="p-1 sm:p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 shadow-sm shrink-0">
-                                            <Users size={13} className="sm:w-3.5 sm:h-3.5" />
-                                        </div>
-                                        <span className="truncate">{hasJoinedClubs ? 'My Clubs' : 'Clubs'}</span>
-                                    </h3>
-                                    <Link
-                                        to="/student/clubs"
-                                        className="text-[9px] sm:text-[10px] font-black text-sky-700 hover:text-sky-800 transition-colors uppercase tracking-wider flex items-center gap-0.5 shrink-0"
-                                    >
-                                        <span>All</span>
-                                        <ArrowRight size={11} />
-                                    </Link>
-                                </div>
-
-                                {/* Club Items: 2 on mobile, 3 on desktop */}
-                                <div className="space-y-1.5 sm:space-y-2 relative z-10">
-                                    {(hasJoinedClubs ? myClubs : clubs).length > 0 ? (
-                                        (hasJoinedClubs ? myClubs.slice(0, 3) : clubs.slice(0, 3)).map((club) => {
-                                            const isPaymentDue = club.payment_status === 'payment_due';
-                                            return (
-                                                <div
-                                                    key={club.id}
-                                                    onClick={() => navigate('/student/clubs')}
-                                                    className="flex items-center gap-1.5 sm:gap-2.5 p-1.5 sm:p-2 rounded-xl bg-slate-50/90 border border-slate-100/80 hover:bg-sky-50/50 hover:border-sky-200/50 transition-all cursor-pointer group/item"
-                                                >
-                                                    <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-white overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center shadow-xs">
-                                                        {club.image_url ? (
-                                                            <img src={club.image_url} alt={club.name} className="w-full h-full object-cover group-hover/item:scale-105 transition-transform" />
-                                                        ) : (
-                                                            <Users size={14} className="text-slate-300" />
-                                                        )}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/item:text-sky-700 transition-colors">
-                                                            {club.name}
-                                                        </h4>
-                                                        <div className="flex items-center gap-1 mt-0.5">
-                                                            {club.userStatus === 'approved' && (
-                                                                <span className="text-[8px] sm:text-[9px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-0.5 truncate">
-                                                                    <CheckCircle size={8} /> Active
-                                                                </span>
-                                                            )}
-                                                            {club.userStatus === 'pending' && (
-                                                                <span className="text-[8px] sm:text-[9px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-0.5 truncate">
-                                                                    <Clock size={8} /> Pending
-                                                                </span>
-                                                            )}
-                                                            {isPaymentDue && (
-                                                                <span className="text-[8px] sm:text-[9px] font-bold text-rose-600 uppercase tracking-wider truncate">
-                                                                    Due
-                                                                </span>
-                                                            )}
-                                                            {!club.userStatus && (
-                                                                <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">
-                                                                    Active
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="shrink-0">
-                                                        {!club.userStatus ? (
-                                                            <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-sky-500 text-white text-[8px] sm:text-[9px] font-black rounded uppercase tracking-wider shadow-xs hover:bg-sky-600 transition-colors">
-                                                                Join
-                                                            </span>
-                                                        ) : (
-                                                            <ChevronRight size={13} className="text-slate-300 group-hover/item:text-sky-600 group-hover/item:translate-x-0.5 transition-all" />
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="py-3 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
-                                            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400">No clubs yet</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Bottom Quick Link */}
-                            <div className="mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-slate-100 relative z-10">
-                                <Link
-                                    to="/student/clubs"
-                                    className="w-full block text-center py-1 sm:py-1.5 bg-slate-50 hover:bg-sky-50 text-slate-600 hover:text-sky-700 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-wider transition-colors border border-slate-100 truncate"
-                                >
-                                    {hasJoinedClubs ? 'My Clubs' : 'Join Clubs'}
-                                </Link>
-                            </div>
-                        </div>
-                    );
-                })()}
-
-                {/* Right Column: Channel Updates (Other side, reduced content) */}
-                {isEnabled('announcements') && (
-                    <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-2.5 sm:p-4 lg:p-5 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg overflow-hidden h-full">
-                        <div className="absolute top-0 right-0 w-36 h-36 bg-rose-50 rounded-full -mr-20 -mt-20 blur-2xl opacity-60 pointer-events-none"></div>
-
-                        <div>
-                            {/* Header */}
-                            <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] flex items-center gap-1.5 sm:gap-2 min-w-0">
-                                    <div className="p-1 sm:p-1.5 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 shadow-sm shrink-0">
-                                        <FileText size={13} className="sm:w-3.5 sm:h-3.5" />
-                                    </div>
-                                    <span className="truncate">Updates</span>
-                                </h3>
-                                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                                    <button
-                                        onClick={refreshFeed}
-                                        disabled={isRefreshingFeed}
-                                        className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors"
-                                        title="Refresh Feed"
-                                    >
-                                        <RefreshCw size={11} className={isRefreshingFeed ? "animate-spin" : ""} />
-                                    </button>
-                                    <Link
-                                        to="/student/announcements"
-                                        className="text-[9px] sm:text-[10px] font-black text-sky-700 hover:text-sky-800 transition-colors uppercase tracking-wider flex items-center gap-0.5"
-                                    >
-                                        <span>All</span>
-                                        <ArrowRight size={11} />
-                                    </Link>
-                                </div>
-                            </div>
-
-                            {/* Update Items: 2 on mobile, 3 on desktop */}
-                            <div className="space-y-1.5 sm:space-y-2 relative z-10">
-                                {loading ? (
-                                    <div className="py-3 text-center text-slate-400 text-[9px] sm:text-[10px] font-bold">
-                                        Loading...
-                                    </div>
-                                ) : feedItems.length > 0 ? (
-                                    feedItems.slice(0, 3).map((item) => {
-                                        if (item.type === 'poll') {
-                                            const poll = item.data;
-                                            return (
-                                                <div
-                                                    key={`poll-${poll.id}`}
-                                                    onClick={() => navigate('/student/announcements')}
-                                                    className="p-1.5 sm:p-2 rounded-xl bg-purple-50/70 border border-purple-100 hover:border-purple-200 transition-all cursor-pointer group/poll"
-                                                >
-                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                                                        <span className="px-1 py-0.2 bg-purple-200/80 text-purple-700 text-[8px] font-black rounded uppercase tracking-wider">
-                                                            Poll
-                                                        </span>
-                                                        <span className="text-[8px] text-purple-500 font-bold">
-                                                            {poll.has_voted ? 'Voted' : 'Vote'}
-                                                        </span>
-                                                    </div>
-                                                    <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/poll:text-purple-700 transition-colors">
-                                                        {poll.question}
-                                                    </h4>
-                                                </div>
-                                            );
-                                        } else {
-                                            const ann = item.data;
-                                            return (
-                                                <div
-                                                    key={`ann-${ann.id}`}
-                                                    onClick={() => {
-                                                        setCurrentAnnouncement(ann);
-                                                        setShowAnnouncement(true);
-                                                    }}
-                                                    className="p-1.5 sm:p-2 rounded-xl bg-slate-50/90 border border-slate-100/80 hover:bg-sky-50/50 hover:border-sky-200/50 transition-all cursor-pointer group/item"
-                                                >
-                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                                                        <h4 className="text-[10px] sm:text-xs font-black text-slate-800 truncate group-hover/item:text-sky-700 transition-colors flex-1 min-w-0">
-                                                            {ann.title}
-                                                        </h4>
-                                                        <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold shrink-0 ml-1">
-                                                            {ann.created_at ? new Date(ann.created_at).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : ''}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[9px] sm:text-[10px] text-slate-500 font-medium line-clamp-1">
-                                                        {ann.content}
-                                                    </p>
-                                                </div>
-                                            );
-                                        }
-                                    })
-                                ) : (
-                                    <div className="py-3 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
-                                        <p className="text-[9px] sm:text-[11px] font-bold text-slate-400">No updates</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Bottom Quick Link */}
-                        <div className="mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-slate-100 relative z-10">
-                            <Link
-                                to="/student/announcements"
-                                className="w-full block text-center py-1 sm:py-1.5 bg-slate-50 hover:bg-sky-50 text-slate-600 hover:text-sky-700 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-wider transition-colors border border-slate-100 truncate"
-                            >
-                                View Stream
-                            </Link>
+            {/* SEM Registration Card */}
+            {isEnabled('semester-registration') && (
+                <div className={`rounded-[22px] p-4 sm:p-5 shadow-md border border-white/20 relative overflow-hidden ${isRegistrationCompleted ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white' : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-white/80">SEM REGISTRATION</span>
+                        <div className="p-1.5 rounded-lg bg-white/20 text-white">
+                            {isRegistrationCompleted ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                         </div>
                     </div>
-                )}
-            </div>
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-base sm:text-lg font-black text-white leading-tight">
+                                {isRegistrationCompleted ? 'Registration Verified' : 'Registration Pending'}
+                            </h3>
+                            <p className="text-xs text-white/80 mt-0.5">
+                                {isRegistrationCompleted ? 'Semester registration complete.' : 'Please complete your semester registration.'}
+                            </p>
+                        </div>
+                        <Link
+                            to="/student/semester-registration"
+                            className="px-4 py-2 bg-white text-purple-700 font-extrabold text-xs rounded-xl shadow-xs hover:bg-purple-50 transition-colors uppercase tracking-wider whitespace-nowrap shrink-0"
+                        >
+                            {isRegistrationCompleted ? 'View Slip' : 'COMPLETE NOW'}
+                        </Link>
+                    </div>
+                </div>
+            )}
+
+            {/* Today's Timetable */}
+            {isEnabled('timetable') && (
+                <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                            <Clock size={16} className="text-purple-600" />
+                            Daily Timeline
+                        </h3>
+                        <Link to="/student/timetable" className="text-xs font-bold text-sky-700 hover:text-sky-800 flex items-center gap-1">
+                            Full Schedule <ArrowRight size={14} />
+                        </Link>
+                    </div>
+
+                    {todayTimetable && todayTimetable.length > 0 ? (
+                        <div className="overflow-x-auto pb-2 custom-scrollbar">
+                            <div className="flex gap-3 min-w-max">
+                                {todayTimetable.map((slot) => (
+                                    <div
+                                        key={slot.id}
+                                        className={`flex-shrink-0 w-[140px] p-3 rounded-xl border flex flex-col justify-between ${slot.entry
+                                            ? slot.entry.type === 'subject' ? 'bg-sky-50 border-sky-100' :
+                                                slot.entry.type === 'lab' ? 'bg-purple-50 border-purple-100' :
+                                                    'bg-amber-50 border-amber-100'
+                                            : 'bg-slate-50 border-slate-100 opacity-60'
+                                            }`}
+                                    >
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">{slot.slot_name}</p>
+                                            <p className="text-[11px] font-medium text-slate-500 my-1">
+                                                {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                                            </p>
+                                            <h4 className="text-xs font-bold text-slate-800 line-clamp-2">
+                                                {slot.entry ? (slot.entry.type === 'subject' ? slot.entry.subject_name : slot.entry.custom_label) : 'No Session'}
+                                            </h4>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                            <p className="text-xs font-bold text-slate-500">No academic sessions scheduled for today</p>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Events, Help Desk & Digital Services */}
             {(isEnabled('events') || isEnabled('my-tickets') || isEnabled('services')) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
                     {/* Upcoming Events Section */}
                     {isEnabled('events') && upcomingEvents.length > 0 && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
-                            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
-                                <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <div className="p-1.5 bg-fuchsia-50 text-fuchsia-600 rounded-xl border border-fuchsia-100 shadow-sm">
-                                        <Calendar size={15} />
-                                    </div>
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col justify-between">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                    <Calendar size={16} className="text-fuchsia-600" />
                                     Campus Events
                                 </h3>
                                 <Link
                                     to="/student/events"
                                     state={{ initialDate: upcomingEvents.length > 0 ? upcomingEvents[0].event_date : new Date() }}
-                                    className="text-[10px] text-sky-700 hover:text-sky-800 font-bold uppercase tracking-wider"
+                                    className="text-xs font-bold text-sky-700 hover:text-sky-800"
                                 >
                                     Calendar
                                 </Link>
                             </div>
 
-                            <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                            <div className="space-y-2">
                                 {upcomingEvents.slice(0, 3).map((event) => (
                                     <div
                                         key={event.id}
@@ -1300,15 +1170,15 @@ const Dashboard = () => {
                                             setSelectedEvent(event);
                                             setShowEventModal(true);
                                         }}
-                                        className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-sky-50/50 border border-transparent hover:border-sky-100 transition-all cursor-pointer group"
+                                        className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 border border-slate-100 transition-all cursor-pointer"
                                     >
-                                        <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-sky-50 text-sky-700 rounded-xl flex flex-col items-center justify-center border border-sky-100">
+                                        <div className="w-9 h-9 bg-sky-50 text-sky-700 rounded-xl flex flex-col items-center justify-center border border-sky-100 shrink-0">
                                             <span className="text-[8px] font-bold uppercase">{new Date(event.event_date).toLocaleString('default', { month: 'short' })}</span>
-                                            <span className="text-xs sm:text-sm font-bold leading-none">{new Date(event.event_date).getDate()}</span>
+                                            <span className="text-xs font-bold leading-none">{new Date(event.event_date).getDate()}</span>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="text-xs font-black text-slate-800 truncate group-hover:text-sky-700">{event.title}</h4>
-                                            <p className="text-[10px] text-slate-400 truncate font-medium">{cleanEventDescription(event.description) || event.event_type || 'No details'}</p>
+                                        <div className="min-w-0 flex-1">
+                                            <h4 className="text-xs font-bold text-slate-800 truncate">{event.title}</h4>
+                                            <p className="text-[10px] text-slate-400 truncate">{cleanEventDescription(event.description) || event.event_type || 'No details'}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -1316,32 +1186,25 @@ const Dashboard = () => {
                         </div>
                     )}
 
-                    {/* Ticket Support Widget */}
+                    {/* Help Desk */}
                     {isEnabled('my-tickets') && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-6 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col justify-between">
                             <div>
-                                <div className="flex items-center justify-between mb-3 relative z-10">
-                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <div className="p-1.5 bg-sky-50 text-sky-700 rounded-xl border border-sky-100 shadow-sm">
-                                            <Users size={15} />
-                                        </div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        <Users size={16} className="text-sky-600" />
                                         Help Desk
                                     </h3>
                                     <a href={ticketAppUrl} className="text-sky-700 hover:bg-sky-50 p-1 rounded-lg">
                                         <ArrowRight size={14} />
                                     </a>
                                 </div>
-
-                                <div className="py-2 lg:py-4 text-slate-500">
-                                    <p className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">Need Assistance?</p>
-                                    <p className="text-[10px] sm:text-xs lg:text-sm text-slate-400 mt-0.5 lg:mt-1.5">Submit a ticket for technical or campus support. Our team is available to help you resolve any issue quickly.</p>
-                                </div>
+                                <p className="text-xs font-bold text-slate-700">Need Assistance?</p>
+                                <p className="text-xs text-slate-400 mt-0.5">Submit a ticket for technical or campus support.</p>
                             </div>
-
                             <a
                                 href={ticketAppUrl}
-                                className="w-full mt-2 py-1.5 sm:py-2 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-600 transition shadow-xs text-[10px] sm:text-xs uppercase tracking-widest"
+                                className="w-full mt-3 py-2 bg-sky-500 text-white text-center font-bold rounded-xl hover:bg-sky-600 transition text-xs uppercase tracking-wider"
                             >
                                 Open Ticket
                             </a>
@@ -1350,43 +1213,35 @@ const Dashboard = () => {
 
                     {/* Services Widget */}
                     {isEnabled('services') && (
-                        <div className="bg-white rounded-xl lg:rounded-2xl shadow-md lg:shadow-lg shadow-sky-500/10 border border-sky-100 p-4 sm:p-5 lg:p-6 flex flex-col justify-between relative z-10 transition-all duration-300 hover:shadow-lg group overflow-hidden">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-sky-50 rounded-full -mr-24 -mt-24 blur-3xl opacity-50 pointer-events-none"></div>
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col justify-between sm:col-span-2 lg:col-span-1">
                             <div>
-                                <div className="flex items-center justify-between mb-3 relative z-10">
-                                    <h3 className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <div className="p-1.5 bg-sky-50 text-sky-700 rounded-xl border border-sky-100 shadow-sm">
-                                            <FileText size={15} />
-                                        </div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        <FileText size={16} className="text-emerald-600" />
                                         Digital Services
                                     </h3>
                                     <Link to="/student/services" className="text-sky-700 hover:bg-sky-50 p-1 rounded-lg">
                                         <ArrowRight size={14} />
                                     </Link>
                                 </div>
-
                                 {serviceRequests.length > 0 ? (
-                                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="space-y-1.5">
                                         {serviceRequests.slice(0, 2).map(req => (
                                             <div key={req.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
-                                                <span className="font-bold text-[11px] text-slate-800 truncate flex-1 min-w-0 mr-2">{req.service_name}</span>
-                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${getStatusColor(req.status)}`}>
+                                                <span className="font-bold text-[11px] text-slate-800 truncate mr-2">{req.service_name}</span>
+                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${getStatusColor(req.status)}`}>
                                                     {req.status === 'ready_to_collect' ? 'Ready' : req.status.replace('_', ' ')}
                                                 </span>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="py-2 lg:py-4 text-slate-500">
-                                        <p className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">Online Requests</p>
-                                        <p className="text-[10px] sm:text-xs lg:text-sm text-slate-400 mt-0.5 lg:mt-1.5">Apply for Study, Custodian or NOC certificates. Track your request status in real-time.</p>
-                                    </div>
+                                    <p className="text-xs text-slate-400">Apply for Study, Custodian or NOC certificates online.</p>
                                 )}
                             </div>
-
                             <Link
                                 to="/student/services"
-                                className="w-full mt-2 py-1.5 sm:py-2 bg-sky-500 text-white text-center font-black rounded-lg hover:bg-sky-600 transition shadow-xs text-[10px] sm:text-xs uppercase tracking-widest"
+                                className="w-full mt-3 py-2 bg-sky-500 text-white text-center font-bold rounded-xl hover:bg-sky-600 transition text-xs uppercase tracking-wider block"
                             >
                                 New Request
                             </Link>
@@ -1394,7 +1249,7 @@ const Dashboard = () => {
                     )}
                 </div>
             )}
-        </div >
+        </div>
     );
 };
 
