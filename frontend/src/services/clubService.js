@@ -11,10 +11,6 @@ const getClubDetails = async (clubId) => {
 };
 
 const createClub = async (clubData) => {
-    // If clubData is FormData, send as is. If it's an object with a file, convert.
-    // Assuming UI sends FormData if file exists, or we handle it here.
-    // Let's enforce UI sending FormData or standard object.
-    // If we want to accept object and convert:
     const isFormData = clubData instanceof FormData;
     const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
 
@@ -41,7 +37,6 @@ const createActivity = async (clubId, activityData) => {
 };
 
 const updateClub = async (clubId, formData) => {
-    // Determine content type based on if formData is FormData
     const isFormData = formData instanceof FormData;
     const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
     const response = await api.put(`/clubs/${clubId}`, formData, config);
@@ -70,6 +65,46 @@ const toggleClubStatus = async (clubId, isActive) => {
     return response.data;
 };
 
+const getClubRoles = async () => {
+    const response = await api.get('/clubs/roles');
+    return response.data;
+};
+
+const createClubRole = async (roleData) => {
+    const response = await api.post('/clubs/roles', roleData);
+    return response.data;
+};
+
+const updateClubRole = async (roleId, roleData) => {
+    const response = await api.put(`/clubs/roles/${roleId}`, roleData);
+    return response.data;
+};
+
+const deleteClubRole = async (roleId) => {
+    const response = await api.delete(`/clubs/roles/${roleId}`);
+    return response.data;
+};
+
+const checkHrmsUserAccount = async (params) => {
+    const response = await api.get('/clubs/check-hrms-user', { params });
+    return response.data;
+};
+
+const searchHrmsEmployees = async (query) => {
+    const response = await api.get('/rbac/users/search-hrms-employee', { params: { query } });
+    return response.data;
+};
+
+const getAllClubApprovals = async () => {
+    const response = await api.get('/clubs/approvals/all');
+    return response.data;
+};
+
+const getAllClubStudents = async (params) => {
+    const response = await api.get('/clubs/students/all', { params });
+    return response.data;
+};
+
 export default {
     getClubs,
     getClubDetails,
@@ -81,5 +116,13 @@ export default {
     deleteClub,
     updateActivity,
     deleteActivity,
-    toggleClubStatus
+    toggleClubStatus,
+    getClubRoles,
+    createClubRole,
+    updateClubRole,
+    deleteClubRole,
+    checkHrmsUserAccount,
+    searchHrmsEmployees,
+    getAllClubApprovals,
+    getAllClubStudents
 };

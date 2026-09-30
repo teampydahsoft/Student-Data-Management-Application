@@ -1,7 +1,60 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { CreditCard, Clock, CheckCircle, AlertCircle, FileText, ArrowDownLeft, ArrowUpRight, Filter, Bus, BookOpen, Zap, X } from 'lucide-react';
+import { CreditCard, Clock, CheckCircle, AlertCircle, FileText, ArrowDownLeft, ArrowUpRight, Filter, Bus, BookOpen, Zap, X, ChevronDown, ChevronRight } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
+
+const isClubFeeInvoice = (invoice) => {
+    const feeHeadName = String(typeof invoice?.feeHead === 'object' ? invoice.feeHead?.name || '' : '').trim().toLowerCase();
+    const remarks = String(invoice?.remarks || '').trim().toLowerCase();
+    return String(invoice?.feeHead?.code || '').toUpperCase() === 'CF' ||
+        feeHeadName.startsWith('club fee') ||
+        /^club\s*fee\s*[:\-–]/i.test(remarks);
+};
+
+const getClubNameFromRemarks = (remarks) => String(remarks || '')
+    .replace(/^\s*(?:club\s*fee\s*[:\-–]\s*)+/i, '')
+    .trim();
+const getClubNameFromInvoice = (invoice) => getClubNameFromRemarks(invoice?.remarks) ||
+    String(invoice?.feeHead?.name || '').replace(/^\s*club\s*fee\s*[:\-–]\s*/i, '').trim() ||
+    'Club';
+
+const calculateInvoicePaid = (invoice, transactions = []) => {
+    if (isClubFeeInvoice(invoice) && invoice.status === 'cancelled') return 0;
+
+    let paid = 0;
+    const isServiceFee = invoice.feeHead?.code === 'SSF' || invoice.feeHead?.name === 'Student Services FEE';
+    const isClubFee = isClubFeeInvoice(invoice);
+    const clubName = isClubFee ? getClubNameFromRemarks(invoice.remarks) : '';
+
+    transactions.forEach(transaction => {
+        if (transaction.status && transaction.status !== 'active') return;
+        let isServiceMatch = false;
+        if (isServiceFee && invoice.remarks) {
+            const refMatch = invoice.remarks.match(/\(Ref: (\d+)\)/);
+            if (refMatch && transaction.remarks) {
+                isServiceMatch = transaction.remarks.includes(`Ref: ${refMatch[1]}`) || transaction.remarks.includes(`SR-${refMatch[1]}`);
+            }
+        }
+
+        const invoiceHeadId = invoice.feeHead?._id || invoice.feeHead;
+        const transactionHeadId = transaction.feeHead?._id || transaction.feeHead;
+        const sameFeeHead = invoiceHeadId && transactionHeadId && String(invoiceHeadId) === String(transactionHeadId);
+        const sameYearAndSemester = transaction.studentYear?.toString() === invoice.studentYear?.toString() &&
+            (!invoice.semester || transaction.semester?.toString() === invoice.semester?.toString());
+        if (!(sameFeeHead && sameYearAndSemester) && !isServiceMatch) return;
+
+        if (isClubFee && clubName && (!transaction.remarks || !transaction.remarks.toLowerCase().includes(clubName.toLowerCase()))) return;
+
+        if (isServiceFee && !isServiceMatch && invoice.remarks) {
+            const refMatch = invoice.remarks.match(/\(Ref: (\d+)\)/);
+            if (refMatch && !transaction.remarks?.includes(`Ref: ${refMatch[1]}`) && !transaction.remarks?.includes(`SR-${refMatch[1]}`)) return;
+        }
+
+        paid += Number(transaction.amount) || 0;
+    });
+
+    return paid;
+};
 
 const FeeManagement = () => {
     const { user } = useAuthStore();
@@ -10,35 +63,27 @@ const FeeManagement = () => {
     const [error, setError] = useState(null);
     const [selectedYear, setSelectedYear] = useState('All');
     const [paymentLoading, setPaymentLoading] = useState(false);
+    const [expandedClubFeeGroups, setExpandedClubFeeGroups] = useState({});
 
-    // Modal State
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedPaymentFee, setSelectedPaymentFee] = useState(null);
     const [payAmount, setPayAmount] = useState('');
 
-    // Load Razorpay Script
-    const loadRazorpayScript = () => {
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-            script.onload = () => resolve(true);
-            script.onerror = () => resolve(false);
-            document.body.appendChild(script);
-        });
-    };
+    const loadRazorpayScript = () => new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
 
     const fetchFeeDetails = async () => {
         if (!user?.admission_number) return;
-
         try {
             setLoading(true);
             const response = await api.get(`/fees/students/${user.admission_number}/details`);
-
-            if (response.data.success) {
-                setFeeData(response.data);
-            } else {
-                setError('Failed to load fee details');
-            }
+            if (response.data.success) setFeeData(response.data);
+            else setError('Failed to load fee details');
         } catch (err) {
             console.error('Error fetching fee details:', err);
             setError('Unable to fetch fee information. Please try again later.');
@@ -51,33 +96,28 @@ const FeeManagement = () => {
         fetchFeeDetails();
     }, [user]);
 
-    // Open Modal
     const handlePayment = (amountToPay, feeItem = null) => {
         setSelectedPaymentFee(feeItem);
         setPayAmount(amountToPay.toString());
         setIsPaymentModalOpen(true);
     };
 
-    // Proceed with Payment
     const initiateTransaction = async () => {
         const amountToPay = parseFloat(payAmount);
         if (!amountToPay || amountToPay <= 0) {
-            alert("Please enter a valid amount");
+            alert('Please enter a valid amount');
             return;
         }
 
         const feeItem = selectedPaymentFee;
-
         try {
             setPaymentLoading(true);
             const resScript = await loadRazorpayScript();
-
             if (!resScript) {
                 alert('Razorpay SDK failed to load. Are you online?');
                 return;
             }
 
-            // 1. Create Order
             const orderResponse = await api.post('/payments/create-order', {
                 studentId: user?.admission_number,
                 amount: amountToPay,
@@ -86,15 +126,12 @@ const FeeManagement = () => {
                 semester: feeItem?.semester || feeData?.studentDetails?.currentSemester,
                 remarks: feeItem ? (feeItem.remarks || `Payment for ${feeItem.feeHead?.name}`) : 'General Fee Payment'
             });
-
             if (!orderResponse.data.success) {
                 alert(orderResponse.data.message || 'Failed to initialize payment');
                 return;
             }
 
             const { order, key_id, studentDetails: orderStudentDetails } = orderResponse.data;
-
-            // 2. Open Razorpay Checkout
             const options = {
                 key: key_id,
                 amount: order.amount,
@@ -105,7 +142,6 @@ const FeeManagement = () => {
                 handler: async (response) => {
                     try {
                         setPaymentLoading(true);
-                        // 3. Verify Payment
                         const verifyRes = await api.post('/payments/verify', {
                             ...response,
                             studentId: user?.admission_number,
@@ -115,10 +151,9 @@ const FeeManagement = () => {
                             semester: feeItem?.semester || feeData?.studentDetails?.currentSemester,
                             remarks: feeItem ? (feeItem.remarks || `Online Payment: ${feeItem.feeHead?.name}`) : 'Online Lumpsum Payment'
                         });
-
                         if (verifyRes.data.success) {
                             alert('Payment successful!');
-                            fetchFeeDetails(); // Refresh data
+                            fetchFeeDetails();
                             setIsPaymentModalOpen(false);
                             setPayAmount('');
                         } else {
@@ -132,24 +167,16 @@ const FeeManagement = () => {
                     }
                 },
                 modal: {
-                    ondismiss: function () {
-                        setPaymentLoading(false);
-                        console.log('Razorpay modal closed by user');
-                    }
+                    ondismiss: () => setPaymentLoading(false)
                 },
                 prefill: {
                     name: orderStudentDetails?.name || user?.name || '',
                     email: orderStudentDetails?.email || '',
                     contact: orderStudentDetails?.contact || ''
                 },
-                theme: {
-                    color: '#4F46E5' // Indigo
-                }
+                theme: { color: '#4F46E5' }
             };
-
-            const paymentObject = new window.Razorpay(options);
-            paymentObject.open();
-
+            new window.Razorpay(options).open();
         } catch (err) {
             console.error('Payment error:', err);
             alert('Failed to initiate payment. Please try again.');
@@ -200,9 +227,18 @@ const FeeManagement = () => {
         }
 
         // 2. Calculate Paid and Credits from Transactions
+        const cancelledClubNames = new Set((fees || [])
+            .filter(invoice => isClubFeeInvoice(invoice) && invoice.status === 'cancelled')
+            .map(getClubNameFromInvoice)
+            .filter(Boolean)
+            .map(name => name.toLowerCase()));
+
         if (transactions) {
             transactions.forEach(tx => {
+                if (tx.status && tx.status !== 'active') return;
                 const amount = Number(tx.amount) || 0;
+                const transactionClubName = getClubNameFromRemarks(tx.remarks).toLowerCase();
+                if (transactionClubName && cancelledClubNames.has(transactionClubName)) return;
 
                 if (tx.transactionType === 'CREDIT') {
                     // Explicit CREDIT tx -> Credits
@@ -244,6 +280,27 @@ const FeeManagement = () => {
         if (selectedYear === 'All') return fees;
         return fees?.filter(f => f.studentYear.toString() === selectedYear.toString());
     }, [fees, selectedYear]);
+
+    const displayFeeItems = useMemo(() => {
+        const displayItems = [];
+        const clubGroups = new Map();
+        (filteredFees || []).forEach((invoice, index) => {
+            if (!isClubFeeInvoice(invoice)) {
+                displayItems.push({ type: 'invoice', key: invoice._id || `invoice-${index}`, invoice });
+                return;
+            }
+
+            const groupKey = 'all-club-fees';
+            let group = clubGroups.get(groupKey);
+            if (!group) {
+                group = { type: 'clubGroup', key: `club-fees-${groupKey}`, invoices: [] };
+                clubGroups.set(groupKey, group);
+                displayItems.push(group);
+            }
+            group.invoices.push(invoice);
+        });
+        return displayItems;
+    }, [filteredFees]);
 
     if (loading) {
         return (
@@ -414,65 +471,100 @@ const FeeManagement = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {filteredFees && filteredFees.length > 0 ? (
-                                    filteredFees.map((inv, index) => {
-                                        // Calculate paid amount for this specific fee item
-                                        let itemPaid = 0;
-                                        if (transactions) {
-                                            transactions.forEach(tx => {
-                                                // Link transaction to fee item by feeHead and year/sem
-                                                // OR if it's a Service Fee, loosely match by Reference ID even if FeeHead is missing (Legacy/Error fallback)
-
-                                                const isServiceFee = inv.feeHead?.code === 'SSF' || inv.feeHead?.name === 'Student Services FEE';
-                                                let isServiceMatch = false;
-
-                                                if (isServiceFee && inv.remarks) {
-                                                    const refMatch = inv.remarks.match(/\(Ref: (\d+)\)/);
-                                                    if (refMatch) {
-                                                        const refId = refMatch[1];
-                                                        // Check if transaction has this Ref ID
-                                                        if (tx.remarks && (tx.remarks.includes(`Ref: ${refId}`) || tx.remarks.includes(`SR-${refId}`))) {
-                                                            isServiceMatch = true;
-                                                        }
-                                                    }
-                                                }
-
-                                                // Primary Match (Fee Head & Year) OR Service Match (Ref ID)
-                                                if (
-                                                    (tx.feeHead?._id === inv.feeHead?._id &&
-                                                        tx.studentYear?.toString() === inv.studentYear?.toString() &&
-                                                        (!inv.semester || tx.semester?.toString() === inv.semester?.toString()))
-                                                    || isServiceMatch
-                                                ) {
-                                                    // Strict check for Club Fees
-                                                    const isClubFee = inv.feeHead?.name?.toLowerCase().includes('club');
-                                                    if (isClubFee && inv.remarks) {
-                                                        const clubNameMatch = inv.remarks.match(/Club Fee:\s*(.+)/i);
-                                                        const clubName = clubNameMatch ? clubNameMatch[1] : inv.remarks;
-                                                        if (!tx.remarks || !tx.remarks.toLowerCase().includes(clubName.toLowerCase())) {
-                                                            return;
-                                                        }
-                                                    }
-
-                                                    // Service Fee Ref Check (Already done in isServiceMatch, but if we matched by Feehead, we MUST still verify Ref to prevent cross-pay)
-                                                    if (isServiceFee && !isServiceMatch && inv.remarks) {
-                                                        const refMatch = inv.remarks.match(/\(Ref: (\d+)\)/);
-                                                        if (refMatch) {
-                                                            const refId = refMatch[1];
-                                                            const hasRef = tx.remarks && (tx.remarks.includes(`Ref: ${refId}`) || tx.remarks.includes(`SR-${refId}`));
-                                                            if (!hasRef) return;
-                                                        }
-                                                    }
-
-                                                    if (tx.transactionType === 'DEBIT') {
-                                                        itemPaid += Number(tx.amount) || 0;
-                                                    } else {
-                                                        itemPaid += Number(tx.amount) || 0;
-                                                    }
-                                                }
+                                {displayFeeItems.length > 0 ? (
+                                    displayFeeItems.map((displayItem, index) => {
+                                        if (displayItem.type === 'clubGroup') {
+                                            const clubInvoices = displayItem.invoices.map(invoice => {
+                                                const paid = calculateInvoicePaid(invoice, transactions);
+                                                return {
+                                                    invoice,
+                                                    clubName: getClubNameFromRemarks(invoice.remarks) || 'Club',
+                                                    paid,
+                                                    due: Math.max(0, Number(invoice.amount) - paid)
+                                                };
                                             });
+                                            const groupTotal = clubInvoices.reduce((sum, item) => sum + (Number(item.invoice.amount) || 0), 0);
+                                            const groupPaid = clubInvoices.reduce((sum, item) => sum + item.paid, 0);
+                                            const groupDue = clubInvoices.reduce((sum, item) => sum + item.due, 0);
+                                            const isExpanded = !!expandedClubFeeGroups[displayItem.key];
+                                            const groupPeriods = [...new Set(clubInvoices.map(({ invoice }) => `Year ${invoice.studentYear}${invoice.semester ? ` · Sem ${invoice.semester}` : ''}`))];
+
+                                            return (
+                                                <React.Fragment key={displayItem.key}>
+                                                    <tr className="bg-slate-50/70 hover:bg-slate-100/70">
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><FileText size={16} /></div>
+                                                                <div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setExpandedClubFeeGroups(current => ({ ...current, [displayItem.key]: !current[displayItem.key] }))}
+                                                                        aria-expanded={isExpanded}
+                                                                        className="flex items-center gap-2 text-left font-semibold text-gray-900 hover:text-indigo-700"
+                                                                    >
+                                                                        <span>Club Fee</span>
+                                                                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{clubInvoices.length} {clubInvoices.length === 1 ? 'club' : 'clubs'}</span>
+                                                                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                    </button>
+                                                                    <p className="text-xs text-gray-500">Club membership fees</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-gray-500">{groupPeriods.length === 1 ? groupPeriods[0] : `${groupPeriods.length} academic periods`}</td>
+                                                        <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(groupTotal)}</td>
+                                                        <td className="px-4 py-3 text-right font-medium text-green-600">{formatCurrency(groupPaid)}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-red-600">{formatCurrency(groupDue)}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {groupDue <= 0 ? (
+                                                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600 border border-green-100">Paid</span>
+                                                            ) : (
+                                                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-100">Due</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr className="bg-white">
+                                                            <td colSpan={6} className="px-5 py-3">
+                                                                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                                                    <table className="w-full text-xs">
+                                                                        <thead className="bg-gray-50 text-gray-500">
+                                                                            <tr>
+                                                                                <th className="px-3 py-2 text-left font-semibold">Club Name</th>
+                                                                                <th className="px-3 py-2 text-left font-semibold">Year / Sem</th>
+                                                                                <th className="px-3 py-2 text-right font-semibold">Fee</th>
+                                                                                <th className="px-3 py-2 text-right font-semibold">Paid</th>
+                                                                                <th className="px-3 py-2 text-right font-semibold">Balance</th>
+                                                                                <th className="px-3 py-2 text-right font-semibold">Action</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-gray-100">
+                                                                            {clubInvoices.map(({ invoice, paid, due }) => {
+                                                                                const clubName = getClubNameFromInvoice(invoice);
+                                                                                return (
+                                                                                <tr key={invoice._id || `${clubName}-${invoice.studentYear}-${invoice.semester}`}>
+                                                                                    <td className="px-3 py-2 font-medium text-gray-800">{clubName}</td>
+                                                                                    <td className="px-3 py-2 text-gray-500">Year {invoice.studentYear}{invoice.semester ? ` · Sem ${invoice.semester}` : ''}</td>
+                                                                                    <td className="px-3 py-2 text-right">{formatCurrency(invoice.amount)}</td>
+                                                                                    <td className="px-3 py-2 text-right text-green-700">{formatCurrency(paid)}</td>
+                                                                                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(due)}</td>
+                                                                                    <td className="px-3 py-2 text-right">
+                                                                                        {due > 0 ? <button onClick={() => handlePayment(due, invoice)} disabled={paymentLoading} className="rounded-md bg-indigo-50 px-2.5 py-1.5 font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">Pay</button> : <span className="text-green-700">Paid</span>}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
                                         }
 
+                                        const inv = displayItem.invoice;
+                                        const itemPaid = calculateInvoicePaid(inv, transactions);
                                         const itemDue = Math.max(0, inv.amount - itemPaid);
                                         const isFullyPaid = itemDue <= 0;
 
@@ -573,57 +665,72 @@ const FeeManagement = () => {
 
                         {/* Mobile Card View */}
                         <div className="md:hidden space-y-4 p-4">
-                            {filteredFees && filteredFees.length > 0 ? (
-                                filteredFees.map((inv, index) => {
-                                    // Calculate paid amount for this specific fee item (Duplicate Logic for Mobile View)
-                                    let itemPaid = 0;
-                                    if (transactions) {
-                                        transactions.forEach(tx => {
-                                            const isServiceFee = inv.feeHead?.code === 'SSF' || inv.feeHead?.name === 'Student Services FEE';
-                                            let isServiceMatch = false;
-
-                                            if (isServiceFee && inv.remarks) {
-                                                const refMatch = inv.remarks.match(/\(Ref: (\d+)\)/);
-                                                if (refMatch) {
-                                                    const refId = refMatch[1];
-                                                    if (tx.remarks && (tx.remarks.includes(`Ref: ${refId}`) || tx.remarks.includes(`SR-${refId}`))) {
-                                                        isServiceMatch = true;
-                                                    }
-                                                }
-                                            }
-
-                                            if (
-                                                (tx.feeHead?._id === inv.feeHead?._id &&
-                                                    tx.studentYear?.toString() === inv.studentYear?.toString() &&
-                                                    (!inv.semester || tx.semester?.toString() === inv.semester?.toString()))
-                                                || isServiceMatch
-                                            ) {
-                                                // Strict check for Club Fees to avoid cross-paying
-                                                const isClubFee = inv.feeHead?.name?.toLowerCase().includes('club');
-                                                if (isClubFee && inv.remarks) {
-                                                    const clubNameMatch = inv.remarks.match(/Club Fee:\s*(.+)/i);
-                                                    const clubName = clubNameMatch ? clubNameMatch[1] : inv.remarks;
-
-                                                    if (!tx.remarks || !tx.remarks.toLowerCase().includes(clubName.toLowerCase())) {
-                                                        return;
-                                                    }
-                                                }
-
-                                                // Service Fee Ref Check (If matched by FeeHead, verify Ref)
-                                                if (isServiceFee && !isServiceMatch && inv.remarks) {
-                                                    const refMatch = inv.remarks.match(/\(Ref: (\d+)\)/);
-                                                    if (refMatch) {
-                                                        const refId = refMatch[1];
-                                                        const hasRef = tx.remarks && (tx.remarks.includes(`Ref: ${refId}`) || tx.remarks.includes(`SR-${refId}`));
-                                                        if (!hasRef) return;
-                                                    }
-                                                }
-
-                                                itemPaid += Number(tx.amount) || 0;
-                                            }
+                            {displayFeeItems.length > 0 ? (
+                                displayFeeItems.map((displayItem, index) => {
+                                    if (displayItem.type === 'clubGroup') {
+                                        const clubInvoices = displayItem.invoices.map(invoice => {
+                                            const paid = calculateInvoicePaid(invoice, transactions);
+                                            return {
+                                                invoice,
+                                                clubName: getClubNameFromRemarks(invoice.remarks) || 'Club',
+                                                paid,
+                                                due: Math.max(0, Number(invoice.amount) - paid)
+                                            };
                                         });
+                                        const groupTotal = clubInvoices.reduce((sum, item) => sum + (Number(item.invoice.amount) || 0), 0);
+                                        const groupPaid = clubInvoices.reduce((sum, item) => sum + item.paid, 0);
+                                        const groupDue = clubInvoices.reduce((sum, item) => sum + item.due, 0);
+                                        const isExpanded = !!expandedClubFeeGroups[displayItem.key];
+                                        const groupPeriods = [...new Set(clubInvoices.map(({ invoice }) => `Year ${invoice.studentYear}${invoice.semester ? ` · Sem ${invoice.semester}` : ''}`))];
+
+                                        return (
+                                            <div key={displayItem.key} className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExpandedClubFeeGroups(current => ({ ...current, [displayItem.key]: !current[displayItem.key] }))}
+                                                    aria-expanded={isExpanded}
+                                                    className="flex w-full items-center justify-between gap-3 text-left"
+                                                >
+                                                    <span className="min-w-0">
+                                                        <span className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-bold text-gray-900">Club Fee</span>
+                                                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{clubInvoices.length} {clubInvoices.length === 1 ? 'club' : 'clubs'}</span>
+                                                        </span>
+                                                        <span className="mt-1 block text-xs text-gray-500">{groupPeriods.length === 1 ? groupPeriods[0] : `${groupPeriods.length} academic periods`}</span>
+                                                    </span>
+                                                    {isExpanded ? <ChevronDown size={18} className="shrink-0 text-gray-500" /> : <ChevronRight size={18} className="shrink-0 text-gray-500" />}
+                                                </button>
+                                                <div className="mt-3 grid grid-cols-3 gap-2 border-y border-gray-100 py-3 text-center">
+                                                    <div><p className="text-[10px] uppercase text-gray-400">Total</p><p className="text-sm font-semibold text-gray-900">{formatCurrency(groupTotal)}</p></div>
+                                                    <div><p className="text-[10px] uppercase text-gray-400">Paid</p><p className="text-sm font-semibold text-green-600">{formatCurrency(groupPaid)}</p></div>
+                                                    <div><p className="text-[10px] uppercase text-gray-400">Due</p><p className="text-sm font-bold text-red-600">{formatCurrency(groupDue)}</p></div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="mt-3 space-y-2">
+                                                        {clubInvoices.map(({ invoice, paid, due }) => {
+                                                            const clubName = getClubNameFromInvoice(invoice);
+                                                            return (
+                                                            <div key={invoice._id || `${clubName}-${invoice.studentYear}-${invoice.semester}`} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="min-w-0">
+                                                                        <p className="truncate text-sm font-semibold text-gray-800">{clubName}</p>
+                                                                        <p className="mt-1 text-[11px] text-gray-500">Year {invoice.studentYear}{invoice.semester ? ` · Sem ${invoice.semester}` : ''} · Fee {formatCurrency(invoice.amount)} · Paid {formatCurrency(paid)} · Balance {formatCurrency(due)}</p>
+                                                                    </div>
+                                                                    {due > 0 ? (
+                                                                        <button onClick={() => handlePayment(due, invoice)} disabled={paymentLoading} className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Pay</button>
+                                                                    ) : <span className="shrink-0 text-xs font-semibold text-green-700">Paid</span>}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
                                     }
 
+                                    const inv = displayItem.invoice;
+                                    const itemPaid = calculateInvoicePaid(inv, transactions);
                                     const itemDue = Math.max(0, inv.amount - itemPaid);
                                     const isFullyPaid = itemDue <= 0;
 
@@ -707,8 +814,9 @@ const FeeManagement = () => {
                     <div className="p-2 overflow-y-auto max-h-[500px]">
                         {transactions && transactions.length > 0 ? (
                             transactions.map((tx, index) => {
-                                const isCon = isCredit(tx);
-                                const isPayment = tx.transactionType === 'DEBIT' && !isCon;
+                                const isInactiveTransaction = tx.status && tx.status !== 'active';
+                                const isCon = !isInactiveTransaction && isCredit(tx);
+                                const isPayment = !isInactiveTransaction && tx.transactionType === 'DEBIT' && !isCon;
 
                                 return (
                                     <div key={index} className="p-4 hover:bg-gray-50 rounded-xl transition-colors border-b border-gray-50 last:border-0 relative group">
@@ -728,6 +836,11 @@ const FeeManagement = () => {
                                                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded uppercase tracking-wide">
                                                             {tx.paymentMode || 'Unknown'}
                                                         </span>
+                                                        {isInactiveTransaction && (
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-50 text-red-600 rounded uppercase tracking-wide">
+                                                                {tx.status}
+                                                            </span>
+                                                        )}
                                                         <span className="text-xs text-gray-400">
                                                             {tx.receiptNumber ? `#${tx.receiptNumber}` : (tx.referenceNo ? `Bank RRN: ${tx.referenceNo}` : 'Ref N/A')}
                                                             {tx.gatewayPaymentId && (
@@ -740,8 +853,8 @@ const FeeManagement = () => {
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className={`font-bold text-sm ${isCon ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {isCon ? '+' : '-'}{formatCurrency(tx.amount)}
+                                                <p className={`font-bold text-sm ${isInactiveTransaction ? 'text-gray-500 line-through' : isCon ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {!isInactiveTransaction && (isCon ? '+' : '-')}{formatCurrency(tx.amount)}
                                                 </p>
                                                 <p className="text-[10px] text-gray-400">
                                                     {new Date(tx.paymentDate).toLocaleDateString()}

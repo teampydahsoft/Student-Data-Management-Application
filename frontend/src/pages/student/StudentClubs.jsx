@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Users, BookOpen, CheckCircle, Clock, AlertCircle, MessageSquare, Send, ChevronLeft, Sparkles } from 'lucide-react';
 
 const formatChatTime = (dateStr) => {
@@ -19,6 +20,8 @@ import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 
 const StudentClubs = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedClub, setSelectedClub] = useState(null); // For join modal
@@ -55,11 +58,14 @@ const StudentClubs = () => {
 
                 if (clubsRes.success) {
                     setClubs(clubsRes.data);
-                    // Auto-select the first joined club ONLY if payment is not due
-                    const joinedClub = clubsRes.data.find(c => c.userStatus === 'approved' && c.payment_status !== 'payment_due');
-                    if (joinedClub) {
-                        setActiveClub(joinedClub);
+                    const requestedClubId = location.state?.selectedClubId;
+                    const requestedClub = clubsRes.data.find(club => String(club.id) === String(requestedClubId));
+                    if (requestedClub && requestedClub.userStatus === 'approved' && requestedClub.payment_status !== 'payment_due') {
+                        setActiveClub(requestedClub);
                         setViewMode('details');
+                    } else {
+                        setActiveClub(null);
+                        setViewMode('list');
                     }
                 }
             } catch (error) {
@@ -70,7 +76,7 @@ const StudentClubs = () => {
             }
         };
         loadSafe();
-    }, [user]);
+    }, [user, location.state?.selectedClubId]);
 
     // Load club chat channel when viewing club details (only for approved members without payment due)
     useEffect(() => {
@@ -206,22 +212,22 @@ const StudentClubs = () => {
     const displayClubs = listSegment === 'joined' ? joinedClubs : clubs;
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-            <div className={`p-4 sm:p-6 mx-auto w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[80rem] flex-1 flex flex-col min-h-0 ${viewMode === 'list' ? 'space-y-6' : 'max-h-[calc(100vh-2rem)]'}`}>
+        <div className="min-h-0 bg-slate-50 flex flex-col">
+            <div className={`p-3 sm:p-6 mx-auto w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[80rem] flex-1 flex flex-col min-h-0 ${viewMode === 'list' ? 'space-y-4 sm:space-y-6' : 'max-h-[calc(100dvh-7rem)] lg:max-h-[calc(100vh-2rem)]'}`}>
                 {viewMode === 'list' ? (
                     <>
                         {/* Segment tabs: My Clubs | Discover */}
                         {joinedClubs.length > 0 && (
-                            <div className="flex rounded-[1.5rem] bg-white/60 backdrop-blur-md p-1.5 shadow-xl shadow-slate-200/40 border border-white">
+                                <div className="flex rounded-xl sm:rounded-[1.5rem] bg-white/60 backdrop-blur-md p-1 shadow-xl shadow-slate-200/40 border border-white">
                                 <button
                                     onClick={() => setListSegment('joined')}
-                                    className={`flex-1 py-3 px-6 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${listSegment === 'joined' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
+                                    className={`flex-1 min-w-0 py-2.5 px-2 sm:py-3 sm:px-6 rounded-lg sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${listSegment === 'joined' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                                 >
                                     <CheckCircle size={16} /> My Territories ({joinedClubs.length})
                                 </button>
                                 <button
                                     onClick={() => setListSegment('all')}
-                                    className={`flex-1 py-3 px-6 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${listSegment === 'all' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
+                                        className={`flex-1 min-w-0 py-2.5 px-2 sm:py-3 sm:px-6 rounded-lg sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${listSegment === 'all' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                                 >
                                     <Sparkles size={16} /> Discover All
                                 </button>
@@ -297,12 +303,11 @@ const StudentClubs = () => {
                                                     <div className="mt-auto">
                                                         {club.userStatus === 'approved' ? (
                                                             club.payment_status === 'payment_due' ? (
-                                                                <button
-                                                                    onClick={() => toast.info(`Please go to Fee Management to pay the remaining ₹${club.balance_due || club.membership_fee}`)}
-                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] hover:bg-rose-700 transition-all shadow-xl shadow-rose-200 flex items-center justify-center gap-3 transform hover:-translate-y-0.5"
+                                                                <div
+                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] shadow-xl shadow-rose-200 flex items-center justify-center gap-3"
                                                                 >
-                                                                    <AlertCircle size={16} /> Settlement Required
-                                                                </button>
+                                                                    <AlertCircle size={16} /> Pay Fee to Get Joined (₹{club.balance_due || club.membership_fee})
+                                                                </div>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => handleViewClub(club)}
@@ -312,9 +317,17 @@ const StudentClubs = () => {
                                                                 </button>
                                                             )
                                                         ) : club.userStatus === 'pending' ? (
-                                                            <div className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-slate-50 text-slate-300 font-black uppercase tracking-widest text-[10px] sm:text-[11px] border border-slate-100 flex items-center justify-center gap-3 italic">
-                                                                <Clock size={16} /> Transmission Pending
-                                                            </div>
+                                                            club.membership_fee > 0 ? (
+                                                                <div
+                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-amber-500 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] shadow-xl shadow-amber-200 flex items-center justify-center gap-3"
+                                                                >
+                                                                    <AlertCircle size={16} /> Pay Fee to Get Joined  (₹{club.balance_due || club.membership_fee})
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-slate-50 text-slate-300 font-black uppercase tracking-widest text-[10px] sm:text-[11px] border border-slate-100 flex items-center justify-center gap-3 italic">
+                                                                    <Clock size={16} /> Transmission Pending
+                                                                </div>
+                                                            )
                                                         ) : club.userStatus === 'rejected' ? (
                                                             <div className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-slate-100 text-slate-400 font-black uppercase tracking-widest text-[10px] sm:text-[11px] border border-slate-200 flex items-center justify-center gap-3">
                                                                 <AlertCircle size={16} /> Entry Restricted
@@ -547,7 +560,7 @@ const StudentClubs = () => {
                 )}
                 {selectedClub && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+                        <div className="bg-white rounded-2xl max-h-[calc(100dvh-2rem)] max-w-md w-full overflow-y-auto shadow-2xl">
                             <div className="p-6 sm:p-8">
                                 <div className="flex items-start justify-between gap-4 mb-6">
                                     <div className="flex items-center gap-4 min-w-0">
@@ -577,7 +590,7 @@ const StudentClubs = () => {
                                     <div>
                                         <p className="font-semibold text-sm">Confirm request</p>
                                         <p className="text-sm mt-1 text-indigo-800/90">
-                                            Your profile will be shared with the club. {selectedClub.membership_fee > 0 && <>Fee of <strong>₹{selectedClub.membership_fee}</strong> is due after approval.</>}
+                                            Your profile will be shared with the club. {selectedClub.membership_fee > 0 && <>A fee row of <strong>₹{selectedClub.membership_fee}</strong> will be added to your Fee Management. Pay it from Fee Management to automatically join the club.</>}
                                         </p>
                                     </div>
                                 </div>

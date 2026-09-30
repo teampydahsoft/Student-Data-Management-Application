@@ -204,10 +204,12 @@ export const MODULE_PERMISSIONS = {
     }
   },
   [BACKEND_MODULES.CLUBS]: {
-    permissions: ['view', 'manage'],
+    permissions: ['view', 'manage', 'view_students', 'manage_settings'],
     labels: {
-      view: 'View Clubs',
-      manage: 'Manage Clubs'
+      view: 'View Student Clubs',
+      manage: 'Manage Student Clubs',
+      view_students: 'View Club Students',
+      manage_settings: 'Manage Club Settings & Roles'
     }
   }
 };
@@ -227,7 +229,7 @@ export const MODULE_LABELS = {
   [BACKEND_MODULES.ANNOUNCEMENTS]: 'Announcements',
   [BACKEND_MODULES.SERVICES]: 'Services',
   [BACKEND_MODULES.FACULTY_MANAGEMENT]: 'Faculty Management',
-  [BACKEND_MODULES.CLUBS]: 'Clubs'
+  [BACKEND_MODULES.CLUBS]: 'Student Clubs'
 };
 
 // Frontend navigation keys

@@ -25,6 +25,11 @@ const transactionSchema = mongoose.Schema({
     enum: ['DEBIT', 'CREDIT'],
     default: 'DEBIT',
   },
+  status: {
+    type: String,
+    enum: ['active', 'cancelled', 'transferred'],
+    default: 'active',
+  },
   paymentMode: {
     type: String,
     enum: ['Cash', 'UPI', 'Cheque', 'DD', 'Card', 'Net Banking', 'Adjustment', 'Waiver', 'Refund', 'Credit'],
