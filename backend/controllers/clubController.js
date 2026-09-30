@@ -7,14 +7,75 @@ const Transaction = require('../MongoDb-Models/Transaction');
 const StudentFee = require('../MongoDb-Models/StudentFee');
 const FeeHead = require('../MongoDb-Models/FeeHead');
 
+const DEFAULT_CLUB_ADMIN_PAGES = ['management', 'students', 'settings'];
+const getClubFeeTransactionName = (remarks) => String(remarks || '')
+    .trim()
+    .replace(/^club\s*fee\s*[:\-–]\s*/i, '')
+    .trim()
+    .toLowerCase();
+const normalizeClubPagePermissions = (permissions, pages = DEFAULT_CLUB_ADMIN_PAGES) => {
+    const legacyPages = Array.isArray(pages) ? pages : DEFAULT_CLUB_ADMIN_PAGES;
+    return Object.fromEntries(DEFAULT_CLUB_ADMIN_PAGES.map(page => {
+        const value = permissions && typeof permissions[page] === 'object' ? permissions[page] : null;
+        const write = value ? value.write === true : legacyPages.includes(page);
+        return [page, { read: value ? value.read === true || write : legacyPages.includes(page), write }];
+    }));
+};
+const getAssignmentPagePermissions = (assignment) =>
+    normalizeClubPagePermissions(assignment?.pagePermissions, assignment?.pages);
+const normalizeClubAdminPages = (pages) => {
+    if (!Array.isArray(pages)) return [...DEFAULT_CLUB_ADMIN_PAGES];
+    const allowedPages = new Set(DEFAULT_CLUB_ADMIN_PAGES);
+    return [...new Set(pages.filter(page => allowedPages.has(page)))];
+};
+const parseClubRolePages = (pages) => {
+    try {
+        return normalizeClubAdminPages(typeof pages === 'string' ? JSON.parse(pages) : pages);
+    } catch (error) {
+        return [...DEFAULT_CLUB_ADMIN_PAGES];
+    }
+};
+const getFullAccessUserKeys = async () => {
+    const [users] = await masterPool.query(
+        "SELECT id, email, username, hrms_id FROM rbac_users WHERE LOWER(role) IN ('admin', 'super_admin', 'superadmin')"
+    );
+    return new Set((users || []).flatMap(user => [
+        `id_${String(user.id).trim().toLowerCase()}`,
+        user.email && `email_${String(user.email).trim().toLowerCase()}`,
+        user.username && `username_${String(user.username).trim().toLowerCase()}`,
+        user.hrms_id && `hrms_${String(user.hrms_id).trim().toLowerCase()}`
+    ].filter(Boolean)));
+};
+const getAssignmentIdentityKeys = (assignment) => [
+    assignment.userId && `id_${String(assignment.userId).trim().toLowerCase()}`,
+    assignment.email && `email_${String(assignment.email).trim().toLowerCase()}`,
+    assignment.empNo && `username_${String(assignment.empNo).trim().toLowerCase()}`,
+    assignment.hrmsId && `hrms_${String(assignment.hrmsId).trim().toLowerCase()}`
+].filter(Boolean);
+const applyFullAccessClubPages = (assignments, fullAccessUserKeys, includeRoleFlag = false) =>
+    (assignments || []).map(assignment => {
+        if (!assignment) return assignment;
+        const { isSuperAdmin, ...assignmentData } = assignment;
+        const isFullAccess = getAssignmentIdentityKeys(assignment).some(key => fullAccessUserKeys.has(key));
+        const pagePermissions = isFullAccess
+            ? Object.fromEntries(DEFAULT_CLUB_ADMIN_PAGES.map(page => [page, { read: true, write: true }]))
+            : getAssignmentPagePermissions(assignment);
+        return {
+            ...assignmentData,
+            pagePermissions,
+            pages: DEFAULT_CLUB_ADMIN_PAGES.filter(page => pagePermissions[page].read || pagePermissions[page].write),
+            ...(includeRoleFlag ? { isSuperAdmin: isFullAccess } : {})
+        };
+    });
+
 
 const getClubs = async (req, res) => {
     try {
         const { role, id } = req.user;
-        const isAdmin = ['admin', 'super_admin'].includes(role);
+        const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(String(role || '').toLowerCase());
 
         // Fetch clubs without transferring large base64 image strings in list JSON
-        let query = 'SELECT id, name, description, membership_fee, fee_type, (image_url IS NOT NULL AND image_url != "") as has_image, activities, form_fields, is_active, created_at FROM clubs';
+        let query = 'SELECT id, name, description, membership_fee, fee_type, admin_roles, (image_url IS NOT NULL AND image_url != "") as has_image, activities, form_fields, is_active, created_at FROM clubs';
         if (!isAdmin) {
             query += ' WHERE is_active = TRUE';
         }
@@ -33,7 +94,27 @@ const getClubs = async (req, res) => {
         }
 
         const results = await Promise.all(promises);
-        const [clubs] = results[0];
+        let [clubs] = results[0];
+        if (!isAdmin && role !== 'student') {
+            const user = req.user || {};
+            clubs = clubs.filter(club => {
+                let assignments = [];
+                try {
+                    assignments = typeof club.admin_roles === 'string' ? JSON.parse(club.admin_roles) : (club.admin_roles || []);
+                } catch (error) {
+                    assignments = [];
+                }
+                return assignments.some(assignment => {
+                    if (!assignment) return false;
+                    const isAssigned = String(assignment.userId || '') === String(user.id || '') ||
+                        (assignment.empNo && String(assignment.empNo).toLowerCase() === String(user.username || '').toLowerCase()) ||
+                        (assignment.email && String(assignment.email).toLowerCase() === String(user.email || '').toLowerCase()) ||
+                        (assignment.hrmsId && String(assignment.hrmsId) === String(user.hrms_id || ''));
+                    const pagePermissions = getAssignmentPagePermissions(assignment);
+                    return isAssigned && DEFAULT_CLUB_ADMIN_PAGES.some(page => pagePermissions[page].read);
+                });
+            });
+        }
         const [memberCounts] = results[1];
         const [memberships] = (results[2] && results[2][0]) ? results[2] : [[]];
 
@@ -52,59 +133,141 @@ const getClubs = async (req, res) => {
             try { return typeof val === 'string' ? JSON.parse(val) : (val || []); } catch (e) { return []; }
         };
 
-        // If student is approved for any club with a fee, fetch transactions once
+        // If student is approved or pending for any club with a fee, fetch transactions once
         let studentTransactions = [];
-        const hasApprovedPaidClub = role === 'student' && clubs.some(c => {
+        const clubFeeStatusByName = new Map();
+        const hasClubWithFee = role === 'student' && clubs.some(c => {
             const m = membershipMap[c.id];
-            return m && m.status === 'approved' && Number(c.membership_fee) > 0;
+            return m && (m.status === 'approved' || m.status === 'pending') && Number(c.membership_fee) > 0;
         });
 
-        if (hasApprovedPaidClub) {
+        if (hasClubWithFee) {
             try {
                 const [sRow] = await masterPool.query('SELECT admission_number FROM students WHERE id = ?', [id]);
                 if (sRow.length > 0 && sRow[0].admission_number) {
+                    const admissionNumber = sRow[0].admission_number;
                     studentTransactions = await Transaction.find({
-                        studentId: sRow[0].admission_number,
-                        transactionType: 'DEBIT'
+                        studentId: admissionNumber,
+                        transactionType: 'DEBIT',
+                        status: { $nin: ['cancelled', 'transferred'] }
                     }).lean();
+
+                    const clubFeeHead = await FeeHead.findOne({ $or: [{ code: 'CF' }, { name: 'Club Fee' }] }).select('_id');
+                    if (clubFeeHead) {
+                        const clubFeeRecords = await StudentFee.find({
+                            studentId: admissionNumber,
+                            feeHead: clubFeeHead._id
+                        }).select('remarks status updatedAt').sort({ updatedAt: -1 }).lean();
+                        clubFeeRecords.forEach(fee => {
+                            const clubName = getClubFeeTransactionName(fee.remarks);
+                            if (clubName && !clubFeeStatusByName.has(clubName)) {
+                                clubFeeStatusByName.set(clubName, fee.status || 'active');
+                            }
+                        });
+                    }
                 }
             } catch (syncErr) {
                 console.error('Error syncing club payment status:', syncErr);
             }
         }
 
+        if (role === 'student') {
+            for (const club of clubs) {
+                const membership = membershipMap[club.id];
+                const requiredFee = Number(club.membership_fee) || 0;
+                if (!membership || requiredFee <= 0 || !['approved', 'pending'].includes(membership.status)) continue;
+
+                const normalizedClubName = String(club.name || '').trim().toLowerCase();
+                if (clubFeeStatusByName.get(normalizedClubName) === 'cancelled') {
+                    if (membership.status !== 'pending' || membership.payment_status !== 'payment_due') {
+                        await masterPool.query(
+                            'UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND student_id = ?',
+                            ['pending', 'payment_due', club.id, id]
+                        );
+                        membershipMap[club.id] = { ...membership, status: 'pending', payment_status: 'payment_due' };
+                    }
+                    continue;
+                }
+
+                const paidAmount = studentTransactions
+                    .filter(transaction => getClubFeeTransactionName(transaction.remarks) === normalizedClubName)
+                    .reduce((total, transaction) => total + (Number(transaction.amount) || 0), 0);
+                const fullyPaid = paidAmount >= requiredFee;
+                const nextStatus = fullyPaid ? 'approved' : 'pending';
+                const nextPaymentStatus = fullyPaid ? 'paid' : 'payment_due';
+
+                if (membership.status !== nextStatus || membership.payment_status !== nextPaymentStatus) {
+                    await masterPool.query(
+                        'UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND student_id = ?',
+                        [nextStatus, nextPaymentStatus, club.id, id]
+                    );
+                    membershipMap[club.id] = {
+                        ...membership,
+                        status: nextStatus,
+                        payment_status: nextPaymentStatus
+                    };
+                }
+
+                if (fullyPaid && membership.status !== 'approved') {
+                    const [channels] = await masterPool.query(
+                        'SELECT id FROM chat_channels WHERE club_id = ? AND is_active = 1 LIMIT 1',
+                        [club.id]
+                    );
+                    if (channels.length > 0) {
+                        await masterPool.query(
+                            'INSERT IGNORE INTO chat_channel_members (channel_id, member_type, student_id) VALUES (?, ?, ?)',
+                            [channels[0].id, 'student', id]
+                        );
+                    }
+                }
+            }
+        }
+
         const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const fullAccessUserKeys = await getFullAccessUserKeys();
 
         const enrichedClubs = clubs.map(club => {
-            const count = memberCountMap[club.id] || 0;
+            const pagePermissions = req.clubPagePermissionsByClubId?.[club.id] || req.clubPagePermissions;
+            const canReadMembers = role === 'student' || !pagePermissions || pagePermissions.students?.read;
+            const count = canReadMembers ? (memberCountMap[club.id] || 0) : 0;
             const membership = membershipMap[club.id];
-            const userStatus = membership ? membership.status : null;
+            let userStatus = membership ? membership.status : null;
             let paymentStatus = membership ? membership.payment_status : null;
 
             let paid_amount = 0;
             const requiredFee = Number(club.membership_fee) || 0;
             let balance_due = requiredFee;
 
-            if (userStatus === 'approved' && studentTransactions.length > 0) {
-                const clubRegex = new RegExp(club.name, 'i');
-                const matchingTxs = studentTransactions.filter(tx => tx.remarks && clubRegex.test(tx.remarks));
+            if (role === 'student' && membership && requiredFee > 0 && ['approved', 'pending'].includes(membership.status)) {
+                const normalizedClubName = String(club.name || '').trim().toLowerCase();
+                const feeWasCancelled = clubFeeStatusByName.get(normalizedClubName) === 'cancelled';
+                const matchingTxs = feeWasCancelled
+                    ? []
+                    : studentTransactions.filter(tx => getClubFeeTransactionName(tx.remarks) === normalizedClubName);
                 paid_amount = matchingTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
                 balance_due = Math.max(0, requiredFee - paid_amount);
 
-                if (paymentStatus === 'payment_due' && paid_amount >= requiredFee && requiredFee > 0) {
+                if (paid_amount >= requiredFee && (userStatus !== 'approved' || paymentStatus !== 'paid')) {
                     paymentStatus = 'paid';
-                    // Asynchronously update status in background without delaying response
-                    masterPool.query('UPDATE club_members SET payment_status = ? WHERE club_id = ? AND student_id = ?', ['paid', club.id, id])
-                        .catch(err => console.error('Error updating club payment status:', err));
+                    userStatus = 'approved';
+                } else if (paid_amount < requiredFee) {
+                    paymentStatus = 'payment_due';
+                    userStatus = 'pending';
                 }
             }
 
-            const activities = (role === 'admin' || userStatus === 'approved') ? safeParse(club.activities) : [];
+            const canReadManagement = !pagePermissions || pagePermissions.management?.read;
+            const canReadSettings = !pagePermissions || pagePermissions.settings?.read;
+            const canReadActivities = role === 'student' ? userStatus === 'approved' : canReadManagement;
+            const activities = canReadActivities ? safeParse(club.activities) : [];
 
             return {
                 ...club,
                 image_url: club.has_image ? `${baseUrl}/api/clubs/${club.id}/image` : null,
                 form_fields: safeParse(club.form_fields),
+                admin_roles: role !== 'student' && canReadSettings
+                    ? applyFullAccessClubPages(safeParse(club.admin_roles), fullAccessUserKeys, true)
+                    : [],
                 members: new Array(count).fill({}),
                 memberCount: count,
                 activities,
@@ -124,7 +287,7 @@ const getClubs = async (req, res) => {
 
 const createClub = async (req, res) => {
     try {
-        const { name, description, membership_fee, fee_type } = req.body;
+        const { name, description, membership_fee, fee_type, admin_roles } = req.body;
 
         // target_audience removed
 
@@ -153,10 +316,13 @@ const createClub = async (req, res) => {
         const members = JSON.stringify([]);
         const activities = JSON.stringify([]);
         const form_fields = JSON.stringify([]);
+        const suppliedAdminRoles = typeof admin_roles === 'string' ? JSON.parse(admin_roles) : (admin_roles || []);
+        const fullAccessUserKeys = await getFullAccessUserKeys();
+        const parsedAdminRoles = JSON.stringify(applyFullAccessClubPages(suppliedAdminRoles, fullAccessUserKeys));
 
         await masterPool.query(
-            'INSERT INTO clubs (name, description, image_url, form_fields, members, activities, created_by, membership_fee, fee_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, description, image_url, form_fields, members, activities, req.user?.id || null, membership_fee || 0, fee_type || 'Yearly']
+            'INSERT INTO clubs (name, description, image_url, form_fields, members, activities, created_by, membership_fee, fee_type, admin_roles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, description, image_url, form_fields, members, activities, req.user?.id || null, membership_fee || 0, fee_type || 'Yearly', parsedAdminRoles]
         );
 
         res.json({ success: true, message: 'Club created successfully', data: { image_url } });
@@ -190,27 +356,103 @@ const joinClub = async (req, res) => {
         const club = clubs[0];
         const membershipFee = parseFloat(club.membership_fee) || 0;
         const feeType = club.fee_type || 'Yearly';
-        // Initially set to 'not_required' - payment only happens after admin approval
-        const paymentStatus = 'not_required';
 
-        await masterPool.query(
-            'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
-            [clubId, studentId, 'pending', paymentStatus, feeType]
-        );
+        if (membershipFee === 0) {
+            // Free club: Auto-approve entry immediately
+            await masterPool.query(
+                'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
+                [clubId, studentId, 'approved', 'NA', feeType]
+            );
 
-        // Notify Club Creator (Admin/Faculty)
-        // In this simplified version, we assume created_by is the user ID of the admin.
-        // We need to fetch the admin ID who created the club.
-        if (club.created_by) {
-            sendNotificationToUser(club.created_by, {
-                title: `New Join Request: ${req.user.name}`,
-                body: `${req.user.name} wants to join ${club.name}. Review request.`,
-                icon: '/icon-192x192.png',
-                data: { url: '/admin/clubs' } // Adjust URL as needed
-            }).catch(console.error);
+            // Add student to chat channel if exists
+            const [chan] = await masterPool.query(
+                'SELECT id FROM chat_channels WHERE club_id = ? AND is_active = 1 LIMIT 1',
+                [clubId]
+            );
+            if (chan.length) {
+                await masterPool.query(
+                    'INSERT IGNORE INTO chat_channel_members (channel_id, member_type, student_id) VALUES (?, ?, ?)',
+                    [chan[0].id, 'student', studentId]
+                ).catch(() => {});
+            }
+
+            return res.json({ success: true, message: 'Successfully joined club!' });
+        } else {
+            // Paid club: Set payment_due. Entry will auto-approve when student pays fee.
+            await masterPool.query(
+                'INSERT INTO club_members (club_id, student_id, status, payment_status, fee_type) VALUES (?, ?, ?, ?, ?)',
+                [clubId, studentId, 'pending', 'payment_due', feeType]
+            );
+
+            // --- ACTIVE SYNC: Create StudentFee demand row in Fee Management ---
+            try {
+                const [stRows] = await masterPool.query(
+                    'SELECT admission_number, student_name, course, branch, current_year, current_semester, student_data FROM students WHERE id = ?',
+                    [studentId]
+                );
+
+                if (stRows.length > 0) {
+                    const st = stRows[0];
+                    let collegeName = 'Pydah Group';
+                    if (st.student_data) {
+                        try {
+                            const sd = typeof st.student_data === 'string' ? JSON.parse(st.student_data) : st.student_data;
+                            if (sd.college || sd.College) collegeName = sd.college || sd.College;
+                        } catch (e) {}
+                    }
+
+                    // Find or create 'Club Fee' Head
+                    let feeHead = await FeeHead.findOne({ name: 'Club Fee' });
+                    if (!feeHead) {
+                        feeHead = await FeeHead.create({
+                            name: 'Club Fee',
+                            code: 'CF',
+                            description: 'Club Fee',
+                            type: 'Individual',
+                            frequency: 'One-time',
+                            isActive: true
+                        });
+                    } else if (feeHead.description !== 'Club Fee') {
+                        feeHead.description = 'Club Fee';
+                        await feeHead.save();
+                    }
+
+                    const expectedRemarks = club.name;
+                    const existingFee = await StudentFee.findOne({
+                        studentId: st.admission_number,
+                        feeHead: feeHead._id,
+                        remarks: { $in: [expectedRemarks, `Club Fee: ${club.name}`] }
+                    });
+
+                    if (existingFee && existingFee.remarks !== expectedRemarks) {
+                        existingFee.remarks = expectedRemarks;
+                        await existingFee.save();
+                    } else if (!existingFee) {
+                        await StudentFee.create({
+                            studentId: st.admission_number,
+                            studentName: st.student_name || 'Student',
+                            feeHead: feeHead._id,
+                            college: collegeName,
+                            course: st.course || 'NA',
+                            branch: st.branch || 'NA',
+                            academicYear: '2024-2025',
+                            studentYear: st.current_year || 1,
+                            semester: st.current_semester || 1,
+                            amount: membershipFee,
+                            remarks: expectedRemarks
+                        });
+                        console.log(`[ACTIVE SYNC] Created Club Fee demand for ${st.admission_number}: ${club.name}`);
+                    }
+                }
+            } catch (feeSyncErr) {
+                console.error('[ACTIVE SYNC WARNING] Failed to create club fee demand:', feeSyncErr);
+            }
+
+            return res.json({
+                success: true,
+                message: `Club registration initiated! A fee demand of ₹${membershipFee} has been added to your Fee Management. Please pay it from Fee Management to complete joining.`
+            });
         }
-
-        res.json({ success: true, message: 'Join request sent successfully' });
     } catch (error) {
         console.error('Error joining club:', error);
         res.status(500).json({ success: false, message: 'Failed to join club' });
@@ -460,42 +702,61 @@ const getClubDetails = async (req, res) => {
             } catch (e) { return []; }
         };
 
-        // Fetch members from relation table
-        const [members] = await masterPool.query(
-            `SELECT cm.id, cm.club_id, cm.student_id, cm.status, cm.payment_status, 
-                    cm.fee_type, cm.joined_at, cm.updated_at,
-                    s.student_name, s.admission_number, s.student_photo,
-                    s.college, s.course, s.branch, s.current_year, s.current_semester
-             FROM club_members cm 
-             JOIN students s ON cm.student_id = s.id 
-             WHERE cm.club_id = ?
-             ORDER BY cm.joined_at DESC`,
-            [clubId]
-        );
+        let members = [];
+        try {
+            const [rows] = await masterPool.query(
+                `SELECT cm.id, cm.club_id, cm.student_id, cm.status, cm.payment_status, 
+                        cm.fee_type, cm.joined_at,
+                        COALESCE(s.student_name, '') as student_name, 
+                        COALESCE(s.admission_number, '') as admission_number,
+                        COALESCE(s.student_mobile, '') as student_mobile
+                 FROM club_members cm 
+                 LEFT JOIN students s ON (cm.student_id = s.id OR cm.student_id = s.admission_number)
+                 WHERE cm.club_id = ?
+                 ORDER BY cm.joined_at DESC`,
+                [clubId]
+            );
+            members = rows || [];
+        } catch (memErr) {
+            console.error('Error fetching club members for club details:', memErr.message);
+            members = [];
+        }
 
         const parsedClub = {
             ...club,
             form_fields: safeParse(club.form_fields),
-            members: members, // Now array of objects from DB
-            activities: safeParse(club.activities)
+            admin_roles: !req.clubPagePermissions || req.clubPagePermissions.settings.read
+                ? applyFullAccessClubPages(safeParse(club.admin_roles), await getFullAccessUserKeys(), true)
+                : [],
+            members: req.clubPagePermissions?.students?.read || !req.clubPagePermissions ? members : [],
+            activities: req.clubPagePermissions?.management?.read || !req.clubPagePermissions
+                ? safeParse(club.activities)
+                : []
         };
 
         res.json({ success: true, data: parsedClub });
 
     } catch (error) {
         console.error('Error fetching club details:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch club details' });
+        res.status(500).json({ success: false, message: 'Failed to fetch club details', error: error.message });
     }
-}
+};
 
 const updateClub = async (req, res) => {
     try {
         const { clubId } = req.params;
-        const { name, description, membership_fee, fee_type } = req.body;
+        const { name, description, membership_fee, fee_type, admin_roles } = req.body;
 
-        // Build update query dynamically
         let query = 'UPDATE clubs SET name = ?, description = ?, membership_fee = ?, fee_type = ?';
         let params = [name, description, membership_fee || 0, fee_type || 'Yearly'];
+
+        if (admin_roles !== undefined && ['admin', 'super_admin', 'superadmin'].includes(String(req.user?.role || '').toLowerCase())) {
+            const suppliedAdminRoles = typeof admin_roles === 'string' ? JSON.parse(admin_roles) : (admin_roles || []);
+            const fullAccessUserKeys = await getFullAccessUserKeys();
+            const parsedAdminRoles = JSON.stringify(applyFullAccessClubPages(suppliedAdminRoles, fullAccessUserKeys));
+            query += ', admin_roles = ?';
+            params.push(parsedAdminRoles);
+        }
 
 
 
@@ -591,6 +852,236 @@ const getClubImage = async (req, res) => {
     }
 };
 
+// ================= Dynamic Club Roles Controllers =================
+
+const getClubRoles = async (req, res) => {
+    try {
+        const [roles] = await masterPool.query('SELECT * FROM club_roles ORDER BY is_system DESC, role_name ASC');
+        res.json({
+            success: true,
+            data: roles.map(role => ({ ...role, pages: parseClubRolePages(role.pages) }))
+        });
+    } catch (error) {
+        console.error('Error fetching dynamic club roles:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club roles' });
+    }
+};
+
+const createClubRole = async (req, res) => {
+    try {
+        const { role_name, description, pages } = req.body;
+        if (!role_name || !role_name.trim()) {
+            return res.status(400).json({ success: false, message: 'Role name is required' });
+        }
+
+        const role_code = role_name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
+        const rolePages = normalizeClubAdminPages(pages);
+
+        const [existing] = await masterPool.query('SELECT id FROM club_roles WHERE role_code = ?', [role_code]);
+        if (existing.length > 0) {
+            return res.status(400).json({ success: false, message: 'A club role with this name already exists' });
+        }
+
+        const [result] = await masterPool.query(
+            'INSERT INTO club_roles (role_name, role_code, description, pages, is_system) VALUES (?, ?, ?, ?, FALSE)',
+            [role_name.trim(), role_code, description || '', JSON.stringify(rolePages)]
+        );
+
+        res.json({
+            success: true,
+            message: 'Club role created successfully',
+            data: { id: result.insertId, role_name: role_name.trim(), role_code, description, pages: rolePages, is_system: false }
+        });
+    } catch (error) {
+        console.error('Error creating club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to create club role' });
+    }
+};
+
+const updateClubRole = async (req, res) => {
+    try {
+        const { roleId } = req.params;
+        const { role_name, description, pages } = req.body;
+
+        const [existing] = await masterPool.query('SELECT * FROM club_roles WHERE id = ?', [roleId]);
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Role not found' });
+        }
+
+        const rolePages = normalizeClubAdminPages(pages ?? parseClubRolePages(existing[0].pages));
+
+        await masterPool.query(
+            'UPDATE club_roles SET role_name = ?, description = ?, pages = ? WHERE id = ?',
+            [role_name.trim(), description || '', JSON.stringify(rolePages), roleId]
+        );
+
+        const [clubs] = await masterPool.query('SELECT id, admin_roles FROM clubs');
+        const fullAccessUserKeys = await getFullAccessUserKeys();
+        for (const club of clubs || []) {
+            let assignments = [];
+            try {
+                assignments = typeof club.admin_roles === 'string' ? JSON.parse(club.admin_roles) : (club.admin_roles || []);
+            } catch (error) {
+                assignments = [];
+            }
+            let changed = false;
+            const updatedAssignments = assignments.map(assignment => {
+                if (!assignment || assignment.roleCode !== existing[0].role_code) return assignment;
+                changed = true;
+                return {
+                    ...assignment,
+                    roleName: role_name.trim(),
+                    pages: rolePages,
+                    pagePermissions: normalizeClubPagePermissions(null, rolePages)
+                };
+            });
+            if (changed) {
+                const enforcedAssignments = applyFullAccessClubPages(updatedAssignments, fullAccessUserKeys);
+                await masterPool.query('UPDATE clubs SET admin_roles = ? WHERE id = ?', [JSON.stringify(enforcedAssignments), club.id]);
+            }
+        }
+
+        res.json({ success: true, message: 'Club role updated successfully' });
+    } catch (error) {
+        console.error('Error updating club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to update club role' });
+    }
+};
+
+const deleteClubRole = async (req, res) => {
+    try {
+        const { roleId } = req.params;
+
+        const [existing] = await masterPool.query('SELECT id FROM club_roles WHERE id = ?', [roleId]);
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Role not found' });
+        }
+
+        await masterPool.query('DELETE FROM club_roles WHERE id = ?', [roleId]);
+
+        res.json({ success: true, message: 'Club role deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting club role:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete club role' });
+    }
+};
+
+// ================= HRMS User Account Check =================
+
+const checkHrmsUserAccount = async (req, res) => {
+    try {
+        const { hrms_id, email, emp_no } = req.query;
+
+        if (!hrms_id && !email && !emp_no) {
+            return res.status(400).json({ success: false, message: 'Please provide hrms_id, email, or emp_no' });
+        }
+
+        // Query rbac_users for linked SDMS account
+        let userQuery = 'SELECT id, name, email, username, role, hrms_id FROM rbac_users WHERE 1=0';
+        let params = [];
+
+        if (hrms_id) {
+            userQuery += ' OR hrms_id = ?';
+            params.push(hrms_id);
+        }
+        if (email) {
+            userQuery += ' OR email = ?';
+            params.push(email);
+        }
+        if (emp_no) {
+            userQuery += ' OR username = ?';
+            params.push(emp_no);
+        }
+
+        const [users] = await masterPool.query(userQuery, params);
+
+        if (users.length > 0) {
+            return res.json({
+                success: true,
+                hasUserAccount: true,
+                userAccount: users[0],
+                message: 'SDMS user account found for this employee.'
+            });
+        }
+
+        return res.json({
+            success: true,
+            hasUserAccount: false,
+            userAccount: null,
+            message: 'No SDMS user account exists for this employee.'
+        });
+    } catch (error) {
+        console.error('Error checking HRMS user account:', error);
+        res.status(500).json({ success: false, message: 'Failed to check employee user account' });
+    }
+};
+
+// ================= Approvals & All Students =================
+
+const getAllClubApprovals = async (req, res) => {
+    try {
+        const [rows] = await masterPool.query(
+            `SELECT cm.id as membership_id, cm.club_id, c.name as club_name, c.image_url as club_image,
+                    cm.student_id, COALESCE(s.student_name, '') as student_name, s.admission_number,
+                    COALESCE(s.student_mobile, '') as phone_number,
+                    s.course_id, s.branch_id, cm.status, cm.payment_status, cm.joined_at
+             FROM club_members cm 
+             JOIN clubs c ON cm.club_id = c.id 
+             JOIN students s ON cm.student_id = s.id 
+             WHERE cm.status = 'pending'
+             ORDER BY cm.joined_at DESC`
+        );
+
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching club approvals:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club approvals' });
+    }
+};
+
+const getAllClubStudents = async (req, res) => {
+    try {
+        const { club_id, status } = req.query;
+
+        let query = `
+            SELECT cm.id as membership_id, cm.club_id, c.name as club_name,
+                   cm.student_id, COALESCE(s.student_name, '') as student_name, s.admission_number,
+                   COALESCE(s.student_mobile, '') as phone_number,
+                   s.course_id, s.branch_id, cm.status, cm.payment_status, cm.joined_at
+            FROM club_members cm 
+            JOIN clubs c ON cm.club_id = c.id 
+            JOIN students s ON cm.student_id = s.id 
+            WHERE 1=1
+        `;
+        let params = [];
+
+        if (Array.isArray(req.clubAdminClubIds)) {
+            query += ` AND cm.club_id IN (${req.clubAdminClubIds.map(() => '?').join(',')})`;
+            params.push(...req.clubAdminClubIds);
+        }
+
+        if (club_id) {
+            query += ' AND cm.club_id = ?';
+            params.push(club_id);
+        }
+        if (status) {
+            query += ' AND cm.status = ?';
+            params.push(status);
+        } else {
+            // By default, do not show pending students in the general student list
+            query += ' AND cm.status = "approved"';
+        }
+
+        query += ' ORDER BY cm.joined_at DESC';
+
+        const [rows] = await masterPool.query(query, params);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching club students:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch club students' });
+    }
+};
+
 module.exports = {
     createClub,
     getClubs,
@@ -603,5 +1094,12 @@ module.exports = {
     deleteClub,
     updateActivity,
     deleteActivity,
-    toggleClubStatus
+    toggleClubStatus,
+    getClubRoles,
+    createClubRole,
+    updateClubRole,
+    deleteClubRole,
+    checkHrmsUserAccount,
+    getAllClubApprovals,
+    getAllClubStudents
 };

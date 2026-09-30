@@ -51,6 +51,64 @@ const buildRBACUserResponse = (rbacUser) => {
   };
 };
 
+const addClubRolesToUserResponse = async (rbacUser, userResponse) => {
+  try {
+    const pageKeys = ['management', 'students', 'settings'];
+    const fullAccess = ['admin', 'super_admin', 'superadmin'].includes(String(rbacUser.role || '').toLowerCase());
+    const [clubs] = await masterPool.query('SELECT id, name, admin_roles FROM clubs WHERE is_active = 1');
+    const userKeys = new Set([
+      `id_${rbacUser.id}`,
+      rbacUser.email ? `email_${String(rbacUser.email).toLowerCase().trim()}` : null,
+      rbacUser.username ? `username_${String(rbacUser.username).toLowerCase().trim()}` : null,
+      rbacUser.hrms_id ? `hrms_${String(rbacUser.hrms_id)}` : null
+    ].filter(Boolean));
+    const clubRoles = [];
+
+    (clubs || []).forEach(club => {
+      let assignments = [];
+      try {
+        assignments = typeof club.admin_roles === 'string' ? JSON.parse(club.admin_roles) : (club.admin_roles || []);
+      } catch (error) {
+        assignments = [];
+      }
+      (assignments || []).forEach(assignment => {
+        if (!assignment) return;
+        const assignmentKeys = [
+          assignment.userId ? `id_${assignment.userId}` : null,
+          assignment.email ? `email_${String(assignment.email).toLowerCase().trim()}` : null,
+          assignment.empNo ? `username_${String(assignment.empNo).toLowerCase().trim()}` : null,
+          assignment.hrmsId ? `hrms_${String(assignment.hrmsId)}` : null
+        ].filter(Boolean);
+        if (assignmentKeys.some(key => userKeys.has(key))) {
+          const legacyPages = Array.isArray(assignment.pages) ? assignment.pages : pageKeys;
+          const pagePermissions = Object.fromEntries(pageKeys.map(page => {
+            const configured = assignment.pagePermissions?.[page];
+            const write = fullAccess || (configured && typeof configured === 'object'
+              ? configured.write === true
+              : legacyPages.includes(page));
+            const read = fullAccess || (configured && typeof configured === 'object'
+              ? configured.read === true || write
+              : legacyPages.includes(page));
+            return [page, { read, write }];
+          }));
+          clubRoles.push({
+            clubId: club.id,
+            clubName: club.name,
+            roleName: assignment.roleName || assignment.roleCode || 'Club Admin',
+            pages: pageKeys.filter(page => pagePermissions[page].read || pagePermissions[page].write),
+            pagePermissions
+          });
+        }
+      });
+    });
+
+    return { ...userResponse, isClubAdmin: clubRoles.length > 0, clubRoles };
+  } catch (error) {
+    console.error('Failed to load club access for login:', error);
+    return userResponse;
+  }
+};
+
 // Unified Login (Admin/Staff/Student/HRMS)
 exports.unifiedLogin = async (req, res) => {
   try {
@@ -82,7 +140,7 @@ exports.unifiedLogin = async (req, res) => {
         if (rbacAdmin && rbacAdmin.length > 0) {
           const rbacUser = rbacAdmin[0];
           if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
-          const rbacResponse = buildRBACUserResponse(rbacUser);
+          const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
           const token = jwt.sign({
             id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
             collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
@@ -114,7 +172,7 @@ exports.unifiedLogin = async (req, res) => {
       if (rbacUser.password && await bcrypt.compare(password, rbacUser.password)) {
         if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-        const rbacResponse = buildRBACUserResponse(rbacUser);
+        const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
         const token = jwt.sign({
           id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
           collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
@@ -366,7 +424,7 @@ exports.unifiedLogin = async (req, res) => {
           );
 
           const rbacUser = syncedUsers[0];
-          const rbacResponse = buildRBACUserResponse(rbacUser);
+          const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
           const token = jwt.sign({
             id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
             collegeId: rbacUser.college_id, courseId: rbacUser.course_id, branchId: rbacUser.branch_id,
@@ -582,7 +640,7 @@ exports.createSSOSession = async (req, res) => {
     }
 
     const rbacUser = rows[0];
-    const user = buildRBACUserResponse(rbacUser);
+    const user = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
 
     const token = jwt.sign(
       {
@@ -657,7 +715,7 @@ exports.verifyToken = async (req, res) => {
 
       return res.json({
         success: true,
-        user: buildRBACUserResponse(rbacRecord)
+        user: await addClubRolesToUserResponse(rbacRecord, buildRBACUserResponse(rbacRecord))
       });
     }
 

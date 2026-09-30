@@ -44,6 +44,11 @@ const studentFeeSchema = mongoose.Schema({
     type: Number,
     required: true,
   },
+  status: {
+    type: String,
+    enum: ['active', 'cancelled', 'transferred'],
+    default: 'active',
+  },
   remarks: {
     type: String,
   }

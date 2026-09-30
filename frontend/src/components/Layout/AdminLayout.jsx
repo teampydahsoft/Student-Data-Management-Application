@@ -44,6 +44,8 @@ import {
   Award,
   CreditCard,
   FileCheck,
+  UserCheck,
+  CheckCircle,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import {
@@ -217,8 +219,31 @@ const NAV_ITEMS = [
   {
     path: "/clubs",
     icon: Users,
-    label: "Clubs",
+    label: "Student Clubs",
     permission: FRONTEND_MODULES.CLUBS,
+    subItems: [
+      {
+        path: "/clubs",
+        label: "Club Management",
+        icon: ShieldCheck,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'view'
+      },
+      {
+        path: "/clubs/students",
+        label: "Members",
+        icon: UserCheck,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'view_students'
+      },
+      {
+        path: "/clubs/settings",
+        label: "Club Settings",
+        icon: Settings,
+        permission: FRONTEND_MODULES.CLUBS,
+        action: 'manage_settings'
+      }
+    ]
   },
   {
     path: "/services",
@@ -254,6 +279,12 @@ const NAV_ITEMS = [
     permission: FRONTEND_MODULES.COURSES,
   },
 ];
+
+const CLUB_ADMIN_PAGE_BY_PATH = {
+  '/clubs': 'management',
+  '/clubs/students': 'students',
+  '/clubs/settings': 'settings'
+};
 
 const AdminLayout = () => {
   const location = useLocation();
@@ -303,6 +334,8 @@ const AdminLayout = () => {
     return NAV_ITEMS.filter((item) => {
       if (!item.permission) return true;
 
+      if (item.permission === FRONTEND_MODULES.CLUBS && user?.clubRoles?.length) return true;
+
       // Super admin and legacy admin have full access
       if (isFullAccessRole(user?.role)) return true;
 
@@ -318,6 +351,13 @@ const AdminLayout = () => {
       if (item.subItems) {
         const filteredSubItems = item.subItems.filter((subItem) => {
           if (!subItem.permission) return true;
+
+          if (item.permission === FRONTEND_MODULES.CLUBS && user?.clubRoles?.length) {
+            const pageKey = CLUB_ADMIN_PAGE_BY_PATH[subItem.path];
+            return user.clubRoles.some(clubRole =>
+              !Array.isArray(clubRole.pages) || clubRole.pages.includes(pageKey)
+            );
+          }
 
           if (isFullAccessRole(user?.role)) return true;
 
@@ -341,7 +381,7 @@ const AdminLayout = () => {
       }
       return item;
     });
-  }, [allowedModules, user?.role, user?.permissions]);
+  }, [allowedModules, user?.role, user?.permissions, user?.clubRoles]);
 
   // Check if a route is active (including sub-routes)
   const isRouteActive = (path) => {
@@ -393,6 +433,13 @@ const AdminLayout = () => {
     if (isFullAccessRole(user.role)) return;
 
     const currentModuleKey = getModuleKeyForPath(location.pathname);
+    const clubPageKey = CLUB_ADMIN_PAGE_BY_PATH[location.pathname];
+    const hasClubPageAccess = currentModuleKey === FRONTEND_MODULES.CLUBS && clubPageKey &&
+      user.clubRoles?.some(clubRole =>
+        !Array.isArray(clubRole.pages) || clubRole.pages.includes(clubPageKey)
+      );
+
+    if (hasClubPageAccess) return;
 
     // Check if user has access to current module
     if (currentModuleKey && !allowedModules.includes(currentModuleKey)) {

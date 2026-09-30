@@ -15,22 +15,101 @@ const isStudent = (req, res, next) => {
     }
 };
 
+const CLUB_PAGE_KEYS = ['management', 'students', 'settings'];
+const isGlobalAdmin = user => ['admin', 'super_admin', 'superadmin'].includes(String(user?.role || '').toLowerCase());
+const getPagePermission = (assignment, pageKey) => {
+    const configured = assignment.pagePermissions?.[pageKey];
+    if (configured && typeof configured === 'object') {
+        const write = configured.write === true;
+        return { read: configured.read === true || write, write };
+    }
+    const pages = Array.isArray(assignment.pages) ? assignment.pages : CLUB_PAGE_KEYS;
+    const legacyAccess = pages.includes(pageKey);
+    return { read: legacyAccess, write: legacyAccess };
+};
+
+const requireClubPage = (pageKey = null, access = 'read') => async (req, res, next) => {
+    const user = req.user || req.admin;
+    if (isGlobalAdmin(user)) return next();
+    if (!user) return res.status(403).json({ success: false, message: 'Club access required' });
+    if (user.role === 'student' && access === 'read' && !pageKey) return next();
+
+    try {
+        const { masterPool } = require('../config/database');
+        const targetClubId = req.params.clubId || req.query.club_id;
+        const [clubs] = await masterPool.query(
+            `SELECT id, admin_roles FROM clubs WHERE is_active = 1${targetClubId ? ' AND id = ?' : ''}`,
+            targetClubId ? [targetClubId] : []
+        );
+        const assignedClubIds = [];
+        const permissionsByClubId = {};
+        (clubs || []).forEach(club => {
+            let assignments = [];
+            try {
+                assignments = typeof club.admin_roles === 'string' ? JSON.parse(club.admin_roles) : (club.admin_roles || []);
+            } catch (error) {
+                assignments = [];
+            }
+            const userAssignments = (assignments || []).filter(assignment => {
+                if (!assignment) return false;
+                const isAssigned = String(assignment.userId || '') === String(user.id || '') ||
+                    (assignment.empNo && String(assignment.empNo).toLowerCase() === String(user.username || '').toLowerCase()) ||
+                    (assignment.email && String(assignment.email).toLowerCase() === String(user.email || '').toLowerCase()) ||
+                    (assignment.hrmsId && String(assignment.hrmsId) === String(user.hrms_id || ''));
+                return isAssigned;
+            });
+            const clubPermissions = Object.fromEntries(CLUB_PAGE_KEYS.map(key => [key, { read: false, write: false }]));
+            userAssignments.forEach(assignment => {
+                CLUB_PAGE_KEYS.forEach(key => {
+                    const permission = getPagePermission(assignment, key);
+                    clubPermissions[key].read ||= permission.read;
+                    clubPermissions[key].write ||= permission.write;
+                });
+            });
+            const hasRequiredAccess = pageKey
+                ? (access === 'write' ? clubPermissions[pageKey].write : clubPermissions[pageKey].read)
+                : CLUB_PAGE_KEYS.some(key => clubPermissions[key].read);
+            if (hasRequiredAccess) {
+                assignedClubIds.push(club.id);
+                permissionsByClubId[club.id] = clubPermissions;
+            }
+        });
+
+        if (assignedClubIds.length === 0) {
+            return res.status(403).json({ success: false, message: 'This Club page is not assigned to your account' });
+        }
+        req.clubAdminClubIds = assignedClubIds;
+        req.clubPagePermissionsByClubId = permissionsByClubId;
+        req.clubPagePermissions = targetClubId ? permissionsByClubId[targetClubId] : null;
+        return next();
+    } catch (error) {
+        console.error('Failed to validate club page access:', error);
+        return res.status(500).json({ success: false, message: 'Failed to validate club access' });
+    }
+};
+
 // Public/Shared
-router.get('/', verifyToken, clubController.getClubs);
+router.get('/', verifyToken, requireClubPage(), clubController.getClubs);
+router.get('/roles', verifyToken, requireClubPage('settings', 'read'), clubController.getClubRoles);
+router.get('/check-hrms-user', verifyToken, clubController.checkHrmsUserAccount);
+router.get('/students/all', verifyToken, requireClubPage('students', 'read'), clubController.getAllClubStudents);
 router.get('/:clubId/image', clubController.getClubImage);
-router.get('/:clubId', verifyToken, clubController.getClubDetails);
+router.get('/:clubId', verifyToken, requireClubPage(), clubController.getClubDetails);
 
 // Student
 router.post('/:clubId/join', verifyToken, isStudent, clubController.joinClub);
 
 // Admin
 router.post('/', verifyToken, isAdmin, upload.single('image'), clubController.createClub);
-router.patch('/:clubId/members', verifyToken, isAdmin, clubController.updateMembershipStatus); // Body: { studentId, status }
-router.post('/:clubId/activities', verifyToken, isAdmin, upload.single('image'), clubController.createActivity);
-router.put('/:clubId', verifyToken, isAdmin, upload.single('image'), clubController.updateClub);
+router.post('/roles', verifyToken, isAdmin, clubController.createClubRole);
+router.put('/roles/:roleId', verifyToken, isAdmin, clubController.updateClubRole);
+router.delete('/roles/:roleId', verifyToken, isAdmin, clubController.deleteClubRole);
+router.patch('/:clubId/members', verifyToken, requireClubPage('students', 'write'), clubController.updateMembershipStatus); // Body: { studentId, status }
+router.post('/:clubId/activities', verifyToken, requireClubPage('management', 'write'), upload.single('image'), clubController.createActivity);
+router.put('/:clubId', verifyToken, requireClubPage('settings', 'write'), upload.single('image'), clubController.updateClub);
 router.delete('/:clubId', verifyToken, isAdmin, clubController.deleteClub);
 router.patch('/:clubId/status', verifyToken, isAdmin, clubController.toggleClubStatus);
-router.put('/:clubId/activities/:activityId', verifyToken, isAdmin, upload.single('image'), clubController.updateActivity);
-router.delete('/:clubId/activities/:activityId', verifyToken, isAdmin, clubController.deleteActivity);
+router.put('/:clubId/activities/:activityId', verifyToken, requireClubPage('management', 'write'), upload.single('image'), clubController.updateActivity);
+router.delete('/:clubId/activities/:activityId', verifyToken, requireClubPage('management', 'write'), clubController.deleteActivity);
 
 module.exports = router;

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck,
   UserPlus,
@@ -736,6 +736,8 @@ const ICON_MAP = {
 const UserManagement = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const handledClubEditRef = useRef(null);
   const [modules, setModules] = useState([]);
   const [users, setUsers] = useState([]);
   const [colleges, setColleges] = useState([]);
@@ -1455,6 +1457,29 @@ const UserManagement = () => {
       }, 100);
     }
   };
+
+  useEffect(() => {
+    if (location.state?.editClubUser) setActiveTab('users');
+  }, [location.state]);
+
+  useEffect(() => {
+    const requestedUser = location.state?.editClubUser;
+    const requestedKey = requestedUser?.userId || requestedUser?.email || requestedUser?.username;
+    if (!requestedUser || !requestedKey || activeTab !== 'users' || users.length === 0 || handledClubEditRef.current === requestedKey) return;
+
+    const matchingUser = users.find(candidate =>
+      (requestedUser.userId && String(candidate.id) === String(requestedUser.userId)) ||
+      (requestedUser.email && candidate.email?.toLowerCase() === requestedUser.email.toLowerCase()) ||
+      (requestedUser.username && candidate.username?.toLowerCase() === requestedUser.username.toLowerCase())
+    );
+    handledClubEditRef.current = requestedKey;
+    navigate(location.pathname, { replace: true, state: null });
+    if (matchingUser) {
+      openEditModal(matchingUser);
+    } else {
+      toast.error('Could not find the assigned club user');
+    }
+  }, [location.state, location.pathname, activeTab, users, navigate]);
 
   // Handle edit form college change
   const handleEditCollegeChange = async (newCollegeIds) => {
@@ -2613,10 +2638,20 @@ const UserManagement = () => {
                               </div>
                             </td>
                             <td className="px-2 py-1.5 border-r border-slate-100/50">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                                <ShieldCheck size={10} />
-                                {getRoleDisplay(userData)}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                  <ShieldCheck size={10} />
+                                  {getRoleDisplay(userData)}
+                                </span>
+                                {(userData.isClubAdmin || (userData.clubRoles && userData.clubRoles.length > 0)) && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-sm"
+                                    title={userData.clubRoles?.map(r => `${r.clubName}: ${r.roleName}`).join('\n') || 'Club Admin'}
+                                  >
+                                    🏆 Club Tag {userData.clubRoles?.length > 0 ? `(${userData.clubRoles[0].roleName})` : ''}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-2 py-1.5">
                               <div className="space-y-0.5 text-[10px]">
@@ -2788,10 +2823,20 @@ const UserManagement = () => {
                                 )}
                               </div>
                               <div className="text-xs text-slate-500 truncate">{userData.email}</div>
-                              <span className={`inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-lg text-xs font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                                <ShieldCheck size={12} />
-                                {getRoleDisplay(userData)}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${ROLE_COLORS[userData.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                  <ShieldCheck size={12} />
+                                  {getRoleDisplay(userData)}
+                                </span>
+                                {(userData.isClubAdmin || (userData.clubRoles && userData.clubRoles.length > 0)) && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-sm"
+                                    title={userData.clubRoles?.map(r => `${r.clubName}: ${r.roleName}`).join('\n') || 'Club Admin'}
+                                  >
+                                    🏆 Club Tag {userData.clubRoles?.length > 0 ? `(${userData.clubRoles[0].roleName})` : ''}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
 

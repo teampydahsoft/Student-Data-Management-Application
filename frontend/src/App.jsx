@@ -256,6 +256,8 @@ function App() {
             <Route path="college-configuration" element={<CollegeConfiguration />} />
             <Route path="services/requests" element={<ServiceRequests />} />
             <Route path="clubs" element={<Clubs />} />
+            <Route path="clubs/students" element={<Clubs initialSubPage="students" />} />
+            <Route path="clubs/settings" element={<Clubs initialSubPage="settings" />} />
             <Route path="faculty-management" element={<FacultyManagement />} />
             <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
             <Route path="internship-management" element={<InternshipAdmin />} />
