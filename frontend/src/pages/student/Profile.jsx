@@ -144,7 +144,7 @@ const Profile = () => {
         'inline-flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 w-full px-2 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-[8px] sm:text-[10px] font-black uppercase tracking-wide sm:tracking-widest shadow-lg transition-all hover:-translate-y-0.5 active:scale-95 whitespace-nowrap';
 
     return (
-        <div className="space-y-5 sm:space-y-6 lg:space-y-8 flex flex-col p-1 sm:p-2 w-full max-w-full overflow-x-hidden bg-slate-100/80">
+        <div className="space-y-5 sm:space-y-6 lg:space-y-8 flex flex-col p-1 sm:p-2 w-full max-w-full overflow-x-hidden scroll-smooth bg-slate-100/80">
             {/* Header */}
             <div className="relative mb-1 shrink-0">
                 <div className="h-28 sm:h-36 lg:h-44 rounded-2xl sm:rounded-[2.5rem] bg-gradient-to-r from-[#0b63e5] via-[#024ebd] to-[#013fae] shadow-xl overflow-hidden relative">
@@ -157,7 +157,7 @@ const Profile = () => {
                     <div className="bg-white rounded-2xl sm:rounded-[2.5rem] shadow-2xl shadow-slate-300/40 border border-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col gap-5 sm:gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
                         <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 sm:gap-6 lg:gap-8 min-w-0">
                             {/* Profile Image (Circle) */}
-                            <div className="relative group shrink-0 -mt-16 sm:-mt-22 lg:-mt-26">
+                            <div className="relative group shrink-0 -mt-10 sm:-mt-14 lg:-mt-16">
                                 <div className="h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 rounded-full border-4 border-white bg-white shadow-xl overflow-hidden flex items-center justify-center">
                                     {displayData.student_photo ? (
                                         <img
@@ -178,14 +178,14 @@ const Profile = () => {
                                 </h1>
                                 <div className="flex flex-row items-center justify-center sm:justify-start gap-2 sm:gap-3 text-[11px] sm:text-xs font-black tracking-wide my-1.5 flex-nowrap whitespace-nowrap">
                                     <span className="bg-blue-50 text-blue-700 px-2.5 sm:px-3 py-1 rounded-xl border border-blue-100 shadow-xs shrink-0">
-                                         {displayData.admission_number || user?.admission_number || '20230353'}
+                                        Adm: {displayData.admission_number || user?.admission_number || '20230353'}
                                     </span>
                                     <span className="bg-indigo-50 text-indigo-700 px-2.5 sm:px-3 py-1 rounded-xl border border-indigo-100 shadow-xs shrink-0">
-                                         {displayData.pin_no || displayData.pin_number || displayData.pin || displayData.roll_number || displayData.registration_number || getStudentData('PIN') || getStudentData('Pin Number') || getStudentData('Pin No') || getStudentData('Roll No') || getStudentData('Registration Number') || displayData.admission_number || user?.admission_number || '20230353'}
+                                        Pin: {displayData.pin_no || displayData.pin_number || displayData.pin || displayData.roll_number || displayData.registration_number || getStudentData('PIN') || getStudentData('Pin Number') || getStudentData('Pin No') || getStudentData('Roll No') || getStudentData('Registration Number') || displayData.admission_number || user?.admission_number || '20230353'}
                                     </span>
                                 </div>
 
-                                {/* College, Course & Year side-by-side with Lucide Icons */}
+                                {/* College, Branch & Year side-by-side with Lucide Icons */}
                                 <div className="mt-3 flex flex-row flex-wrap items-center justify-center sm:justify-start gap-2.5 sm:gap-4 text-[11px] sm:text-xs text-slate-700 font-bold bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-100 w-full">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                         <Building2 size={14} className="text-blue-600 shrink-0" />
@@ -193,7 +193,14 @@ const Profile = () => {
                                     </div>
                                     <div className="flex items-center gap-1.5 min-w-0">
                                         <GraduationCap size={14} className="text-emerald-600 shrink-0" />
-                                        <span className="truncate">{displayData.course || getStudentData('Program') || '—'}</span>
+                                        <span className="truncate">
+                                            {(() => {
+                                                const c = displayData.course || getStudentData('Program') || getStudentData('Course');
+                                                const b = displayData.branch || getStudentData('Branch') || getStudentData('Branch Name');
+                                                if (c && b && c !== b) return `${c} - ${b}`;
+                                                return c || b || '—';
+                                            })()}
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
                                         <Calendar size={14} className="text-amber-600 shrink-0" />
