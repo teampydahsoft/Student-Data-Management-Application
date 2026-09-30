@@ -1992,7 +1992,7 @@ const StudentScholarshipHistoryTab = ({
             </span>
             {isCollegeAccount() && (
               <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0 w-fit">
-                 {SCHOLARSHIP_RTF_RELEASED_LABEL}
+                College Account — Paid Transactions auto-filled from {SCHOLARSHIP_RTF_RELEASED_LABEL}
               </span>
             )}
           </div>
