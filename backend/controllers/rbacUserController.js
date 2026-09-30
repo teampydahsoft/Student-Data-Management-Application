@@ -478,7 +478,11 @@ exports.getUsers = async (req, res) => {
         }
         (roles || []).forEach(r => {
           if (r) {
-            const item = { clubId: club.id, clubName: club.name, roleName: r.roleName || r.roleCode || 'Club Admin' };
+            const item = {
+              clubId: club.id,
+              clubName: club.name,
+              roleName: r.roleName || r.roleCode || 'Club Admin'
+            };
             if (r.userId) {
               const k = `id_${r.userId}`;
               if (!clubRolesUserMap.has(k)) clubRolesUserMap.set(k, []);

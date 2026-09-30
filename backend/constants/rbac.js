@@ -268,12 +268,17 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.CLUBS]: {
-    permissions: ['view', 'manage', 'view_students', 'manage_settings'],
+    permissions: ['view', 'manage', 'view_students', 'manage_students', 'view_settings', 'manage_settings', 'view_seminar_halls', 'create_seminar_hall_request', 'manage_seminar_halls'],
     labels: {
-      view: 'View Student Clubs',
-      manage: 'Manage Student Clubs',
-      view_students: 'View Club Students',
-      manage_settings: 'Manage Club Settings & Roles'
+      view: 'View Club Management',
+      manage: 'Manage Club Management',
+      view_students: 'View Members',
+      manage_students: 'Manage Members',
+      view_settings: 'View Club Settings',
+      manage_settings: 'Manage Club Settings',
+      view_seminar_halls: 'View Seminar Hall Requests',
+      create_seminar_hall_request: 'Create Seminar Hall Request',
+      manage_seminar_halls: 'Manage Seminar Hall Requests'
     }
   }
 };
@@ -593,6 +598,10 @@ const parsePermissions = (permissionsJson) => {
           if (hasGranularKeys) {
             // New format - individual permissions
             moduleDef.permissions.forEach(perm => {
+              if (module === MODULES.CLUBS && perm === 'create_seminar_hall_request' && parsed[module]?.[perm] === undefined) {
+                permissions[module][perm] = !!parsed[module]?.manage_seminar_halls;
+                return;
+              }
               if (module === MODULES.STUDENT_MANAGEMENT) {
                 if (perm === 'view_scholarship' && parsed[module]?.view_scholarship === undefined) {
                   // Default to same as before: enabled if user has view or edit student permission

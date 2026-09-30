@@ -41,6 +41,21 @@ import toast from 'react-hot-toast';
 import api from '../config/api';
 import useAuthStore from '../store/authStore';
 import { ROLE_LABELS, ROLE_COLORS, isFullAccessRole, hasModuleAccess, hasWriteAccess, FRONTEND_MODULES, BACKEND_MODULES, MODULE_PERMISSIONS, MODULE_LABELS, createDefaultPermissions, STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS } from '../constants/rbac';
+const USER_MANAGEMENT_MODULE_KEYS = Object.keys(BACKEND_MODULES);
+const SEMINAR_HALL_USER_PERMISSIONS = {
+  permissions: ['view_seminar_halls', 'create_seminar_hall_request', 'manage_seminar_halls'],
+  labels: {
+    view_seminar_halls: 'View Seminar Hall',
+    create_seminar_hall_request: 'Create Seminar Hall Request',
+    manage_seminar_halls: 'Edit Seminar Hall'
+  }
+};
+const getUserManagementModulePermissions = moduleKey => moduleKey === BACKEND_MODULES.CLUBS
+  ? SEMINAR_HALL_USER_PERMISSIONS
+  : MODULE_PERMISSIONS[moduleKey];
+const getUserManagementModuleLabel = moduleKey => moduleKey === BACKEND_MODULES.CLUBS
+  ? 'Seminar Hall'
+  : MODULE_LABELS[moduleKey] || moduleKey;
 
 const SUBPAGE_GRID_CLASS = 'grid grid-cols-[minmax(0,1fr)_112px_112px] gap-3 items-center';
 
@@ -1289,11 +1304,11 @@ const UserManagement = () => {
 
   // Toggle all permissions for a module
   const toggleModuleAllPermissions = (moduleKey, grant) => {
-    const modulePerms = MODULE_PERMISSIONS[moduleKey];
+    const modulePerms = getUserManagementModulePermissions(moduleKey);
     if (!modulePerms) return;
 
     setEditForm(prev => {
-      const newPerms = {};
+      const newPerms = { ...(prev.permissions?.[moduleKey] || {}) };
       modulePerms.permissions.forEach(perm => {
         newPerms[perm] = grant;
       });
@@ -1311,25 +1326,26 @@ const UserManagement = () => {
   const hasAnyModulePermission = (moduleKey) => {
     const perms = editForm?.permissions?.[moduleKey];
     if (!perms) return false;
-    return Object.values(perms).some(val => val === true);
+    const modulePerms = getUserManagementModulePermissions(moduleKey);
+    return modulePerms?.permissions.some(permission => perms[permission] === true) || false;
   };
 
   // Count enabled permissions for a module
   const countModulePermissions = (moduleKey) => {
     const perms = editForm?.permissions?.[moduleKey];
     if (!perms) return { enabled: 0, total: 0 };
-    const modulePerms = MODULE_PERMISSIONS[moduleKey];
+    const modulePerms = getUserManagementModulePermissions(moduleKey);
     const total = modulePerms?.permissions?.length || 0;
-    const enabled = Object.values(perms).filter(val => val === true).length;
+    const enabled = modulePerms?.permissions.filter(permission => perms[permission] === true).length || 0;
     return { enabled, total };
   };
 
   // Grant all permissions
   const grantAllPermissions = () => {
     const allPerms = {};
-    Object.keys(BACKEND_MODULES).forEach(key => {
+    USER_MANAGEMENT_MODULE_KEYS.forEach(key => {
       const moduleKey = BACKEND_MODULES[key];
-      const modulePerms = MODULE_PERMISSIONS[moduleKey];
+      const modulePerms = getUserManagementModulePermissions(moduleKey);
       if (modulePerms) {
         allPerms[moduleKey] = {};
         modulePerms.permissions.forEach(perm => {
@@ -1337,6 +1353,13 @@ const UserManagement = () => {
         });
       }
     });
+    allPerms[BACKEND_MODULES.CLUBS] = {
+      ...createDefaultPermissions()[BACKEND_MODULES.CLUBS],
+      ...(editForm?.permissions?.[BACKEND_MODULES.CLUBS] || {}),
+      view_seminar_halls: true,
+      create_seminar_hall_request: true,
+      manage_seminar_halls: true
+    };
     setEditForm(prev => ({ ...prev, permissions: allPerms }));
   };
 
@@ -1733,7 +1756,9 @@ const UserManagement = () => {
   // Check if user has any permissions configured
   const hasPermissions = (userData) => {
     if (!userData.permissions) return false;
-    return Object.values(userData.permissions).some(modulePerms => {
+    return Object.entries(userData.permissions)
+      .filter(([moduleKey]) => moduleKey !== BACKEND_MODULES.CLUBS)
+      .some(([, modulePerms]) => {
       if (!modulePerms || typeof modulePerms !== 'object') return false;
       return Object.values(modulePerms).some(val => val === true);
     });
@@ -1741,10 +1766,12 @@ const UserManagement = () => {
 
   // Count granted permissions (modules with any permission enabled)
   const countPermissions = (userData) => {
-    const totalModules = Object.keys(BACKEND_MODULES).length;
-    if (!userData.permissions) return { granted: 0, total: totalModules };
+    const totalModules = USER_MANAGEMENT_MODULE_KEYS.length;
+    const permissions = userData.permissions || {};
     let granted = 0;
-    Object.values(userData.permissions).forEach(modulePerms => {
+    Object.entries(permissions)
+      .filter(([moduleKey]) => moduleKey !== BACKEND_MODULES.CLUBS)
+      .forEach(([, modulePerms]) => {
       if (modulePerms && typeof modulePerms === 'object') {
         if (Object.values(modulePerms).some(val => val === true)) {
           granted++;
@@ -2675,6 +2702,18 @@ const UserManagement = () => {
                                     </span>
                                   </div>
                                 )}
+                                {userData.allBranches ? (
+                                  <span className="inline-block px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded text-[9px] font-medium">
+                                    All Branches
+                                  </span>
+                                ) : userData.branchNames?.length > 0 && (
+                                  <div className="flex items-center gap-1 text-slate-600">
+                                    <Layers size={11} className="text-sky-500 flex-shrink-0" />
+                                    <span className="truncate max-w-[120px]">
+                                      {userData.branchNames.map(branch => branch.name).join(', ')}
+                                    </span>
+                                  </div>
+                                )}
                                 {userData.role === 'branch_hod' && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-medium">
                                     <Calendar size={10} className="flex-shrink-0" />
@@ -2858,6 +2897,16 @@ const UserManagement = () => {
                                 <div className="flex items-start gap-1.5 text-slate-600">
                                   <GraduationCap size={13} className="text-emerald-500 flex-shrink-0 mt-0.5" />
                                   <span className="flex-1">{userData.courseNames.map(c => c.name).join(', ')}</span>
+                                </div>
+                              )}
+                              {userData.allBranches ? (
+                                <span className="inline-block px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md text-[11px] font-medium">
+                                  All Branches
+                                </span>
+                              ) : userData.branchNames?.length > 0 && (
+                                <div className="flex items-start gap-1.5 text-slate-600">
+                                  <Layers size={13} className="text-sky-500 flex-shrink-0 mt-0.5" />
+                                  <span className="flex-1">{userData.branchNames.map(branch => branch.name).join(', ')}</span>
                                 </div>
                               )}
                               {userData.role === 'branch_hod' && (
@@ -3384,10 +3433,10 @@ const UserManagement = () => {
                   <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Modules</p>
                 </div>
                 <div className="p-2 space-y-1">
-                  {Object.keys(BACKEND_MODULES).map((key) => {
+                  {USER_MANAGEMENT_MODULE_KEYS.map((key) => {
                     const moduleKey = BACKEND_MODULES[key];
-                    const modulePerms = MODULE_PERMISSIONS[moduleKey];
-                    const moduleLabel = MODULE_LABELS[moduleKey] || moduleKey;
+                    const modulePerms = getUserManagementModulePermissions(moduleKey);
+                    const moduleLabel = getUserManagementModuleLabel(moduleKey);
                     if (!modulePerms) return null;
                     const permsForRole = roleConfigModalPermissions[moduleKey] || {};
                     const enabledCount = Object.values(permsForRole).filter(v => v === true).length;
@@ -3410,8 +3459,8 @@ const UserManagement = () => {
               <div className="flex-1 bg-white overflow-y-auto p-4">
                 {(() => {
                   const effectiveModuleKey = roleConfigSelectedModule || Object.values(BACKEND_MODULES)[0];
-                  const modulePerms = MODULE_PERMISSIONS[effectiveModuleKey];
-                  const moduleLabel = MODULE_LABELS[effectiveModuleKey] || effectiveModuleKey;
+                  const modulePerms = getUserManagementModulePermissions(effectiveModuleKey);
+                  const moduleLabel = getUserManagementModuleLabel(effectiveModuleKey);
                   if (!modulePerms) return <p className="text-sm text-slate-500">Select a module</p>;
                   const permsForRole = roleConfigModalPermissions[effectiveModuleKey] || {};
                   const toggleOne = (permKey) => {
@@ -3424,7 +3473,7 @@ const UserManagement = () => {
                     }));
                   };
                   const toggleAll = (grant) => {
-                    const next = {};
+                    const next = { ...(roleConfigModalPermissions[effectiveModuleKey] || {}) };
                     modulePerms.permissions.forEach(p => { next[p] = grant; });
                     setRoleConfigModalPermissions(prev => ({ ...prev, [effectiveModuleKey]: next }));
                   };
@@ -3700,14 +3749,14 @@ const UserManagement = () => {
                     </p>
                   </div>
                   <div className="p-2 space-y-1">
-                    {Object.keys(BACKEND_MODULES).map((key) => {
+                    {USER_MANAGEMENT_MODULE_KEYS.map((key) => {
                       const moduleKey = BACKEND_MODULES[key];
-                      const modulePerms = MODULE_PERMISSIONS[moduleKey];
-                      const moduleLabel = MODULE_LABELS[moduleKey] || moduleKey;
+                      const modulePerms = getUserManagementModulePermissions(moduleKey);
+                      const moduleLabel = getUserManagementModuleLabel(moduleKey);
                       if (!modulePerms) return null;
 
                       const permsForUser = moduleAccessUser.permissions?.[moduleKey] || {};
-                      const enabledCount = Object.values(permsForUser).filter((v) => v === true).length;
+                      const enabledCount = modulePerms.permissions.filter(permission => permsForUser[permission] === true).length;
                       const totalCount = modulePerms.permissions.length;
                       const isActive = selectedModuleKey === moduleKey;
 
@@ -3736,8 +3785,8 @@ const UserManagement = () => {
                   {(() => {
                     const effectiveModuleKey =
                       selectedModuleKey || Object.values(BACKEND_MODULES)[0];
-                    const modulePerms = MODULE_PERMISSIONS[effectiveModuleKey];
-                    const moduleLabel = MODULE_LABELS[effectiveModuleKey] || effectiveModuleKey;
+                    const modulePerms = getUserManagementModulePermissions(effectiveModuleKey);
+                    const moduleLabel = getUserManagementModuleLabel(effectiveModuleKey);
                     if (!modulePerms) {
                       return (
                         <div className="h-full flex items-center justify-center p-6">
@@ -3858,7 +3907,7 @@ const UserManagement = () => {
                       setModuleAccessUser((prev) => {
                         if (!prev) return prev;
                         const currentPerms = prev.permissions || {};
-                        const updatedModuleEntry = {};
+                        const updatedModuleEntry = { ...(currentPerms[effectiveModuleKey] || {}) };
                         modulePerms.permissions.forEach((p) => {
                           updatedModuleEntry[p] = grant;
                         });
@@ -3877,7 +3926,7 @@ const UserManagement = () => {
                                 ...u.permissions,
                                 [effectiveModuleKey]: modulePerms.permissions.reduce(
                                   (acc, p) => ({ ...acc, [p]: grant }),
-                                  {}
+                                  { ...(u.permissions?.[effectiveModuleKey] || {}) }
                                 ),
                               },
                             }
@@ -3892,7 +3941,7 @@ const UserManagement = () => {
                               ...prev.permissions,
                               [effectiveModuleKey]: modulePerms.permissions.reduce(
                                 (acc, p) => ({ ...acc, [p]: grant }),
-                                {}
+                                { ...(prev.permissions?.[effectiveModuleKey] || {}) }
                               ),
                             },
                           }
@@ -4627,10 +4676,10 @@ const UserManagement = () => {
                     </div>
 
                     <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 mt-4">
-                      {Object.keys(BACKEND_MODULES).map(key => {
+                      {USER_MANAGEMENT_MODULE_KEYS.map(key => {
                         const moduleKey = BACKEND_MODULES[key];
-                        const modulePerms = MODULE_PERMISSIONS[moduleKey];
-                        const moduleLabel = MODULE_LABELS[moduleKey];
+                        const modulePerms = getUserManagementModulePermissions(moduleKey);
+                        const moduleLabel = getUserManagementModuleLabel(moduleKey);
                         if (!modulePerms) return null;
 
                         const hasAny = hasAnyModulePermission(moduleKey);

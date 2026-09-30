@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS seminar_hall_requests (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  club_id INT NULL,
+  event_name VARCHAR(255) NOT NULL,
+  hall_name VARCHAR(255) NOT NULL,
+  event_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  purpose TEXT NOT NULL,
+  expected_attendees INT NULL,
+  status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+  admin_remarks TEXT NULL,
+  created_by VARCHAR(100) NOT NULL,
+  created_by_name VARCHAR(255) NOT NULL,
+  reviewed_by VARCHAR(100) NULL,
+  request_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at TIMESTAMP NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_seminar_hall_status (status),
+  INDEX idx_seminar_hall_event_date (event_date)
+);

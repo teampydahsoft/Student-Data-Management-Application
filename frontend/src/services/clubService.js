@@ -105,6 +105,46 @@ const getAllClubStudents = async (params) => {
     return response.data;
 };
 
+const getSeminarHallRequests = async () => {
+    const response = await api.get('/clubs/seminar-halls');
+    return response.data;
+};
+
+const getSeminarHalls = async () => {
+    const response = await api.get('/clubs/seminar-halls/list');
+    return response.data;
+};
+
+const createSeminarHall = async (hallData) => {
+    const response = await api.post('/clubs/seminar-halls/list', hallData);
+    return response.data;
+};
+
+const updateSeminarHall = async (hallId, hallData) => {
+    const response = await api.put(`/clubs/seminar-halls/list/${hallId}`, hallData);
+    return response.data;
+};
+
+const deleteSeminarHall = async (hallId) => {
+    const response = await api.delete(`/clubs/seminar-halls/list/${hallId}`);
+    return response.data;
+};
+
+const createSeminarHallRequest = async (requestData) => {
+    const response = await api.post('/clubs/seminar-halls', requestData);
+    return response.data;
+};
+
+const estimateSeminarHallAudience = async (scope) => {
+    const response = await api.post('/clubs/seminar-halls/estimate', scope);
+    return response.data;
+};
+
+const updateSeminarHallRequestStatus = async (requestId, status, adminRemarks = '') => {
+    const response = await api.patch(`/clubs/seminar-halls/${requestId}`, { status, adminRemarks });
+    return response.data;
+};
+
 export default {
     getClubs,
     getClubDetails,
@@ -124,5 +164,13 @@ export default {
     checkHrmsUserAccount,
     searchHrmsEmployees,
     getAllClubApprovals,
-    getAllClubStudents
+    getAllClubStudents,
+    getSeminarHallRequests,
+    getSeminarHalls,
+    createSeminarHall,
+    updateSeminarHall,
+    deleteSeminarHall,
+    createSeminarHallRequest,
+    estimateSeminarHallAudience,
+    updateSeminarHallRequestStatus
 };

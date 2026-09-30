@@ -5,8 +5,6 @@ const fs = require('fs');
 const Transaction = require('../MongoDb-Models/Transaction');
 
 const StudentFee = require('../MongoDb-Models/StudentFee');
-const FeeHead = require('../MongoDb-Models/FeeHead');
-
 const DEFAULT_CLUB_ADMIN_PAGES = ['management', 'students', 'settings'];
 const getClubFeeTransactionName = (remarks) => String(remarks || '')
     .trim()
@@ -23,6 +21,7 @@ const normalizeClubPagePermissions = (permissions, pages = DEFAULT_CLUB_ADMIN_PA
 };
 const getAssignmentPagePermissions = (assignment) =>
     normalizeClubPagePermissions(assignment?.pagePermissions, assignment?.pages);
+
 const normalizeClubAdminPages = (pages) => {
     if (!Array.isArray(pages)) return [...DEFAULT_CLUB_ADMIN_PAGES];
     const allowedPages = new Set(DEFAULT_CLUB_ADMIN_PAGES);
@@ -1082,6 +1081,522 @@ const getAllClubStudents = async (req, res) => {
     }
 };
 
+const getSeminarHallTimeMinutes = value => {
+    const match = String(value || '').match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
+
+const getSeminarHalls = async (req, res) => {
+    try {
+        const [halls] = await masterPool.query(
+            `SELECT id, hall_name, location, capacity, description, open_time, close_time, created_at
+             FROM seminar_halls WHERE is_active = 1 ORDER BY hall_name`
+        );
+        res.json({ success: true, data: halls });
+    } catch (error) {
+        console.error('Error fetching seminar halls:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch seminar halls' });
+    }
+};
+
+const createSeminarHall = async (req, res) => {
+    const { hallName, location = '', capacity, description = '', openTime, closeTime } = req.body;
+    const numericCapacity = Number(capacity);
+    const openMinutes = getSeminarHallTimeMinutes(openTime);
+    const closeMinutes = getSeminarHallTimeMinutes(closeTime);
+    if (!hallName?.trim() || !Number.isInteger(numericCapacity) || numericCapacity < 1 ||
+        openMinutes === null || closeMinutes === null || openMinutes >= closeMinutes) {
+        return res.status(400).json({ success: false, message: 'Provide a hall name, positive capacity, and a valid opening period' });
+    }
+
+    try {
+        const [result] = await masterPool.execute(
+            `INSERT INTO seminar_halls (hall_name, location, capacity, description, open_time, close_time, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [hallName.trim(), String(location).trim(), numericCapacity, String(description).trim(), openTime, closeTime, req.user.id]
+        );
+        res.status(201).json({ success: true, message: 'Seminar hall created', id: result.insertId });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ success: false, message: 'A seminar hall with this name already exists' });
+        }
+        console.error('Error creating seminar hall:', error);
+        res.status(500).json({ success: false, message: 'Failed to create seminar hall' });
+    }
+};
+
+const updateSeminarHall = async (req, res) => {
+    const { hallName, location = '', capacity, description = '', openTime, closeTime } = req.body;
+    const numericCapacity = Number(capacity);
+    const openMinutes = getSeminarHallTimeMinutes(openTime);
+    const closeMinutes = getSeminarHallTimeMinutes(closeTime);
+    if (!hallName?.trim() || !Number.isInteger(numericCapacity) || numericCapacity < 1 ||
+        openMinutes === null || closeMinutes === null || openMinutes >= closeMinutes) {
+        return res.status(400).json({ success: false, message: 'Provide a hall name, positive capacity, and a valid opening period' });
+    }
+
+    try {
+        const [result] = await masterPool.execute(
+            `UPDATE seminar_halls
+             SET hall_name = ?, location = ?, capacity = ?, description = ?, open_time = ?, close_time = ?
+             WHERE id = ? AND is_active = 1`,
+            [hallName.trim(), String(location).trim(), numericCapacity, String(description).trim(), openTime, closeTime, req.params.hallId]
+        );
+        if (result.affectedRows === 0) {
+            const [existingHalls] = await masterPool.execute(
+                'SELECT id FROM seminar_halls WHERE id = ? AND is_active = 1 LIMIT 1',
+                [req.params.hallId]
+            );
+            if (existingHalls.length === 0) {
+                return res.status(404).json({ success: false, message: 'Seminar hall not found' });
+            }
+        }
+        res.json({ success: true, message: 'Seminar hall updated' });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ success: false, message: 'A seminar hall with this name already exists' });
+        }
+        console.error('Error updating seminar hall:', error);
+        res.status(500).json({ success: false, message: 'Failed to update seminar hall' });
+    }
+};
+
+const deleteSeminarHall = async (req, res) => {
+    try {
+        const [result] = await masterPool.execute(
+            'UPDATE seminar_halls SET is_active = 0 WHERE id = ? AND is_active = 1',
+            [req.params.hallId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Seminar hall not found' });
+        }
+        res.json({ success: true, message: 'Seminar hall deleted' });
+    } catch (error) {
+        console.error('Error deleting seminar hall:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete seminar hall' });
+    }
+};
+
+const getSeminarHallRequestColumns = async () => {
+    const [rows] = await masterPool.query('SHOW COLUMNS FROM seminar_hall_requests');
+    return new Set(rows.map(row => row.Field));
+};
+
+const normalizeSeminarAudienceIds = (values, legacyValue) => {
+    const source = Array.isArray(values) ? values : values !== undefined && values !== null && values !== '' ? [values] :
+        legacyValue !== undefined && legacyValue !== null && legacyValue !== '' ? [legacyValue] : [];
+    const ids = source.map(Number);
+    if (ids.some(id => !Number.isInteger(id) || id < 1)) return null;
+    return [...new Set(ids)];
+};
+
+const parseSeminarHallTimeMinutes = value => {
+    const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+    if (!match) return null;
+    let hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (minute > 59) return null;
+    if (match[3]) {
+        if (hour < 1 || hour > 12) return null;
+        hour = hour % 12 + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+    } else if (hour > 23) {
+        return null;
+    }
+    return hour * 60 + minute;
+};
+
+const getSeminarHallRequests = async (req, res) => {
+    try {
+        const columns = await getSeminarHallRequestColumns();
+        const column = (candidates, alias) => {
+            const name = candidates.find(candidate => columns.has(candidate));
+            return name ? `\`${name}\` AS \`${alias}\`` : `NULL AS \`${alias}\``;
+        };
+        const organizerColumn = columns.has('organizer')
+            ? columns.has('requested_by_name')
+                ? `COALESCE(NULLIF(organizer, ''), requested_by_name) AS organizer`
+                : 'organizer AS organizer'
+            : column(['requested_by_name', 'created_by_name'], 'organizer');
+        const [requests] = await masterPool.query(
+            `SELECT id, ${column(['event_name', 'event_title'], 'event_name')},
+                    ${organizerColumn}, hall_name,
+                    ${column(['request_type'], 'request_type')},
+                    ${column(['club_id'], 'club_id')},
+                    ${column(['club_ids'], 'club_ids')},
+                    ${column(['college_id'], 'college_id')},
+                    ${column(['college_ids'], 'college_ids')},
+                    ${column(['course_id'], 'course_id')},
+                    ${column(['course_ids'], 'course_ids')},
+                    ${column(['branch_id'], 'branch_id')},
+                    ${column(['branch_ids'], 'branch_ids')},
+                    ${column(['year_number'], 'year_number')},
+                    ${column(['year_numbers'], 'year_numbers')},
+                    DATE_FORMAT(event_date, '%Y-%m-%d') AS event_date,
+                    start_time, end_time, purpose, ${column(['equipment_needed'], 'equipment_needed')},
+                    expected_attendees, status, admin_remarks,
+                    ${column(['created_by', 'requested_by_id'], 'created_by')},
+                    ${column(['created_by_name', 'requested_by_name'], 'created_by_name')},
+                    ${column(['reviewed_by'], 'reviewed_by')},
+                    ${column(['request_date', 'created_at'], 'request_date')}, reviewed_at
+             FROM seminar_hall_requests
+             ORDER BY ${columns.has('request_date') ? 'request_date' : 'created_at'} DESC, id DESC`
+        );
+
+        const parseIds = (value, fallback) => {
+            if (Array.isArray(value)) return value.map(Number).filter(Number.isInteger);
+            if (typeof value === 'string') {
+                try {
+                    const parsed = JSON.parse(value);
+                    if (Array.isArray(parsed)) return parsed.map(Number).filter(Number.isInteger);
+                } catch (error) {
+                    return fallback ? [Number(fallback)] : [];
+                }
+            }
+            return fallback ? [Number(fallback)] : [];
+        };
+        const uniqueIds = values => [...new Set(values.flat().filter(value => value !== null && value !== undefined && value !== '').map(String))];
+        const idsByField = {
+            club: uniqueIds(requests.map(request => parseIds(request.club_ids, request.club_id))),
+            college: uniqueIds(requests.map(request => parseIds(request.college_ids, request.college_id))),
+            course: uniqueIds(requests.map(request => parseIds(request.course_ids, request.course_id))),
+            branch: uniqueIds(requests.map(request => parseIds(request.branch_ids, request.branch_id))),
+            user: uniqueIds(requests.flatMap(request => [request.created_by, request.reviewed_by]))
+        };
+        const getNames = async (table, ids) => {
+            if (ids.length === 0) return new Map();
+            const [rows] = await masterPool.query(
+                `SELECT id, name FROM ${table} WHERE id IN (${ids.map(() => '?').join(', ')})`,
+                ids
+            );
+            return new Map(rows.map(row => [String(row.id), row.name]));
+        };
+        const [clubNames, collegeNames, courseNames, branchNames] = await Promise.all([
+            getNames('clubs', idsByField.club),
+            getNames('colleges', idsByField.college),
+            getNames('courses', idsByField.course),
+            getNames('course_branches', idsByField.branch)
+        ]);
+        const userNames = new Map();
+        if (idsByField.user.length > 0) {
+            const [users] = await masterPool.query(
+                `SELECT id, name, username, email FROM rbac_users WHERE id IN (${idsByField.user.map(() => '?').join(', ')})`,
+                idsByField.user
+            );
+            users.forEach(user => userNames.set(String(user.id), user.name || user.username || user.email));
+        }
+        const data = requests.map(request => {
+            const clubIds = parseIds(request.club_ids, request.club_id);
+            const collegeIds = parseIds(request.college_ids, request.college_id);
+            const courseIds = parseIds(request.course_ids, request.course_id);
+            const branchIds = parseIds(request.branch_ids, request.branch_id);
+            const years = parseIds(request.year_numbers, request.year_number);
+            const audienceDetails = request.request_type === 'college'
+                ? [
+                    ...collegeIds.map(id => collegeNames.get(String(id))).filter(Boolean),
+                    ...courseIds.map(id => courseNames.get(String(id))).filter(Boolean),
+                    ...branchIds.map(id => branchNames.get(String(id))).filter(Boolean),
+                    ...years.map(year => `Year ${year}`)
+                ]
+                : clubIds.map(id => clubNames.get(String(id))).filter(Boolean);
+            return {
+                ...request,
+                audience_details: audienceDetails.join(' · '),
+                requested_by_name: userNames.get(String(request.created_by)) || request.created_by_name || null,
+                reviewed_by_name: userNames.get(String(request.reviewed_by)) || null
+            };
+        });
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error fetching seminar hall requests:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch seminar hall requests' });
+    }
+};
+
+const getSeminarHallAudienceEstimate = async (req, res) => {
+    const { requestType, clubIds, clubId, collegeIds, collegeId, courseIds, courseId, branchIds, branchId, yearNumbers, yearNumber } = req.body;
+    try {
+        if (requestType === 'club') {
+            const selectedClubIds = normalizeSeminarAudienceIds(clubIds, clubId);
+            if (!selectedClubIds || selectedClubIds.length === 0) {
+                return res.status(400).json({ success: false, message: 'Select a club to estimate attendees' });
+            }
+            const clubPlaceholders = selectedClubIds.map(() => '?').join(', ');
+            const [activeClubs] = await masterPool.execute(
+                `SELECT id FROM clubs WHERE id IN (${clubPlaceholders}) AND is_active = 1`,
+                selectedClubIds
+            );
+            if (activeClubs.length !== selectedClubIds.length) return res.status(404).json({ success: false, message: 'One or more selected clubs were not found' });
+            const [[result]] = await masterPool.execute(
+                `SELECT COUNT(DISTINCT student_id) AS count FROM club_members
+                 WHERE club_id IN (${clubPlaceholders}) AND status = 'approved'`,
+                selectedClubIds
+            );
+            return res.json({ success: true, estimatedCount: Number(result.count) || 0 });
+        }
+
+        if (requestType !== 'college') {
+            return res.status(400).json({ success: false, message: 'Select a valid request type' });
+        }
+        const selectedCollegeIds = normalizeSeminarAudienceIds(collegeIds, collegeId);
+        const selectedCourseIds = normalizeSeminarAudienceIds(courseIds, courseId);
+        const selectedBranchIds = normalizeSeminarAudienceIds(branchIds, branchId);
+        const selectedYearNumbers = normalizeSeminarAudienceIds(yearNumbers, yearNumber);
+        if (!selectedCollegeIds || selectedCollegeIds.length === 0 || !selectedCourseIds || !selectedBranchIds || !selectedYearNumbers ||
+            (selectedBranchIds.length > 0 && selectedCourseIds.length === 0)) {
+            return res.status(400).json({ success: false, message: 'Select a valid college, course, and branch scope' });
+        }
+
+        const collegePlaceholders = selectedCollegeIds.map(() => '?').join(', ');
+        const [selectedColleges] = await masterPool.execute(
+            `SELECT id FROM colleges WHERE id IN (${collegePlaceholders})`,
+            selectedCollegeIds
+        );
+        if (selectedColleges.length !== selectedCollegeIds.length) return res.status(404).json({ success: false, message: 'One or more selected colleges were not found' });
+        const coursePlaceholders = selectedCourseIds.map(() => '?').join(', ');
+        if (selectedCourseIds.length > 0) {
+            const [validCourses] = await masterPool.execute(
+                `SELECT id FROM courses WHERE id IN (${coursePlaceholders}) AND college_id IN (${collegePlaceholders})`,
+                [...selectedCourseIds, ...selectedCollegeIds]
+            );
+            if (validCourses.length !== selectedCourseIds.length) return res.status(400).json({ success: false, message: 'Every selected course must belong to a selected college' });
+        }
+        const branchPlaceholders = selectedBranchIds.map(() => '?').join(', ');
+        if (selectedBranchIds.length > 0) {
+            const [validBranches] = await masterPool.execute(
+                `SELECT id FROM course_branches WHERE id IN (${branchPlaceholders}) AND course_id IN (${coursePlaceholders})`,
+                [...selectedBranchIds, ...selectedCourseIds]
+            );
+            if (validBranches.length !== selectedBranchIds.length) return res.status(400).json({ success: false, message: 'Every selected branch must belong to a selected course' });
+        }
+        if (selectedYearNumbers.some(year => year > 10)) {
+            return res.status(400).json({ success: false, message: 'Select a valid study year' });
+        }
+
+        let query = `SELECT COUNT(DISTINCT id) AS count FROM students
+                 WHERE student_status = 'Regular' AND college_id IN (${collegePlaceholders})`;
+        const params = [...selectedCollegeIds];
+        if (selectedCourseIds.length > 0) {
+            query += ` AND course_id IN (${coursePlaceholders})`;
+            params.push(...selectedCourseIds);
+        }
+        if (selectedBranchIds.length > 0) {
+            query += ` AND branch_id IN (${branchPlaceholders})`;
+            params.push(...selectedBranchIds);
+        }
+        if (selectedYearNumbers.length > 0) {
+            query += ` AND current_year IN (${selectedYearNumbers.map(() => '?').join(', ')})`;
+            params.push(...selectedYearNumbers);
+        }
+        const [[result]] = await masterPool.execute(query, params);
+        return res.json({ success: true, estimatedCount: Number(result.count) || 0 });
+    } catch (error) {
+        console.error('Error estimating seminar hall attendees:', error);
+        return res.status(500).json({ success: false, message: 'Failed to estimate attendees' });
+    }
+};
+
+const createSeminarHallRequest = async (req, res) => {
+    const {
+        eventName,
+        organizer,
+        hallName,
+        eventDate,
+        startTime,
+        endTime,
+        purpose,
+        expectedAttendees,
+        requestType = 'club',
+        clubIds,
+        clubId,
+        collegeIds,
+        collegeId,
+        courseIds,
+        courseId,
+        branchIds,
+        branchId,
+        yearNumbers,
+        yearNumber
+    } = req.body;
+
+    if (!eventName?.trim() || !organizer?.trim() || !hallName?.trim() || !eventDate ||
+        !startTime || !endTime || !purpose?.trim()) {
+        return res.status(400).json({ success: false, message: 'Complete all required request fields' });
+    }
+    const requestedStartMinutes = parseSeminarHallTimeMinutes(startTime);
+    const requestedEndMinutes = parseSeminarHallTimeMinutes(endTime);
+    if (requestedStartMinutes === null || requestedEndMinutes === null || requestedStartMinutes >= requestedEndMinutes) {
+        return res.status(400).json({ success: false, message: 'Provide a valid time range with the end after the start' });
+    }
+    if (!['club', 'college'].includes(requestType)) {
+        return res.status(400).json({ success: false, message: 'Select a valid request type' });
+    }
+    const selectedClubIds = normalizeSeminarAudienceIds(clubIds, clubId);
+    const selectedCollegeIds = normalizeSeminarAudienceIds(collegeIds, collegeId);
+    const selectedCourseIds = normalizeSeminarAudienceIds(courseIds, courseId);
+    const selectedBranchIds = normalizeSeminarAudienceIds(branchIds, branchId);
+    const selectedYearNumbers = requestType === 'college'
+        ? normalizeSeminarAudienceIds(yearNumbers, yearNumber)
+        : [];
+    if (!selectedClubIds || !selectedCollegeIds || !selectedCourseIds || !selectedBranchIds ||
+        !selectedYearNumbers || selectedYearNumbers.some(year => year > 10) ||
+        (requestType === 'club' && selectedClubIds.length === 0) ||
+        (requestType === 'college' && selectedCollegeIds.length === 0) ||
+        (requestType === 'college' && selectedBranchIds.length > 0 && selectedCourseIds.length === 0) ||
+        (requestType === 'club' && selectedYearNumbers.length > 0)) {
+        return res.status(400).json({ success: false, message: 'Select the required request audience' });
+    }
+    const numericClubId = requestType === 'club' ? selectedClubIds[0] : null;
+    const numericCollegeId = requestType === 'college' ? selectedCollegeIds[0] : null;
+    const numericCourseId = requestType === 'college' ? selectedCourseIds[0] || null : null;
+    const numericBranchId = requestType === 'college' ? selectedBranchIds[0] || null : null;
+    const normalizedExpectedAttendees = expectedAttendees === '' || expectedAttendees === null || expectedAttendees === undefined
+        ? null
+        : Number(expectedAttendees);
+    if (normalizedExpectedAttendees !== null &&
+        (!Number.isInteger(normalizedExpectedAttendees) || normalizedExpectedAttendees < 0)) {
+        return res.status(400).json({ success: false, message: 'Estimated attendee count must be a non-negative whole number' });
+    }
+
+    try {
+        if (requestType === 'college') {
+            const collegePlaceholders = selectedCollegeIds.map(() => '?').join(', ');
+            const [validColleges] = await masterPool.execute(
+                `SELECT id FROM colleges WHERE id IN (${collegePlaceholders})`,
+                selectedCollegeIds
+            );
+            if (validColleges.length !== selectedCollegeIds.length) return res.status(400).json({ success: false, message: 'One or more selected colleges were not found' });
+            if (selectedCourseIds.length > 0) {
+                const coursePlaceholders = selectedCourseIds.map(() => '?').join(', ');
+                const [validCourses] = await masterPool.execute(
+                    `SELECT id FROM courses WHERE id IN (${coursePlaceholders}) AND college_id IN (${collegePlaceholders})`,
+                    [...selectedCourseIds, ...selectedCollegeIds]
+                );
+                if (validCourses.length !== selectedCourseIds.length) return res.status(400).json({ success: false, message: 'Every selected course must belong to a selected college' });
+            }
+            if (selectedBranchIds.length > 0) {
+                const branchPlaceholders = selectedBranchIds.map(() => '?').join(', ');
+                const coursePlaceholders = selectedCourseIds.map(() => '?').join(', ');
+                const [validBranches] = await masterPool.execute(
+                    `SELECT id FROM course_branches WHERE id IN (${branchPlaceholders}) AND course_id IN (${coursePlaceholders})`,
+                    [...selectedBranchIds, ...selectedCourseIds]
+                );
+                if (validBranches.length !== selectedBranchIds.length) return res.status(400).json({ success: false, message: 'Every selected branch must belong to a selected course' });
+            }
+        } else {
+            const clubPlaceholders = selectedClubIds.map(() => '?').join(', ');
+            const [validClubs] = await masterPool.execute(
+                `SELECT id FROM clubs WHERE id IN (${clubPlaceholders}) AND is_active = 1`,
+                selectedClubIds
+            );
+            if (validClubs.length !== selectedClubIds.length) return res.status(400).json({ success: false, message: 'One or more selected clubs were not found' });
+        }
+        const columns = await getSeminarHallRequestColumns();
+        const [[hall]] = await masterPool.execute(
+            'SELECT open_time, close_time FROM seminar_halls WHERE hall_name = ? AND is_active = 1 LIMIT 1',
+            [hallName.trim()]
+        );
+        if (!hall) return res.status(400).json({ success: false, message: 'Selected seminar hall is not active' });
+        const hallOpenMinutes = parseSeminarHallTimeMinutes(hall.open_time);
+        const hallCloseMinutes = parseSeminarHallTimeMinutes(hall.close_time);
+        if (hallOpenMinutes === null || hallCloseMinutes === null ||
+            requestedStartMinutes < hallOpenMinutes || requestedEndMinutes > hallCloseMinutes) {
+            return res.status(400).json({ success: false, message: 'Requested time must be within the seminar hall opening hours' });
+        }
+
+        const eventTitleColumn = columns.has('event_title') ? 'event_title' : 'event_name';
+        const [sameDayRequests] = await masterPool.execute(
+            `SELECT id, ${eventTitleColumn} AS event_title, start_time, end_time, status
+             FROM seminar_hall_requests
+             WHERE hall_name = ? AND event_date = ? AND status IN ('pending', 'approved')`,
+            [hallName.trim(), eventDate]
+        );
+        const conflictingRequests = sameDayRequests.filter(request => {
+            const existingStart = parseSeminarHallTimeMinutes(request.start_time);
+            const existingEnd = parseSeminarHallTimeMinutes(request.end_time);
+            return existingStart !== null && existingEnd !== null &&
+                existingStart < requestedEndMinutes && existingEnd > requestedStartMinutes;
+        });
+        if (conflictingRequests.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: `This time overlaps an existing ${conflictingRequests.some(request => request.status === 'approved') ? 'approved booking' : 'pending request'} for ${hallName}`,
+                conflicts: conflictingRequests.map(request => ({
+                    eventName: request.event_title,
+                    startTime: request.start_time,
+                    endTime: request.end_time,
+                    status: request.status
+                }))
+            });
+        }
+
+        const valuesByColumn = new Map();
+        const addColumn = (candidates, value) => {
+            const name = candidates.find(candidate => columns.has(candidate));
+            if (name && !valuesByColumn.has(name)) valuesByColumn.set(name, value);
+            return name;
+        };
+        addColumn(['request_type'], requestType);
+        addColumn(['club_id'], numericClubId);
+        addColumn(['club_ids'], requestType === 'club' ? JSON.stringify(selectedClubIds) : null);
+        addColumn(['college_id'], numericCollegeId);
+        addColumn(['college_ids'], requestType === 'college' ? JSON.stringify(selectedCollegeIds) : null);
+        addColumn(['course_id'], numericCourseId);
+        addColumn(['course_ids'], requestType === 'college' ? JSON.stringify(selectedCourseIds) : null);
+        addColumn(['branch_id'], numericBranchId);
+        addColumn(['branch_ids'], requestType === 'college' ? JSON.stringify(selectedBranchIds) : null);
+        addColumn(['year_number'], selectedYearNumbers[0] || null);
+        addColumn(['year_numbers'], requestType === 'college' ? JSON.stringify(selectedYearNumbers) : null);
+        addColumn(['event_name', 'event_title'], eventName.trim());
+        addColumn(['organizer'], organizer.trim());
+        addColumn(['requested_by_name', 'created_by_name'], req.user.name || req.user.username || req.user.email || 'Administrator');
+        addColumn(['hall_name'], hallName.trim());
+        addColumn(['event_date'], eventDate);
+        addColumn(['start_time'], startTime);
+        addColumn(['end_time'], endTime);
+        addColumn(['purpose'], purpose.trim());
+        addColumn(['expected_attendees'], normalizedExpectedAttendees);
+        addColumn(['status'], 'pending');
+        addColumn(['created_by', 'requested_by_id'], req.user.id);
+        addColumn(['requested_by_role'], 'Admin');
+        addColumn(['equipment_needed'], '');
+
+        const insertColumns = [...valuesByColumn.keys()];
+        const placeholders = insertColumns.map(() => '?').join(', ');
+        const [result] = await masterPool.execute(
+            `INSERT INTO seminar_hall_requests (${insertColumns.map(name => `\`${name}\``).join(', ')})
+             VALUES (${placeholders})`,
+            insertColumns.map(name => valuesByColumn.get(name))
+        );
+        res.status(201).json({ success: true, message: 'Seminar hall request created', id: result.insertId });
+    } catch (error) {
+        console.error('Error creating seminar hall request:', error);
+        res.status(500).json({ success: false, message: 'Failed to create seminar hall request' });
+    }
+};
+
+const updateSeminarHallRequestStatus = async (req, res) => {
+    const { status, adminRemarks = '' } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ success: false, message: 'Status must be approved or rejected' });
+    }
+
+    try {
+        const [result] = await masterPool.execute(
+            `UPDATE seminar_hall_requests
+             SET status = ?, admin_remarks = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND status = 'pending'`,
+            [status, String(adminRemarks).trim(), req.user.id, req.params.requestId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(409).json({ success: false, message: 'Request not found or already reviewed' });
+        }
+        res.json({ success: true, message: `Seminar hall request ${status}` });
+    } catch (error) {
+        console.error('Error updating seminar hall request:', error);
+        res.status(500).json({ success: false, message: 'Failed to update seminar hall request' });
+    }
+};
+
 module.exports = {
     createClub,
     getClubs,
@@ -1101,5 +1616,13 @@ module.exports = {
     deleteClubRole,
     checkHrmsUserAccount,
     getAllClubApprovals,
-    getAllClubStudents
+    getAllClubStudents,
+    getSeminarHalls,
+    createSeminarHall,
+    updateSeminarHall,
+    deleteSeminarHall,
+    getSeminarHallRequests,
+    getSeminarHallAudienceEstimate,
+    createSeminarHallRequest,
+    updateSeminarHallRequestStatus
 };

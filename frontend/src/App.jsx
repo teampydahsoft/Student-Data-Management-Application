@@ -46,6 +46,7 @@ const AttendanceMonitoring = lazy(() => import('./pages/admin/AttendanceMonitori
 const Profile = lazy(() => import('./pages/Profile'));
 const ProfileChangeRequests = lazy(() => import('./pages/admin/ProfileChangeRequests'));
 const Clubs = lazy(() => import('./pages/Clubs'));
+const SeminarHallRequests = lazy(() => import('./pages/admin/SeminarHallRequests'));
 const InternshipAdmin = lazy(() => import('./internship/InternshipAdmin'));
 const CertificateBorrowManagement = lazy(() => import('./pages/admin/CertificateBorrowManagement'));
 
@@ -258,6 +259,7 @@ function App() {
             <Route path="clubs" element={<Clubs />} />
             <Route path="clubs/students" element={<Clubs initialSubPage="students" />} />
             <Route path="clubs/settings" element={<Clubs initialSubPage="settings" />} />
+            <Route path="clubs/seminar-halls" element={<SeminarHallRequests />} />
             <Route path="faculty-management" element={<FacultyManagement />} />
             <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
             <Route path="internship-management" element={<InternshipAdmin />} />

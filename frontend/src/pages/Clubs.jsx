@@ -11,6 +11,7 @@ import clubService from '../services/clubService';
 import chatService from '../services/chatService';
 import api from '../config/api';
 import useAuthStore from '../store/authStore';
+import { BACKEND_MODULES, hasPermission } from '../constants/rbac';
 import toast from 'react-hot-toast';
 
 const CLUB_ADMIN_PAGES = [
@@ -495,6 +496,13 @@ const Clubs = ({ initialSubPage }) => {
     const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(String(user?.role || '').toLowerCase());
     const getClubPageAccess = (clubId, pageKey) => {
         if (isAdmin) return { read: true, write: true };
+        const pageActions = {
+            management: { read: ['view', 'manage'], write: ['manage'] },
+            students: { read: ['view_students', 'manage_students'], write: ['manage_students'] },
+            settings: { read: ['view_settings', 'manage_settings'], write: ['manage_settings'] }
+        }[pageKey];
+        const globalRead = pageActions?.read.some(action => hasPermission(user?.permissions, BACKEND_MODULES.CLUBS, action)) || false;
+        const globalWrite = pageActions?.write.some(action => hasPermission(user?.permissions, BACKEND_MODULES.CLUBS, action)) || false;
         const assignments = (user?.clubRoles || []).filter(role => clubId == null || String(role.clubId) === String(clubId));
         return assignments.reduce((access, assignment) => {
             const pageAccess = getPagePermissions(assignment)[pageKey] || { read: false, write: false };
@@ -502,7 +510,7 @@ const Clubs = ({ initialSubPage }) => {
                 read: access.read || pageAccess.read || pageAccess.write,
                 write: access.write || pageAccess.write
             };
-        }, { read: false, write: false });
+        }, { read: globalRead || globalWrite, write: globalWrite });
     };
 
     // Determine subPage directly from pathname or initialSubPage prop
