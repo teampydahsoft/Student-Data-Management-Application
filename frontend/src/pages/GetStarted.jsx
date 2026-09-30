@@ -263,7 +263,7 @@ const GetStarted = () => {
                                     src={SECTION_IMAGES.hero}
                                     alt="Pydah Group campus"
                                     className="absolute inset-0 w-full h-full object-cover object-[center_25%]"
-                                    fetchPriority="high"
+                                    fetchpriority="high"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-primary/40 via-transparent to-transparent pointer-events-none" />
                             </div>
@@ -296,7 +296,7 @@ const GetStarted = () => {
                             src={SECTION_IMAGES.hero}
                             alt="Pydah Group of Institutions — Education and Beyond"
                             className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
-                            fetchPriority="high"
+                            fetchpriority="high"
                         />
                         <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-secondary/90 to-transparent pointer-events-none" />
 

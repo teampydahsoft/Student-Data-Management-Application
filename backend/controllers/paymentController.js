@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const PaymentConfig = require('../MongoDb-Models/PaymentConfig'); 
 const Transaction = require('../MongoDb-Models/Transaction');
 const FeeHead = require('../MongoDb-Models/FeeHead');
+const StudentFee = require('../MongoDb-Models/StudentFee');
 const { masterPool } = require('../config/database');
 const mongoose = require('mongoose');
 
@@ -267,13 +268,13 @@ exports.verifyPayment = async (req, res) => {
         console.log(`[PAYMENT] Transaction successfully recorded: ${newTransaction._id} for student ${studentId}`);
 
         // --- CLUB FEE UPDATE LOGIC ---
-        // Check if this payment is for a Club Fee and update SQL club_members
-        if (remarks && remarks.toLowerCase().includes('club fee')) {
+        // Club name is stored in remarks; use the fee head to identify new club-fee payments.
+        const clubFeeHead = finalFeeHeadId ? await FeeHead.findById(finalFeeHeadId).select('name') : null;
+        const clubFeeRemark = String(remarks || '').match(/^\s*Club Fee\s*[:\-–]\s*(.+)$/i);
+        if (remarks && (clubFeeHead?.name === 'Club Fee' || clubFeeRemark)) {
             try {
-                // Extract Club Name from remarks "Club Fee: <Name>"
-                const match = remarks.match(/Club Fee:\s*(.+)/i);
-                if (match && match[1]) {
-                    const clubName = match[1].trim();
+            const clubName = (clubFeeRemark ? clubFeeRemark[1] : remarks).trim();
+                if (clubName) {
                     
                     // Find Club ID and Fee
                     const [clubs] = await masterPool.query('SELECT id, membership_fee FROM clubs WHERE name = ?', [clubName]);
@@ -282,10 +283,20 @@ exports.verifyPayment = async (req, res) => {
                         const clubId = clubs[0].id;
                         const requiredFee = Number(clubs[0].membership_fee) || 0;
 
+                        const clubFeeRemarks = [clubName, `Club Fee: ${clubName}`, `Club Fee - ${clubName}`];
+                        const cancelledFeeQuery = {
+                            studentId,
+                            remarks: { $in: clubFeeRemarks },
+                            status: 'cancelled'
+                        };
+                        if (finalFeeHeadId) cancelledFeeQuery.feeHead = finalFeeHeadId;
+                        await StudentFee.updateMany(cancelledFeeQuery, { $set: { status: 'active' } });
+
                         // Calculate Total Paid including this new transaction
                         const txs = await Transaction.find({
                             studentId: studentId,
                             transactionType: 'DEBIT',
+                            status: { $nin: ['cancelled', 'transferred'] },
                             remarks: { $regex: new RegExp(clubName, 'i') }
                         });
                         const totalPaid = txs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);

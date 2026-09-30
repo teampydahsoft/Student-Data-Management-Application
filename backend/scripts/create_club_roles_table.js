@@ -11,12 +11,27 @@ const createClubRolesTable = async () => {
         role_name VARCHAR(100) NOT NULL,
         role_code VARCHAR(50) NOT NULL UNIQUE,
         description TEXT,
+        pages JSON DEFAULT NULL,
         is_system BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     console.log('✓ club_roles table created/verified.');
+
+    const [rolePageCols] = await masterPool.query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'club_roles'
+        AND COLUMN_NAME = 'pages';
+    `);
+    if (rolePageCols.length === 0) {
+      await masterPool.query('ALTER TABLE club_roles ADD COLUMN pages JSON DEFAULT NULL');
+      console.log('✓ Added pages column to club_roles table.');
+    } else {
+      console.log('✓ club_roles.pages column already exists.');
+    }
 
     // 2. Add admin_roles column to clubs table if missing
     const [cols] = await masterPool.query(`

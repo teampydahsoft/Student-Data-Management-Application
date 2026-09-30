@@ -1,16 +1,60 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Plus, Users, X, Trash2, Check, Edit2, Shield, Wallet,
     ArrowRight, Zap, Search, Settings, UserCheck, CheckCircle,
     AlertTriangle, UserPlus, RefreshCw, Eye, Bell, BellOff,
-    MessageSquare, Calendar, Clock, Send, Hash, Paperclip
+    MessageSquare, Calendar, Clock, Send, Hash, Paperclip, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import clubService from '../services/clubService';
 import chatService from '../services/chatService';
 import api from '../config/api';
+import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
+
+const CLUB_ADMIN_PAGES = [
+    { key: 'management', label: 'Club Management' },
+    { key: 'students', label: 'Members' },
+    { key: 'settings', label: 'Club Settings' }
+];
+const DEFAULT_CLUB_ADMIN_PAGES = CLUB_ADMIN_PAGES.map(page => page.key);
+const getPagePermissions = (assignment = {}) => {
+    const legacyPages = Array.isArray(assignment.pages) ? assignment.pages : DEFAULT_CLUB_ADMIN_PAGES;
+    return Object.fromEntries(CLUB_ADMIN_PAGES.map(({ key }) => {
+        const configured = assignment.pagePermissions?.[key];
+        if (configured && typeof configured === 'object') {
+            const write = configured.write === true;
+            return [key, { read: configured.read === true || write, write }];
+        }
+        const allowed = legacyPages.includes(key);
+        return [key, { read: allowed, write: allowed }];
+    }));
+};
+const pagesFromPermissions = permissions => CLUB_ADMIN_PAGES
+    .map(page => page.key)
+    .filter(key => permissions[key]?.read || permissions[key]?.write);
+const DEFAULT_USER_ROLE_OPTIONS = [
+    { value: 'college_principal', label: 'College Principal' },
+    { value: 'college_ao', label: 'College AO' },
+    { value: 'college_attender', label: 'College Attender' },
+    { value: 'branch_hod', label: 'Branch HOD' },
+    { value: 'office_assistant', label: 'Office Assistant' },
+    { value: 'cashier', label: 'Cashier' },
+    { value: 'faculty', label: 'Faculty' },
+    { value: 'course_principal', label: 'Course Principal' },
+    { value: 'course_hod', label: 'Course HOD' },
+    { value: 'branch_clerk', label: 'Branch Clerk' },
+    { value: 'branch_counselor', label: 'Branch Counselor' },
+    { value: 'branch_faculty', label: 'Branch Faculty' },
+    { value: 'support_staff', label: 'Support Staff' }
+];
+const formatMembershipFee = (amount) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+}).format(Number(amount) || 0);
 
 /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    INLINE CLUB CHAT BOX
@@ -229,7 +273,7 @@ const ClubChatBox = ({ club }) => {
 };
 
 const ClubCard = ({ club, onViewDetails, isAdmin, onToggleStatus, onEdit }) => {
-    const memberCount = (club.members || []).filter(m => m.status === 'approved').length;
+    const memberCount = club.memberCount ?? (club.members || []).filter(m => m.status === 'approved').length;
     const initials = club.name ? club.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
     const gradients = [
         'from-blue-500 to-indigo-600',
@@ -297,7 +341,7 @@ const ClubCard = ({ club, onViewDetails, isAdmin, onToggleStatus, onEdit }) => {
                     <h3 className="font-bold text-gray-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-1">{club.name}</h3>
                     {club.membership_fee > 0 ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap shrink-0">
-                            â‚¹{club.membership_fee}
+                            {formatMembershipFee(club.membership_fee)}
                         </span>
                     ) : (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap shrink-0">Free</span>
@@ -349,7 +393,7 @@ const ClubCard = ({ club, onViewDetails, isAdmin, onToggleStatus, onEdit }) => {
     );
 };
 
-const Modal = ({ show, onClose, title, children }) => (
+const Modal = ({ show, onClose, title, children, size = 'default' }) => (
     <AnimatePresence>
         {show && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
@@ -357,15 +401,15 @@ const Modal = ({ show, onClose, title, children }) => (
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-8"
+                    className={`bg-white rounded-2xl w-full shadow-2xl overflow-hidden my-4 ${size === 'tall' ? 'max-w-5xl min-h-[92vh] max-h-[96vh] flex flex-col' : 'max-w-3xl'}`}
                 >
-                    <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex shrink-0 justify-between items-center p-6 border-b border-gray-100 bg-gray-50/50">
                         <h2 className="text-xl font-bold text-gray-900">{title}</h2>
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
                             <X size={20} />
                         </button>
                     </div>
-                    <div className="p-6 max-h-[80vh] overflow-y-auto">
+                    <div className={`p-6 ${size === 'tall' ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-[80vh] overflow-y-auto'}`}>
                         {children}
                     </div>
                 </motion.div>
@@ -374,9 +418,92 @@ const Modal = ({ show, onClose, title, children }) => (
     </AnimatePresence>
 );
 
+const MultiSelectDropdown = ({ label, options, value, onChange, placeholder, disabled = false, headerAccessory = null }) => {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+    const selectedValues = value || [];
+    const selectedLabels = options.filter(option => selectedValues.includes(String(option.value))).map(option => option.label);
+    const summary = selectedLabels.length > 0
+        ? selectedLabels.length === 1 ? selectedLabels[0] : `${selectedLabels[0]} +${selectedLabels.length - 1}`
+        : placeholder;
+
+    useEffect(() => {
+        if (!open) return undefined;
+        const closeOnOutsideClick = (event) => {
+            if (!containerRef.current?.contains(event.target)) setOpen(false);
+        };
+        const closeOnEscape = (event) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('mousedown', closeOnOutsideClick);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('mousedown', closeOnOutsideClick);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [open]);
+
+    return (
+        <div ref={containerRef} className="relative min-w-0">
+            <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+                <span className="text-xs font-bold text-gray-700">{label}</span>
+                {headerAccessory}
+            </div>
+            <button
+                type="button"
+                disabled={disabled}
+                aria-expanded={open}
+                onClick={() => setOpen(current => !current)}
+                className="flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-xs text-gray-700 shadow-sm hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+            >
+                <span className="truncate">{summary}</span>
+                <span className="flex shrink-0 items-center gap-1 text-[10px] text-gray-500">
+                    {selectedValues.length ? `${selectedValues.length} selected` : ''}
+                    <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                </span>
+            </button>
+            {open && !disabled && (
+                <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-xl">
+                    {options.length > 0 ? options.map(option => {
+                        const optionValue = String(option.value);
+                        const checked = selectedValues.includes(optionValue);
+                        return (
+                            <label key={optionValue} className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-xs text-gray-700 hover:bg-blue-50">
+                                <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => onChange(checked
+                                        ? selectedValues.filter(item => item !== optionValue)
+                                        : [...selectedValues, optionValue]
+                                    )}
+                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="truncate">{option.label}</span>
+                            </label>
+                        );
+                    }) : <p className="px-3 py-2 text-xs text-gray-400">No options available</p>}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const Clubs = ({ initialSubPage }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const user = useAuthStore(state => state.user);
+    const isAdmin = ['admin', 'super_admin', 'superadmin'].includes(String(user?.role || '').toLowerCase());
+    const getClubPageAccess = (clubId, pageKey) => {
+        if (isAdmin) return { read: true, write: true };
+        const assignments = (user?.clubRoles || []).filter(role => clubId == null || String(role.clubId) === String(clubId));
+        return assignments.reduce((access, assignment) => {
+            const pageAccess = getPagePermissions(assignment)[pageKey] || { read: false, write: false };
+            return {
+                read: access.read || pageAccess.read || pageAccess.write,
+                write: access.write || pageAccess.write
+            };
+        }, { read: false, write: false });
+    };
 
     // Determine subPage directly from pathname or initialSubPage prop
     const getSubPageFromPath = () => {
@@ -391,12 +518,31 @@ const Clubs = ({ initialSubPage }) => {
         setSubPage(getSubPageFromPath());
     }, [location.pathname]);
 
+    useEffect(() => {
+        if (!user?.clubRoles?.length || isAdmin) return;
+        const availablePages = [...new Set(user.clubRoles.flatMap(role => pagesFromPermissions(getPagePermissions(role))))];
+        if (availablePages.includes(subPage)) return;
+        const fallbackPage = availablePages[0];
+        navigate(fallbackPage ? (fallbackPage === 'management' ? '/clubs' : `/clubs/${fallbackPage}`) : '/', { replace: true });
+    }, [user, subPage, navigate, isAdmin]);
+
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [userType, setUserType] = useState('');
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'details'
     const [selectedClub, setSelectedClub] = useState(null);
     const [detailsTab, setDetailsTab] = useState('overview'); // 'overview' | 'members' | 'requests' | 'activities' | 'chat' | 'settings'
+
+    useEffect(() => {
+        if (viewMode !== 'details' || !selectedClub || isAdmin) return;
+        const tabPage = { overview: 'management', activities: 'management', chat: 'management', members: 'students', admins: 'settings', settings: 'settings' };
+        if (getClubPageAccess(selectedClub.id, tabPage[detailsTab]).read) return;
+        const firstAvailableTab = [
+            ['management', 'overview'],
+            ['students', 'members'],
+            ['settings', 'settings']
+        ].find(([page]) => getClubPageAccess(selectedClub.id, page).read)?.[1];
+        if (firstAvailableTab) setDetailsTab(firstAvailableTab);
+    }, [viewMode, selectedClub, detailsTab, user, isAdmin]);
 
     // Notification Toggles State
     const [announcementNotify, setAnnouncementNotify] = useState(localStorage.getItem('club_announcement_notify') !== 'false');
@@ -419,6 +565,10 @@ const Clubs = ({ initialSubPage }) => {
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
     const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+    const [pageAssignmentToEdit, setPageAssignmentToEdit] = useState(null);
+    const [pageAccessDraft, setPageAccessDraft] = useState(() => getPagePermissions());
+    const [clubRoleDraft, setClubRoleDraft] = useState({ roleCode: '', roleName: '' });
+    const [savingPageAccess, setSavingPageAccess] = useState(false);
 
     // Form Data for Club
     const [formData, setFormData] = useState({
@@ -439,15 +589,29 @@ const Clubs = ({ initialSubPage }) => {
     const [hrmsUserStatus, setHrmsUserStatus] = useState(null);
 
     // New/Edit Role Form Data
-    const [roleForm, setRoleForm] = useState({ role_name: '', description: '' });
+    const [roleForm, setRoleForm] = useState({ role_name: '', description: '', pages: [...DEFAULT_CLUB_ADMIN_PAGES] });
 
     // Inline Create User Form Data (for HRMS employee without SDMS user account)
-    // Uses HRMS credentials â€” no manual password needed
+    // Uses HRMS credentials — no manual password needed
+    const [collegesList, setCollegesList] = useState([]);
+    const [createUserRoleOptions, setCreateUserRoleOptions] = useState(DEFAULT_USER_ROLE_OPTIONS);
+    const [createUserCourses, setCreateUserCourses] = useState([]);
+    const [createUserBranches, setCreateUserBranches] = useState([]);
+    const [loadingCreateUserCourses, setLoadingCreateUserCourses] = useState(false);
+    const [loadingCreateUserBranches, setLoadingCreateUserBranches] = useState(false);
     const [createUserForm, setCreateUserForm] = useState({
         name: '',
         email: '',
         phone: '',
         role: 'faculty',
+        college_id: '',
+        collegeIds: [],
+        courseIds: [],
+        branchIds: [],
+        allCourses: false,
+        allBranches: false,
+        hodYears: [],
+        allHodYears: true,
         hrms_id: ''
     });
     const [creatingUser, setCreatingUser] = useState(false);
@@ -458,10 +622,22 @@ const Clubs = ({ initialSubPage }) => {
     const [savingActivity, setSavingActivity] = useState(false);
 
     useEffect(() => {
-        const type = localStorage.getItem('userType');
-        setUserType(type || '');
         fetchClubs();
-        fetchDynamicRoles();
+        if (isAdmin || getClubPageAccess(null, 'settings').read) fetchDynamicRoles();
+        api.get('/colleges?includeInactive=false')
+            .then(r => {
+                if (r.data?.success && r.data?.data) {
+                    setCollegesList(r.data.data);
+                }
+            })
+            .catch(() => {});
+        api.get('/rbac/users/roles/available')
+            .then(r => {
+                if (r.data?.success && Array.isArray(r.data?.data) && r.data.data.length > 0) {
+                    setCreateUserRoleOptions(r.data.data);
+                }
+            })
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -515,7 +691,11 @@ const Clubs = ({ initialSubPage }) => {
         }
     };
 
-    const isAdmin = ['admin', 'super_admin'].includes(userType);
+    const selectedHodBranches = createUserBranches.filter(branch => createUserForm.branchIds.includes(String(branch.id)));
+    const selectedHodCourses = createUserCourses.filter(course => createUserForm.courseIds.includes(String(course.id)));
+    const branchYearCount = Math.max(0, ...selectedHodBranches.map(branch => Number(branch.totalYears || branch.total_years || branch.structure?.totalYears) || 0));
+    const courseYearCount = Math.max(0, ...selectedHodCourses.map(course => Number(course.totalYears || course.total_years || course.structure?.totalYears) || 0));
+    const createUserHodYearCount = Math.min(10, branchYearCount || courseYearCount || 4);
 
     // --- Dynamic Employee / HRMS Search ---
     const handleSearchHrms = async (query) => {
@@ -571,26 +751,117 @@ const Clubs = ({ initialSubPage }) => {
         }
     };
 
+    const loadCreateUserCourses = async (collegeIds) => {
+        if (!collegeIds.length) {
+            setCreateUserCourses([]);
+            return;
+        }
+        setLoadingCreateUserCourses(true);
+        try {
+            const responses = await Promise.all(collegeIds.map(id => api.get(`/colleges/${id}/courses?includeInactive=false`)));
+            setCreateUserCourses(responses.flatMap((response, index) =>
+                (response.data?.data || []).map(course => ({ ...course, collegeId: collegeIds[index] }))
+            ));
+        } catch (error) {
+            toast.error('Failed to load courses');
+            setCreateUserCourses([]);
+        } finally {
+            setLoadingCreateUserCourses(false);
+        }
+    };
+
+    const loadCreateUserBranches = async (courseIds) => {
+        if (!courseIds.length) {
+            setCreateUserBranches([]);
+            return;
+        }
+        setLoadingCreateUserBranches(true);
+        try {
+            const responses = await Promise.all(courseIds.map(id => api.get(`/courses/${id}/branches?includeInactive=false`)));
+            setCreateUserBranches(responses.flatMap((response, index) =>
+                (response.data?.data || []).map(branch => ({
+                    ...branch,
+                    courseId: courseIds[index],
+                    courseName: createUserCourses.find(course => String(course.id) === String(courseIds[index]))?.name || ''
+                }))
+            ));
+        } catch (error) {
+            toast.error('Failed to load branches');
+            setCreateUserBranches([]);
+        } finally {
+            setLoadingCreateUserBranches(false);
+        }
+    };
+
+    const handleCreateUserCollegeChange = async (collegeIds) => {
+        setCreateUserForm(prev => ({
+            ...prev,
+            college_id: collegeIds[0] || '',
+            collegeIds,
+            courseIds: [],
+            branchIds: [],
+            allCourses: false,
+            allBranches: false
+        }));
+        setCreateUserBranches([]);
+        await loadCreateUserCourses(collegeIds);
+    };
+
+    const handleCreateUserCourseChange = async (courseIds) => {
+        setCreateUserForm(prev => ({ ...prev, courseIds, branchIds: [], allBranches: false }));
+        await loadCreateUserBranches(courseIds);
+    };
+
     // Open inline modal to create SDMS user account for HRMS employee
     const handleOpenCreateUserModal = () => {
         if (!selectedHrmsEmployee) return;
+        const defaultCol = collegesList.length > 0 ? collegesList[0].id : '';
         setCreateUserForm({
             name: selectedHrmsEmployee.name || '',
             email: selectedHrmsEmployee.email && !selectedHrmsEmployee.email.includes('@hrms') ? selectedHrmsEmployee.email : `${selectedHrmsEmployee.emp_no}@pydah.edu.in`,
             phone: selectedHrmsEmployee.phone || '',
             role: 'faculty',
+            college_id: defaultCol,
+            collegeIds: defaultCol ? [String(defaultCol)] : [],
+            courseIds: [],
+            branchIds: [],
+            allCourses: false,
+            allBranches: false,
+            hodYears: [],
+            allHodYears: true,
             hrms_id: selectedHrmsEmployee._id || ''
         });
+        setCreateUserCourses([]);
+        setCreateUserBranches([]);
+        if (defaultCol) loadCreateUserCourses([String(defaultCol)]);
         setShowCreateUserModal(true);
     };
 
     const handleCreateSDMSUserAccount = async (e) => {
         e.preventDefault();
+        if (!createUserForm.collegeIds.length) return toast.error('Select at least one college');
+        if (createUserForm.role === 'branch_hod' && createUserForm.courseIds.length === 0) {
+            return toast.error('Select at least one course for a Branch HOD');
+        }
+        if (createUserForm.role === 'branch_hod' && createUserForm.branchIds.length === 0) {
+            return toast.error('Select at least one branch for a Branch HOD');
+        }
+        if (createUserForm.role === 'branch_hod' && !createUserForm.allHodYears && createUserForm.hodYears.length === 0) {
+            return toast.error('Select at least one year or choose All Years');
+        }
         setCreatingUser(true);
         try {
             // Use emp_no as username and HRMS-linked credentials (no manual password)
             const payload = {
                 ...createUserForm,
+                college_id: createUserForm.college_id,
+                collegeIds: createUserForm.collegeIds,
+                courseIds: createUserForm.role === 'branch_hod' || !createUserForm.allCourses ? createUserForm.courseIds : [],
+                branchIds: createUserForm.role === 'branch_hod' || !createUserForm.allBranches ? createUserForm.branchIds : [],
+                allCourses: createUserForm.role !== 'branch_hod' && createUserForm.allCourses,
+                allBranches: createUserForm.role !== 'branch_hod' && createUserForm.allBranches,
+                hodYears: createUserForm.role === 'branch_hod' ? createUserForm.hodYears : [],
+                allHodYears: createUserForm.role === 'branch_hod' ? !!createUserForm.allHodYears : false,
                 username: selectedHrmsEmployee?.emp_no || createUserForm.email,
                 use_hrms_credentials: true  // backend will derive password from HRMS link
             };
@@ -646,6 +917,10 @@ const Clubs = ({ initialSubPage }) => {
         }
 
         const roleObj = dynamicRoles.find(r => r.role_code === selectedRoleCode) || { role_name: selectedRoleCode };
+        const isSuperAdmin = ['admin', 'super_admin', 'superadmin'].includes(String(hrmsUserStatus.userAccount?.role || '').toLowerCase());
+        const pagePermissions = isSuperAdmin
+            ? getPagePermissions()
+            : getPagePermissions({ pages: roleObj.pages || DEFAULT_CLUB_ADMIN_PAGES });
 
         const newAssignment = {
             userId: hrmsUserStatus.userAccount?.id,
@@ -654,7 +929,10 @@ const Clubs = ({ initialSubPage }) => {
             name: selectedHrmsEmployee.name,
             email: selectedHrmsEmployee.email,
             roleCode: selectedRoleCode,
-            roleName: roleObj.role_name
+            roleName: roleObj.role_name,
+            pages: pagesFromPermissions(pagePermissions),
+            pagePermissions,
+            isSuperAdmin
         };
 
         setFormData(prev => ({
@@ -675,6 +953,92 @@ const Clubs = ({ initialSubPage }) => {
         }));
     };
 
+    const handleChangeAssignedClubRole = (assignmentIndex, roleCode) => {
+        const selectedRole = dynamicRoles.find(role => role.role_code === roleCode);
+        if (!selectedRole) return;
+        setFormData(prev => ({
+            ...prev,
+            admin_roles: prev.admin_roles.map((assignment, index) => {
+                if (index !== assignmentIndex) return assignment;
+                const pagePermissions = assignment.isSuperAdmin
+                    ? getPagePermissions()
+                    : getPagePermissions({ pages: selectedRole.pages || DEFAULT_CLUB_ADMIN_PAGES });
+                return {
+                    ...assignment,
+                    roleCode: selectedRole.role_code,
+                    roleName: selectedRole.role_name,
+                    pagePermissions,
+                    pages: pagesFromPermissions(pagePermissions)
+                };
+            })
+        }));
+    };
+
+    const handleToggleAdminRolePage = (assignmentIndex, pageKey, accessType) => {
+        setFormData(prev => ({
+            ...prev,
+            admin_roles: prev.admin_roles.map((assignment, index) => {
+                if (index !== assignmentIndex || assignment.isSuperAdmin) return assignment;
+                const pagePermissions = getPagePermissions(assignment);
+                const current = pagePermissions[pageKey];
+                const next = { ...current, [accessType]: !current[accessType] };
+                if (accessType === 'write' && next.write) next.read = true;
+                if (accessType === 'read' && !next.read) next.write = false;
+                pagePermissions[pageKey] = next;
+                return {
+                    ...assignment,
+                    pagePermissions,
+                    pages: pagesFromPermissions(pagePermissions)
+                };
+            })
+        }));
+    };
+
+    const openClubUserEditor = (club, assignment, assignmentIndex) => {
+        setPageAssignmentToEdit({ club, assignment, assignmentIndex });
+        setPageAccessDraft(assignment.isSuperAdmin ? getPagePermissions() : getPagePermissions(assignment));
+        setClubRoleDraft({
+            roleCode: assignment.roleCode || '',
+            roleName: assignment.roleName || assignment.roleCode || ''
+        });
+    };
+
+    const handleSavePageAccess = async () => {
+        if (!pageAssignmentToEdit) return;
+        const { club, assignmentIndex } = pageAssignmentToEdit;
+        const adminRoles = (club.admin_roles || []).map((assignment, index) =>
+            index === assignmentIndex ? (() => {
+                const pagePermissions = assignment.isSuperAdmin ? getPagePermissions() : pageAccessDraft;
+                return {
+                    ...assignment,
+                    roleCode: clubRoleDraft.roleCode || assignment.roleCode,
+                    roleName: clubRoleDraft.roleName || assignment.roleName,
+                    pagePermissions,
+                    pages: pagesFromPermissions(pagePermissions)
+                };
+            })() : assignment
+        );
+        const updateData = new FormData();
+        updateData.append('name', club.name || '');
+        updateData.append('description', club.description || '');
+        updateData.append('membership_fee', club.membership_fee || 0);
+        updateData.append('fee_type', club.fee_type || 'Yearly');
+        updateData.append('admin_roles', JSON.stringify(adminRoles));
+
+        setSavingPageAccess(true);
+        try {
+            const response = await clubService.updateClub(club.id, updateData);
+            if (!response.success) throw new Error(response.message || 'Could not update page access');
+            toast.success('Club role and page access updated');
+            setPageAssignmentToEdit(null);
+            await fetchClubs();
+        } catch (error) {
+            toast.error(error.response?.data?.message || error.message || 'Failed to update page access');
+        } finally {
+            setSavingPageAccess(false);
+        }
+    };
+
     // --- Dynamic Club Roles Management ---
     const handleSaveDynamicRole = async (e) => {
         e.preventDefault();
@@ -685,7 +1049,7 @@ const Clubs = ({ initialSubPage }) => {
                     toast.success('Dynamic role updated');
                     setShowRoleModal(false);
                     setEditingRole(null);
-                    setRoleForm({ role_name: '', description: '' });
+                    setRoleForm({ role_name: '', description: '', pages: [...DEFAULT_CLUB_ADMIN_PAGES] });
                     fetchDynamicRoles();
                 } else {
                     toast.error(res.message || 'Failed to update role');
@@ -695,7 +1059,7 @@ const Clubs = ({ initialSubPage }) => {
                 if (res.success) {
                     toast.success('Dynamic role created');
                     setShowRoleModal(false);
-                    setRoleForm({ role_name: '', description: '' });
+                    setRoleForm({ role_name: '', description: '', pages: [...DEFAULT_CLUB_ADMIN_PAGES] });
                     fetchDynamicRoles();
                 } else {
                     toast.error(res.message || 'Failed to create role');
@@ -710,9 +1074,19 @@ const Clubs = ({ initialSubPage }) => {
         setEditingRole(role);
         setRoleForm({
             role_name: role.role_name || '',
-            description: role.description || ''
+            description: role.description || '',
+            pages: [...(role.pages || DEFAULT_CLUB_ADMIN_PAGES)]
         });
         setShowRoleModal(true);
+    };
+
+    const handleToggleRolePage = (pageKey) => {
+        setRoleForm(prev => ({
+            ...prev,
+            pages: (prev.pages || DEFAULT_CLUB_ADMIN_PAGES).includes(pageKey)
+                ? (prev.pages || DEFAULT_CLUB_ADMIN_PAGES).filter(page => page !== pageKey)
+                : [...(prev.pages || DEFAULT_CLUB_ADMIN_PAGES), pageKey]
+        }));
     };
 
     const handleDeleteDynamicRole = async (roleId) => {
@@ -804,8 +1178,8 @@ const Clubs = ({ initialSubPage }) => {
             const res = await clubService.updateMembershipStatus(clubId, studentId, status);
             if (res.success) {
                 toast.success(`Request ${status} successfully`);
-                fetchApprovals();
                 fetchClubs();
+                fetchStudents();
             }
         } catch (error) {
             toast.error(`Failed to ${status} request`);
@@ -958,7 +1332,7 @@ const Clubs = ({ initialSubPage }) => {
                                                 </div>
                                             </div>
                                             <div className="flex gap-2 pb-1">
-                                                {isAdmin && (
+                                                {getClubPageAccess(selectedClub?.id, 'settings').write && (
                                                     <button
                                                         onClick={() => prepareEdit(selectedClub)}
                                                         className="px-3.5 py-2 bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/30"
@@ -968,6 +1342,8 @@ const Clubs = ({ initialSubPage }) => {
                                                 )}
                                                 <button
                                                     onClick={() => setDetailsTab('chat')}
+                                                    disabled={!getClubPageAccess(selectedClub?.id, 'management').read}
+                                                    title={!getClubPageAccess(selectedClub?.id, 'management').read ? 'Management read access required' : 'Open club chat'}
                                                     className="px-3.5 py-2 bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/30"
                                                 >
                                                     <MessageSquare size={14} /> Chat
@@ -990,13 +1366,13 @@ const Clubs = ({ initialSubPage }) => {
                                         <div className="border-b border-gray-200 bg-white">
                                             <div className="flex items-center gap-0 overflow-x-auto px-6 scrollbar-hide">
                                                 {[
-                                                    { key: 'overview', label: 'Overview', icon: Shield },
-                                                    { key: 'members', label: `Members`, count: approvedMembers.length, icon: Users },
-                                                    { key: 'requests', label: `Requests`, count: pendingRequests.length, icon: Clock },
-                                                    { key: 'activities', label: `Activities`, count: clubActivities.length, icon: Calendar },
-                                                    { key: 'chat', label: 'Chat', icon: MessageSquare },
-                                                    { key: 'settings', label: 'Settings', icon: Settings }
-                                                ].map(tab => {
+                                                    { key: 'overview', label: 'Overview', pageKey: 'management', icon: Shield },
+                                                    { key: 'members', label: `Members`, pageKey: 'students', count: approvedMembers.length, icon: Users },
+                                                    { key: 'activities', label: `Activities`, pageKey: 'management', count: clubActivities.length, icon: Calendar },
+                                                    { key: 'chat', label: 'Chat', pageKey: 'management', icon: MessageSquare },
+                                                    { key: 'admins', label: 'Club Admins', pageKey: 'settings', count: selectedClub?.admin_roles?.length || 0, icon: UserCheck },
+                                                    { key: 'settings', label: 'Settings', pageKey: 'settings', icon: Settings }
+                                                ].filter(tab => getClubPageAccess(selectedClub?.id, tab.pageKey).read).map(tab => {
                                                     const Icon = tab.icon;
                                                     const isActive = detailsTab === tab.key;
                                                     return (
@@ -1035,17 +1411,17 @@ const Clubs = ({ initialSubPage }) => {
                                         {detailsTab === 'overview' && (
                                             <div className="space-y-6 pt-2">
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                                                    <div className="p-4 rounded-xl border border-gray-100 bg-blue-50/50">
+                                                    {getClubPageAccess(selectedClub?.id, 'students').read && <div className="p-4 rounded-xl border border-gray-100 bg-blue-50/50">
                                                         <p className="text-xs text-blue-600 font-medium">Approved Members</p>
                                                         <p className="text-2xl font-bold text-gray-900 mt-1">{approvedMembers.length}</p>
-                                                    </div>
-                                                    <div className="p-4 rounded-xl border border-gray-100 bg-amber-50/50">
+                                                    </div>}
+                                                    {getClubPageAccess(selectedClub?.id, 'students').read && <div className="p-4 rounded-xl border border-gray-100 bg-amber-50/50">
                                                         <p className="text-xs text-amber-600 font-medium">Pending Requests</p>
                                                         <p className="text-2xl font-bold text-gray-900 mt-1">{pendingRequests.length}</p>
-                                                    </div>
+                                                    </div>}
                                                     <div className="p-4 rounded-xl border border-gray-100 bg-green-50/50">
                                                         <p className="text-xs text-green-600 font-medium">Membership Fee</p>
-                                                        <p className="text-2xl font-bold text-gray-900 mt-1">â‚¹{selectedClub?.membership_fee || 0}</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{formatMembershipFee(selectedClub?.membership_fee)}</p>
                                                     </div>
                                                     <div className="p-4 rounded-xl border border-gray-100 bg-purple-50/50">
                                                         <p className="text-xs text-purple-600 font-medium">Fee Schedule</p>
@@ -1071,6 +1447,55 @@ const Clubs = ({ initialSubPage }) => {
                                                         <p className="text-xs text-slate-500 italic">No admin leadership roles assigned yet. Go to Settings tab to manage officers.</p>
                                                     )}
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {detailsTab === 'admins' && (
+                                            <div className="space-y-4 pt-2">
+                                                <div>
+                                                    <h3 className="text-base font-bold text-gray-900">Club Admins ({selectedClub?.admin_roles?.length || 0})</h3>
+                                                    <p className="text-xs text-gray-500">People assigned to manage this club and their page access.</p>
+                                                </div>
+                                                {selectedClub?.admin_roles?.length ? (
+                                                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead className="border-b bg-gray-50 font-semibold uppercase text-gray-600">
+                                                                <tr>
+                                                                    <th className="p-3">Name</th>
+                                                                    <th className="p-3">Email / Username</th>
+                                                                    <th className="p-3">Club Role</th>
+                                                                    <th className="p-3">Page Access</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-gray-100">
+                                                                {selectedClub.admin_roles.map((assignment, index) => (
+                                                                    <tr key={`${assignment.userId || assignment.email || assignment.empNo}-${index}`}>
+                                                                        <td className="p-3 font-semibold text-gray-900">{assignment.name || 'Club Admin'}</td>
+                                                                        <td className="p-3 text-gray-600">{assignment.email || assignment.empNo || '—'}</td>
+                                                                        <td className="p-3 text-gray-700">{assignment.roleName || assignment.roleCode || 'Club Admin'}</td>
+                                                                        <td className="p-3">
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {CLUB_ADMIN_PAGES.flatMap(page => {
+                                                                                    const access = getPagePermissions(assignment)[page.key];
+                                                                                    if (!access.read && !access.write) return [];
+                                                                                    return [(
+                                                                                        <span key={page.key} className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                                                            {page.label}: {access.write ? 'Read/Write' : 'Read'}
+                                                                                        </span>
+                                                                                    )];
+                                                                                })}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-center text-sm text-gray-500">
+                                                        No admins are assigned to this club yet.
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -1116,64 +1541,7 @@ const Clubs = ({ initialSubPage }) => {
                                             </div>
                                         )}
 
-                                        {/* TAB 3: REQUESTS */}
-                                        {detailsTab === 'requests' && (
-                                            <div className="space-y-4 pt-2">
-                                                <div className="flex justify-between items-center">
-                                                    <div>
-                                                        <h3 className="text-base font-bold text-gray-900">Pending Requests ({pendingRequests.length})</h3>
-                                                        <p className="text-xs text-gray-500">Student join requests pending fee payment or review.</p>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {pendingRequests.map((reqItem, idx) => (
-                                                        <div key={idx} className="p-4 border rounded-xl bg-slate-50/50 flex flex-col justify-between space-y-3">
-                                                            <div className="flex justify-between items-start">
-                                                                <div>
-                                                                    <h4 className="font-bold text-sm text-gray-900">{reqItem.student_name}</h4>
-                                                                    <p className="text-xs text-gray-500">{reqItem.admission_number} | {reqItem.email || reqItem.phone_number || reqItem.student_mobile}</p>
-                                                                </div>
-                                                                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">
-                                                                    {reqItem.payment_status || 'payment_due'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center pt-2 border-t text-xs text-gray-500">
-                                                                <span>Requested: {reqItem.joined_at ? new Date(reqItem.joined_at).toLocaleDateString() : 'N/A'}</span>
-                                                                {isAdmin && (
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            try {
-                                                                                const res = await clubService.updateMembershipStatus(selectedClub.id, reqItem.student_id, 'approved');
-                                                                                if (res.success) {
-                                                                                    toast.success('Member approved');
-                                                                                    const updated = await clubService.getClubDetails(selectedClub.id);
-                                                                                    if (updated.success) setSelectedClub(updated.data);
-                                                                                    fetchClubs();
-                                                                                }
-                                                                            } catch (e) {
-                                                                                toast.error('Failed to approve member');
-                                                                            }
-                                                                        }}
-                                                                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center gap-1 shadow-xs"
-                                                                    >
-                                                                        <Check size={14} /> Approve Member
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {pendingRequests.length === 0 && (
-                                                        <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed">
-                                                            <CheckCircle size={36} className="mx-auto mb-2 text-green-500 opacity-60" />
-                                                            <p className="text-sm font-semibold text-gray-600">No pending requests!</p>
-                                                            <p className="text-xs text-gray-400">All student join requests have been approved.</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* TAB 4: ACTIVITIES */}
+                                        {/* TAB 3: ACTIVITIES */}
                                         {detailsTab === 'activities' && (
                                             <div className="space-y-4 pt-2">
                                                 <div className="flex justify-between items-center">
@@ -1181,7 +1549,7 @@ const Clubs = ({ initialSubPage }) => {
                                                         <h3 className="text-base font-bold text-gray-900">Club Activities ({clubActivities.length})</h3>
                                                         <p className="text-xs text-gray-500">Events, workshops and programs organized by this club.</p>
                                                     </div>
-                                                    {isAdmin && (
+                                                    {getClubPageAccess(selectedClub?.id, 'management').write && (
                                                         <button
                                                             onClick={() => setShowActivityModal(true)}
                                                             className="px-3.5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5 shadow-sm transition-all"
@@ -1236,7 +1604,7 @@ const Clubs = ({ initialSubPage }) => {
                                                 </div>
 
                                                 <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-3 text-xs">
-                                                    <p className="text-gray-700">Membership Fee: <b>â‚¹{selectedClub?.membership_fee || 0}</b> ({selectedClub?.fee_type || 'Yearly'})</p>
+                                                    <p className="text-gray-700">Membership Fee: <b>{formatMembershipFee(selectedClub?.membership_fee)}</b> ({selectedClub?.fee_type || 'Yearly'})</p>
                                                     <p className="text-gray-700">Active Status: <b>{selectedClub?.is_active ? 'Active' : 'Inactive'}</b></p>
                                                     <p className="text-gray-700">Total Officers: <b>{selectedClub?.admin_roles?.length || 0}</b></p>
                                                 </div>
@@ -1310,6 +1678,7 @@ const Clubs = ({ initialSubPage }) => {
                                     <th className="p-3">Membership Status</th>
                                     <th className="p-3">Payment Status</th>
                                     <th className="p-3">Joined Date</th>
+                                    <th className="p-3">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
@@ -1333,11 +1702,27 @@ const Clubs = ({ initialSubPage }) => {
                                             </span>
                                         </td>
                                         <td className="p-3 text-gray-500">{new Date(s.joined_at).toLocaleDateString()}</td>
+                                        <td className="p-3">
+                                            {s.status === 'pending' && getClubPageAccess(s.club_id, 'students').write ? (
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleApprovalAction(s.club_id, s.student_id, 'approved')}
+                                                        className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 font-semibold text-green-700 hover:bg-green-100"
+                                                    ><Check size={12} /> Approve</button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleApprovalAction(s.club_id, s.student_id, 'rejected')}
+                                                        className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 font-semibold text-red-700 hover:bg-red-100"
+                                                    ><X size={12} /> Reject</button>
+                                                </div>
+                                            ) : '—'}
+                                        </td>
                                     </tr>
                                 ))}
                                 {filteredStudents.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="p-8 text-center text-gray-400">
+                                        <td colSpan={7} className="p-8 text-center text-gray-400">
                                             {studentsLoading ? 'Loading members...' : 'No club students found.'}
                                         </td>
                                     </tr>
@@ -1358,6 +1743,19 @@ const Clubs = ({ initialSubPage }) => {
                                 <h2 className="text-lg font-bold text-gray-900">Dynamic Club Admin Roles</h2>
                                 <p className="text-xs text-gray-500">Define dynamic leadership and coordinator roles for student clubs with full edit and delete capabilities.</p>
                             </div>
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingRole(null);
+                                        setRoleForm({ role_name: '', description: '', pages: [...DEFAULT_CLUB_ADMIN_PAGES] });
+                                        setShowRoleModal(true);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                                >
+                                    <Plus size={14} /> Add Role
+                                </button>
+                            )}
                         </div>
 
                         {/* Roles Grid with Edit and Delete Buttons for ALL roles */}
@@ -1378,22 +1776,24 @@ const Clubs = ({ initialSubPage }) => {
                                         <span className="text-[10px] font-mono text-slate-400">
                                             {role.role_code}
                                         </span>
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                onClick={() => handleOpenEditRole(role)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Edit Role"
-                                            >
-                                                <Edit2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteDynamicRole(role.id)}
-                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="Delete Role"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => handleOpenEditRole(role)}
+                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Edit Role"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteDynamicRole(role.id)}
+                                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Delete Role"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -1401,6 +1801,7 @@ const Clubs = ({ initialSubPage }) => {
                     </div>
 
                     {/* Announcements & Notifications Configuration */}
+                    {getClubPageAccess(null, 'settings').write && (
                     <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-5">
                         <div className="flex justify-between items-center">
                             <div>
@@ -1476,6 +1877,175 @@ const Clubs = ({ initialSubPage }) => {
                             </div>
                         </div>
                     </div>
+                    )}
+
+                    {/* User Access Management for Club Pages Only */}
+                    {isAdmin && (
+                    <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-5">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    <Shield size={20} className="text-indigo-600" /> User Access Management (Club Pages Only)
+                                </h2>
+                                <p className="text-xs text-gray-500">
+                                    Grant or manage user access permissions and dynamic leadership roles specifically for Club Management and Club Pages.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/users')}
+                                className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-1.5 shrink-0"
+                            >
+                                <UserCheck size={14} /> Full User Management
+                            </button>
+                        </div>
+
+                        {/* Quick Employee / User Access Search & Grant */}
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <UserPlus size={14} className="text-indigo-600" /> Grant Club Admin Access to Employee / User
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="sm:col-span-2">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={hrmsSearchQuery}
+                                            onChange={(e) => handleSearchHrms(e.target.value)}
+                                            placeholder="Search HRMS employee by name, emp ID or email..."
+                                            className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white"
+                                        />
+                                        {searchingHrms && (
+                                            <div className="absolute right-3 top-2.5">
+                                                <RefreshCw size={14} className="animate-spin text-indigo-600" />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSearchHrms(hrmsSearchQuery)}
+                                    disabled={searchingHrms}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                    <Search size={14} /> Search Employee
+                                </button>
+                            </div>
+
+                            {/* HRMS Search Results in Access Management */}
+                            {hrmsSearchResults.length > 0 && (
+                                <div className="mt-2 bg-white rounded-lg border border-slate-200 divide-y max-h-48 overflow-y-auto shadow-sm">
+                                    {hrmsSearchResults.map(emp => (
+                                        <div
+                                            key={emp._id}
+                                            onClick={() => handleSelectHrmsEmployee(emp)}
+                                            className={`p-2.5 text-xs flex justify-between items-center cursor-pointer hover:bg-indigo-50/60 transition-colors ${selectedHrmsEmployee?._id === emp._id ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
+                                        >
+                                            <div>
+                                                <p className="font-bold text-gray-900">{emp.name}</p>
+                                                <p className="text-[10px] text-gray-500">{emp.emp_no} • {emp.email || 'No email'}</p>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded">
+                                                Select for Club Access
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {selectedHrmsEmployee && (
+                                <div className="mt-3 p-3 bg-indigo-50/80 border border-indigo-200 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <div className="text-xs">
+                                        <p className="font-bold text-indigo-950">Selected: {selectedHrmsEmployee.name} ({selectedHrmsEmployee.emp_no})</p>
+                                        <p className="text-[11px] text-indigo-700">
+                                            {hrmsUserStatus?.checking ? 'Checking SDMS Account...' : hrmsUserStatus?.hasUserAccount ? '✓ Active SDMS Account Linked' : '⚠ No SDMS Account found.'}
+                                        </p>
+                                    </div>
+                                    {!hrmsUserStatus?.checking && !hrmsUserStatus?.hasUserAccount && (
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenCreateUserModal}
+                                            className="px-3 py-1.5 bg-green-600 text-white font-bold text-xs rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                                        >
+                                            + Create SDMS Account (With College)
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Table of Active Club Officers / Admins */}
+                        <div className="space-y-2">
+                            <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <Users size={14} className="text-indigo-600" /> Active Club Heads & Officers ({
+                                    clubs.reduce((acc, c) => acc + (c.admin_roles ? c.admin_roles.length : 0), 0)
+                                })
+                            </h3>
+
+                            <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm bg-white">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-200">
+                                        <tr>
+                                            <th className="p-3">Club Name</th>
+                                            <th className="p-3">Officer Name</th>
+                                            <th className="p-3">Club Role</th>
+                                            <th className="p-3">Emp ID / Username</th>
+                                            <th className="p-3">Page Access</th>
+                                            <th className="p-3">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {clubs.flatMap(c => (c.admin_roles || []).map((r, i) => ({ club: c, role: r, key: `${c.id}_${i}` }))).length > 0 ? (
+                                            clubs.flatMap(c => (c.admin_roles || []).map((r, i) => (
+                                                <tr key={`${c.id}_${i}`} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-3 font-bold text-gray-900">{c.name}</td>
+                                                    <td className="p-3 text-gray-800 font-medium">{r.name || r.email || 'Assigned Officer'}</td>
+                                                    <td className="p-3">
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                                            🏆 {r.roleName || r.roleCode || 'Club Admin'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 text-gray-500 font-mono">{r.empNo || r.userId || '—'}</td>
+                                                    <td className="p-3">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {CLUB_ADMIN_PAGES.flatMap(page => {
+                                                                const access = getPagePermissions(r)[page.key];
+                                                                if (!access.read && !access.write) return [];
+                                                                return [(
+                                                                    <span key={page.key} title={`${page.label}: ${access.write ? 'Read and write' : 'Read only'}`} className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                                                        {page.label}: {access.write ? 'Read/Write' : 'Read'}
+                                                                    </span>
+                                                                )];
+                                                            })}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openClubUserEditor(c, r, i)}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold"
+                                                                title={`Edit club role for ${r.name || r.email || ''}`}
+                                                            >
+                                                                <Edit2 size={12} /> Edit Club Role
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="6" className="p-6 text-center text-gray-500 italic">
+                                                    No club admin officers assigned yet. Edit any club to assign dynamic club roles.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    )}
                 </div>
             )}
 
@@ -1511,7 +2081,7 @@ const Clubs = ({ initialSubPage }) => {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-gray-700">Membership Fee (â‚¹)</label>
+                            <label className="text-xs font-bold text-gray-700">Membership Fee (INR)</label>
                             <input
                                 type="number"
                                 value={formData.membership_fee}
@@ -1535,6 +2105,8 @@ const Clubs = ({ initialSubPage }) => {
                         </div>
                     </div>
 
+                    {isAdmin && (
+                    <>
                     {/* Section: Assign Multiple Dynamic Club Admin Roles */}
                     <div className="border-t pt-4 space-y-4">
                         <div className="flex justify-between items-center">
@@ -1551,20 +2123,59 @@ const Clubs = ({ initialSubPage }) => {
                             <div className="space-y-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100">
                                 <p className="text-xs font-bold text-blue-900">Currently Assigned Admin Roles ({formData.admin_roles.length}):</p>
                                 {formData.admin_roles.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-200 text-xs shadow-2xs">
-                                        <div>
-                                            <span className="font-extrabold text-blue-700 mr-2">[{item.roleName}]</span>
-                                            <span className="font-bold text-gray-900">{item.name}</span>
-                                            <span className="text-gray-500 text-[11px] ml-2">({item.empNo || item.email})</span>
+                                    <div key={idx} className="bg-white p-2.5 rounded-lg border border-blue-200 text-xs shadow-2xs space-y-2">
+                                        <div className="flex justify-between items-center gap-3">
+                                            <div>
+                                                <select
+                                                    value={item.roleCode || ''}
+                                                    onChange={event => handleChangeAssignedClubRole(idx, event.target.value)}
+                                                    className="mb-1 max-w-full rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-800"
+                                                    aria-label={`Club role for ${item.name}`}
+                                                >
+                                                    {!dynamicRoles.some(role => role.role_code === item.roleCode) && item.roleCode && (
+                                                        <option value={item.roleCode}>{item.roleName}</option>
+                                                    )}
+                                                    {dynamicRoles.map(role => (
+                                                        <option key={role.role_code} value={role.role_code}>{role.role_name}</option>
+                                                    ))}
+                                                </select>
+                                                <span className="font-bold text-gray-900">{item.name}</span>
+                                                <span className="text-gray-500 text-[11px] ml-2">({item.empNo || item.email})</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveAdminRoleAssignment(idx)}
+                                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                                title="Remove this role assignment"
+                                            >
+                                                <X size={15} />
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveAdminRoleAssignment(idx)}
-                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                                            title="Remove this role assignment"
-                                        >
-                                            <X size={15} />
-                                        </button>
+                                        <fieldset className="grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-gray-100 pt-2">
+                                            <legend className="sr-only">Read and write access for {item.name}</legend>
+                                            {CLUB_ADMIN_PAGES.map(page => {
+                                                const access = getPagePermissions(item)[page.key];
+                                                return (
+                                                    <div key={page.key} className="rounded-md border border-gray-100 px-2 py-1.5">
+                                                        <p className="text-[10px] font-semibold text-gray-700">{page.label}</p>
+                                                        <div className="flex gap-3 mt-1">
+                                                            {['read', 'write'].map(accessType => (
+                                                                <label key={accessType} className="inline-flex items-center gap-1 text-[10px] text-gray-600 capitalize">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={item.isSuperAdmin || access[accessType]}
+                                                                        onChange={() => handleToggleAdminRolePage(idx, page.key, accessType)}
+                                                                        disabled={item.isSuperAdmin}
+                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                                    />
+                                                                    {accessType}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </fieldset>
                                     </div>
                                 ))}
                             </div>
@@ -1684,6 +2295,8 @@ const Clubs = ({ initialSubPage }) => {
                             )}
                         </div>
                     </div>
+                    </>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
                         <button
@@ -1697,10 +2310,92 @@ const Clubs = ({ initialSubPage }) => {
                             type="submit"
                             className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
                         >
-                            {showEditModal ? 'Update Club & Save Admin Roles' : 'Create Club'}
+                            {showEditModal ? (isAdmin ? 'Update Club & Save Admin Roles' : 'Save Club Settings') : 'Create Club'}
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                show={!!pageAssignmentToEdit}
+                onClose={() => setPageAssignmentToEdit(null)}
+                title={`Edit Club Access for ${pageAssignmentToEdit?.assignment?.name || 'Club Admin'}`}
+            >
+                <div className="space-y-4">
+                    <p className="text-xs text-gray-600">
+                        Edit {pageAssignmentToEdit?.assignment?.name || 'this user'}'s role and page access for {pageAssignmentToEdit?.club?.name}.
+                    </p>
+                    <label className="block space-y-1.5">
+                        <span className="text-xs font-semibold text-gray-700">Club role</span>
+                        <select
+                            value={clubRoleDraft.roleCode}
+                            onChange={(event) => {
+                                const selectedRole = dynamicRoles.find(role => role.role_code === event.target.value);
+                                setClubRoleDraft({
+                                    roleCode: selectedRole?.role_code || '',
+                                    roleName: selectedRole?.role_name || ''
+                                });
+                                if (!pageAssignmentToEdit?.assignment?.isSuperAdmin && selectedRole) {
+                                    setPageAccessDraft(getPagePermissions({ pages: selectedRole.pages || DEFAULT_CLUB_ADMIN_PAGES }));
+                                }
+                            }}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        >
+                            {!dynamicRoles.some(role => role.role_code === clubRoleDraft.roleCode) && clubRoleDraft.roleCode && (
+                                <option value={clubRoleDraft.roleCode}>{clubRoleDraft.roleName}</option>
+                            )}
+                            {dynamicRoles.map(role => (
+                                <option key={role.role_code} value={role.role_code}>{role.role_name}</option>
+                            ))}
+                        </select>
+                    </label>
+                    {pageAssignmentToEdit?.assignment?.isSuperAdmin && (
+                        <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            Superadmin accounts always have access to every club page.
+                        </p>
+                    )}
+                    <div className="space-y-2">
+                        {CLUB_ADMIN_PAGES.map(page => (
+                            <div key={page.key} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
+                                <span className="text-sm font-medium text-gray-800">{page.label}</span>
+                                <div className="flex gap-4">
+                                    {['read', 'write'].map(accessType => (
+                                        <label key={accessType} className="inline-flex items-center gap-1.5 text-xs text-gray-700 capitalize">
+                                            <input
+                                                type="checkbox"
+                                                checked={pageAssignmentToEdit?.assignment?.isSuperAdmin || pageAccessDraft[page.key]?.[accessType] === true}
+                                                onChange={() => setPageAccessDraft(current => {
+                                                    const pagePermissions = { ...current };
+                                                    const next = { ...pagePermissions[page.key], [accessType]: !pagePermissions[page.key]?.[accessType] };
+                                                    if (accessType === 'write' && next.write) next.read = true;
+                                                    if (accessType === 'read' && !next.read) next.write = false;
+                                                    pagePermissions[page.key] = next;
+                                                    return pagePermissions;
+                                                })}
+                                                disabled={pageAssignmentToEdit?.assignment?.isSuperAdmin}
+                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                            {accessType}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-end gap-2 border-t pt-3">
+                        <button
+                            type="button"
+                            onClick={() => setPageAssignmentToEdit(null)}
+                            className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg"
+                        >Cancel</button>
+                        <button
+                            type="button"
+                            onClick={handleSavePageAccess}
+                            disabled={savingPageAccess}
+                            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >{savingPageAccess ? 'Saving...' : 'Save Club Role'}</button>
+                    </div>
+                </div>
             </Modal>
 
             {/* ================= MODAL: CREATE / EDIT DYNAMIC ROLE ================= */}
@@ -1731,6 +2426,23 @@ const Clubs = ({ initialSubPage }) => {
                             className="w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
+                    <fieldset className="space-y-2 border-t border-gray-200 pt-4">
+                        <legend className="text-xs font-bold text-gray-700">Club Page Access</legend>
+                        <p className="text-[11px] text-gray-500">Users assigned this role will see the selected pages.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {CLUB_ADMIN_PAGES.map(page => (
+                                <label key={page.key} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={(roleForm.pages || DEFAULT_CLUB_ADMIN_PAGES).includes(page.key)}
+                                        onChange={() => handleToggleRolePage(page.key)}
+                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    {page.label}
+                                </label>
+                            ))}
+                        </div>
+                    </fieldset>
                     <div className="flex justify-end gap-2 pt-3">
                         <button type="button" onClick={() => { setShowRoleModal(false); setEditingRole(null); }} className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg">Cancel</button>
                         <button type="submit" className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
@@ -1745,6 +2457,7 @@ const Clubs = ({ initialSubPage }) => {
                 show={showCreateUserModal}
                 onClose={() => setShowCreateUserModal(false)}
                 title={`Create SDMS Account for ${createUserForm.name}`}
+                size="tall"
             >
                 <form onSubmit={handleCreateSDMSUserAccount} className="space-y-4">
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
@@ -1777,20 +2490,145 @@ const Clubs = ({ initialSubPage }) => {
                                 required
                             />
                         </div>
-                        <div className="sm:col-span-2">
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 text-xs lg:grid-cols-3">
+                        <MultiSelectDropdown
+                            label="Colleges *"
+                            options={collegesList.map(college => ({
+                                value: String(college.id),
+                                label: `${college.name} (${college.code || college.short_name || 'COLLEGE'})`
+                            }))}
+                            value={createUserForm.collegeIds}
+                            onChange={handleCreateUserCollegeChange}
+                            placeholder="Select one or more colleges"
+                        />
+                        <div>
                             <label className="font-bold text-gray-700">System Role *</label>
                             <select
                                 value={createUserForm.role}
-                                onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg mt-1"
+                                onChange={(e) => setCreateUserForm(prev => ({
+                                    ...prev,
+                                    role: e.target.value,
+                                    allCourses: e.target.value === 'branch_hod' ? false : prev.allCourses,
+                                    allBranches: e.target.value === 'branch_hod' ? false : prev.allBranches
+                                }))}
+                                className="mt-1 min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                required
                             >
-                                <option value="faculty">Faculty</option>
-                                <option value="college_ao">College AO</option>
-                                <option value="office_assistant">Office Assistant</option>
-                                <option value="branch_hod">Branch HOD</option>
+                                {createUserRoleOptions.map(role => (
+                                    <option key={role.value || role.role_key} value={role.value || role.role_key}>
+                                        {role.label || role.role_key || role.value}
+                                    </option>
+                                ))}
                             </select>
                         </div>
+                        <div>
+                            <MultiSelectDropdown
+                                label={createUserForm.role === 'branch_hod' ? 'Courses *' : 'Courses'}
+                                options={createUserCourses.map(course => ({
+                                    value: String(course.id),
+                                    label: `${course.name}${course.level ? ` (${course.level.toUpperCase()})` : ''}`
+                                }))}
+                                value={createUserForm.courseIds}
+                                onChange={handleCreateUserCourseChange}
+                                placeholder={createUserForm.collegeIds.length ? 'Select courses' : 'Select colleges first'}
+                                disabled={loadingCreateUserCourses || createUserForm.collegeIds.length === 0 || createUserForm.allCourses}
+                                headerAccessory={createUserForm.role !== 'branch_hod' && (
+                                    <label className="inline-flex items-center gap-1.5 text-[10px] font-medium text-gray-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={createUserForm.allCourses}
+                                            onChange={(e) => setCreateUserForm(prev => ({
+                                                ...prev,
+                                                allCourses: e.target.checked,
+                                                courseIds: e.target.checked ? [] : prev.courseIds,
+                                                allBranches: e.target.checked,
+                                                branchIds: e.target.checked ? [] : prev.branchIds
+                                            }))}
+                                        />
+                                        All
+                                    </label>
+                                )}
+                            />
+                            {createUserForm.allCourses && <p className="mt-1 text-[10px] text-emerald-700">All courses selected</p>}
+                            {loadingCreateUserCourses && <p className="mt-1 text-[10px] text-gray-500">Loading courses...</p>}
+                        </div>
                     </div>
+
+                    {(createUserForm.courseIds.length > 0 || createUserForm.role === 'branch_hod') && (
+                    <div className="grid grid-cols-1 gap-3 text-xs lg:grid-cols-3">
+                        {createUserForm.courseIds.length > 0 && !createUserForm.allCourses && (
+                            <div>
+                                <MultiSelectDropdown
+                                    label={createUserForm.role === 'branch_hod' ? 'Branches *' : 'Branches'}
+                                    options={createUserBranches.map(branch => ({
+                                        value: String(branch.id),
+                                        label: `${branch.name} (${branch.courseName || 'Course'})`
+                                    }))}
+                                    value={createUserForm.branchIds}
+                                    onChange={branchIds => setCreateUserForm(prev => ({ ...prev, branchIds }))}
+                                    placeholder="Select branches"
+                                    disabled={loadingCreateUserBranches || createUserBranches.length === 0 || createUserForm.allBranches}
+                                    headerAccessory={createUserForm.role !== 'branch_hod' && (
+                                        <label className="inline-flex items-center gap-1.5 text-[10px] font-medium text-gray-600">
+                                            <input
+                                                type="checkbox"
+                                                checked={createUserForm.allBranches}
+                                                onChange={(e) => setCreateUserForm(prev => ({
+                                                    ...prev,
+                                                    allBranches: e.target.checked,
+                                                    branchIds: e.target.checked ? [] : prev.branchIds
+                                                }))}
+                                            />
+                                            All
+                                        </label>
+                                    )}
+                                />
+                                {createUserForm.allBranches && createUserForm.role !== 'branch_hod' && <p className="mt-1 text-[10px] text-orange-700">All branches selected</p>}
+                                {loadingCreateUserBranches && <p className="mt-1 text-[10px] text-gray-500">Loading branches...</p>}
+                            </div>
+                        )}
+                        {createUserForm.role === 'branch_hod' && createUserForm.courseIds.length > 0 && (
+                            <div className="rounded-lg border border-slate-200 p-3 lg:col-span-2">
+                                <div className="flex items-center justify-between gap-3">
+                                    <label className="font-bold text-gray-700">Year Access *</label>
+                                    <label className="inline-flex items-center gap-1.5 text-[11px] text-gray-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={createUserForm.allHodYears}
+                                            onChange={(e) => setCreateUserForm(prev => ({
+                                                ...prev,
+                                                allHodYears: e.target.checked,
+                                                hodYears: e.target.checked ? [] : prev.hodYears
+                                            }))}
+                                        />
+                                        All years
+                                    </label>
+                                </div>
+                                {!createUserForm.allHodYears && (
+                                    <div className="mt-2 flex flex-wrap gap-3">
+                                        {Array.from({ length: createUserHodYearCount }, (_, index) => index + 1).map(year => (
+                                            <label key={year} className="inline-flex items-center gap-1.5 text-xs text-gray-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={createUserForm.hodYears.includes(year)}
+                                                    onChange={() => setCreateUserForm(prev => ({
+                                                        ...prev,
+                                                        hodYears: prev.hodYears.includes(year)
+                                                            ? prev.hodYears.filter(value => value !== year)
+                                                            : [...prev.hodYears, year]
+                                                    }))}
+                                                />
+                                                Year {year}
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
                         <button type="button" onClick={() => setShowCreateUserModal(false)} className="px-4 py-2 text-xs font-bold text-gray-600 border rounded-lg">Cancel</button>

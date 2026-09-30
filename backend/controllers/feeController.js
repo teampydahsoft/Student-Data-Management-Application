@@ -265,12 +265,12 @@ exports.getStudentFeeDetails = async (req, res) => {
         if (sRow.length > 0) {
             const internalStudentId = sRow[0].id;
             
-            // B. Fetch Approved Clubs with Fee > 0
+            // B. Fetch Approved or Pending Clubs with Fee > 0
             const [approvedClubs] = await masterPool.query(`
                 SELECT c.name, c.membership_fee 
                 FROM club_members cm
                 JOIN clubs c ON cm.club_id = c.id
-                WHERE cm.student_id = ? AND cm.status = 'approved' AND c.membership_fee > 0
+                WHERE cm.student_id = ? AND (cm.status = 'approved' OR cm.status = 'pending') AND c.membership_fee > 0
             `, [internalStudentId]);
 
             if (approvedClubs.length > 0) {
@@ -281,25 +281,30 @@ exports.getStudentFeeDetails = async (req, res) => {
                      feeHead = await FeeHead.create({
                          name: 'Club Fee',
                          code: 'CF',
-                         description: 'Fee for club memberships',
+                       description: 'Club Fee',
                          type: 'Individual',
                          frequency: 'One-time',
                          isActive: true
                      });
+                   } else if (feeHead.description !== 'Club Fee') {
+                     feeHead.description = 'Club Fee';
+                     await feeHead.save();
                  }
 
                  // D. Sync Check
                  for (const club of approvedClubs) {
-                     const expectedRemarks = `Club Fee: ${club.name}`;
+                     const expectedRemarks = club.name;
                      
-                     // Check if fee exists
-                     const exists = await StudentFee.exists({
+                     const existingFee = await StudentFee.findOne({
                          studentId: studentId, // Admission Number
                          feeHead: feeHead._id,
-                         remarks: expectedRemarks
+                       remarks: { $in: [expectedRemarks, `Club Fee: ${club.name}`] }
                      });
 
-                     if (!exists) {
+                     if (existingFee && existingFee.remarks !== expectedRemarks) {
+                       existingFee.remarks = expectedRemarks;
+                       await existingFee.save();
+                     } else if (!existingFee) {
                          await StudentFee.create({
                              studentId: studentId,
                              studentName: student.student_name || 'Student',
@@ -540,6 +545,7 @@ exports.getStudentFeeDetails = async (req, res) => {
 
     let totalPaid = 0;
     transactions.forEach(t => {
+      if (t.status && t.status !== 'active') return;
       // Ensure amount is a number
       const amount = Number(t.amount) || 0;
       // Inverted Logic: DEBIT is used for Payments made by student

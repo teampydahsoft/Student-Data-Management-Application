@@ -1090,7 +1090,7 @@ const Dashboard = () => {
                                             return (
                                                 <div
                                                     key={club.id}
-                                                    onClick={() => navigate('/student/clubs')}
+                                                    onClick={() => navigate('/student/clubs', { state: { selectedClubId: club.id } })}
                                                     className="flex items-center gap-1.5 sm:gap-2.5 p-1.5 sm:p-2 rounded-xl bg-slate-50/90 border border-slate-100/80 hover:bg-sky-50/50 hover:border-sky-200/50 transition-all cursor-pointer group/item"
                                                 >
                                                     <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-white overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center shadow-xs">

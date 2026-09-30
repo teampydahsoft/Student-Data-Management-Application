@@ -465,8 +465,67 @@ exports.getUsers = async (req, res) => {
       .map((row) => row.id);
     const hodYearAccessByUser = await fetchHodYearAccessByUserIds(hodUserIds);
 
+    // Map club admin roles across all active clubs
+    const clubRolesUserMap = new Map();
+    try {
+      const [clubRows] = await masterPool.query('SELECT id, name, admin_roles FROM clubs WHERE is_active = 1');
+      (clubRows || []).forEach(club => {
+        let roles = [];
+        try {
+          roles = typeof club.admin_roles === 'string' ? JSON.parse(club.admin_roles) : (club.admin_roles || []);
+        } catch (e) {
+          roles = [];
+        }
+        (roles || []).forEach(r => {
+          if (r) {
+            const item = { clubId: club.id, clubName: club.name, roleName: r.roleName || r.roleCode || 'Club Admin' };
+            if (r.userId) {
+              const k = `id_${r.userId}`;
+              if (!clubRolesUserMap.has(k)) clubRolesUserMap.set(k, []);
+              clubRolesUserMap.get(k).push(item);
+            }
+            if (r.email) {
+              const k = `email_${String(r.email).toLowerCase().trim()}`;
+              if (!clubRolesUserMap.has(k)) clubRolesUserMap.set(k, []);
+              clubRolesUserMap.get(k).push(item);
+            }
+            if (r.empNo) {
+              const k = `username_${String(r.empNo).toLowerCase().trim()}`;
+              if (!clubRolesUserMap.has(k)) clubRolesUserMap.set(k, []);
+              clubRolesUserMap.get(k).push(item);
+            }
+            if (r.hrmsId) {
+              const k = `hrms_${String(r.hrmsId)}`;
+              if (!clubRolesUserMap.has(k)) clubRolesUserMap.set(k, []);
+              clubRolesUserMap.get(k).push(item);
+            }
+          }
+        });
+      });
+    } catch (clubMapErr) {
+      console.error('Error mapping club admin roles:', clubMapErr);
+    }
+
     const users = parsedRows.map((row) => {
       const hodAccess = hodYearAccessByUser.get(row.id) || null;
+
+      // Extract matching club roles for this user
+      const rawUserClubRoles = [
+        ...(clubRolesUserMap.get(`id_${row.id}`) || []),
+        ...(row.email ? (clubRolesUserMap.get(`email_${String(row.email).toLowerCase().trim()}`) || []) : []),
+        ...(row.username ? (clubRolesUserMap.get(`username_${String(row.username).toLowerCase().trim()}`) || []) : []),
+        ...(row.hrms_id ? (clubRolesUserMap.get(`hrms_${String(row.hrms_id)}`) || []) : [])
+      ];
+      const uniqueClubRoles = [];
+      const seenKeys = new Set();
+      rawUserClubRoles.forEach(cr => {
+        const key = `${cr.clubId}_${cr.roleName}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          uniqueClubRoles.push(cr);
+        }
+      });
+
       return {
         id: row.id,
         name: row.name,
@@ -495,6 +554,8 @@ exports.getUsers = async (req, res) => {
         permissions: parsePermissions(row.permissions),
         isActive: !!row.is_active,
         hrms_id: row.hrms_id,
+        isClubAdmin: uniqueClubRoles.length > 0,
+        clubRoles: uniqueClubRoles,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };

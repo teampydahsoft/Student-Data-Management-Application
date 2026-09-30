@@ -31,18 +31,30 @@ const resolveDefaultRoute = (user, userType = null) => {
   if (user.permissions) {
     const allowedModules = getAllowedFrontendModules(user.permissions);
 
-    // If user has dashboard access or no specific permissions, go to dashboard
-    if (allowedModules.includes(FRONTEND_MODULES.DASHBOARD) || allowedModules.length === 0) {
+    if (allowedModules.includes(FRONTEND_MODULES.DASHBOARD)) {
       return '/';
     }
 
-    // Find first allowed module's route
     for (const moduleKey of allowedModules) {
       const route = MODULE_ROUTE_MAP[moduleKey];
       if (route) {
         return route;
       }
     }
+  }
+
+  // Club-only users should land on a page granted by their club assignment.
+  if (Array.isArray(user.clubRoles) && user.clubRoles.length > 0) {
+    const pageRoutes = {
+      management: '/clubs',
+      students: '/clubs/students',
+      settings: '/clubs/settings'
+    };
+    const availablePages = user.clubRoles.flatMap(clubRole =>
+      Array.isArray(clubRole.pages) ? clubRole.pages : Object.keys(pageRoutes)
+    );
+    const firstClubRoute = availablePages.map(page => pageRoutes[page]).find(Boolean);
+    if (firstClubRoute) return firstClubRoute;
   }
 
   // Legacy staff users with modules array
