@@ -6,12 +6,9 @@ const StudentScholarship = () => {
   const { user } = useAuthStore();
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4">
+    <div className="max-w-6xl mx-auto space-y-3">
       <div>
-        <h1 className="text-xl sm:text-2xl font-black text-gray-900">Student Scholarship</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          View your year-wise scholarship application status, sanctioned amount, and release history.
-        </p>
+        <h1 className="text-lg sm:text-xl font-extrabold text-[#1e3a8a] tracking-tight">Student Scholarship</h1>
       </div>
 
       <StudentScholarshipHistoryTab
