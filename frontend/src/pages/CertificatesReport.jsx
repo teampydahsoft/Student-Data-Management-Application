@@ -16,6 +16,7 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Eye,
   XCircle,
   X,
@@ -30,15 +31,16 @@ import { getCourseType, getCertificatesForCourse, certificateConfig as defaultCe
 
 const CERTIFICATE_STATUS_OPTIONS = [
   'Verified',
-  'Unverified',
-  'Pending'
+  'Not Verified',
+  'Temporary'
 ];
 
 const getCertificateBadgeClass = (status) => {
   const norm = String(status || '').trim().toLowerCase();
   if (norm === 'verified') return 'bg-green-100 text-green-800 border-green-200';
+  if (norm === 'temporary') return 'bg-sky-100 text-sky-800 border-sky-200';
   if (norm === 'submitted') return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (norm === 'unverified') return 'bg-orange-100 text-orange-800 border-orange-200';
+  if (norm === 'unverified' || norm === 'not verified') return 'bg-amber-100 text-amber-800 border-amber-200';
   if (norm === 'partial') return 'bg-purple-100 text-purple-800 border-purple-200';
   if (norm === 'originals returned') return 'bg-teal-100 text-teal-800 border-teal-200';
   if (norm === 'not required') return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -181,7 +183,7 @@ const CertificatesReport = () => {
     course: '',
     branch: '',
     section: '',
-    certificates_status: ''
+    certificates_status: []
   });
 
   const [hasFetched, setHasFetched] = useState(false);
@@ -260,13 +262,13 @@ const CertificatesReport = () => {
     updateOptions();
   }, [filters.college, filters.batch, filters.course, filters.branch]);
 
-  // Use student query (Only runs when hasFetched is true)
+  // Use student query (Only runs when hasFetched is true and level is selected)
   const { data: studentData, isLoading, isError, refetch } = useStudents({
     page,
     pageSize,
     filters,
     search: searchTerm,
-    enabled: hasAccess && hasFetched
+    enabled: hasAccess && hasFetched && !!filters.level
   });
 
   const students = studentData?.students || [];
@@ -276,9 +278,16 @@ const CertificatesReport = () => {
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1);
+    if (key === 'level' && !value) {
+      setHasFetched(false);
+    }
   };
 
   const handleFetchData = () => {
+    if (!filters.level) {
+      toast.error('Please select a Level (Diploma, UG, or PG) before fetching students.');
+      return;
+    }
     setHasFetched(true);
     setPage(1);
     if (hasFetched) {
@@ -294,7 +303,7 @@ const CertificatesReport = () => {
       course: '',
       branch: '',
       section: '',
-      certificates_status: ''
+      certificates_status: []
     });
     setSearchTerm('');
     setPage(1);
@@ -334,57 +343,112 @@ const CertificatesReport = () => {
     return list;
   }, [settingsCertConfig, filters.level]);
 
-  // Export Certificates Report as CSV
-  const handleExportCSV = () => {
-    if (!students.length) {
-      toast.error('No student records to export');
+  // Export Certificates Report as CSV for ALL filtered students (not limited to current page count)
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    if (!filters.level) {
+      toast.error('Please select a Level before exporting report');
       return;
     }
 
-    const headers = [
-      'Student Name',
-      'Roll Number',
-      'Adm No',
-      'Batch',
-      'Overall Certificates Status',
-      ...allCertColumns.map(c => `${c.name} (${c.level})`)
-    ];
+    const toastId = toast.loading('Preparing CSV export for all filtered students...');
+    try {
+      setIsExporting(true);
 
-    const rows = students.map(s => {
-      const p = s.course_name || s.program || s.course || '';
-      const courseLvl = getCourseType(p) || 'UG';
-      const typeKey = courseLvl.toLowerCase();
-      const activeConfig = settingsCertConfig || defaultCertificateConfig;
-      const reqCerts = activeConfig[typeKey] || defaultCertificateConfig[typeKey] || [];
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          if (key === 'batch') queryParams.append('filter_batch', value);
+          else if (key === 'course') queryParams.append('filter_course', value);
+          else if (key === 'branch') queryParams.append('filter_branch', value);
+          else if (key === 'section') queryParams.append('filter_section', value);
+          else if (key.startsWith('filter_')) queryParams.append(key, value);
+          else queryParams.append(`filter_${key}`, value);
+        }
+      });
+      if (searchTerm && searchTerm.trim()) {
+        queryParams.append('search', searchTerm.trim());
+      }
+      queryParams.append('limit', 'all');
 
-      const certValues = allCertColumns.map(certCol => {
-        const isApplicable = reqCerts.some(c => (c.id || c.key) === certCol.key);
-        if (!isApplicable) return 'N/A';
+      const response = await api.get(`/students?${queryParams.toString()}`);
+      const exportStudents = response.data?.data || [];
 
-        const val = getCertificateValue(s, certCol);
-        const isYes = isCertificatePresent(val);
-        return isYes ? 'Yes' : 'No';
+      if (!exportStudents.length) {
+        toast.error('No student records found matching current filters', { id: toastId });
+        return;
+      }
+
+      const headers = [
+        'Student Name',
+        'Roll Number',
+        'Adm No',
+        'Student Mobile',
+        'Batch',
+        'Overall Certificates Status',
+        ...allCertColumns.map(c => `${c.name} (${c.level})`)
+      ];
+
+      const rows = exportStudents.map(s => {
+        const studentName = typeof (s.student_name || s.name) === 'object'
+          ? (s.student_name?.name || s.name?.name || '')
+          : (s.student_name || s.name || '');
+        const rollNumber = typeof (s.pin || s.pin_no || s.roll_number) === 'object'
+          ? (s.pin?.name || s.pin_no?.name || '')
+          : (s.pin || s.pin_no || s.roll_number || '');
+        const admNo = typeof (s.admission_number || s.adm_no || s.admNo) === 'object'
+          ? (s.admission_number?.name || s.adm_no?.name || '')
+          : (s.admission_number || s.adm_no || s.admNo || '');
+        const studentMobile = typeof (s.student_mobile || s.mobile_number || s.mobile || s.phone || s.student_phone) === 'object'
+          ? (s.student_mobile?.name || s.mobile_number?.name || '')
+          : (s.student_mobile || s.mobile_number || s.mobile || s.phone || s.student_phone || '');
+        const batch = typeof s.batch === 'object' ? (s.batch?.name || '') : (s.batch || '');
+        const certStatus = typeof s.certificates_status === 'object'
+          ? (s.certificates_status?.name || 'Pending')
+          : (s.certificates_status || 'Pending');
+
+        const p = s.course_name || s.program || s.course || '';
+        const courseLvl = getCourseType(p) || 'UG';
+        const typeKey = courseLvl.toLowerCase();
+        const activeConfig = settingsCertConfig || defaultCertificateConfig;
+        const reqCerts = activeConfig[typeKey] || defaultCertificateConfig[typeKey] || [];
+
+        const certValues = allCertColumns.map(certCol => {
+          const isApplicable = reqCerts.some(c => (c.id || c.key) === certCol.key);
+          if (!isApplicable) return 'N/A';
+
+          const val = getCertificateValue(s, certCol);
+          const isYes = isCertificatePresent(val);
+          return isYes ? 'Yes' : 'No';
+        });
+
+        return [
+          `"${String(studentName).replace(/"/g, '""')}"`,
+          `"${String(rollNumber).replace(/"/g, '""')}"`,
+          `"${String(admNo).replace(/"/g, '""')}"`,
+          `"${String(studentMobile).replace(/"/g, '""')}"`,
+          `"${String(batch).replace(/"/g, '""')}"`,
+          `"${String(certStatus).replace(/"/g, '""')}"`,
+          ...certValues.map(v => `"${v}"`)
+        ];
       });
 
-      return [
-        `"${s.student_name || s.name || ''}"`,
-        `"${s.pin || s.pin_no || s.roll_number || ''}"`,
-        `"${s.admission_number || s.adm_no || ''}"`,
-        `"${s.batch || ''}"`,
-        `"${s.certificates_status || 'Pending'}"`,
-        ...certValues.map(v => `"${v}"`)
-      ];
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `certificates_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Certificates report downloaded');
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `certificates_report_${filters.level || 'all'}_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Exported ${exportStudents.length} student records successfully`, { id: toastId });
+    } catch (err) {
+      console.error('Export error:', err);
+      toast.error('Failed to export certificate records', { id: toastId });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (!hasAccess && user) {
@@ -402,7 +466,7 @@ const CertificatesReport = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 w-full">
       {/* Unified Header & Filter Card */}
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-5">
         {/* Top Header & Search Controls Row */}
@@ -414,7 +478,7 @@ const CertificatesReport = () => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Certificates Page</h1>
               <p className="text-sm text-gray-500">
-                View student database and certificate submission status for all enrolled students
+                View student database and certificate submission status for enrolled students
               </p>
             </div>
           </div>
@@ -453,7 +517,8 @@ const CertificatesReport = () => {
 
             <button
               onClick={() => {
-                if (hasFetched) refetch();
+                if (hasFetched && filters.level) refetch();
+                else if (!filters.level) toast.error('Please select a Level before fetching');
               }}
               disabled={!hasFetched}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
@@ -464,13 +529,14 @@ const CertificatesReport = () => {
 
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+              disabled={isExporting}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors whitespace-nowrap"
             >
-              <Download size={14} />
-              Export Report
+              <Download size={14} className={isExporting ? 'animate-spin' : ''} />
+              {isExporting ? 'Exporting...' : 'Export Report'}
             </button>
 
-            {(filters.college || filters.level || filters.batch || filters.course || filters.branch || filters.section || filters.certificates_status || searchTerm) && (
+            {(filters.college || filters.level || filters.batch || filters.course || filters.branch || filters.section || (Array.isArray(filters.certificates_status) ? filters.certificates_status.length > 0 : !!filters.certificates_status) || searchTerm) && (
               <button
                 onClick={handleClearFilters}
                 className="flex items-center gap-1 px-2.5 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 whitespace-nowrap"
@@ -486,13 +552,15 @@ const CertificatesReport = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* Level Filter */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Level</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Level <span className="text-red-500 font-bold">*</span>
+            </label>
             <select
               value={filters.level}
               onChange={(e) => handleFilterChange('level', e.target.value)}
-              className="w-full text-xs border border-gray-300 rounded-lg p-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className={`w-full text-xs border rounded-lg p-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none ${!filters.level ? 'border-amber-400 bg-amber-50/20' : 'border-gray-300'}`}
             >
-              <option value="">All Levels</option>
+              <option value="">Select Level (Required)</option>
               <option value="Diploma">Diploma</option>
               <option value="UG">UG</option>
               <option value="PG">PG</option>
@@ -584,21 +652,12 @@ const CertificatesReport = () => {
             </select>
           </div>
 
-          {/* Certificates Status Filter */}
+          {/* Certificates Status Filter (Multi-Check Dropdown) */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Certificates Status</label>
-            <select
-              value={filters.certificates_status}
-              onChange={(e) => handleFilterChange('certificates_status', e.target.value)}
-              className="w-full text-xs border border-gray-300 rounded-lg p-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="">All Statuses</option>
-              {CERTIFICATE_STATUS_OPTIONS.map((st, idx) => {
-                const val = getOptionValue(st);
-                const label = getOptionLabel(st);
-                return <option key={val || idx} value={val}>{label}</option>;
-              })}
-            </select>
+            <MultiSelectStatusDropdown
+              selectedStatuses={filters.certificates_status}
+              onChange={(selected) => handleFilterChange('certificates_status', selected)}
+            />
           </div>
         </div>
       </div>
@@ -610,9 +669,9 @@ const CertificatesReport = () => {
             <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3">
               <Search size={24} />
             </div>
-            <h4 className="text-base font-semibold text-gray-800 mb-1">Select Filters & Click "Fetch Data"</h4>
+            <h4 className="text-base font-semibold text-gray-800 mb-1">Select Level & Click "Fetch Data"</h4>
             <p className="text-xs text-gray-500 max-w-md mx-auto mb-4">
-              Select your desired filters (Level, Batch, Program, Branch, Section, Status) above and click <span className="font-semibold text-blue-700">"Fetch Data"</span> to view student certificate records.
+              Select a mandatory <span className="font-semibold text-blue-700">Level (Diploma, UG, PG)</span> and optional filters above, then click <span className="font-semibold text-blue-700">"Fetch Data"</span> to view student certificate records.
             </p>
             <button
               onClick={handleFetchData}
@@ -653,6 +712,7 @@ const CertificatesReport = () => {
                 <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Student Name</th>
                 <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Roll Number</th>
                 <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Adm No</th>
+                <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Student Mobile</th>
                 <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Batch</th>
                 <th rowSpan={2} className="py-3 px-4 whitespace-nowrap align-middle border-r border-gray-200 bg-gray-50">Overall Status</th>
                 <th colSpan={allCertColumns.length || 1} className="py-2.5 px-4 text-center bg-blue-50/80 text-blue-900 font-bold text-xs uppercase tracking-wider border-b border-blue-200">
@@ -671,20 +731,20 @@ const CertificatesReport = () => {
             <tbody className="divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5 + (allCertColumns.length || 1)} className="text-center py-12 text-gray-500">
+                  <td colSpan={6 + (allCertColumns.length || 1)} className="text-center py-12 text-gray-500">
                     <RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />
                     Loading student certificate records...
                   </td>
                 </tr>
               ) : isError ? (
                 <tr>
-                  <td colSpan={5 + (allCertColumns.length || 1)} className="text-center py-12 text-red-500">
-                    Failed to fetch student data. Please click Refresh to try again.
+                  <td colSpan={6 + (allCertColumns.length || 1)} className="text-center py-12 text-red-500">
+                    Failed to fetch student data. Please select Level and click Refresh to try again.
                   </td>
                 </tr>
               ) : students.length === 0 ? (
                 <tr>
-                  <td colSpan={5 + (allCertColumns.length || 1)} className="text-center py-12 text-gray-500">
+                  <td colSpan={6 + (allCertColumns.length || 1)} className="text-center py-12 text-gray-500">
                     No student certificate records found matching the criteria.
                   </td>
                 </tr>
@@ -699,6 +759,9 @@ const CertificatesReport = () => {
                   const admNo = typeof (student.admission_number || student.adm_no || student.admNo) === 'object'
                     ? (student.admission_number?.name || student.adm_no?.name || '—')
                     : (student.admission_number || student.adm_no || student.admNo || '—');
+                  const studentMobile = typeof (student.student_mobile || student.mobile_number || student.mobile || student.phone || student.student_phone) === 'object'
+                    ? (student.student_mobile?.name || student.mobile_number?.name || '—')
+                    : (student.student_mobile || student.mobile_number || student.mobile || student.phone || student.student_phone || '—');
                   const batch = typeof student.batch === 'object' ? (student.batch?.name || '—') : (student.batch || '—');
                   const program = typeof (student.course_name || student.program || student.course) === 'object'
                     ? (student.course_name?.name || student.program?.name || student.course?.name || '—')
@@ -730,6 +793,9 @@ const CertificatesReport = () => {
                       </td>
                       <td className="py-3.5 px-4 align-middle text-xs text-gray-700 whitespace-nowrap border-r border-gray-100">
                         {admNo}
+                      </td>
+                      <td className="py-3.5 px-4 align-middle text-xs font-mono text-gray-700 whitespace-nowrap border-r border-gray-100">
+                        {studentMobile}
                       </td>
                       <td className="py-3.5 px-4 align-middle text-xs font-medium text-gray-700 whitespace-nowrap border-r border-gray-100">
                         {batch}
@@ -1121,6 +1187,127 @@ const StudentCertificateModal = ({ student, settingsCertConfig, onClose, onUpdat
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+/* --- Sub-component: Multi-Select Status Dropdown --- */
+const MultiSelectStatusDropdown = ({ selectedStatuses = [], onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = React.useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedArray = Array.isArray(selectedStatuses)
+    ? selectedStatuses
+    : (selectedStatuses ? String(selectedStatuses).split(',').filter(Boolean) : []);
+
+  const toggleOption = (opt) => {
+    let next;
+    if (selectedArray.includes(opt)) {
+      next = selectedArray.filter(item => item !== opt);
+    } else {
+      next = [...selectedArray, opt];
+    }
+    onChange(next);
+  };
+
+  const handleSelectAll = () => {
+    onChange([...CERTIFICATE_STATUS_OPTIONS]);
+  };
+
+  const handleClearAll = () => {
+    onChange([]);
+  };
+
+  const displayText = () => {
+    if (selectedArray.length === 0 || selectedArray.length === CERTIFICATE_STATUS_OPTIONS.length) {
+      return 'All Statuses';
+    }
+    if (selectedArray.length === 1) return selectedArray[0];
+    return `${selectedArray.length} Selected (${selectedArray.slice(0, 2).join(', ')}${selectedArray.length > 2 ? '...' : ''})`;
+  };
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <label className="block text-xs font-semibold text-gray-600 mb-1">
+        Certificates Status
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full text-xs border rounded-lg p-2 bg-white flex justify-between items-center hover:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none transition-colors ${selectedArray.length > 0 && selectedArray.length < CERTIFICATE_STATUS_OPTIONS.length ? 'border-blue-500 bg-blue-50/20' : 'border-gray-300'}`}
+      >
+        <span className="truncate font-medium text-gray-700">
+          {displayText()}
+        </span>
+        <div className="flex items-center gap-1 shrink-0 ml-1">
+          {selectedArray.length > 0 && selectedArray.length < CERTIFICATE_STATUS_OPTIONS.length && (
+            <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full">
+              {selectedArray.length}
+            </span>
+          )}
+          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 left-0 sm:left-auto sm:w-64 z-30 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-2.5 space-y-2 text-xs animate-fade-in max-h-72 overflow-y-auto">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-1.5 px-1">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Select Statuses</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                Select All
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="text-[11px] font-semibold text-red-500 hover:text-red-700 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            {CERTIFICATE_STATUS_OPTIONS.map((st) => {
+              const isChecked = selectedArray.includes(st);
+              return (
+                <label
+                  key={st}
+                  className={`flex items-center justify-between px-2 py-1.5 hover:bg-blue-50/60 rounded cursor-pointer transition-colors ${isChecked ? 'bg-blue-50/40' : ''}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleOption(st)}
+                      className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-medium text-gray-700">{st}</span>
+                  </div>
+                  <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded border ${getCertificateBadgeClass(st)}`}>
+                    {st}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

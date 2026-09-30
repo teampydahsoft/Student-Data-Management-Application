@@ -40,23 +40,24 @@ export const useStudents = ({
 
       // Add filters
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
+        if (value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0)) {
+          const formattedVal = Array.isArray(value) ? value.join(',') : value;
           // Convert filter keys to backend format
-          if (key === 'batch') queryParams.append('filter_batch', value);
-          else if (key === 'course') queryParams.append('filter_course', value);
-          else if (key === 'branch') queryParams.append('filter_branch', value);
-          else if (key === 'section') queryParams.append('filter_section', value);
-          else if (key === 'year') queryParams.append('filter_year', value);
-          else if (key === 'semester') queryParams.append('filter_semester', value);
-          else if (key === 'dateFrom') queryParams.append('filter_dateFrom', value);
-          else if (key === 'dateTo') queryParams.append('filter_dateTo', value);
-          else if (key === 'pinNumberStatus') queryParams.append('filter_pinNumberStatus', value);
+          if (key === 'batch') queryParams.append('filter_batch', formattedVal);
+          else if (key === 'course') queryParams.append('filter_course', formattedVal);
+          else if (key === 'branch') queryParams.append('filter_branch', formattedVal);
+          else if (key === 'section') queryParams.append('filter_section', formattedVal);
+          else if (key === 'year') queryParams.append('filter_year', formattedVal);
+          else if (key === 'semester') queryParams.append('filter_semester', formattedVal);
+          else if (key === 'dateFrom') queryParams.append('filter_dateFrom', formattedVal);
+          else if (key === 'dateTo') queryParams.append('filter_dateTo', formattedVal);
+          else if (key === 'pinNumberStatus') queryParams.append('filter_pinNumberStatus', formattedVal);
           else if (key.startsWith('filter_')) {
-            queryParams.append(key, value);
+            queryParams.append(key, formattedVal);
           } else if (key.startsWith('field_')) {
-            queryParams.append(`filter_field_${key.replace('field_', '')}`, value);
+            queryParams.append(`filter_field_${key.replace('field_', '')}`, formattedVal);
           } else {
-            queryParams.append(`filter_${key}`, value);
+            queryParams.append(`filter_${key}`, formattedVal);
           }
         }
       });

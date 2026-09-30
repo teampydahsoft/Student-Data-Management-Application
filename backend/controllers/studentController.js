@@ -3328,9 +3328,27 @@ exports.getAllStudents = async (req, res) => {
       const filterKey = `filter_${field}`;
       const filterValue = normalizedOtherFilters[filterKey];
       if (filterValue && typeof filterValue === 'string' && filterValue.trim().length > 0) {
-        // Special handling for null certificate status
-        if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
-          query += ` AND s.${field} IS NULL`;
+        // Special handling for certificate status (single or multi-select, matching 'Not Verified' & 'Unverified')
+        if (field === 'certificates_status') {
+          const valStr = filterValue.trim();
+          if (valStr === '__NULL__') {
+            query += ` AND s.${field} IS NULL`;
+          } else {
+            const vals = valStr.split(',').map(v => v.trim()).filter(Boolean);
+            if (vals.length > 0) {
+              const clauses = [];
+              vals.forEach(v => {
+                const normV = v.toLowerCase();
+                if (normV === 'not verified' || normV === 'unverified') {
+                  clauses.push(`(LOWER(s.${field}) = 'not verified' OR LOWER(s.${field}) = 'unverified')`);
+                } else {
+                  clauses.push(`LOWER(s.${field}) = LOWER(?)`);
+                  params.push(v);
+                }
+              });
+              query += ` AND (${clauses.join(' OR ')})`;
+            }
+          }
         } else if (field === 'scholar_status') {
           query += getRegistrationScholarshipFilterClause(filterValue.trim(), null, 's');
         } else if (field === 'caste') {
@@ -3502,9 +3520,27 @@ exports.getAllStudents = async (req, res) => {
       const filterKey = `filter_${field}`;
       const filterValue = normalizedOtherFilters[filterKey];
       if (filterValue && typeof filterValue === 'string' && filterValue.trim().length > 0) {
-        // Special handling for null certificate status
-        if (field === 'certificates_status' && filterValue.trim() === '__NULL__') {
-          countQuery += ` AND ${field} IS NULL`;
+        // Special handling for certificate status (single or multi-select, matching 'Not Verified' & 'Unverified')
+        if (field === 'certificates_status') {
+          const valStr = filterValue.trim();
+          if (valStr === '__NULL__') {
+            countQuery += ` AND ${field} IS NULL`;
+          } else {
+            const vals = valStr.split(',').map(v => v.trim()).filter(Boolean);
+            if (vals.length > 0) {
+              const clauses = [];
+              vals.forEach(v => {
+                const normV = v.toLowerCase();
+                if (normV === 'not verified' || normV === 'unverified') {
+                  clauses.push(`(LOWER(${field}) = 'not verified' OR LOWER(${field}) = 'unverified')`);
+                } else {
+                  clauses.push(`LOWER(${field}) = LOWER(?)`);
+                  countParams.push(v);
+                }
+              });
+              countQuery += ` AND (${clauses.join(' OR ')})`;
+            }
+          }
         } else if (field === 'scholar_status') {
           countQuery += getRegistrationScholarshipFilterClause(filterValue.trim(), null);
         } else if (field === 'caste') {
