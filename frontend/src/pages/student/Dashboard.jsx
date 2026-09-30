@@ -632,63 +632,64 @@ const Dashboard = () => {
 
             {/* Event Details Modal */}
             {showEventModal && selectedEvent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in relative">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in relative border border-gray-100 max-h-[85vh] flex flex-col my-auto">
                         <button
                             onClick={() => setShowEventModal(false)}
-                            className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-10"
+                            className="absolute top-3 right-3 p-1.5 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors z-20 shadow-md backdrop-blur-md cursor-pointer"
+                            title="Close"
                         >
-                            <X size={20} className="text-gray-600" />
+                            <X size={18} />
                         </button>
 
-                        <div className="bg-sky-500 p-8 text-white relative overflow-hidden">
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className="px-3 py-1 rounded-full bg-white/20 text-xs font-semibold backdrop-blur-sm border border-white/10 uppercase tracking-wide">
+                        <div className="bg-sky-500 p-4 sm:p-6 text-white relative overflow-hidden shrink-0">
+                            <div className="relative z-10 space-y-2 pr-6">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-[10px] font-semibold backdrop-blur-sm border border-white/10 uppercase tracking-wide">
                                         {selectedEvent.event_type}
                                     </span>
                                 </div>
-                                <h3 className="text-2xl font-bold leading-tight mb-2">{selectedEvent.title}</h3>
-                                <div className="flex items-center gap-4 text-white/80 text-sm">
+                                <h3 className="text-base sm:text-xl font-bold leading-snug break-words">{selectedEvent.title}</h3>
+                                <div className="flex items-center gap-2 text-white/90 text-xs sm:text-sm">
                                     <div className="flex items-center gap-1.5">
-                                        <Calendar size={16} />
+                                        <Calendar size={14} />
                                         <span>{new Date(selectedEvent.event_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="p-8">
-                            <div className="flex flex-col gap-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-semibold">Start Time</p>
-                                        <div className="flex items-center gap-2 text-gray-900 font-medium">
-                                            <Clock size={18} className="text-accent-dark" />
-                                            {selectedEvent.start_time ? formatTime(selectedEvent.start_time) : 'All Day'}
-                                        </div>
-                                    </div>
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-semibold">End Time</p>
-                                        <div className="flex items-center gap-2 text-gray-900 font-medium">
-                                            <Clock size={18} className="text-accent-dark" />
-                                            {selectedEvent.end_time ? formatTime(selectedEvent.end_time) : 'N/A'}
-                                        </div>
+                        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-100">
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-semibold">Start Time</p>
+                                    <div className="flex items-center gap-1.5 text-gray-900 font-medium text-xs sm:text-sm">
+                                        <Clock size={16} className="text-accent-dark" />
+                                        {selectedEvent.start_time ? formatTime(selectedEvent.start_time) : 'All Day'}
                                     </div>
                                 </div>
+                                <div className="bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-100">
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-semibold">End Time</p>
+                                    <div className="flex items-center gap-1.5 text-gray-900 font-medium text-xs sm:text-sm">
+                                        <Clock size={16} className="text-accent-dark" />
+                                        {selectedEvent.end_time ? formatTime(selectedEvent.end_time) : 'N/A'}
+                                    </div>
+                                </div>
+                            </div>
 
-                                <div>
-                                    <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase tracking-wide">Description</h4>
-                                    <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+                            <div>
+                                <h4 className="text-[10px] font-bold text-gray-900 mb-1.5 uppercase tracking-wide">Description</h4>
+                                <div className="bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-100 max-h-36 overflow-y-auto custom-scrollbar">
+                                    <p className="text-gray-600 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">
                                         {cleanEventDescription(selectedEvent.description) || 'No description provided.'}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
+                            <div className="pt-3 border-t border-gray-100 flex justify-end">
                                 <button
                                     onClick={() => setShowEventModal(false)}
-                                    className="px-6 py-2.5 bg-sky-500 text-white rounded-xl font-black hover:bg-sky-700 transition-colors shadow-lg shadow-sky-500/15 uppercase tracking-widest"
+                                    className="px-5 py-2 bg-sky-500 text-white rounded-xl font-bold hover:bg-sky-700 transition-colors shadow-md text-xs sm:text-sm uppercase tracking-wider"
                                 >
                                     Close Details
                                 </button>

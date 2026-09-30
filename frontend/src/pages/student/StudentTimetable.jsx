@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Clock, Calendar, ChevronLeft, ChevronRight, BookOpen, MapPin, AlertCircle, Info } from 'lucide-react';
+import { SkeletonBox } from '../../components/SkeletonLoader';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
 import { toast } from 'react-hot-toast';
@@ -93,9 +94,23 @@ const StudentTimetable = () => {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                <p className="text-slate-500 font-medium">Loading your schedule...</p>
+            <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto animate-pulse">
+                <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                        <SkeletonBox height="h-8" width="w-48" />
+                        <SkeletonBox height="h-4" width="w-64" />
+                    </div>
+                </div>
+                <div className="flex gap-2 overflow-x-auto py-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <SkeletonBox key={i} height="h-9" width="w-20" className="rounded-xl shrink-0" />
+                    ))}
+                </div>
+                <div className="space-y-3">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <SkeletonBox key={i} height="h-20" className="w-full rounded-2xl" />
+                    ))}
+                </div>
             </div>
         );
     }

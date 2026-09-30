@@ -259,13 +259,9 @@ const StudentCalendar = () => {
                     {/* Header */}
                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900 heading-font flex items-center gap-2.5">
-                                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-                                    <CalendarIcon size={24} />
-                                </div>
-                                Academic Calendar
+                            <h1 className="text-lg sm:text-xl font-extrabold text-[#1e3a8a] heading-font tracking-tight">
+                                Event Calendar
                             </h1>
-                            <p className="text-gray-500 text-sm mt-1">View schedules, exam timetables, holidays, and college events.</p>
                         </div>
 
                         {/* Controls Container: Month Navigator & Type Dropdown strictly INLINE on 1 row */}
@@ -280,7 +276,7 @@ const StudentCalendar = () => {
                                     <ChevronLeft size={16} />
                                 </button>
                                 <span className="font-bold text-center select-none text-gray-900 text-xs md:text-sm px-1 truncate min-w-0">
-                                    {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                                    {currentDate.toLocaleString('default', { month: 'short', year: 'numeric' })}
                                 </span>
                                 <button
                                     onClick={handleNextMonth}
@@ -320,7 +316,7 @@ const StudentCalendar = () => {
                             {/* Days Header */}
                             <div className="grid grid-cols-7 bg-slate-100/70 border-b border-slate-200">
                                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                                    <div key={d} className="py-2.5 text-center text-xs font-bold uppercase tracking-wider text-slate-600">{d}</div>
+                                    <div key={d} className="py-1.5 sm:py-2 text-center text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-600">{d}</div>
                                 ))}
                             </div>
 
@@ -347,51 +343,45 @@ const StudentCalendar = () => {
                                                     setShowDayModal(true);
                                                 }
                                             }}
-                                            className={`min-h-[110px] md:min-h-[125px] max-h-[160px] p-1.5 md:p-2 bg-white relative transition-all duration-150 flex flex-col justify-between ${
-                                                !item.day
+                                            className={`min-h-[48px] sm:min-h-[64px] md:min-h-[76px] p-1 bg-white relative transition-all duration-150 flex flex-col justify-between items-center ${!item.day
                                                     ? 'bg-slate-50/60 opacity-60 pointer-events-none'
                                                     : 'hover:bg-blue-50/30 cursor-pointer group'
-                                            } ${isToday ? 'bg-blue-50/20 ring-2 ring-blue-500 ring-inset z-10' : ''}`}
+                                                } ${isToday ? 'bg-blue-50/20 ring-2 ring-[#2563eb] ring-inset z-10' : ''}`}
                                         >
                                             {item.day && (
                                                 <>
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <span className={`text-xs md:text-sm font-bold w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-colors ${
-                                                            isToday
-                                                                ? 'bg-blue-600 text-white shadow-xs'
-                                                                : 'text-gray-700 group-hover:text-blue-600'
-                                                        }`}>
+                                                    <div className="flex items-center justify-center w-full my-auto">
+                                                        <span className={`text-[10px] sm:text-[11px] font-extrabold w-5 h-5 sm:w-5.5 sm:h-5.5 flex items-center justify-center rounded-full transition-colors ${isToday
+                                                                ? 'bg-[#2563eb] text-white shadow-2xs'
+                                                                : 'text-slate-800 group-hover:text-[#2563eb]'
+                                                            }`}>
                                                             {item.day}
                                                         </span>
-
-                                                        {item.events && item.events.length > 0 && (
-                                                            <span className="text-[10px] font-semibold text-slate-400 group-hover:text-blue-600">
-                                                                {item.events.length} {item.events.length === 1 ? 'event' : 'events'}
-                                                            </span>
-                                                        )}
                                                     </div>
 
                                                     {/* Event Pills List (Max 2 visible to keep cells clean and aligned) */}
-                                                    <div className="space-y-1 overflow-hidden flex-1">
-                                                        {visibleEvents.map(ev => {
-                                                            const typeStyle = getEventTypeStyle(ev.event_type);
-                                                            return (
-                                                                <div
-                                                                    key={ev.id}
-                                                                    title={`${ev.title} (${ev.event_type})`}
-                                                                    className={`text-[10px] md:text-xs px-1.5 py-1 rounded-md border flex items-center gap-1 cursor-pointer transition-all ${typeStyle.pill}`}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setSelectedEvent(ev);
-                                                                        setShowEventModal(true);
-                                                                    }}
-                                                                >
-                                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeStyle.bar}`}></span>
-                                                                    <span className="truncate font-semibold text-gray-900 block flex-1">{ev.title}</span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                                    {visibleEvents.length > 0 && (
+                                                        <div className="space-y-0.5 overflow-hidden w-full">
+                                                            {visibleEvents.map(ev => {
+                                                                const typeStyle = getEventTypeStyle(ev.event_type);
+                                                                return (
+                                                                    <div
+                                                                        key={ev.id}
+                                                                        title={`${ev.title} (${ev.event_type})`}
+                                                                        className={`text-[8.5px] sm:text-[9.5px] px-1 py-0.5 rounded-md border flex items-center gap-1 cursor-pointer transition-all ${typeStyle.pill}`}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedEvent(ev);
+                                                                            setShowEventModal(true);
+                                                                        }}
+                                                                    >
+                                                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeStyle.bar}`}></span>
+                                                                        <span className="truncate font-semibold text-gray-900 block flex-1">{ev.title}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
 
                                                     {/* "+ X More" Button */}
                                                     {hasMoreEvents && (
@@ -407,10 +397,10 @@ const StudentCalendar = () => {
                                                                 setDaySearchQuery('');
                                                                 setShowDayModal(true);
                                                             }}
-                                                            className="w-full text-[10px] font-bold py-1 px-1.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/80 transition-colors flex items-center justify-between mt-1"
+                                                            className="w-full text-[8.5px] font-bold py-0.5 px-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/80 transition-colors flex items-center justify-between mt-0.5"
                                                         >
                                                             <span>+{item.events.length - maxVisibleEvents} more</span>
-                                                            <ArrowRightIcon size={10} />
+                                                            <ArrowRightIcon size={8} />
                                                         </button>
                                                     )}
                                                 </>
@@ -422,14 +412,14 @@ const StudentCalendar = () => {
                         </div>
 
                         {/* Sidebar: Legend & Upcoming Events */}
-                        <div className="space-y-6">
+                        <div className="space-y-4">
 
                             {/* Type Legend Summary */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5">
-                                <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2">
-                                    <Tag size={16} className="text-blue-600" /> Event Legend
+                            <div className="bg-white rounded-xl shadow-2xs border border-gray-200/80 p-3.5 sm:p-4">
+                                <h3 className="font-bold text-gray-900 text-xs sm:text-sm mb-2.5">
+                                    Event Legend
                                 </h3>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                                     {EVENT_TYPES.filter(t => t.key !== 'all').map(t => {
                                         const style = getEventTypeStyle(t.key);
                                         const count = getTypeCount(t.key);
@@ -437,13 +427,12 @@ const StudentCalendar = () => {
                                             <div
                                                 key={t.key}
                                                 onClick={() => setSelectedType(t.key)}
-                                                className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                                                    selectedType === t.key ? 'ring-2 ring-blue-500 bg-blue-50/50' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                                                }`}
+                                                className={`p-1.5 px-2 rounded-lg border flex items-center gap-1.5 cursor-pointer transition-all ${selectedType === t.key ? 'ring-2 ring-blue-500 bg-blue-50/50' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                                                    }`}
                                             >
-                                                <span className={`w-2.5 h-2.5 rounded-full ${style.bar}`}></span>
-                                                <span className="font-medium text-gray-800 truncate flex-1">{t.label}</span>
-                                                <span className="font-bold text-[10px] text-gray-500">{count}</span>
+                                                <span className={`w-2 h-2 rounded-full ${style.bar}`}></span>
+                                                <span className="font-semibold text-gray-800 truncate flex-1">{t.label}</span>
+                                                <span className="font-bold text-[9px] text-gray-400">{count}</span>
                                             </div>
                                         );
                                     })}
@@ -451,45 +440,45 @@ const StudentCalendar = () => {
                             </div>
 
                             {/* Events List for Selected Month */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
-                                        <CalendarCheck size={16} className="text-blue-600" /> Events ({currentDate.toLocaleString('default', { month: 'short' })})
+                            <div className="bg-white rounded-xl shadow-2xs border border-gray-200/80 p-3.5 sm:p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="font-bold text-gray-900 text-xs sm:text-sm">
+                                        Events ({currentDate.toLocaleString('default', { month: 'short' })})
                                     </h3>
-                                    <span className="text-xs font-bold text-gray-400">({monthEvents.length})</span>
+                                    <span className="text-[11px] font-bold text-gray-400">({monthEvents.length})</span>
                                 </div>
 
-                                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
+                                <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
                                     {monthEvents.map(ev => {
                                         const style = getEventTypeStyle(ev.event_type);
                                         return (
                                             <div
                                                 key={ev.id}
-                                                className="p-3.5 rounded-xl border bg-slate-50/70 border-slate-200 hover:bg-white hover:shadow-md hover:border-blue-200 transition-all duration-200 cursor-pointer group relative overflow-hidden"
+                                                className="p-2.5 sm:p-3 rounded-lg border bg-slate-50/70 border-slate-200 hover:bg-white hover:shadow-xs hover:border-blue-200 transition-all duration-200 cursor-pointer group relative overflow-hidden"
                                                 onClick={() => {
                                                     setSelectedEvent(ev);
                                                     setShowEventModal(true);
                                                 }}
                                             >
-                                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.bar}`}></div>
-                                                <div className="pl-2.5">
-                                                    <div className="flex justify-between items-start gap-2 mb-1">
-                                                        <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                                                <div className={`absolute left-0 top-0 bottom-0 w-1 ${style.bar}`}></div>
+                                                <div className="pl-2">
+                                                    <div className="flex justify-between items-start gap-1.5 mb-0.5">
+                                                        <h4 className="font-bold text-xs sm:text-sm text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
                                                             {ev.title}
                                                         </h4>
-                                                        <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-extrabold tracking-wider border shrink-0 ${style.badge}`}>
+                                                        <span className={`text-[8.5px] px-1.5 py-0.5 rounded-full uppercase font-extrabold tracking-wider border shrink-0 ${style.badge}`}>
                                                             {ev.event_type || 'other'}
                                                         </span>
                                                     </div>
 
-                                                    <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
-                                                        <CalendarCheck size={13} className="text-slate-400" />
+                                                    <div className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
+                                                        <CalendarCheck size={12} className="text-slate-400" />
                                                         <span>{formatDateRange(ev.event_date, ev.end_date)}</span>
                                                     </div>
 
                                                     {ev.start_time && (
-                                                        <div className="text-[11px] text-gray-500 flex items-center gap-2 mt-1">
-                                                            <Clock size={12} className="text-slate-400" />
+                                                        <div className="text-[10px] text-gray-500 flex items-center gap-1.5 mt-0.5">
+                                                            <Clock size={11} className="text-slate-400" />
                                                             <span>{formatTime(ev.start_time)} {ev.end_time ? `– ${formatTime(ev.end_time)}` : ''}</span>
                                                         </div>
                                                     )}
@@ -499,9 +488,9 @@ const StudentCalendar = () => {
                                     })}
 
                                     {monthEvents.length === 0 && (
-                                        <div className="text-center py-8 text-gray-400 space-y-2">
-                                            <CalendarDays size={32} className="mx-auto text-gray-300" />
-                                            <p className="text-sm font-medium">No events found in {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
+                                        <div className="text-center py-6 text-gray-400 space-y-1.5">
+                                            <CalendarDays size={28} className="mx-auto text-gray-300" />
+                                            <p className="text-xs font-medium">No events found in {currentDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</p>
                                         </div>
                                     )}
                                 </div>
@@ -512,46 +501,46 @@ const StudentCalendar = () => {
 
                     {/* DAY EVENTS OVERVIEW MODAL (Triggered when user clicks "+X more" or a day cell) */}
                     {showDayModal && selectedDayInfo && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col border border-gray-100">
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col border border-gray-100 my-auto">
                                 {/* Header */}
-                                <div className="p-6 bg-slate-900 text-white flex justify-between items-center relative overflow-hidden">
+                                <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center relative overflow-hidden shrink-0">
                                     <div>
-                                        <span className="text-xs font-semibold uppercase tracking-wider text-blue-400 block mb-1">
+                                        <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-blue-400 block mb-0.5">
                                             Events Overview
                                         </span>
-                                        <h3 className="text-xl font-bold flex items-center gap-2">
-                                            <CalendarIcon size={20} className="text-blue-400" />
-                                            {selectedDayInfo.dateObj ? selectedDayInfo.dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : selectedDayInfo.date}
+                                        <h3 className="text-base sm:text-xl font-bold flex items-center gap-2">
+                                            <CalendarIcon size={18} className="text-blue-400 shrink-0" />
+                                            <span className="truncate">{selectedDayInfo.dateObj ? selectedDayInfo.dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : selectedDayInfo.date}</span>
                                         </h3>
-                                        <p className="text-xs text-slate-300 mt-1">Total {selectedDayInfo.events.length} event(s) scheduled on this date.</p>
+                                        <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5">Total {selectedDayInfo.events.length} event(s) scheduled on this date.</p>
                                     </div>
                                     <button
                                         onClick={() => setShowDayModal(false)}
-                                        className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-10"
+                                        className="p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-10 shrink-0 ml-2"
                                     >
-                                        <X size={20} />
+                                        <X size={18} />
                                     </button>
                                 </div>
 
                                 {/* Search Bar if many events */}
                                 {selectedDayInfo.events.length > 3 && (
-                                    <div className="p-4 border-b bg-slate-50">
+                                    <div className="p-3 border-b bg-slate-50 shrink-0">
                                         <div className="relative">
-                                            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                             <input
                                                 type="text"
                                                 placeholder="Search events on this date..."
                                                 value={daySearchQuery}
                                                 onChange={(e) => setDaySearchQuery(e.target.value)}
-                                                className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                                className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                             />
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Events List */}
-                                <div className="p-6 overflow-y-auto space-y-3 flex-1 custom-scrollbar">
+                                <div className="p-4 sm:p-6 overflow-y-auto space-y-3 flex-1 custom-scrollbar">
                                     {filteredDayEvents.map(ev => {
                                         const style = getEventTypeStyle(ev.event_type);
                                         return (
@@ -561,28 +550,28 @@ const StudentCalendar = () => {
                                                     setSelectedEvent(ev);
                                                     setShowEventModal(true);
                                                 }}
-                                                className="p-4 rounded-xl border border-gray-200 bg-white hover:bg-slate-50 hover:border-blue-300 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 group"
+                                                className="p-3 sm:p-4 rounded-xl border border-gray-200 bg-white hover:bg-slate-50 hover:border-blue-300 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-2.5 group"
                                             >
-                                                <div className="space-y-1 flex-1">
+                                                <div className="space-y-1 flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider border ${style.badge}`}>
+                                                        <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider border ${style.badge}`}>
                                                             {ev.event_type || 'other'}
                                                         </span>
                                                         {ev.start_time && (
-                                                            <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                                                            <span className="text-[11px] text-gray-500 font-medium flex items-center gap-1">
                                                                 <Clock size={12} /> {formatTime(ev.start_time)}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <h4 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors text-base">
+                                                    <h4 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm truncate">
                                                         {ev.title}
                                                     </h4>
                                                     {ev.description && (
-                                                        <p className="text-xs text-gray-500 line-clamp-2">{cleanEventDescription(ev.description)}</p>
+                                                        <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-2">{cleanEventDescription(ev.description)}</p>
                                                     )}
                                                 </div>
 
-                                                <button className="px-3.5 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-colors shrink-0 self-start md:self-center">
+                                                <button className="px-3 py-1 text-[11px] font-semibold bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-colors shrink-0 self-start md:self-center">
                                                     View Details
                                                 </button>
                                             </div>
@@ -590,7 +579,7 @@ const StudentCalendar = () => {
                                     })}
 
                                     {filteredDayEvents.length === 0 && (
-                                        <p className="text-center py-8 text-sm text-gray-400">No matching events found</p>
+                                        <p className="text-center py-6 text-xs text-gray-400">No matching events found</p>
                                     )}
                                 </div>
                             </div>
@@ -599,28 +588,29 @@ const StudentCalendar = () => {
 
                     {/* EVENT DETAILS MODAL */}
                     {showEventModal && selectedEvent && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in relative border border-gray-100">
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in relative border border-gray-100 max-h-[85vh] flex flex-col my-auto">
                                 <button
                                     onClick={() => setShowEventModal(false)}
-                                    className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/30 text-white rounded-full transition-colors z-20 shadow-md backdrop-blur-md"
+                                    className="absolute top-3 right-3 p-1.5 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors z-20 shadow-md backdrop-blur-md cursor-pointer"
+                                    title="Close"
                                 >
-                                    <X size={20} />
+                                    <X size={18} />
                                 </button>
 
                                 {/* Dynamic Header Based on Event Type */}
-                                <div className={`p-6 sm:p-8 text-white relative overflow-hidden bg-gradient-to-br ${getEventTypeStyle(selectedEvent.event_type).gradient}`}>
-                                    <div className="relative z-10 space-y-3">
+                                <div className={`p-4 sm:p-6 text-white relative overflow-hidden bg-gradient-to-br shrink-0 ${getEventTypeStyle(selectedEvent.event_type).gradient}`}>
+                                    <div className="relative z-10 space-y-2 pr-6">
                                         <div className="flex items-center gap-2">
-                                            <span className="px-3 py-1 rounded-full bg-white/20 text-xs font-bold backdrop-blur-md border border-white/20 uppercase tracking-wide">
+                                            <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold backdrop-blur-md border border-white/20 uppercase tracking-wide">
                                                 {selectedEvent.event_type || 'Event'}
                                             </span>
                                         </div>
 
-                                        <h3 className="text-2xl font-bold leading-tight">{selectedEvent.title}</h3>
+                                        <h3 className="text-base sm:text-xl font-bold leading-snug break-words">{selectedEvent.title}</h3>
 
-                                        <div className="flex items-center gap-2 text-white/90 text-sm font-medium pt-1">
-                                            <CalendarCheck size={16} />
+                                        <div className="flex items-center gap-2 text-white/90 text-xs sm:text-sm font-medium pt-0.5">
+                                            <CalendarCheck size={14} />
                                             <span>{formatDateRange(selectedEvent.event_date, selectedEvent.end_date)}</span>
                                         </div>
                                     </div>
@@ -630,38 +620,38 @@ const StudentCalendar = () => {
                                     <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-black/10 rounded-full blur-2xl pointer-events-none"></div>
                                 </div>
 
-                                <div className="p-6 md:p-8 space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1 font-bold">Start Time</p>
-                                            <div className="flex items-center gap-2 text-gray-900 font-semibold text-sm">
-                                                <Clock size={16} className="text-blue-500" />
+                                <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">Start Time</p>
+                                            <div className="flex items-center gap-1.5 text-gray-900 font-semibold text-xs sm:text-sm">
+                                                <Clock size={14} className="text-blue-500" />
                                                 {selectedEvent.start_time ? formatTime(selectedEvent.start_time) : 'All Day'}
                                             </div>
                                         </div>
 
-                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1 font-bold">End Time</p>
-                                            <div className="flex items-center gap-2 text-gray-900 font-semibold text-sm">
-                                                <Clock size={16} className="text-blue-500" />
+                                        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-bold">End Time</p>
+                                            <div className="flex items-center gap-1.5 text-gray-900 font-semibold text-xs sm:text-sm">
+                                                <Clock size={14} className="text-blue-500" />
                                                 {selectedEvent.end_time ? formatTime(selectedEvent.end_time) : 'N/A'}
                                             </div>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Description</h4>
-                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 max-h-48 overflow-y-auto custom-scrollbar">
-                                            <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Description</h4>
+                                        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 max-h-36 overflow-y-auto custom-scrollbar">
+                                            <p className="text-gray-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">
                                                 {cleanEventDescription(selectedEvent.description) || 'No additional description provided for this event.'}
                                             </p>
                                         </div>
                                     </div>
 
-                                    <div className="pt-4 border-t border-gray-100 flex justify-end">
+                                    <div className="pt-3 border-t border-gray-100 flex justify-end">
                                         <button
                                             onClick={() => setShowEventModal(false)}
-                                            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors shadow-md active:scale-95 text-sm"
+                                            className="px-5 py-2 bg-slate-900 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors shadow-md active:scale-95 text-xs sm:text-sm"
                                         >
                                             Close Details
                                         </button>

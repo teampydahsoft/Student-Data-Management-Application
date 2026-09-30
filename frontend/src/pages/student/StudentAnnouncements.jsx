@@ -123,22 +123,19 @@ const StudentAnnouncements = () => {
     if (loading && announcements.length === 0 && polls.length === 0) {
         return (
             <div className="animate-pulse bg-gray-50/50 min-h-screen">
-                <div className="sticky top-0 bg-white border-b border-slate-100 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
-                    <div className="flex gap-1.5 flex-1">
-                        <SkeletonBox height="h-9" width="w-32" className="rounded-xl" />
-                        <SkeletonBox height="h-9" width="w-20" className="rounded-xl" />
+                <div className="sticky top-0 bg-white/95 border-b border-slate-100 px-3 sm:px-6 py-2 flex items-center justify-center">
+                    <div className="flex gap-1 w-full max-w-md bg-slate-100/90 p-1 rounded-xl">
+                        <SkeletonBox height="h-8" className="flex-1 rounded-lg" />
+                        <SkeletonBox height="h-8" className="flex-1 rounded-lg" />
                     </div>
-                    <SkeletonBox height="h-9" width="w-9" className="rounded-xl shrink-0" />
                 </div>
-                <div className="p-3 sm:p-6 space-y-2">
-                    <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 divide-y divide-slate-50">
+                <div className="p-3 sm:p-6 pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                         {Array.from({ length: 6 }).map((_, i) => (
-                            <div key={i} className="flex items-center gap-3 p-3">
-                                <SkeletonBox height="h-9" width="w-9" className="rounded-xl shrink-0" />
-                                <div className="flex-1 space-y-1.5">
-                                    <SkeletonBox height="h-3.5" width="w-3/4" />
-                                    <SkeletonBox height="h-2.5" width="w-1/2" />
-                                </div>
+                            <div key={i} className="bg-white rounded-xl border border-slate-100 p-3 flex flex-col space-y-2.5">
+                                <SkeletonBox height="h-32" className="w-full rounded-lg" />
+                                <SkeletonBox height="h-3.5" width="w-2/3" />
+                                <SkeletonBox height="h-3" width="w-1/3" />
                             </div>
                         ))}
                     </div>
@@ -151,35 +148,28 @@ const StudentAnnouncements = () => {
         <div className="animate-fade-in bg-gray-50/50 min-h-screen">
 
             {/* ── Sticky Tab Bar ── */}
-            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
-                <div className="bg-slate-100/80 rounded-xl p-1 flex gap-1 flex-1 sm:flex-none min-w-0">
+            <div className="sticky top-0 z-30 px-3 sm:px-6 py-2 flex items-center justify-center">
+                <div className="bg-slate-200/70 backdrop-blur-md border border-slate-200/80 rounded-xl p-1 flex gap-1 w-full max-w-md shadow-xs">
                     <button
                         id="tab-announcements"
                         onClick={() => setActiveTab('announcements')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-5 py-1.5 sm:py-2 rounded-lg font-bold text-[11px] sm:text-sm transition-all duration-200 whitespace-nowrap min-w-0 ${activeTab === 'announcements' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/60' : 'text-slate-500 hover:text-slate-800 hover:bg-white/70'}`}
+                        className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-200 whitespace-nowrap min-w-0 ${activeTab === 'announcements' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}
                     >
-                        <Megaphone size={12} className="sm:w-4 sm:h-4 shrink-0" />
+                        <Megaphone size={13} className="shrink-0" />
                         <span className="truncate">Announcements</span>
                     </button>
                     <button
                         id="tab-polls"
                         onClick={() => setActiveTab('polls')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-5 py-1.5 sm:py-2 rounded-lg font-bold text-[11px] sm:text-sm transition-all duration-200 whitespace-nowrap min-w-0 ${activeTab === 'polls' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/60' : 'text-slate-500 hover:text-slate-800 hover:bg-white/70'}`}
+                        className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-200 whitespace-nowrap min-w-0 ${activeTab === 'polls' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}
                     >
-                        <BarChart2 size={12} className="sm:w-4 sm:h-4 shrink-0" />
+                        <BarChart2 size={13} className="shrink-0" />
                         <span className="truncate">Campus Polls</span>
                     </button>
                 </div>
-                <button
-                    onClick={handleRefresh}
-                    className="p-2 sm:p-2.5 bg-slate-100 hover:bg-indigo-50 rounded-xl text-slate-400 hover:text-indigo-600 transition-all active:scale-95 shrink-0"
-                    title="Refresh"
-                >
-                    <RefreshCw size={15} className={`sm:w-4 sm:h-4 transition-transform ${loading && !isFetchingMore ? 'animate-spin text-indigo-600' : 'hover:rotate-180'}`} />
-                </button>
             </div>
 
-            <div className="sm:p-6 lg:p-8 space-y-3 sm:space-y-6">
+            <div className="p-3 sm:p-6 lg:p-8 pt-4 sm:pt-6 space-y-4 sm:space-y-6">
 
             {/* ══ ANNOUNCEMENTS ══ */}
             {activeTab === 'announcements' && (
@@ -195,40 +185,41 @@ const StudentAnnouncements = () => {
                     ) : (
                         <>
                             {/* MOBILE: Single-column card feed with infinite scroll */}
-                            <div className="md:hidden px-3 pb-4">
+                            <div className="md:hidden pb-4">
                                 <div className="space-y-3">
                                     {announcements.map((ann) => (
                                         <div
                                             key={ann.id}
                                             onClick={() => setSelectedAnnouncement(ann)}
-                                            className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden active:scale-[0.97] transition-all duration-150 cursor-pointer flex flex-col group"
+                                            className="rounded-xl border border-slate-200/60 shadow-xs overflow-hidden active:scale-[0.98] transition-all duration-150 cursor-pointer flex flex-col group bg-white"
                                         >
                                             {/* Image / Placeholder */}
                                             {ann.image_url ? (
-                                                <div className="w-full aspect-[4/3] bg-slate-100 overflow-hidden shrink-0 relative">
+                                                <div className="w-full aspect-[16/9] bg-slate-100 overflow-hidden shrink-0 relative">
                                                     <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                                     {ann.target_college && (
-                                                        <span className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm text-indigo-600 px-1.5 py-0.5 rounded-md text-[8px] uppercase font-black tracking-wider shadow-sm">{ann.target_college}</span>
+                                                        <span className="absolute bottom-2 left-2 bg-indigo-600 text-white px-1.5 py-0.5 rounded text-[8px] uppercase font-black tracking-wider shadow-xs">{ann.target_college}</span>
                                                     )}
                                                 </div>
                                             ) : (
-                                                <div className="w-full aspect-[4/3] bg-gradient-to-br from-indigo-50 to-indigo-100/60 flex items-center justify-center relative overflow-hidden shrink-0">
-                                                    <div className="absolute -right-4 -bottom-4 text-indigo-200 opacity-60"><Megaphone size={64} /></div>
-                                                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-indigo-100 flex items-center justify-center relative z-10">
-                                                        <Megaphone size={18} className="text-indigo-400" />
+                                                <div className="w-full h-24 bg-gradient-to-br from-indigo-50 to-indigo-100/60 flex items-center justify-center relative overflow-hidden shrink-0">
+                                                    <div className="absolute -right-4 -bottom-4 text-indigo-200 opacity-50"><Megaphone size={48} /></div>
+                                                    <div className="w-8 h-8 bg-white rounded-lg shadow-xs border border-indigo-100 flex items-center justify-center relative z-10">
+                                                        <Megaphone size={14} className="text-indigo-500" />
                                                     </div>
                                                 </div>
                                             )}
                                             {/* Content */}
-                                            <div className="p-2.5 flex-1 flex flex-col">
-                                                <p className="text-[9px] text-indigo-500 font-black uppercase tracking-wider mb-1">
-                                                    {new Date(ann.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                </p>
-                                                <h3 className="text-[12px] font-black text-slate-800 leading-snug line-clamp-2 group-hover:text-indigo-700 transition-colors">{ann.title}</h3>
-                                                <p className="text-[10px] text-slate-400 font-medium leading-relaxed line-clamp-2 mt-1 flex-1">{ann.content}</p>
-                                                <div className="flex items-center gap-0.5 mt-2 pt-2 border-t border-slate-100">
-                                                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Read More</span>
-                                                    <ChevronRight size={10} className="text-indigo-400" />
+                                            <div className="p-2.5 flex-1 flex flex-col justify-between">
+                                                <div>
+                                                    <p className="text-[9px] text-indigo-600 font-extrabold uppercase tracking-wider mb-0.5">
+                                                        {new Date(ann.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </p>
+                                                    <h3 className="text-[11px] font-extrabold text-slate-800 leading-tight line-clamp-2 group-hover:text-indigo-700 transition-colors">{ann.title}</h3>
+                                                </div>
+                                                <div className="flex items-center gap-0.5 mt-2 pt-1.5 border-t border-slate-100">
+                                                    <span className="text-[9px] font-extrabold text-indigo-600 uppercase tracking-wider">Read More</span>
+                                                    <ChevronRight size={10} className="text-indigo-500" />
                                                 </div>
                                             </div>
                                         </div>
@@ -237,47 +228,38 @@ const StudentAnnouncements = () => {
                             </div>
 
                             {/* DESKTOP: Card Grid */}
-                            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
+                            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
                                 {announcements.map((ann) => (
                                     <div
                                         key={ann.id}
                                         onClick={() => setSelectedAnnouncement(ann)}
-                                        className="bg-white rounded-[2rem] shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden hover:shadow-xl hover:-translate-y-1.5 transition-all duration-400 group cursor-pointer flex flex-col h-full relative"
+                                        className="rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col h-full bg-white"
                                     >
-                                        <div className="absolute top-4 right-4 z-30 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                                            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Megaphone size={14} /></div>
-                                        </div>
                                         {ann.image_url ? (
-                                            <div className="h-44 w-full bg-slate-100 overflow-hidden relative shrink-0">
-                                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/50 via-transparent to-transparent z-10 opacity-60 group-hover:opacity-40 transition-opacity" />
-                                                <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                                <div className="absolute bottom-4 left-4 z-20">
-                                                    <span className="bg-white text-indigo-600 px-2.5 py-1 rounded-lg text-[9px] uppercase font-black tracking-widest shadow border border-white">{ann.target_college || 'Notice'}</span>
+                                            <div className="h-36 w-full bg-slate-100 overflow-hidden relative shrink-0">
+                                                <img src={ann.image_url} alt={ann.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                <div className="absolute bottom-3 left-3 z-10">
+                                                    <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">{ann.target_college || 'Notice'}</span>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="h-32 bg-indigo-50/60 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-slate-100">
-                                                <div className="absolute -right-6 -top-6 text-indigo-600/5 group-hover:scale-110 transition-all duration-700"><Megaphone size={110} /></div>
-                                                <div className="h-12 w-12 bg-white rounded-2xl shadow-md border border-slate-100 flex items-center justify-center relative z-10"><Megaphone className="text-indigo-500" size={24} /></div>
+                                            <div className="h-24 bg-indigo-50/60 flex items-center justify-center relative overflow-hidden shrink-0 border-b border-slate-100">
+                                                <div className="absolute -right-4 -top-4 text-indigo-600/5 group-hover:scale-110 transition-all duration-500"><Megaphone size={80} /></div>
+                                                <div className="h-10 w-10 bg-white rounded-xl shadow-xs border border-slate-100 flex items-center justify-center relative z-10"><Megaphone className="text-indigo-500" size={20} /></div>
                                             </div>
                                         )}
-                                        <div className="p-5 flex-1 flex flex-col">
-                                            <div className="flex items-center justify-between text-[10px] uppercase font-black tracking-[0.15em] text-slate-400 mb-3">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Calendar size={11} className="text-indigo-400/60" />
-                                                    {new Date(ann.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                </div>
-                                                {ann.expires_at && (
-                                                    <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md font-bold text-[9px]">
-                                                        <Clock size={10} />
-                                                        <span>Valid till {new Date(ann.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                        <div className="p-3.5 flex-1 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
+                                                    <div className="flex items-center gap-1">
+                                                        <Calendar size={10} className="text-indigo-400" />
+                                                        {new Date(ann.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                     </div>
-                                                )}
+                                                </div>
+                                                <h3 className="text-sm font-extrabold text-slate-900 leading-snug line-clamp-2 group-hover:text-indigo-600 transition-colors">{ann.title}</h3>
                                             </div>
-                                            <h3 className="text-base font-black text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-snug tracking-tight">{ann.title}</h3>
-                                            <p className="text-slate-500 text-[12px] line-clamp-2 leading-relaxed font-medium mt-auto opacity-80">{ann.content}</p>
-                                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center">
-                                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">Read More <ChevronRight size={10} /></span>
+                                            <div className="mt-3 pt-2 border-t border-slate-100 flex items-center">
+                                                <span className="text-[9px] font-extrabold text-indigo-600 uppercase tracking-widest flex items-center gap-1">Read More <ChevronRight size={10} /></span>
                                             </div>
                                         </div>
                                     </div>
