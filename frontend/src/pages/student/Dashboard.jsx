@@ -808,7 +808,7 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {/* Today's Status */}
                 {isEnabled('attendance') && (
-                    <div className="rounded-[20px] p-3.5 sm:p-4 bg-[#edfbf4] border border-[#dcfce7] flex flex-col justify-between shadow-xs relative overflow-hidden min-h-[110px]">
+                    <div className="rounded-xl p-2 sm:p-2.5 bg-[#edfbf4] border border-[#dcfce7] flex flex-col justify-start gap-0.5 shadow-xs relative overflow-hidden">
                         {(() => {
                             let status = (attendanceStats?.todayStatus || displayData.today_attendance_status || 'not marked').toLowerCase();
                             if (status === 'not marked yet') status = 'not marked';
@@ -831,18 +831,20 @@ const Dashboard = () => {
 
                             return (
                                 <>
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#dcfce7] flex items-center justify-center text-[#15803d] shrink-0">
-                                            <Calendar size={16} />
-                                        </div>
-                                        <span className="text-[11px] sm:text-xs font-bold text-[#15803d] truncate min-w-0">Today's Attendance</span>
+                                    <div>
+                                        <span className="text-[9px] sm:text-[10px] font-bold text-[#15803d] truncate block">Today's Attendance</span>
                                     </div>
-                                    <div className="mt-1.5">
-                                        <p className={`text-lg sm:text-2xl font-extrabold ${labelColor} leading-tight tracking-tight`}>{label}</p>
-                                        <p className="text-[10px] font-medium text-[#16a34a]/75 mt-0.5 truncate flex items-center gap-0.5">
-                                            <ChevronRight size={10} className="text-[#16a34a]/60 shrink-0" />
-                                            {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}
-                                        </p>
+                                    <div className="flex items-end justify-between gap-1 min-w-0">
+                                        <div className="min-w-0">
+                                            <p className={`text-sm sm:text-base font-extrabold ${labelColor} leading-tight tracking-tight`}>{label}</p>
+                                            <p className="text-[8px] sm:text-[9px] font-medium text-[#16a34a]/75 mt-0.5 truncate flex items-center gap-0.5">
+                                                <ChevronRight size={8} className="text-[#16a34a]/60 shrink-0" />
+                                                {new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                            </p>
+                                        </div>
+                                        <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-[#dcfce7] flex items-center justify-center text-[#15803d] shrink-0">
+                                            <Calendar size={12} />
+                                        </div>
                                     </div>
                                 </>
                             );
@@ -852,21 +854,23 @@ const Dashboard = () => {
 
                 {/* Overall Progress */}
                 {isEnabled('attendance') && (
-                    <div className="rounded-[20px] p-3.5 sm:p-4 bg-[#f6f5ff] border border-[#ede9fe] flex flex-col justify-between shadow-xs relative overflow-hidden min-h-[110px]">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#ede9fe] flex items-center justify-center text-[#6d28d9] shrink-0">
-                                <BarChart3 size={16} />
-                            </div>
-                            <span className="text-[11px] sm:text-xs font-bold text-[#6d28d9] truncate min-w-0">Overall Progress</span>
+                    <div className="rounded-xl p-2 sm:p-2.5 bg-[#f6f5ff] border border-[#ede9fe] flex flex-col justify-start gap-0.5 shadow-xs relative overflow-hidden">
+                        <div>
+                            <span className="text-[9px] sm:text-[10px] font-bold text-[#6d28d9] truncate block">Overall Progress</span>
                         </div>
-                        <div className="mt-1.5">
-                            <p className="text-lg sm:text-2xl font-extrabold text-[#6d28d9] leading-tight tracking-tight">
-                                {attendanceStats?.percentage || '46.3'}%
-                            </p>
-                            <p className="text-[10px] font-medium text-[#7c3aed]/75 mt-0.5 truncate flex items-center gap-0.5">
-                                <ChevronRight size={10} className="text-[#7c3aed]/60 shrink-0" />
-                                Average (Till Date)
-                            </p>
+                        <div className="flex items-end justify-between gap-1 min-w-0">
+                            <div className="min-w-0">
+                                <p className="text-sm sm:text-base font-extrabold text-[#6d28d9] leading-tight tracking-tight">
+                                    {attendanceStats?.percentage || '46.3'}%
+                                </p>
+                                <p className="text-[8px] sm:text-[9px] font-medium text-[#7c3aed]/75 mt-0.5 truncate flex items-center gap-0.5">
+                                    <ChevronRight size={8} className="text-[#7c3aed]/60 shrink-0" />
+                                    Average
+                                </p>
+                            </div>
+                            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-[#ede9fe] flex items-center justify-center text-[#6d28d9] shrink-0">
+                                <BarChart3 size={12} />
+                            </div>
                         </div>
                     </div>
                 )}

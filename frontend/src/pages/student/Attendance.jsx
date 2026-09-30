@@ -660,30 +660,33 @@ const SemesterTab = ({ semester, semesterSeries }) => {
                         <span>Semester dates are not set. Configure them in <strong>Settings → Academic Calendar</strong> for accurate attendance.</span>
                     </div>
                 )}
-                <div className="flex flex-col sm:flex-row items-center gap-8 relative z-10">
-                    <CircularRing pct={pct} size={150} />
-                    <div className="flex-1 space-y-4 text-center sm:text-left">
+                <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 relative z-10">
+                    <CircularRing pct={pct} size={150} inverted={true} />
+                    <div className="flex-1 space-y-4 text-center sm:text-left w-full">
                         <div>
                             <p className="text-[10px] font-black text-emerald-100 uppercase tracking-[0.2em] mb-1 opacity-80 flex items-center justify-center sm:justify-start gap-1.5">
                                 <BookOpen size={14} /> Semester Attendance
                             </p>
-                            {semester.startDate && semester.endDate && (
-                                <div className="flex flex-wrap items-center gap-3 mt-2 justify-center sm:justify-start">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-black">
-                                        <Calendar size={13} /> {formatDisplayDate(semester.startDate)}
+                            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 mt-3 max-w-full sm:max-w-md mx-auto sm:mx-0">
+                                {semester.startDate && (
+                                    <span className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-[10px] sm:text-xs font-bold leading-none min-w-0">
+                                        <Calendar size={12} className="shrink-0 text-emerald-200" />
+                                        <span className="truncate">{formatDisplayDate(semester.startDate)}</span>
                                     </span>
-                                    <span className="text-white/40 font-black">→</span>
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-black">
-                                        <Calendar size={13} /> {formatDisplayDate(semester.endDate)}
+                                )}
+                                {semester.endDate && (
+                                    <span className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-[10px] sm:text-xs font-bold leading-none min-w-0">
+                                        <Calendar size={12} className="shrink-0 text-emerald-200" />
+                                        <span className="truncate">{formatDisplayDate(semester.endDate)}</span>
                                     </span>
-                                </div>
-                            )}
-                            <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-emerald-100 text-[10px] font-black border border-white/10 uppercase tracking-widest">
-                                    <Calendar size={12} /> {stats.workingDays} working days
+                                )}
+                                <span className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white/10 text-emerald-100 border border-white/15 text-[10px] sm:text-xs font-bold leading-none min-w-0">
+                                    <Calendar size={12} className="shrink-0 text-emerald-200" />
+                                    <span className="truncate">{stats.workingDays} Working Days</span>
                                 </span>
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 text-amber-300 text-[10px] font-black border border-white/10 uppercase tracking-widest">
-                                    <Sun size={12} /> {stats.holidays} holidays
+                                <span className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white/10 text-amber-300 border border-white/15 text-[10px] sm:text-xs font-bold leading-none min-w-0">
+                                    <Sun size={12} className="shrink-0 text-amber-300" />
+                                    <span className="truncate">{stats.holidays} Holidays</span>
                                 </span>
                             </div>
                         </div>
