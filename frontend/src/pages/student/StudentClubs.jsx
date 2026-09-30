@@ -218,34 +218,33 @@ const StudentClubs = () => {
                     <>
                         {/* Segment tabs: My Clubs | Discover */}
                         {joinedClubs.length > 0 && (
-                                <div className="flex rounded-xl sm:rounded-[1.5rem] bg-white/60 backdrop-blur-md p-1 shadow-xl shadow-slate-200/40 border border-white">
+                            <div className="flex rounded-lg sm:rounded-[1.5rem] bg-white/60 backdrop-blur-md p-0.5 sm:p-1 shadow-sm sm:shadow-xl shadow-slate-200/40 border border-white">
                                 <button
                                     onClick={() => setListSegment('joined')}
-                                    className={`flex-1 min-w-0 py-2.5 px-2 sm:py-3 sm:px-6 rounded-lg sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${listSegment === 'joined' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
+                                    className={`flex-1 min-w-0 py-1 px-1.5 sm:py-3 sm:px-6 rounded-md sm:rounded-2xl text-[9px] sm:text-[11px] font-black uppercase tracking-wider sm:tracking-widest transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 ${listSegment === 'joined' ? 'bg-indigo-600 text-white shadow-sm sm:shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                                 >
-                                    <CheckCircle size={16} /> My Territories ({joinedClubs.length})
+                                    <CheckCircle size={12} className="shrink-0 sm:w-3.5 sm:h-3.5" /> My Territories ({joinedClubs.length})
                                 </button>
                                 <button
                                     onClick={() => setListSegment('all')}
-                                        className={`flex-1 min-w-0 py-2.5 px-2 sm:py-3 sm:px-6 rounded-lg sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${listSegment === 'all' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
+                                    className={`flex-1 min-w-0 py-1 px-1.5 sm:py-3 sm:px-6 rounded-md sm:rounded-2xl text-[9px] sm:text-[11px] font-black uppercase tracking-wider sm:tracking-widest transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 ${listSegment === 'all' ? 'bg-indigo-600 text-white shadow-md sm:shadow-lg shadow-indigo-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'}`}
                                 >
-                                    <Sparkles size={16} /> Discover All
+                                    <Sparkles size={12} className="shrink-0 sm:w-3.5 sm:h-3.5" /> Discover All
                                 </button>
                             </div>
                         )}
 
                         {loading ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-pulse">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-6 animate-pulse">
                                 {Array.from({ length: 6 }).map((_, i) => (
-                                    <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-72">
-                                        <SkeletonBox height="h-36" width="w-full" />
-                                        <div className="p-5 flex-1 flex flex-col justify-between">
-                                            <div className="space-y-2">
-                                                <SkeletonBox height="h-6" width="w-3/4" />
-                                                <SkeletonBox height="h-4" width="w-full" />
-                                                <SkeletonBox height="h-4" width="w-2/3" />
+                                    <div key={i} className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-48 sm:h-72">
+                                        <SkeletonBox height="h-24 sm:h-36" width="w-full" />
+                                        <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between">
+                                            <div className="space-y-1.5 sm:space-y-2">
+                                                <SkeletonBox height="h-4 sm:h-6" width="w-3/4" />
+                                                <SkeletonBox height="h-3 sm:h-4" width="w-full" />
                                             </div>
-                                            <SkeletonBox height="h-11" width="w-full" className="rounded-xl" />
+                                            <SkeletonBox height="h-7 sm:h-11" width="w-full" className="rounded-lg sm:rounded-xl" />
                                         </div>
                                     </div>
                                 ))}
@@ -253,65 +252,65 @@ const StudentClubs = () => {
                         ) : (
                             <>
                                 {displayClubs.length === 0 ? (
-                                    <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center">
-                                        <Users size={48} className="mx-auto text-gray-300 mb-4" />
-                                        <p className="text-gray-600 font-medium">{listSegment === 'joined' ? 'You haven’t joined any clubs yet' : 'No clubs available'}</p>
-                                        <p className="text-sm text-gray-500 mt-1">{listSegment === 'joined' ? 'Switch to Discover to browse and join.' : 'Check back later for new clubs.'}</p>
+                                    <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-8 sm:p-12 text-center">
+                                        <Users size={36} className="mx-auto text-gray-300 mb-3 sm:w-12 sm:h-12 sm:mb-4" />
+                                        <p className="text-gray-600 font-medium text-xs sm:text-base">{listSegment === 'joined' ? 'You haven’t joined any clubs yet' : 'No clubs available'}</p>
+                                        <p className="text-[11px] sm:text-sm text-gray-500 mt-1">{listSegment === 'joined' ? 'Switch to Discover to browse and join.' : 'Check back later for new clubs.'}</p>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-6 lg:gap-8">
                                         {displayClubs.map(club => (
-                                            <div key={club.id} className="group/card bg-white rounded-2xl sm:rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-2 hover:scale-[1.02] transition-all duration-500 flex flex-col relative">
-                                                <div className="h-36 sm:h-56 relative overflow-hidden shrink-0">
+                                            <div key={club.id} className="group/card bg-white rounded-xl sm:rounded-[2.5rem] shadow-sm sm:shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-1 sm:hover:-translate-y-2 transition-all duration-500 flex flex-col relative">
+                                                <div className="h-24 sm:h-56 relative overflow-hidden shrink-0">
                                                     {club.image_url ? (
                                                         <img src={club.image_url} alt={club.name} className="w-full h-full object-cover group-hover/card:scale-110 transition-transform duration-1000 ease-out" />
                                                     ) : (
                                                         <div className="w-full h-full bg-slate-50 flex items-center justify-center text-indigo-200">
-                                                            <Users size={60} />
+                                                            <Users size={32} className="sm:w-16 sm:h-16" />
                                                         </div>
                                                     )}
                                                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 opacity-60 group-hover/card:opacity-40 transition-opacity duration-500" />
                                                     {club.userStatus && (
-                                                        <div className="absolute top-5 right-5 z-20">
+                                                        <div className="absolute top-1.5 right-1.5 sm:top-5 sm:right-5 z-20">
                                                             {club.userStatus === 'approved' ? (
-                                                                <span className="bg-emerald-500 text-white text-[9px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 border border-white/20">
-                                                                    <CheckCircle size={14} /> Active
+                                                                <span className="bg-emerald-500 text-white text-[7.5px] sm:text-[9px] px-1.5 py-0.5 sm:px-3 sm:py-1.5 rounded-md sm:rounded-xl font-black uppercase tracking-wider sm:tracking-widest shadow-md flex items-center gap-1 sm:gap-1.5 border border-white/20">
+                                                                    <CheckCircle size={10} className="sm:w-3.5 sm:h-3.5" /> Active
                                                                 </span>
                                                             ) : club.userStatus === 'pending' ? (
-                                                                <span className="bg-amber-500 text-white text-[9px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 border border-white/20 animate-pulse">
-                                                                    <Clock size={14} /> Waiting
+                                                                <span className="bg-amber-500 text-white text-[7.5px] sm:text-[9px] px-1.5 py-0.5 sm:px-3 sm:py-1.5 rounded-md sm:rounded-xl font-black uppercase tracking-wider sm:tracking-widest shadow-md flex items-center gap-1 sm:gap-1.5 border border-white/20 animate-pulse">
+                                                                    <Clock size={10} className="sm:w-3.5 sm:h-3.5" /> Waiting
                                                                 </span>
                                                             ) : (
-                                                                <span className="bg-rose-500 text-white text-[9px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 border border-white/20">
-                                                                    <AlertCircle size={14} /> Denied
+                                                                <span className="bg-rose-500 text-white text-[7.5px] sm:text-[9px] px-1.5 py-0.5 sm:px-3 sm:py-1.5 rounded-md sm:rounded-xl font-black uppercase tracking-wider sm:tracking-widest shadow-md flex items-center gap-1 sm:gap-1.5 border border-white/20">
+                                                                    <AlertCircle size={10} className="sm:w-3.5 sm:h-3.5" /> Denied
                                                                 </span>
                                                             )}
                                                         </div>
                                                     )}
                                                     {club.membership_fee > 0 && (
-                                                        <div className="absolute bottom-5 left-5 z-20 inline-flex flex-col">
-                                                            <div className="flex items-baseline gap-1 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl border border-white">
-                                                                <span className="text-xl font-black text-slate-900">₹{club.membership_fee}</span>
-                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">/{club.fee_type === 'Semesterly' ? 'Sem' : 'Year'}</span>
+                                                        <div className="absolute bottom-1.5 left-1.5 sm:bottom-5 sm:left-5 z-20 inline-flex flex-col">
+                                                            <div className="flex items-baseline gap-0.5 sm:gap-1 bg-white/90 backdrop-blur-md px-2 py-0.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-2xl shadow-md border border-white">
+                                                                <span className="text-xs sm:text-xl font-black text-slate-900">₹{club.membership_fee}</span>
+                                                                <span className="text-[7.5px] sm:text-[9px] font-black text-slate-400 uppercase tracking-wider sm:tracking-widest">/{club.fee_type === 'Semesterly' ? 'Sem' : 'Year'}</span>
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="p-4 sm:p-8 flex-1 flex flex-col">
-                                                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight mb-3 sm:mb-4 group-hover/card:text-indigo-600 transition-colors tracking-tight">{club.name}</h3>
-                                                    <p className="text-slate-400 text-[13px] sm:text-[14px] line-clamp-2 sm:line-clamp-3 flex-1 font-bold italic leading-relaxed mb-4 sm:mb-8 opacity-80">{club.description}</p>
+                                                <div className="p-2.5 sm:p-8 flex-1 flex flex-col">
+                                                    <h3 className="text-sm sm:text-2xl font-black text-slate-900 leading-tight mb-0.5 sm:mb-4 group-hover/card:text-indigo-600 transition-colors tracking-tight">{club.name}</h3>
+                                                    <p className="text-slate-400 text-[11px] sm:text-[14px] line-clamp-2 sm:line-clamp-3 flex-1 font-bold italic leading-tight sm:leading-relaxed mb-2 sm:mb-8 opacity-80">{club.description}</p>
                                                     <div className="mt-auto">
                                                         {club.userStatus === 'approved' ? (
                                                             club.payment_status === 'payment_due' ? (
                                                                 <div
-                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] shadow-xl shadow-rose-200 flex items-center justify-center gap-3"
+                                                                    className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] shadow-md shadow-rose-200 flex items-center justify-center gap-1.5 sm:gap-3"
                                                                 >
-                                                                    <AlertCircle size={16} /> Pay Fee to Get Joined (₹{club.balance_due || club.membership_fee})
+                                                                    <AlertCircle size={12} className="sm:w-4 sm:h-4" /> Pay Fee (₹{club.balance_due || club.membership_fee})
                                                                 </div>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => handleViewClub(club)}
-                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-indigo-600 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 transform hover:-translate-y-0.5"
+                                                                    className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-indigo-600 text-white font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200"
                                                                 >
                                                                     Enter Portal
                                                                 </button>
@@ -319,27 +318,27 @@ const StudentClubs = () => {
                                                         ) : club.userStatus === 'pending' ? (
                                                             club.membership_fee > 0 ? (
                                                                 <div
-                                                                    className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-amber-500 text-white font-black uppercase tracking-widest text-[10px] sm:text-[11px] shadow-xl shadow-amber-200 flex items-center justify-center gap-3"
+                                                                    className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-amber-500 text-white font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] shadow-md shadow-amber-200 flex items-center justify-center gap-1.5 sm:gap-3"
                                                                 >
-                                                                    <AlertCircle size={16} /> Pay Fee to Get Joined  (₹{club.balance_due || club.membership_fee})
+                                                                    <AlertCircle size={12} className="sm:w-4 sm:h-4" /> Pay Fee (₹{club.balance_due || club.membership_fee})
                                                                 </div>
                                                             ) : (
-                                                                <div className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-slate-50 text-slate-300 font-black uppercase tracking-widest text-[10px] sm:text-[11px] border border-slate-100 flex items-center justify-center gap-3 italic">
-                                                                    <Clock size={16} /> Transmission Pending
+                                                                <div className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-slate-50 text-slate-300 font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] border border-slate-100 flex items-center justify-center gap-1.5 sm:gap-3 italic">
+                                                                    <Clock size={12} className="sm:w-4 sm:h-4" /> Transmission Pending
                                                                 </div>
                                                             )
                                                         ) : club.userStatus === 'rejected' ? (
-                                                            <div className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-slate-100 text-slate-400 font-black uppercase tracking-widest text-[10px] sm:text-[11px] border border-slate-200 flex items-center justify-center gap-3">
-                                                                <AlertCircle size={16} /> Entry Restricted
+                                                            <div className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-slate-100 text-slate-400 font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] border border-slate-200 flex items-center justify-center gap-1.5 sm:gap-3">
+                                                                <AlertCircle size={12} className="sm:w-4 sm:h-4" /> Entry Restricted
                                                             </div>
                                                         ) : (
                                                             <button
                                                                 onClick={() => handleJoinClick(club)}
-                                                                className="w-full py-3 sm:py-4 rounded-xl sm:rounded-[1.5rem] bg-white border border-indigo-100 text-indigo-600 font-black uppercase tracking-widest text-[10px] sm:text-[11px] hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5 overflow-hidden group/btn relative"
+                                                                className="w-full py-1.5 sm:py-4 rounded-lg sm:rounded-[1.5rem] bg-white border border-indigo-100 text-indigo-600 font-black uppercase tracking-wider sm:tracking-widest text-[9px] sm:text-[11px] hover:bg-indigo-50 transition-all shadow-xs hover:shadow-sm overflow-hidden group/btn relative"
                                                             >
-                                                                <span className="relative z-10 flex items-center justify-center gap-2">Request Access <Sparkles size={14} /></span>
+                                                                <span className="relative z-10 flex items-center justify-center gap-1 sm:gap-2">Request Access <Sparkles size={11} className="sm:w-3.5 sm:h-3.5" /></span>
                                                                 <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-indigo-400 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-500"></div>
-                                                                <span className="absolute inset-0 z-20 flex items-center justify-center gap-2 text-white opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300">Join the Future</span>
+                                                                <span className="absolute inset-0 z-20 flex items-center justify-center gap-1 sm:gap-2 text-white opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300">Join the Future</span>
                                                             </button>
                                                         )}
                                                     </div>
