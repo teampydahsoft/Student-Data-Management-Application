@@ -831,11 +831,11 @@ const Dashboard = () => {
 
                             return (
                                 <>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 min-w-0">
                                         <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#dcfce7] flex items-center justify-center text-[#15803d] shrink-0">
                                             <Calendar size={16} />
                                         </div>
-                                        <span className="text-[10px] sm:text-[11px] font-bold text-[#15803d]">Today's Attendance</span>
+                                        <span className="text-[11px] sm:text-xs font-bold text-[#15803d] truncate min-w-0">Today's Attendance</span>
                                     </div>
                                     <div className="mt-1.5">
                                         <p className={`text-lg sm:text-2xl font-extrabold ${labelColor} leading-tight tracking-tight`}>{label}</p>
@@ -853,11 +853,11 @@ const Dashboard = () => {
                 {/* Overall Progress */}
                 {isEnabled('attendance') && (
                     <div className="rounded-[20px] p-3.5 sm:p-4 bg-[#f6f5ff] border border-[#ede9fe] flex flex-col justify-between shadow-xs relative overflow-hidden min-h-[110px]">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
                             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#ede9fe] flex items-center justify-center text-[#6d28d9] shrink-0">
                                 <BarChart3 size={16} />
                             </div>
-                            <span className="text-[10px] sm:text-[11px] font-bold text-[#6d28d9]">Overall Progress</span>
+                            <span className="text-[11px] sm:text-xs font-bold text-[#6d28d9] truncate min-w-0">Overall Progress</span>
                         </div>
                         <div className="mt-1.5">
                             <p className="text-lg sm:text-2xl font-extrabold text-[#6d28d9] leading-tight tracking-tight">
