@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History, X } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History, X, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
 import toast from 'react-hot-toast';
@@ -419,6 +419,14 @@ const StudentScholarshipHistoryTab = ({
   const [modalPermitDate, setModalPermitDate] = useState('');
   const [modalPermitRemarks, setModalPermitRemarks] = useState('');
   const [feeStatusUpdating, setFeeStatusUpdating] = useState(false);
+  const [expandedMobileYears, setExpandedMobileYears] = useState({});
+
+  const toggleMobileYearExpand = (yearNumber) => {
+    setExpandedMobileYears((prev) => ({
+      ...prev,
+      [yearNumber]: !prev[yearNumber]
+    }));
+  };
 
   const { casteOptions: dynamicCasteOptions } = useCasteCategories();
   const casteOptions = useMemo(
@@ -1523,23 +1531,16 @@ const StudentScholarshipHistoryTab = ({
                 year.eligible || ''
               );
             const yearEditingDisabled = !isYearEditable(year.student_year);
+            const isExpanded = Boolean(expandedMobileYears[year.student_year]);
 
             return (
               <div key={`mobile-summary-${year.student_year}`} className="p-2.5 space-y-2">
-                {/* Header & App ID & History */}
+                {/* Header & App ID & Expand Toggle */}
                 <div className="flex items-center justify-between bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-100 gap-1.5">
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="font-bold text-gray-900 text-xs">Year {year.student_year}</span>
-                    {yearEditingDisabled && !isEditingDisabled && (
-                      <span className="text-[8.5px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-200/60 px-1 py-0.5 rounded">
-                        Locked
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-center px-1">
-                    <span className="text-[8.5px] uppercase font-bold text-gray-400 block leading-tight">App ID</span>
+                  <div className="flex items-center gap-1.5 px-1 min-w-0">
+                    <span className="text-[8.5px] uppercase font-bold text-gray-400 block leading-tight shrink-0">App ID</span>
                     {yearEditingDisabled ? (
-                      <span className="text-xs font-mono text-gray-700 font-semibold block">{year.application_id || '—'}</span>
+                      <span className="text-xs font-mono text-gray-700 font-semibold block truncate">{year.application_id || '—'}</span>
                     ) : (
                       <input
                         type="text"
@@ -1548,110 +1549,123 @@ const StudentScholarshipHistoryTab = ({
                         maxLength={SCHOLARSHIP_APPLICATION_ID_LENGTH}
                         value={year.application_id || ''}
                         onChange={(e) => updateYearField(yearIndex, 'application_id', e.target.value)}
-                        className="w-24 px-1 py-0.5 border rounded text-xs text-center font-mono"
+                        className="w-28 px-1.5 py-0.5 border rounded text-xs text-center font-mono bg-white focus:ring-1 focus:ring-indigo-500"
                         placeholder={`${SCHOLARSHIP_APPLICATION_ID_LENGTH}-digit`}
                       />
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setHistoryYear(year.student_year)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 text-[10px] font-bold hover:bg-amber-100 border border-amber-200 shrink-0"
-                    title={`View archived scholarship history for Year ${year.student_year}`}
-                  >
-                    <History size={11} />
-                    History
-                  </button>
-                </div>
-
-                {/* Financial Overview Grid — 3 columns inline */}
-                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-2 rounded-lg border border-slate-100 text-[11px]">
-                  <div>
-                    <span className="text-[8.5px] text-gray-500 uppercase font-bold block leading-tight">{sanctionedColumnLabel}</span>
-                    <span className="font-bold text-gray-900 text-[11px]">
-                      {year.financialTracking
-                        ? (year.tuitionFeeMode ? formatCurrency(0) : formatCurrency(year.display_sanctioned_amount ?? year.effective_sanctioned_amount ?? year.sanctioned_amount))
-                        : '—'}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[8.5px] text-emerald-600 uppercase font-bold block leading-tight">RTF Released</span>
-                    <span className="font-bold text-emerald-700 text-[11px]">
-                      {year.releasesEligible ? formatCurrency(year.released_amount) : '—'}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[8.5px] text-pink-600 uppercase font-bold block leading-tight">RTF Due</span>
-                    <span className={`font-bold text-[11px] ${(year.due_amount ?? 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
-                      {(year.releasesEligible || year.tuitionFeeMode || year.feeOnlyMode) && (year.due_amount ?? 0) >= 0
-                        ? formatCurrency(year.due_amount ?? 0)
-                        : '—'}
-                    </span>
-                  </div>
-
-                  {hasAnyAdvance && (
-                    <div>
-                      <span className="text-[8.5px] text-violet-600 uppercase font-bold block leading-tight">Advance</span>
-                      <span className="font-bold text-violet-700 text-[11px]">
-                        {year.releasesEligible && year.advance_amount > 0 ? formatCurrency(year.advance_amount) : '—'}
-                      </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="font-bold text-gray-900 text-xs whitespace-nowrap">Year {year.student_year}</span>
+                      {yearEditingDisabled && !isEditingDisabled && (
+                        <span className="text-[8.5px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-200/60 px-1 py-0.5 rounded">
+                          Locked
+                        </span>
+                      )}
                     </div>
-                  )}
-
-                  {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && (
-                    <>
-                      <div>
-                        <span className="text-[8.5px] text-blue-600 uppercase font-bold block leading-tight">Paid</span>
-                        <span className="font-bold text-blue-700 text-[11px]">
-                          {year.showPaidAmount ? formatCurrency(year.paid_amount) : '—'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[8.5px] text-amber-600 uppercase font-bold block leading-tight">Fee Due</span>
-                        <span className={`font-bold text-[11px] ${year.fee_due_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                          {year.financialTracking ? formatCurrency(year.fee_due_amount) : '—'}
-                        </span>
-                      </div>
-                    </>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => toggleMobileYearExpand(year.student_year)}
+                      className="inline-flex items-center justify-center p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors shrink-0"
+                      title={isExpanded ? `Collapse Year ${year.student_year} details` : `Expand Year ${year.student_year} details`}
+                    >
+                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Semesters & Eligible Status — Side by Side */}
-                <div className="bg-gray-50/50 p-2 rounded-lg border border-gray-100 space-y-1">
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 block mb-0.5">Semesters</span>
-                  <div className="flex items-center justify-between gap-1.5">
-                    {semesters.map((semester, semesterIndex) => (
-                      <div key={`mobile-sem-${year.student_year}-${semester.student_semester}`} className="flex items-center gap-1 text-[11px] bg-white px-2 py-1 rounded-lg border border-gray-100 flex-1 justify-between min-w-0">
-                        <span className="text-gray-600 font-medium shrink-0 text-[11px]">Sem {semester.student_semester}</span>
-                        {yearEditingDisabled ? (
-                          <span className="font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded text-[10px] shrink-0">
-                            {getScholarshipStatusDropdownLabel(semester.eligible) || '—'}
+                {isExpanded && (
+                  <>
+                    {/* Financial Overview Grid — 3 columns inline */}
+                    <div className="grid grid-cols-3 gap-1 bg-slate-50 p-2 rounded-lg border border-slate-100 text-[11px]">
+                      <div>
+                        <span className="text-[8.5px] text-gray-500 uppercase font-bold block leading-tight">{sanctionedColumnLabel}</span>
+                        <span className="font-bold text-gray-900 text-[11px]">
+                          {year.financialTracking
+                            ? (year.tuitionFeeMode ? formatCurrency(0) : formatCurrency(year.display_sanctioned_amount ?? year.effective_sanctioned_amount ?? year.sanctioned_amount))
+                            : '—'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[8.5px] text-emerald-600 uppercase font-bold block leading-tight">RTF Released</span>
+                        <span className="font-bold text-emerald-700 text-[11px]">
+                          {year.releasesEligible ? formatCurrency(year.released_amount) : '—'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[8.5px] text-pink-600 uppercase font-bold block leading-tight">RTF Due</span>
+                        <span className={`font-bold text-[11px] ${(year.due_amount ?? 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
+                          {(year.releasesEligible || year.tuitionFeeMode || year.feeOnlyMode) && (year.due_amount ?? 0) >= 0
+                            ? formatCurrency(year.due_amount ?? 0)
+                            : '—'}
+                        </span>
+                      </div>
+
+                      {hasAnyAdvance && (
+                        <div>
+                          <span className="text-[8.5px] text-violet-600 uppercase font-bold block leading-tight">Advance</span>
+                          <span className="font-bold text-violet-700 text-[11px]">
+                            {year.releasesEligible && year.advance_amount > 0 ? formatCurrency(year.advance_amount) : '—'}
                           </span>
-                        ) : (
-                          <select
-                            value={normalizeScholarshipStatusValue(semester.eligible) || ''}
-                            onChange={(e) => updateSemesterField(yearIndex, semesterIndex, e.target.value)}
-                            className="px-1 py-0.5 border border-gray-200 rounded text-[11px] text-gray-800 bg-white shrink-0"
-                          >
-                            {ELIGIBLE_OPTIONS.map((option) => (
-                              <option key={option.value || 'blank'} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                        </div>
+                      )}
 
-                {/* Remarks if present */}
-                {semesters.some((s) => s.remark) && (
-                  <div className="text-[10px] text-gray-500 pt-0.5 truncate">
-                    Remark: {semesters.map((s) => s.remark).filter(Boolean).join(', ')}
-                  </div>
+                      {!SCHOLARSHIP_HIDE_SUMMARY_PAID_FEE_COLUMNS && (
+                        <>
+                          <div>
+                            <span className="text-[8.5px] text-blue-600 uppercase font-bold block leading-tight">Paid</span>
+                            <span className="font-bold text-blue-700 text-[11px]">
+                              {year.showPaidAmount ? formatCurrency(year.paid_amount) : '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[8.5px] text-amber-600 uppercase font-bold block leading-tight">Fee Due</span>
+                            <span className={`font-bold text-[11px] ${year.fee_due_amount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                              {year.financialTracking ? formatCurrency(year.fee_due_amount) : '—'}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Semesters & Eligible Status — Side by Side */}
+                    <div className="bg-gray-50/50 p-2 rounded-lg border border-gray-100 space-y-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 block mb-0.5">Semesters</span>
+                      <div className="flex items-center justify-between gap-1.5">
+                        {semesters.map((semester, semesterIndex) => (
+                          <div key={`mobile-sem-${year.student_year}-${semester.student_semester}`} className="flex items-center gap-1 text-[11px] bg-white px-2 py-1 rounded-lg border border-gray-100 flex-1 justify-between min-w-0">
+                            <span className="text-gray-600 font-medium shrink-0 text-[11px]">Sem {semester.student_semester}</span>
+                            {yearEditingDisabled ? (
+                              <span className="font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded text-[10px] shrink-0">
+                                {getScholarshipStatusDropdownLabel(semester.eligible) || '—'}
+                              </span>
+                            ) : (
+                              <select
+                                value={normalizeScholarshipStatusValue(semester.eligible) || ''}
+                                onChange={(e) => updateSemesterField(yearIndex, semesterIndex, e.target.value)}
+                                className="px-1 py-0.5 border border-gray-200 rounded text-[11px] text-gray-800 bg-white shrink-0"
+                              >
+                                {ELIGIBLE_OPTIONS.map((option) => (
+                                  <option key={option.value || 'blank'} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Remarks if present */}
+                    {semesters.some((s) => s.remark) && (
+                      <div className="text-[10px] text-gray-500 pt-0.5 truncate">
+                        Remark: {semesters.map((s) => s.remark).filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
