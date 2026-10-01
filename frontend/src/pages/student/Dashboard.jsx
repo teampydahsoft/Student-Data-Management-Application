@@ -60,7 +60,7 @@ const Dashboard = () => {
         return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
     }, [studentData, user]);
 
-    // Animated gender avatar based on student's gender
+    // Animated gender avatar based on student's gender (Ultra-fast WebP format)
     const genderAvatar = useMemo(() => {
         const data = studentData || user;
         let genderVal = '';
@@ -89,10 +89,18 @@ const Dashboard = () => {
 
         const isFemale = genderVal === 'f' || genderVal === 'female' || genderVal === 'girl' || genderVal === 'woman';
         return {
-            icon: isFemale ? '/images/girlanimated.png' : '/images/boy-animated-final.png',
+            icon: isFemale ? '/images/girlanimated.webp' : '/images/boy-animated-final.webp',
             alt: isFemale ? 'Female Student Avatar' : 'Male Student Avatar'
         };
     }, [studentData, user]);
+
+    // Pre-cache avatar images in memory for zero-latency instant rendering
+    useEffect(() => {
+        const pre1 = new Image();
+        pre1.src = '/images/boy-animated-final.webp';
+        const pre2 = new Image();
+        pre2.src = '/images/girlanimated.webp';
+    }, []);
 
     // Check if profile is verified
     const isProfileVerified = useMemo(() => {
@@ -778,6 +786,9 @@ const Dashboard = () => {
                     <img
                         src={genderAvatar.icon}
                         alt={genderAvatar.alt}
+                        loading="eager"
+                        fetchpriority="high"
+                        decoding="sync"
                         className="h-[110%] sm:h-[120%] w-auto max-w-none object-cover object-right opacity-95 filter drop-shadow-xl hover:scale-105 transition-transform duration-300 pointer-events-none"
                     />
                 </div>
