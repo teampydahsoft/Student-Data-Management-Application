@@ -60,17 +60,17 @@ const Dashboard = () => {
         return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
     }, [studentData, user]);
 
-    // Dynamic time of day greeting (Good Morning, Afternoon, Evening, Night)
+    // Dynamic time of day greeting (Good Morning, Afternoon, Evening, Night) with dynamic image icons
     const timeGreeting = useMemo(() => {
         const hour = new Date().getHours();
         if (hour >= 4 && hour < 12) {
-            return { greeting: 'Good Morning' };
+            return { greeting: 'Good Morning', icon: '/images/time_of_day/morning.png', alt: 'Good Morning Sun' };
         } else if (hour >= 12 && hour < 17) {
-            return { greeting: 'Good Afternoon' };
+            return { greeting: 'Good Afternoon', icon: '/images/time_of_day/afternoon.png', alt: 'Good Afternoon Sun' };
         } else if (hour >= 17 && hour < 22) {
-            return { greeting: 'Good Evening' };
+            return { greeting: 'Good Evening', icon: '/images/time_of_day/evening.png', alt: 'Good Evening Sunset' };
         } else {
-            return { greeting: 'Good Night' };
+            return { greeting: 'Good Night', icon: '/images/time_of_day/night.png', alt: 'Good Night Moon' };
         }
     }, []);
 
@@ -749,8 +749,21 @@ const Dashboard = () => {
                 {/* Subtle Background Glow */}
                 <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/10 -mr-12 -mt-12 blur-2xl pointer-events-none"></div>
 
-                <div className="relative z-10 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                {/* Larger Dynamic Time of Day Background Image (Settled into Card Background) */}
+                <div
+                    onClick={() => navigate('/student/profile')}
+                    className="absolute right-0 top-0 bottom-0 h-full w-28 sm:w-36 pointer-events-auto cursor-pointer hover:scale-105 transition-transform duration-300 z-0 flex items-center justify-end pr-1 sm:pr-3"
+                    title={`${timeGreeting.greeting} - View Profile`}
+                >
+                    <img
+                        src={timeGreeting.icon}
+                        alt={timeGreeting.alt}
+                        className="h-full w-full object-contain object-right opacity-85 filter drop-shadow-xl"
+                    />
+                </div>
+
+                <div className="relative z-10 flex items-center justify-between gap-3 pointer-events-none">
+                    <div className="flex items-center gap-3 min-w-0 pointer-events-auto">
                         {/* Profile Photo */}
                         <div className="relative shrink-0">
                             <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full p-0.5 bg-white/20 backdrop-blur-md shadow-md border border-white/30">
@@ -793,15 +806,6 @@ const Dashboard = () => {
                             </div>
                         </div>
                     </div>
-
-                    {/* Right Arrow Button */}
-                    <button
-                        onClick={() => navigate('/student/profile')}
-                        className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
-                        title="View Profile"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
                 </div>
             </header>
 
