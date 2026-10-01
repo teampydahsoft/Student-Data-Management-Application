@@ -409,7 +409,6 @@ const FeeManagement = () => {
                     </div>
                 </div>
 
-<<<<<<< HEAD
                 {/* Single Combined Card Container for all Year Breakdown Accordions */}
                 <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs divide-y divide-slate-200 mt-2">
                     {[...availableYears].sort((a, b) => b - a).map(yr => {
