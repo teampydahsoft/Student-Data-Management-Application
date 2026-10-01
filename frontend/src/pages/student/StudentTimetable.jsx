@@ -200,6 +200,29 @@ const StudentTimetable = () => {
         );
     };
 
+    if (loading) {
+        return (
+            <div className="space-y-6 animate-pulse p-3 sm:p-6">
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-6 md:p-8 space-y-3">
+                    <SkeletonBox height="h-8" width="w-48" className="rounded-xl" />
+                    <SkeletonBox height="h-4" width="w-32" />
+                </div>
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-4 sm:p-6 space-y-4">
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <SkeletonBox key={i} height="h-10" width="w-20" className="rounded-xl shrink-0" />
+                        ))}
+                    </div>
+                    <div className="space-y-3">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <SkeletonBox key={i} height="h-20" className="w-full rounded-2xl" />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
             {/* Header Section */}

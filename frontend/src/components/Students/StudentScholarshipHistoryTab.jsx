@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, Save, Loader2, AlertTriangle, GraduationCap, History, X, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../../config/api';
 import LoadingAnimation from '../LoadingAnimation';
+import { SkeletonBox } from '../SkeletonLoader';
 import toast from 'react-hot-toast';
 import {
   SCHOLARSHIP_STATUS_DROPDOWN_OPTIONS,
@@ -1342,8 +1343,23 @@ const StudentScholarshipHistoryTab = ({
 
   if (loading) {
     return (
-      <div className="py-16 flex justify-center">
-        <LoadingAnimation message="Loading scholarship history..." />
+      <div className="space-y-4 animate-pulse p-3">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+          <SkeletonBox height="h-4" width="w-36" />
+          <div className="flex justify-between items-center">
+            <SkeletonBox height="h-8" width="w-28" className="rounded-lg" />
+            <SkeletonBox height="h-6" width="w-24" className="rounded-full" />
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+          <SkeletonBox height="h-4" width="w-48" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+              <SkeletonBox height="h-4" width="w-1/3" />
+              <SkeletonBox height="h-3" width="w-2/3" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

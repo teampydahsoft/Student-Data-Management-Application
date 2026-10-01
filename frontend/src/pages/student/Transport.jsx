@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import transportService from '../../services/transportService';
 import useAuthStore from '../../store/authStore';
 import { toast } from 'react-hot-toast';
+import { SkeletonBox } from '../../components/SkeletonLoader';
 import {
     RiBusFill,
     RiMapPin2Fill,
@@ -510,11 +511,17 @@ const Transport = () => {
 
     if (loading) {
         return (
-            <div className="max-w-7xl mx-auto min-h-[70vh] flex flex-col items-center justify-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-pulse shadow-sm">
-                    <RiBusFill size={26} />
+            <div className="max-w-7xl mx-auto space-y-4 animate-pulse p-3 sm:p-4">
+                <div className="bg-white rounded-2xl p-4 border border-gray-100 space-y-3">
+                    <div className="flex justify-between items-center">
+                        <SkeletonBox height="h-6" width="w-36" />
+                        <SkeletonBox height="h-5" width="w-20" className="rounded-full" />
+                    </div>
+                    <SkeletonBox height="h-4" width="w-56" />
                 </div>
-                <p className="text-gray-500 font-medium text-sm">Connecting to Pydah Live GPS Satellite Telemetry...</p>
+                <div className="bg-white rounded-2xl p-4 border border-gray-100 space-y-3 min-h-[350px]">
+                    <SkeletonBox height="h-full" className="w-full min-h-[320px] rounded-xl" />
+                </div>
             </div>
         );
     }

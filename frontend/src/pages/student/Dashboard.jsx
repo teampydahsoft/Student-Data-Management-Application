@@ -1165,42 +1165,7 @@ const Dashboard = () => {
                         </div>
                     )}
 
-                    {/* Services Widget */}
-                    {isEnabled('services') && (
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col justify-between sm:col-span-2 lg:col-span-1">
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                        <FileText size={16} className="text-emerald-600" />
-                                        Digital Services
-                                    </h3>
-                                    <Link to="/student/services" className="text-sky-700 hover:bg-sky-50 p-1 rounded-lg">
-                                        <ArrowRight size={14} />
-                                    </Link>
-                                </div>
-                                {serviceRequests.length > 0 ? (
-                                    <div className="space-y-1.5">
-                                        {serviceRequests.slice(0, 2).map(req => (
-                                            <div key={req.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
-                                                <span className="font-bold text-[11px] text-slate-800 truncate mr-2">{req.service_name}</span>
-                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${getStatusColor(req.status)}`}>
-                                                    {req.status === 'ready_to_collect' ? 'Ready' : req.status.replace('_', ' ')}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-400">Apply for Study, Custodian or NOC certificates online.</p>
-                                )}
-                            </div>
-                            <Link
-                                to="/student/services"
-                                className="w-full mt-3 py-2 bg-sky-500 text-white text-center font-bold rounded-xl hover:bg-sky-600 transition text-xs uppercase tracking-wider block"
-                            >
-                                New Request
-                            </Link>
-                        </div>
-                    )}
+
                 </div>
             )}
         </div>

@@ -13,6 +13,7 @@ import {
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 import LoadingAnimation from '../../components/LoadingAnimation';
+import { SkeletonBox } from '../../components/SkeletonLoader';
 
 const StudentFeedback = () => {
     const [loading, setLoading] = useState(true);
@@ -202,7 +203,25 @@ const StudentFeedback = () => {
         }
     };
 
-    if (loading) return <LoadingAnimation />;
+    if (loading) {
+        return (
+            <div className="max-w-7xl mx-auto space-y-6 animate-pulse p-3 sm:p-4">
+                <div className="space-y-2">
+                    <SkeletonBox height="h-8" width="w-56" className="rounded-xl" />
+                    <SkeletonBox height="h-3" width="w-44" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                            <SkeletonBox height="h-5" width="w-3/4" />
+                            <SkeletonBox height="h-4" width="w-1/2" />
+                            <SkeletonBox height="h-10" className="w-full rounded-xl" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     // Group items by submitted status for visual separation? Or just grid.
     const pendingItems = feedbackItems.filter(i => !i.isSubmitted);
