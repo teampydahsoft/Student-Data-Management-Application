@@ -113,8 +113,7 @@ const FeeManagement = () => {
     const [txModeFilter, setTxModeFilter] = useState('All');
     const [txHeadFilter, setTxHeadFilter] = useState('All');
 
-    // Selection checkboxes
-    const [selectedRows, setSelectedRows] = useState({});
+
 
     const fetchFeeDetails = async () => {
         if (!user?.admission_number) return;
@@ -345,26 +344,7 @@ const FeeManagement = () => {
         return Array.from(heads);
     }, [transactions]);
 
-    const handleSelectAll = (e) => {
-        const checked = e.target.checked;
-        const newSel = {};
-        if (checked) {
-            currentYearInvoices.forEach(row => {
-                newSel[row.rowKey] = true;
-            });
-        }
-        setSelectedRows(newSel);
-    };
 
-    const toggleRowSelect = (key) => {
-        setSelectedRows(prev => ({
-            ...prev,
-            [key]: !prev[key]
-        }));
-    };
-
-    const isAllSelected = currentYearInvoices.length > 0 &&
-        currentYearInvoices.every(row => selectedRows[row.rowKey]);
 
 
 
@@ -535,14 +515,6 @@ const FeeManagement = () => {
                     <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
                             <tr>
-                                <th className="py-3 px-4 w-12 text-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={isAllSelected}
-                                        onChange={handleSelectAll}
-                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                    />
-                                </th>
                                 <th className="py-3 px-4 min-w-[240px]">FEE HEAD / YEAR</th>
                                 <th className="py-3 px-4 text-right">TOTAL FEE</th>
                                 <th className="py-3 px-4 text-center">T1 DUE</th>
@@ -560,14 +532,6 @@ const FeeManagement = () => {
                                         key={row.rowKey}
                                         className="hover:bg-slate-50/60 transition-colors group"
                                     >
-                                        <td className="py-3.5 px-4 text-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!selectedRows[row.rowKey]}
-                                                onChange={() => toggleRowSelect(row.rowKey)}
-                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            />
-                                        </td>
                                         <td className="py-3.5 px-4">
                                             <div className="flex items-center gap-1 font-bold text-slate-800">
                                                 <span>{row.headTitle}</span>
@@ -616,7 +580,7 @@ const FeeManagement = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                                    <td colSpan={8} className="py-8 text-center text-slate-400 text-xs">
                                         No fee records found for Year {selectedYear}.
                                     </td>
                                 </tr>
@@ -625,7 +589,6 @@ const FeeManagement = () => {
                             {/* TOTAL Row */}
                             {currentYearInvoices.length > 0 && (
                                 <tr className="bg-slate-50/50 font-black border-t-2 border-slate-200 text-slate-800">
-                                    <td className="py-4 px-4"></td>
                                     <td className="py-4 px-4">
                                         <div className="uppercase tracking-wider text-xs">TOTAL</div>
                                         <div className="text-[11px] text-slate-400 font-normal">Year {selectedYear}</div>

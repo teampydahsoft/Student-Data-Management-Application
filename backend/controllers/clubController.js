@@ -5,6 +5,7 @@ const fs = require('fs');
 const Transaction = require('../MongoDb-Models/Transaction');
 
 const StudentFee = require('../MongoDb-Models/StudentFee');
+const FeeHead = require('../MongoDb-Models/FeeHead');
 const DEFAULT_CLUB_ADMIN_PAGES = ['management', 'students', 'settings'];
 const getClubFeeTransactionName = (remarks) => String(remarks || '')
     .trim()
@@ -475,8 +476,8 @@ const updateMembershipStatus = async (req, res) => {
             const newPaymentStatus = fee > 0 ? 'payment_due' : 'NA';
 
             const [result] = await masterPool.query(
-                'UPDATE club_members SET status = ?, payment_status = ?, fee_type = ? WHERE club_id = ? AND student_id = ?',
-                [status, newPaymentStatus, feeType, clubId, studentId]
+                'UPDATE club_members SET status = ?, payment_status = ?, fee_type = ? WHERE club_id = ? AND (student_id = ? OR id = ?)',
+                [status, newPaymentStatus, feeType, clubId, studentId, studentId]
             );
 
             if (result.affectedRows === 0) {
@@ -512,8 +513,8 @@ const updateMembershipStatus = async (req, res) => {
 
             // For rejection, just update status
             const [result] = await masterPool.query(
-                'UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND student_id = ?',
-                [status, 'NA', clubId, studentId]
+                'UPDATE club_members SET status = ?, payment_status = ? WHERE club_id = ? AND (student_id = ? OR id = ?)',
+                [status, 'NA', clubId, studentId, studentId]
             );
 
             if (result.affectedRows === 0) {
@@ -708,7 +709,14 @@ const getClubDetails = async (req, res) => {
                         cm.fee_type, cm.joined_at,
                         COALESCE(s.student_name, '') as student_name, 
                         COALESCE(s.admission_number, '') as admission_number,
-                        COALESCE(s.student_mobile, '') as student_mobile
+                        COALESCE(s.pin_no, '') as pin_no,
+                        COALESCE(s.student_mobile, '') as student_mobile,
+                        COALESCE(s.email, '') as email,
+                        COALESCE(s.college, '') as college,
+                        COALESCE(s.course, '') as course,
+                        COALESCE(s.branch, '') as branch,
+                        COALESCE(s.current_year, 1) as current_year,
+                        COALESCE(s.current_semester, 1) as current_semester
                  FROM club_members cm 
                  LEFT JOIN students s ON (cm.student_id = s.id OR cm.student_id = s.admission_number)
                  WHERE cm.club_id = ?
@@ -716,6 +724,70 @@ const getClubDetails = async (req, res) => {
                 [clubId]
             );
             members = rows || [];
+
+            // Check and sync payment details from MongoDB if club has fee
+            if (members.length > 0 && Number(club.membership_fee) > 0) {
+                const normalizedClubName = String(club.name || '').trim().toLowerCase();
+                const admissionNumbers = members.map(m => m.admission_number).filter(Boolean);
+                if (admissionNumbers.length > 0) {
+                    try {
+                        const clubFeeHead = await FeeHead.findOne({ $or: [{ code: 'CF' }, { name: 'Club Fee' }] }).select('_id');
+                        const txQuery = {
+                            studentId: { $in: admissionNumbers },
+                            transactionType: 'DEBIT',
+                            status: { $nin: ['cancelled', 'transferred'] }
+                        };
+                        if (clubFeeHead) {
+                            txQuery.$or = [
+                                { feeHead: clubFeeHead._id },
+                                { remarks: { $regex: new RegExp(normalizedClubName, 'i') } }
+                            ];
+                        } else {
+                            txQuery.remarks = { $regex: new RegExp(normalizedClubName, 'i') };
+                        }
+
+                        const txs = await Transaction.find(txQuery).select('studentId amount remarks').lean();
+                        const paidMap = new Map();
+                        txs.forEach(tx => {
+                            if (tx.remarks && !tx.remarks.toLowerCase().includes(normalizedClubName)) return;
+                            const prev = paidMap.get(tx.studentId) || 0;
+                            paidMap.set(tx.studentId, prev + (Number(tx.amount) || 0));
+                        });
+
+                        const requiredFee = Number(club.membership_fee) || 0;
+                        const autoApprovePromises = [];
+                        members = members.map(m => {
+                            const paid = paidMap.get(m.admission_number) || 0;
+                            const isPaid = requiredFee <= 0 || paid >= requiredFee;
+                            const due = Math.max(0, requiredFee - paid);
+                            const nextStatus = isPaid ? 'approved' : 'pending';
+                            const nextPaymentStatus = isPaid ? 'paid' : (m.payment_status === 'NA' ? 'NA' : 'payment_due');
+
+                            if (isPaid && (m.status !== 'approved' || m.payment_status !== 'paid')) {
+                                autoApprovePromises.push(
+                                    masterPool.query(
+                                        'UPDATE club_members SET status = "approved", payment_status = "paid" WHERE club_id = ? AND (student_id = ? OR id = ?)',
+                                        [clubId, m.student_id, m.id]
+                                    ).catch(e => console.error('Auto-approval error on fee payment:', e.message))
+                                );
+                            }
+
+                            return {
+                                ...m,
+                                paid_amount: paid,
+                                due_amount: due,
+                                status: nextStatus,
+                                payment_status: nextPaymentStatus
+                            };
+                        });
+                        if (autoApprovePromises.length > 0) {
+                            await Promise.allSettled(autoApprovePromises);
+                        }
+                    } catch (txErr) {
+                        console.error('Error fetching transactions for club members in getClubDetails:', txErr);
+                    }
+                }
+            }
         } catch (memErr) {
             console.error('Error fetching club members for club details:', memErr.message);
             members = [];
