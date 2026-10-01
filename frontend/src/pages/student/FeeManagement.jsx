@@ -548,7 +548,7 @@ const FeeManagement = () => {
                                                                                     <td className="px-3 py-2 text-right text-green-700">{formatCurrency(paid)}</td>
                                                                                     <td className="px-3 py-2 text-right font-semibold">{formatCurrency(due)}</td>
                                                                                     <td className="px-3 py-2 text-right">
-                                                                                        {due > 0 ? <button onClick={() => handlePayment(due, invoice)} disabled={paymentLoading} className="rounded-md bg-indigo-50 px-2.5 py-1.5 font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">Pay</button> : <span className="text-green-700">Paid</span>}
+                                                                                        {due > 0 ? <span className="font-semibold text-red-600">Due</span> : <span className="font-semibold text-green-700">Paid</span>}
                                                                                     </td>
                                                                                 </tr>
                                                                             );
@@ -641,13 +641,9 @@ const FeeManagement = () => {
                                                             Paid
                                                         </span>
                                                     ) : (
-                                                        <button
-                                                            onClick={() => handlePayment(itemDue, inv)}
-                                                            disabled={paymentLoading}
-                                                            className="px-3 py-1.5 bg-indigo-50 text-indigo-600 font-bold text-xs rounded-lg hover:bg-indigo-100 transition disabled:opacity-50"
-                                                        >
-                                                            Pay Now
-                                                        </button>
+                                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-100 block w-fit mx-auto">
+                                                            Due
+                                                        </span>
                                                     )}
                                                 </td>
                                             </tr>
@@ -717,7 +713,7 @@ const FeeManagement = () => {
                                                                         <p className="mt-1 text-[11px] text-gray-500">Year {invoice.studentYear}{invoice.semester ? ` · Sem ${invoice.semester}` : ''} · Fee {formatCurrency(invoice.amount)} · Paid {formatCurrency(paid)} · Balance {formatCurrency(due)}</p>
                                                                     </div>
                                                                     {due > 0 ? (
-                                                                        <button onClick={() => handlePayment(due, invoice)} disabled={paymentLoading} className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Pay</button>
+                                                                        <span className="shrink-0 text-xs font-semibold text-red-600">Due</span>
                                                                     ) : <span className="shrink-0 text-xs font-semibold text-green-700">Paid</span>}
                                                                 </div>
                                                             </div>
@@ -785,15 +781,7 @@ const FeeManagement = () => {
                                                 </div>
                                             </div>
 
-                                            {!isFullyPaid && (
-                                                <button
-                                                    onClick={() => handlePayment(itemDue, inv)}
-                                                    disabled={paymentLoading}
-                                                    className="w-full py-2 bg-indigo-600 text-white font-semibold text-xs rounded-lg hover:bg-indigo-700 transition"
-                                                >
-                                                    Pay Balance ({formatCurrency(itemDue)})
-                                                </button>
-                                            )}
+
                                         </div>
                                     )
                                 })
