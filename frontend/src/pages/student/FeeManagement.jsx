@@ -115,8 +115,7 @@ const FeeManagement = () => {
     const [txModeFilter, setTxModeFilter] = useState('All');
     const [txHeadFilter, setTxHeadFilter] = useState('All');
 
-    // Selection checkboxes
-    const [selectedRows, setSelectedRows] = useState({});
+
 
     // Expandable years for breakdown accordions
     const [expandedYears, setExpandedYears] = useState({});
@@ -359,26 +358,7 @@ const FeeManagement = () => {
         return Array.from(heads);
     }, [transactions]);
 
-    const handleSelectAll = (e) => {
-        const checked = e.target.checked;
-        const newSel = {};
-        if (checked) {
-            currentYearInvoices.forEach(row => {
-                newSel[row.rowKey] = true;
-            });
-        }
-        setSelectedRows(newSel);
-    };
 
-    const toggleRowSelect = (key) => {
-        setSelectedRows(prev => ({
-            ...prev,
-            [key]: !prev[key]
-        }));
-    };
-
-    const isAllSelected = currentYearInvoices.length > 0 &&
-        currentYearInvoices.every(row => selectedRows[row.rowKey]);
 
 
 
@@ -429,6 +409,7 @@ const FeeManagement = () => {
                     </div>
                 </div>
 
+<<<<<<< HEAD
                 {/* Single Combined Card Container for all Year Breakdown Accordions */}
                 <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs divide-y divide-slate-200 mt-2">
                     {[...availableYears].sort((a, b) => b - a).map(yr => {
@@ -459,6 +440,129 @@ const FeeManagement = () => {
                                         <span className="text-[8.5px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">
                                             Total: {formatNumber(yrStats.total)} • Paid: {formatNumber(yrStats.paid)}
                                         </span>
+=======
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            <tr>
+                                <th className="py-3 px-4 min-w-[240px]">FEE HEAD / YEAR</th>
+                                <th className="py-3 px-4 text-right">TOTAL FEE</th>
+                                <th className="py-3 px-4 text-center">T1 DUE</th>
+                                <th className="py-3 px-4 text-center">T2 DUE</th>
+                                <th className="py-3 px-4 text-right">PAID</th>
+                                <th className="py-3 px-4 text-right text-purple-600">CONCESSION</th>
+                                <th className="py-3 px-4 text-right">BALANCE</th>
+                                <th className="py-3 px-4 text-center">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {currentYearInvoices.length > 0 ? (
+                                currentYearInvoices.map((row) => (
+                                    <tr
+                                        key={row.rowKey}
+                                        className="hover:bg-slate-50/60 transition-colors group"
+                                    >
+                                        <td className="py-3.5 px-4">
+                                            <div className="flex items-center gap-1 font-bold text-slate-800">
+                                                <span>{row.headTitle}</span>
+                                                <ChevronRight size={13} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 mt-0.5">
+                                                {row.yearSemLabel}
+                                            </div>
+                                        </td>
+                                        <td className="py-3.5 px-4 text-right font-medium text-slate-800">
+                                            {formatNumber(row.totalFee)}
+                                        </td>
+                                        <td className={`py-3.5 px-4 text-center font-semibold ${row.t1Due !== '—' && row.t1Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                            {row.t1Due}
+                                        </td>
+                                        <td className={`py-3.5 px-4 text-center font-semibold ${row.t2Due !== '—' && row.t2Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                            {row.t2Due}
+                                        </td>
+                                        <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
+                                            {formatNumber(row.paid)}
+                                        </td>
+                                        <td className="py-3.5 px-4 text-right font-bold text-purple-600">
+                                            {formatNumber(row.concession)}
+                                        </td>
+                                        <td className="py-3.5 px-4 text-right font-bold text-slate-800">
+                                            {formatNumber(row.balance)}
+                                        </td>
+                                        <td className="py-3.5 px-4 text-center">
+                                            {row.status === 'Paid' && (
+                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                                    Paid
+                                                </span>
+                                            )}
+                                            {row.status === 'Unpaid' && (
+                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200">
+                                                    Unpaid
+                                                </span>
+                                            )}
+                                            {row.status === 'Partial' && (
+                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200">
+                                                    Partial
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={8} className="py-8 text-center text-slate-400 text-xs">
+                                        No fee records found for Year {selectedYear}.
+                                    </td>
+                                </tr>
+                            )}
+
+                            {/* TOTAL Row */}
+                            {currentYearInvoices.length > 0 && (
+                                <tr className="bg-slate-50/50 font-black border-t-2 border-slate-200 text-slate-800">
+                                    <td className="py-4 px-4">
+                                        <div className="uppercase tracking-wider text-xs">TOTAL</div>
+                                        <div className="text-[11px] text-slate-400 font-normal">Year {selectedYear}</div>
+                                    </td>
+                                    <td className="py-4 px-4 text-right font-black">
+                                        {formatNumber(tableTotals.totalFee)}
+                                    </td>
+                                    <td className="py-4 px-4 text-center font-black text-rose-600">
+                                        {tableTotals.t1Due}
+                                    </td>
+                                    <td className="py-4 px-4 text-center font-black text-rose-600">
+                                        {tableTotals.t2Due}
+                                    </td>
+                                    <td className="py-4 px-4 text-right font-black text-emerald-600">
+                                        {formatNumber(tableTotals.paid)}
+                                    </td>
+                                    <td className="py-4 px-4 text-right font-black text-purple-600">
+                                        {formatNumber(tableTotals.concession)}
+                                    </td>
+                                    <td className="py-4 px-4 text-right font-black text-rose-600 text-sm">
+                                        {formatNumber(tableTotals.balance)}
+                                    </td>
+                                    <td className="py-4 px-4"></td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile Card List View for Fee Breakdown */}
+                <div className="md:hidden divide-y divide-slate-100 p-3 sm:p-4 space-y-3">
+                    {currentYearInvoices.length > 0 ? (
+                        currentYearInvoices.map((row) => (
+                            <div key={row.rowKey} className="pt-3 first:pt-0">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                    <div>
+                                        <div className="font-bold text-slate-800 text-xs leading-snug">
+                                            {row.headTitle}
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            {row.yearSemLabel}
+                                        </div>
+>>>>>>> d3d09e53ee99dff005201a9eb27d13238c6c29a7
                                     </div>
                                     <div className="flex items-center gap-1.5 text-slate-500">
                                         <span className="text-[11px] font-semibold hidden sm:inline">

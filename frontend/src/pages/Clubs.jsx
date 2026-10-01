@@ -3,7 +3,8 @@ import {
     Plus, Users, X, Trash2, Check, Edit2, Shield, Wallet,
     ArrowRight, Zap, Search, Settings, UserCheck, CheckCircle,
     AlertTriangle, UserPlus, RefreshCw, Eye, Bell, BellOff,
-    MessageSquare, Calendar, Clock, Send, Hash, Paperclip, ChevronDown
+    MessageSquare, Calendar, Clock, Send, Hash, Paperclip, ChevronDown,
+    DollarSign, AlertCircle, CheckCircle2, Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -542,7 +543,7 @@ const Clubs = ({ initialSubPage }) => {
 
     useEffect(() => {
         if (viewMode !== 'details' || !selectedClub || isAdmin) return;
-        const tabPage = { overview: 'management', activities: 'management', chat: 'management', members: 'students', admins: 'settings', settings: 'settings' };
+        const tabPage = { overview: 'management', activities: 'management', chat: 'management', members: 'students', pending: 'students', admins: 'settings', settings: 'settings' };
         if (getClubPageAccess(selectedClub.id, tabPage[detailsTab]).read) return;
         const firstAvailableTab = [
             ['management', 'overview'],
@@ -566,6 +567,20 @@ const Clubs = ({ initialSubPage }) => {
     const [studentSearch, setStudentSearch] = useState('');
     const [studentClubFilter, setStudentClubFilter] = useState('');
     const [studentStatusFilter, setStudentStatusFilter] = useState('');
+
+    // Filter states for Pending Students tab in Details view
+    const [pendingSearch, setPendingSearch] = useState('');
+    const [pendingCollege, setPendingCollege] = useState('');
+    const [pendingCourse, setPendingCourse] = useState('');
+    const [pendingBranch, setPendingBranch] = useState('');
+    const [pendingYear, setPendingYear] = useState('');
+
+    // Filter states for Members tab in Details view
+    const [memberSearch, setMemberSearch] = useState('');
+    const [memberCollege, setMemberCollege] = useState('');
+    const [memberCourse, setMemberCourse] = useState('');
+    const [memberBranch, setMemberBranch] = useState('');
+    const [memberYear, setMemberYear] = useState('');
 
     // Modal States
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1188,6 +1203,12 @@ const Clubs = ({ initialSubPage }) => {
                 toast.success(`Request ${status} successfully`);
                 fetchClubs();
                 fetchStudents();
+                if (selectedClub && selectedClub.id === clubId) {
+                    const updatedClub = await clubService.getClubDetails(clubId);
+                    if (updatedClub?.success && updatedClub?.data) {
+                        setSelectedClub(updatedClub.data);
+                    }
+                }
             }
         } catch (error) {
             toast.error(`Failed to ${status} request`);
@@ -1365,7 +1386,9 @@ const Clubs = ({ initialSubPage }) => {
                             {/* Inner Navigation Tabs Bar */}
                             {(() => {
                                 const approvedMembers = (selectedClub?.members || []).filter(m => m.status === 'approved');
-                                const pendingRequests = (selectedClub?.members || []).filter(m => m.status === 'pending');
+                                const pendingFeeStudents = (selectedClub?.members || []).filter(m =>
+                                    m.payment_status === 'payment_due' || Number(m.due_amount) > 0 || (Number(selectedClub?.membership_fee) > 0 && m.status !== 'approved')
+                                );
                                 const clubActivities = selectedClub?.activities || [];
 
                                 return (
@@ -1376,6 +1399,7 @@ const Clubs = ({ initialSubPage }) => {
                                                 {[
                                                     { key: 'overview', label: 'Overview', pageKey: 'management', icon: Shield },
                                                     { key: 'members', label: `Members`, pageKey: 'students', count: approvedMembers.length, icon: Users },
+                                                    { key: 'pending', label: `Pending`, pageKey: 'students', count: pendingFeeStudents.length, icon: Clock },
                                                     { key: 'activities', label: `Activities`, pageKey: 'management', count: clubActivities.length, icon: Calendar },
                                                     { key: 'chat', label: 'Chat', pageKey: 'management', icon: MessageSquare },
                                                     { key: 'admins', label: 'Club Admins', pageKey: 'settings', count: selectedClub?.admin_roles?.length || 0, icon: UserCheck },
@@ -1424,8 +1448,8 @@ const Clubs = ({ initialSubPage }) => {
                                                         <p className="text-2xl font-bold text-gray-900 mt-1">{approvedMembers.length}</p>
                                                     </div>}
                                                     {getClubPageAccess(selectedClub?.id, 'students').read && <div className="p-4 rounded-xl border border-gray-100 bg-amber-50/50">
-                                                        <p className="text-xs text-amber-600 font-medium">Pending Requests</p>
-                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{pendingRequests.length}</p>
+                                                        <p className="text-xs text-amber-600 font-medium">Fee Pending Students</p>
+                                                        <p className="text-2xl font-bold text-gray-900 mt-1">{pendingFeeStudents.length}</p>
                                                     </div>}
                                                     <div className="p-4 rounded-xl border border-gray-100 bg-green-50/50">
                                                         <p className="text-xs text-green-600 font-medium">Membership Fee</p>
@@ -1508,46 +1532,410 @@ const Clubs = ({ initialSubPage }) => {
                                         )}
 
                                         {/* TAB 2: MEMBERS */}
-                                        {detailsTab === 'members' && (
-                                            <div className="space-y-4 pt-2">
-                                                <div className="flex justify-between items-center">
-                                                    <h3 className="text-base font-bold text-gray-900">Approved Student Members ({approvedMembers.length})</h3>
-                                                </div>
-                                                <div className="overflow-x-auto border rounded-xl">
-                                                    <table className="w-full text-left text-xs">
-                                                        <thead className="bg-gray-50 border-b text-gray-600 uppercase font-semibold">
-                                                            <tr>
-                                                                <th className="p-3">Student Name</th>
-                                                                <th className="p-3">Admission No</th>
-                                                                <th className="p-3">Contact</th>
-                                                                <th className="p-3">Joined Date</th>
-                                                                <th className="p-3">Payment Status</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y">
-                                                            {approvedMembers.map((m, idx) => (
-                                                                <tr key={idx} className="hover:bg-gray-50/50">
-                                                                    <td className="p-3 font-semibold text-gray-900">{m.student_name || m.name}</td>
-                                                                    <td className="p-3 text-gray-600">{m.admission_number}</td>
-                                                                    <td className="p-3 text-gray-500">{m.email || m.phone_number || m.student_mobile}</td>
-                                                                    <td className="p-3 text-gray-500">{m.joined_at ? new Date(m.joined_at).toLocaleDateString() : 'N/A'}</td>
-                                                                    <td className="p-3">
-                                                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-bold text-[10px]">
-                                                                            {m.payment_status || 'Paid'}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                            {approvedMembers.length === 0 && (
-                                                                <tr>
-                                                                    <td colSpan={5} className="p-8 text-center text-gray-400">No approved members found for this club yet.</td>
-                                                                </tr>
+                                        {detailsTab === 'members' && (() => {
+                                            const memberColleges = Array.from(new Set(approvedMembers.map(m => m.college).filter(Boolean))).sort();
+                                            const memberCourses = Array.from(new Set(approvedMembers.map(m => m.course).filter(Boolean))).sort();
+                                            const memberBranches = Array.from(new Set(approvedMembers.map(m => m.branch).filter(Boolean))).sort();
+                                            const memberYears = Array.from(new Set(approvedMembers.map(m => m.current_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+
+                                            const filteredMembers = approvedMembers.filter(m => {
+                                                if (memberCollege && String(m.college || '').toLowerCase() !== memberCollege.toLowerCase()) return false;
+                                                if (memberCourse && String(m.course || '').toLowerCase() !== memberCourse.toLowerCase()) return false;
+                                                if (memberBranch && String(m.branch || '').toLowerCase() !== memberBranch.toLowerCase()) return false;
+                                                if (memberYear && String(m.current_year || '') !== String(memberYear)) return false;
+                                                if (memberSearch.trim()) {
+                                                    const q = memberSearch.toLowerCase().trim();
+                                                    const name = String(m.student_name || m.name || '').toLowerCase();
+                                                    const adm = String(m.admission_number || m.pin_no || '').toLowerCase();
+                                                    const email = String(m.email || '').toLowerCase();
+                                                    const phone = String(m.student_mobile || m.phone_number || '').toLowerCase();
+                                                    const branch = String(m.branch || '').toLowerCase();
+                                                    const course = String(m.course || '').toLowerCase();
+                                                    const college = String(m.college || '').toLowerCase();
+                                                    if (!name.includes(q) && !adm.includes(q) && !email.includes(q) && !phone.includes(q) && !branch.includes(q) && !course.includes(q) && !college.includes(q)) {
+                                                        return false;
+                                                    }
+                                                }
+                                                return true;
+                                            });
+
+                                            const hasActiveMemberFilters = memberSearch || memberCollege || memberCourse || memberBranch || memberYear;
+
+                                            return (
+                                                <div className="space-y-4 pt-2">
+                                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                        <h3 className="text-base font-bold text-gray-900">
+                                                            Approved Student Members ({filteredMembers.length}{hasActiveMemberFilters ? ` of ${approvedMembers.length}` : ''})
+                                                        </h3>
+                                                    </div>
+
+                                                    {/* Filter Toolbar for Members */}
+                                                    <div className="flex flex-wrap items-center gap-2.5 bg-white p-3 rounded-xl border border-gray-200">
+                                                        {/* Search Box */}
+                                                        <div className="relative flex-1 min-w-[200px]">
+                                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                value={memberSearch}
+                                                                onChange={(e) => setMemberSearch(e.target.value)}
+                                                                placeholder="Search by name, PIN, branch..."
+                                                                className="w-full pl-9 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                                            />
+                                                            {memberSearch && (
+                                                                <button
+                                                                    onClick={() => setMemberSearch('')}
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
                                                             )}
-                                                        </tbody>
-                                                    </table>
+                                                        </div>
+
+                                                        {/* College */}
+                                                        <select
+                                                            value={memberCollege}
+                                                            onChange={(e) => setMemberCollege(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Colleges</option>
+                                                            {memberColleges.map(c => (
+                                                                <option key={c} value={c}>{c}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Course */}
+                                                        <select
+                                                            value={memberCourse}
+                                                            onChange={(e) => setMemberCourse(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Courses</option>
+                                                            {memberCourses.map(c => (
+                                                                <option key={c} value={c}>{c}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Branch */}
+                                                        <select
+                                                            value={memberBranch}
+                                                            onChange={(e) => setMemberBranch(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Branches</option>
+                                                            {memberBranches.map(b => (
+                                                                <option key={b} value={b}>{b}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Year */}
+                                                        <select
+                                                            value={memberYear}
+                                                            onChange={(e) => setMemberYear(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Years</option>
+                                                            {(memberYears.length > 0 ? memberYears : [1, 2, 3, 4]).map(y => (
+                                                                <option key={y} value={y}>Year {y}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {hasActiveMemberFilters && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setMemberSearch('');
+                                                                    setMemberCollege('');
+                                                                    setMemberCourse('');
+                                                                    setMemberBranch('');
+                                                                    setMemberYear('');
+                                                                }}
+                                                                className="px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-1"
+                                                            >
+                                                                <X size={12} /> Clear
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="overflow-x-auto border rounded-xl bg-white shadow-xs">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead className="bg-gray-50 border-b text-gray-600 uppercase font-semibold">
+                                                                <tr>
+                                                                    <th className="p-3">Student Name</th>
+                                                                    <th className="p-3">Admission No</th>
+                                                                    <th className="p-3">Academic Info</th>
+                                                                    <th className="p-3">Contact</th>
+                                                                    <th className="p-3">Joined Date</th>
+                                                                    <th className="p-3">Payment Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-gray-100">
+                                                                {filteredMembers.map((m, idx) => (
+                                                                    <tr key={m.id || m.student_id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                                                        <td className="p-3 font-semibold text-gray-900">{m.student_name || m.name}</td>
+                                                                        <td className="p-3 font-mono text-gray-600">{m.admission_number || m.student_id || '—'}</td>
+                                                                        <td className="p-3 text-gray-700">
+                                                                            {m.course || m.branch ? (
+                                                                                <div>
+                                                                                    <p className="font-medium">{[m.course, m.branch].filter(Boolean).join(' • ')}</p>
+                                                                                    <p className="text-[11px] text-gray-500">
+                                                                                        {m.college ? `${m.college} • ` : ''}{m.current_year ? `Year ${m.current_year}` : ''}
+                                                                                    </p>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span className="text-gray-400 italic">Not available</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="p-3 text-gray-500">{m.email || m.phone_number || m.student_mobile || '—'}</td>
+                                                                        <td className="p-3 text-gray-500">{m.joined_at ? new Date(m.joined_at).toLocaleDateString() : 'N/A'}</td>
+                                                                        <td className="p-3">
+                                                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-bold text-[10px]">
+                                                                                {m.payment_status || 'Paid'}
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                                {filteredMembers.length === 0 && (
+                                                                    <tr>
+                                                                        <td colSpan={6} className="p-8 text-center text-gray-400">
+                                                                            {hasActiveMemberFilters
+                                                                                ? 'No approved members match the selected filters.'
+                                                                                : 'No approved members found for this club yet.'}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
+
+                                        {/* TAB: PENDING STUDENTS & CLUB FEE PENDING */}
+                                        {detailsTab === 'pending' && (() => {
+                                            const pendingColleges = Array.from(new Set(pendingFeeStudents.map(m => m.college).filter(Boolean))).sort();
+                                            const pendingCourses = Array.from(new Set(pendingFeeStudents.map(m => m.course).filter(Boolean))).sort();
+                                            const pendingBranches = Array.from(new Set(pendingFeeStudents.map(m => m.branch).filter(Boolean))).sort();
+                                            const pendingYears = Array.from(new Set(pendingFeeStudents.map(m => m.current_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+
+                                            const filteredPending = pendingFeeStudents.filter(m => {
+                                                if (pendingCollege && String(m.college || '').toLowerCase() !== pendingCollege.toLowerCase()) return false;
+                                                if (pendingCourse && String(m.course || '').toLowerCase() !== pendingCourse.toLowerCase()) return false;
+                                                if (pendingBranch && String(m.branch || '').toLowerCase() !== pendingBranch.toLowerCase()) return false;
+                                                if (pendingYear && String(m.current_year || '') !== String(pendingYear)) return false;
+                                                if (pendingSearch.trim()) {
+                                                    const q = pendingSearch.toLowerCase().trim();
+                                                    const name = String(m.student_name || m.name || '').toLowerCase();
+                                                    const adm = String(m.admission_number || m.pin_no || '').toLowerCase();
+                                                    const email = String(m.email || '').toLowerCase();
+                                                    const phone = String(m.student_mobile || m.phone_number || '').toLowerCase();
+                                                    const branch = String(m.branch || '').toLowerCase();
+                                                    const course = String(m.course || '').toLowerCase();
+                                                    const college = String(m.college || '').toLowerCase();
+                                                    if (!name.includes(q) && !adm.includes(q) && !email.includes(q) && !phone.includes(q) && !branch.includes(q) && !course.includes(q) && !college.includes(q)) {
+                                                        return false;
+                                                    }
+                                                }
+                                                return true;
+                                            });
+
+                                            const hasActivePendingFilters = pendingSearch || pendingCollege || pendingCourse || pendingBranch || pendingYear;
+
+                                            return (
+                                                <div className="space-y-4 pt-2">
+                                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                        <div>
+                                                            <h3 className="text-base font-bold text-gray-900">
+                                                                Pending Students ({filteredPending.length}{hasActivePendingFilters ? ` of ${pendingFeeStudents.length}` : ''})
+                                                            </h3>
+                                                            <p className="text-xs text-gray-500">
+                                                                Students are automatically added as approved members once their club fee is paid.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Filter Toolbar for Pending Students */}
+                                                    <div className="flex flex-wrap items-center gap-2.5 bg-white p-3 rounded-xl border border-gray-200">
+                                                        {/* Search Box */}
+                                                        <div className="relative flex-1 min-w-[200px]">
+                                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                value={pendingSearch}
+                                                                onChange={(e) => setPendingSearch(e.target.value)}
+                                                                placeholder="Search by name, PIN, branch..."
+                                                                className="w-full pl-9 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                                            />
+                                                            {pendingSearch && (
+                                                                <button
+                                                                    onClick={() => setPendingSearch('')}
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* College */}
+                                                        <select
+                                                            value={pendingCollege}
+                                                            onChange={(e) => setPendingCollege(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Colleges</option>
+                                                            {pendingColleges.map(c => (
+                                                                <option key={c} value={c}>{c}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Course */}
+                                                        <select
+                                                            value={pendingCourse}
+                                                            onChange={(e) => setPendingCourse(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Courses</option>
+                                                            {pendingCourses.map(c => (
+                                                                <option key={c} value={c}>{c}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Branch */}
+                                                        <select
+                                                            value={pendingBranch}
+                                                            onChange={(e) => setPendingBranch(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Branches</option>
+                                                            {pendingBranches.map(b => (
+                                                                <option key={b} value={b}>{b}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {/* Year */}
+                                                        <select
+                                                            value={pendingYear}
+                                                            onChange={(e) => setPendingYear(e.target.value)}
+                                                            className="px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700"
+                                                        >
+                                                            <option value="">All Years</option>
+                                                            {(pendingYears.length > 0 ? pendingYears : [1, 2, 3, 4]).map(y => (
+                                                                <option key={y} value={y}>Year {y}</option>
+                                                            ))}
+                                                        </select>
+
+                                                        {hasActivePendingFilters && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setPendingSearch('');
+                                                                    setPendingCollege('');
+                                                                    setPendingCourse('');
+                                                                    setPendingBranch('');
+                                                                    setPendingYear('');
+                                                                }}
+                                                                className="px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-1"
+                                                            >
+                                                                <X size={12} /> Clear
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Pending Students Table */}
+                                                    <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white shadow-xs">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead className="bg-gray-50/90 border-b border-gray-200 text-gray-600 uppercase font-semibold">
+                                                                <tr>
+                                                                    <th className="p-3">Student Details</th>
+                                                                    <th className="p-3">Academic Info</th>
+                                                                    <th className="p-3">Club Fee Dues</th>
+                                                                    <th className="p-3">Membership Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-gray-100">
+                                                                {filteredPending.map((m, idx) => {
+                                                                    const feeAmount = m.due_amount !== undefined && m.due_amount !== null
+                                                                        ? Number(m.due_amount)
+                                                                        : (Number(selectedClub?.membership_fee) || 0);
+
+                                                                    return (
+                                                                        <tr key={m.id || m.student_id || idx} className="hover:bg-gray-50/80 transition-colors">
+                                                                            {/* Student Details */}
+                                                                            <td className="p-3">
+                                                                                <div className="flex items-center gap-2.5">
+                                                                                    <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs shrink-0">
+                                                                                        {(m.student_name || m.name || 'S').charAt(0).toUpperCase()}
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <p className="font-bold text-gray-900 leading-tight">
+                                                                                            {m.student_name || m.name || 'Unknown Student'}
+                                                                                        </p>
+                                                                                        <p className="text-[11px] font-mono text-gray-500 mt-0.5">
+                                                                                            {m.admission_number || m.student_id || '—'}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </td>
+
+                                                                            {/* Academic Info */}
+                                                                            <td className="p-3 text-gray-700">
+                                                                                {m.course || m.branch ? (
+                                                                                    <div>
+                                                                                        <p className="font-medium">{[m.course, m.branch].filter(Boolean).join(' • ')}</p>
+                                                                                        <p className="text-[11px] text-gray-500">
+                                                                                            {m.college ? `${m.college} • ` : ''}{m.current_year ? `Year ${m.current_year}` : ''} {m.current_semester ? `(Sem ${m.current_semester})` : ''}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <span className="text-gray-400 italic">Not available</span>
+                                                                                )}
+                                                                            </td>
+
+                                                                            {/* Club Fee Dues */}
+                                                                            <td className="p-3">
+                                                                                <div className="space-y-0.5">
+                                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-700 rounded-full font-bold text-[10px]">
+                                                                                        <AlertCircle size={10} /> Fee Pending: ₹{feeAmount.toLocaleString('en-IN')}
+                                                                                    </span>
+                                                                                    {Number(m.paid_amount) > 0 && (
+                                                                                        <p className="text-[10px] text-gray-500">Paid: ₹{Number(m.paid_amount).toLocaleString('en-IN')}</p>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+
+                                                                            {/* Membership Status */}
+                                                                            <td className="p-3">
+                                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-bold text-[10px]">
+                                                                                    <Clock size={10} /> Activates on Payment
+                                                                                </span>
+                                                                                <p className="text-[10px] text-gray-400 mt-1">
+                                                                                    Joined: {m.joined_at ? new Date(m.joined_at).toLocaleDateString() : 'N/A'}
+                                                                                </p>
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+
+                                                                {filteredPending.length === 0 && (
+                                                                    <tr>
+                                                                        <td colSpan={4} className="py-12 text-center">
+                                                                            <div className="flex flex-col items-center justify-center text-gray-400 space-y-2">
+                                                                                <CheckCircle size={32} className="text-emerald-500 opacity-60" />
+                                                                                <p className="text-sm font-semibold text-gray-600">
+                                                                                    {hasActivePendingFilters ? 'No pending students match the selected filters' : 'No students with fee pending'}
+                                                                                </p>
+                                                                                <p className="text-xs text-gray-400 max-w-sm">
+                                                                                    {hasActivePendingFilters
+                                                                                        ? 'Try clearing or changing your filters to see more results.'
+                                                                                        : 'All students have paid their club membership fees and are active members!'}
+                                                                                </p>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* TAB 3: ACTIVITIES */}
                                         {detailsTab === 'activities' && (
