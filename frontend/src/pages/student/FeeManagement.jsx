@@ -4,6 +4,8 @@ import {
     Clock,
     RotateCw,
     ChevronRight,
+    ChevronDown,
+    ChevronUp,
     Calendar,
     Receipt
 } from 'lucide-react';
@@ -116,6 +118,16 @@ const FeeManagement = () => {
     // Selection checkboxes
     const [selectedRows, setSelectedRows] = useState({});
 
+    // Expandable years for breakdown accordions
+    const [expandedYears, setExpandedYears] = useState({});
+
+    const toggleExpandYear = (yr) => {
+        setExpandedYears(prev => ({
+            ...prev,
+            [yr]: prev[yr] === undefined ? false : !prev[yr]
+        }));
+    };
+
     const fetchFeeDetails = async () => {
         if (!user?.admission_number) return;
         try {
@@ -205,9 +217,9 @@ const FeeManagement = () => {
         return map;
     }, [availableYears, fees, transactions]);
 
-    // Filter fees for the selected year and feeStatusFilter
-    const currentYearInvoices = useMemo(() => {
-        let list = (fees || []).filter(f => Number(f.studentYear) === selectedYear);
+    // Filter fees for a specific year and feeStatusFilter
+    const getInvoicesForYear = (yr) => {
+        let list = (fees || []).filter(f => Number(f.studentYear) === Number(yr));
 
         if (feeStatusFilter === 'Active Fees') {
             list = list.filter(f => f.status !== 'cancelled');
@@ -267,7 +279,7 @@ const FeeManagement = () => {
                 }
             }
 
-            const rowKey = inv._id || `inv-${selectedYear}-${index}`;
+            const rowKey = inv._id || `inv-${yr}-${index}`;
 
             return {
                 ...inv,
@@ -285,10 +297,9 @@ const FeeManagement = () => {
                 status
             };
         });
-    }, [fees, transactions, selectedYear, feeStatusFilter]);
+    };
 
-    // Table Totals Row
-    const tableTotals = useMemo(() => {
+    const getYearTotals = (invoices) => {
         let totalFee = 0;
         let t1DueTotal = 0;
         let t2DueTotal = 0;
@@ -296,7 +307,7 @@ const FeeManagement = () => {
         let concessionTotal = 0;
         let balanceTotal = 0;
 
-        currentYearInvoices.forEach(item => {
+        invoices.forEach(item => {
             totalFee += item.totalFee;
             t1DueTotal += item.t1DueNum;
             t2DueTotal += item.t2DueNum;
@@ -313,7 +324,10 @@ const FeeManagement = () => {
             concession: concessionTotal,
             balance: balanceTotal
         };
-    }, [currentYearInvoices]);
+    };
+
+    const currentYearInvoices = useMemo(() => getInvoicesForYear(selectedYear), [fees, transactions, selectedYear, feeStatusFilter]);
+    const tableTotals = useMemo(() => getYearTotals(currentYearInvoices), [currentYearInvoices]);
 
     // Filter transactions for the selected year
     const currentYearTransactions = useMemo(() => {
@@ -393,135 +407,20 @@ const FeeManagement = () => {
 
     return (
         <div className="space-y-6 animate-fade-in pb-12 font-sans text-slate-800">
-            {/* Top Row: Year Summary Cards (Responsive 2-col on mobile, 4-col on lg) */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {availableYears.map(yr => {
-                    const stats = yearStatsMap[yr] || { total: 0, paid: 0, balance: 0, isPaid: true };
-                    const isSelected = selectedYear === yr;
-                    const isPaid = stats.balance <= 0;
+            {/* Fee Dues Breakdown Section with Expandable Year Accordions */}
+            <div className="space-y-4">
+                {/* Section Header */}
+                <div className="flex flex-row items-center justify-between gap-2 pb-1">
+                    <h2 className="text-sm sm:text-lg font-extrabold text-[#1e3a8a] heading-font tracking-tight shrink-0">
+                        Fee Dues Breakdown
+                    </h2>
 
-                    return (
-                        <div
-                            key={yr}
-                            onClick={() => setSelectedYear(yr)}
-                            className={`p-3.5 sm:p-4 rounded-2xl cursor-pointer transition-all duration-200 select-none bg-white ${
-                                isSelected
-                                    ? 'border-2 border-blue-500 shadow-md ring-2 ring-blue-100/50'
-                                    : 'border border-slate-200 hover:border-slate-300 shadow-sm'
-                            }`}
-                        >
-                            {/* Card Top: Y(N) Badge, Year Label, PAID status */}
-                            <div className="flex items-center justify-between mb-2 sm:mb-3">
-                                <div className="flex items-center gap-1.5 sm:gap-2">
-                                    <span
-                                        className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black ${
-                                            isPaid
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-rose-100 text-rose-700'
-                                        }`}
-                                    >
-                                        Y{yr}
-                                    </span>
-                                    <span className="text-[11px] sm:text-xs font-black tracking-wide text-slate-800">
-                                        YEAR {yr}
-                                    </span>
-                                </div>
-                                {isPaid && (
-                                    <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                        PAID
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Card Middle: BALANCE label and Amount */}
-                            <div className="flex items-baseline justify-between mb-2 sm:mb-3">
-                                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                    BALANCE
-                                </span>
-                                <span
-                                    className={`text-base sm:text-lg font-black tracking-tight ${
-                                        isPaid ? 'text-emerald-600' : 'text-rose-600'
-                                    }`}
-                                >
-                                    {formatNumber(stats.balance)}
-                                </span>
-                            </div>
-
-                            {/* Card Bottom: Total: X | Paid: Y */}
-                            <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 pt-2 border-t border-slate-100 font-medium">
-                                <span>Total: {formatNumber(stats.total)}</span>
-                                <span>Paid: {formatNumber(stats.paid)}</span>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Year Total Summary Card (Directly Below the Years) */}
-            <div className="bg-[#0f172a] text-white p-4 sm:p-5 rounded-2xl shadow-md border border-slate-800 animate-fade-in">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2.5 mb-3">
-                    <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                        TOTAL (YEAR {selectedYear})
-                    </span>
-                    <span className="text-xs sm:text-sm font-black text-rose-300 sm:text-base">
-                        Balance: {formatNumber(tableTotals.balance)}
-                    </span>
-                </div>
-
-                <div className="space-y-2 text-xs sm:text-sm font-medium">
-                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                        <div>
-                            <span className="text-slate-400">Total:</span>{' '}
-                            <span className="font-bold text-white ml-1">{formatNumber(tableTotals.totalFee)}</span>
-                        </div>
-                        <div>
-                            <span className="text-slate-400">T1 Due:</span>{' '}
-                            <span className="font-bold text-rose-400 ml-1">{tableTotals.t1Due}</span>
-                        </div>
-                        <div>
-                            <span className="text-slate-400">T2 Due:</span>{' '}
-                            <span className="font-bold text-rose-400 ml-1">{tableTotals.t2Due}</span>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                        <div>
-                            <span className="text-slate-400">Paid:</span>{' '}
-                            <span className="font-bold text-emerald-400 ml-1">{formatNumber(tableTotals.paid)}</span>
-                        </div>
-                        <div>
-                            <span className="text-slate-400">Concession:</span>{' '}
-                            <span className="font-bold text-purple-300 ml-1">{formatNumber(tableTotals.concession)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Middle Section: Fee Dues Breakdown Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                {/* Breakdown Header */}
-                <div className="p-4 sm:px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                            <FileText size={18} />
-                        </div>
-                        <h2 className="text-base font-bold text-slate-800 tracking-tight">
-                            Fee Dues Breakdown
-                        </h2>
-                        <button
-                            onClick={fetchFeeDetails}
-                            title="Refresh Details"
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                        >
-                            <RotateCw size={15} />
-                        </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                         {/* Active Fees Dropdown */}
                         <select
                             value={feeStatusFilter}
                             onChange={(e) => setFeeStatusFilter(e.target.value)}
-                            className="flex-1 sm:flex-none text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-slate-100 transition"
+                            className="text-[11px] sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 sm:px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-slate-50 transition shadow-2xs"
                         >
                             <option value="Active Fees">Active Fees</option>
                             <option value="All Fees">All Fees</option>
@@ -530,239 +429,228 @@ const FeeManagement = () => {
                     </div>
                 </div>
 
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                            <tr>
-                                <th className="py-3 px-4 w-12 text-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={isAllSelected}
-                                        onChange={handleSelectAll}
-                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                    />
-                                </th>
-                                <th className="py-3 px-4 min-w-[240px]">FEE HEAD / YEAR</th>
-                                <th className="py-3 px-4 text-right">TOTAL FEE</th>
-                                <th className="py-3 px-4 text-center">T1 DUE</th>
-                                <th className="py-3 px-4 text-center">T2 DUE</th>
-                                <th className="py-3 px-4 text-right">PAID</th>
-                                <th className="py-3 px-4 text-right text-purple-600">CONCESSION</th>
-                                <th className="py-3 px-4 text-right">BALANCE</th>
-                                <th className="py-3 px-4 text-center">STATUS</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {currentYearInvoices.length > 0 ? (
-                                currentYearInvoices.map((row) => (
-                                    <tr
-                                        key={row.rowKey}
-                                        className="hover:bg-slate-50/60 transition-colors group"
-                                    >
-                                        <td className="py-3.5 px-4 text-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!selectedRows[row.rowKey]}
-                                                onChange={() => toggleRowSelect(row.rowKey)}
-                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            />
-                                        </td>
-                                        <td className="py-3.5 px-4">
-                                            <div className="flex items-center gap-1 font-bold text-slate-800">
-                                                <span>{row.headTitle}</span>
-                                                <ChevronRight size={13} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
-                                            </div>
-                                            <div className="text-[11px] text-slate-400 mt-0.5">
-                                                {row.yearSemLabel}
-                                            </div>
-                                        </td>
-                                        <td className="py-3.5 px-4 text-right font-medium text-slate-800">
-                                            {formatNumber(row.totalFee)}
-                                        </td>
-                                        <td className={`py-3.5 px-4 text-center font-semibold ${row.t1Due !== '—' && row.t1Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {row.t1Due}
-                                        </td>
-                                        <td className={`py-3.5 px-4 text-center font-semibold ${row.t2Due !== '—' && row.t2Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {row.t2Due}
-                                        </td>
-                                        <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
-                                            {formatNumber(row.paid)}
-                                        </td>
-                                        <td className="py-3.5 px-4 text-right font-bold text-purple-600">
-                                            {formatNumber(row.concession)}
-                                        </td>
-                                        <td className="py-3.5 px-4 text-right font-bold text-slate-800">
-                                            {formatNumber(row.balance)}
-                                        </td>
-                                        <td className="py-3.5 px-4 text-center">
-                                            {row.status === 'Paid' && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                                    Paid
-                                                </span>
-                                            )}
-                                            {row.status === 'Unpaid' && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200">
-                                                    Unpaid
-                                                </span>
-                                            )}
-                                            {row.status === 'Partial' && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200">
-                                                    Partial
-                                                </span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
-                                        No fee records found for Year {selectedYear}.
-                                    </td>
-                                </tr>
-                            )}
+                {/* Single Combined Card Container for all Year Breakdown Accordions */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs divide-y divide-slate-200 mt-2">
+                    {[...availableYears].sort((a, b) => b - a).map(yr => {
+                        const yrInvoices = getInvoicesForYear(yr);
+                        const yrTotals = getYearTotals(yrInvoices);
+                        const yrStats = yearStatsMap[yr] || { total: 0, paid: 0, balance: 0, isPaid: true };
+                        const isExpanded = expandedYears[yr] === undefined ? true : expandedYears[yr];
+                        const isPaid = yrStats.balance <= 0;
 
-                            {/* TOTAL Row */}
-                            {currentYearInvoices.length > 0 && (
-                                <tr className="bg-slate-50/50 font-black border-t-2 border-slate-200 text-slate-800">
-                                    <td className="py-4 px-4"></td>
-                                    <td className="py-4 px-4">
-                                        <div className="uppercase tracking-wider text-xs">TOTAL</div>
-                                        <div className="text-[11px] text-slate-400 font-normal">Year {selectedYear}</div>
-                                    </td>
-                                    <td className="py-4 px-4 text-right font-black">
-                                        {formatNumber(tableTotals.totalFee)}
-                                    </td>
-                                    <td className="py-4 px-4 text-center font-black text-rose-600">
-                                        {tableTotals.t1Due}
-                                    </td>
-                                    <td className="py-4 px-4 text-center font-black text-rose-600">
-                                        {tableTotals.t2Due}
-                                    </td>
-                                    <td className="py-4 px-4 text-right font-black text-emerald-600">
-                                        {formatNumber(tableTotals.paid)}
-                                    </td>
-                                    <td className="py-4 px-4 text-right font-black text-purple-600">
-                                        {formatNumber(tableTotals.concession)}
-                                    </td>
-                                    <td className="py-4 px-4 text-right font-black text-rose-600 text-sm">
-                                        {formatNumber(tableTotals.balance)}
-                                    </td>
-                                    <td className="py-4 px-4"></td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Mobile Card List View for Fee Breakdown */}
-                <div className="md:hidden divide-y divide-slate-100 p-3 sm:p-4 space-y-3">
-                    {currentYearInvoices.length > 0 ? (
-                        currentYearInvoices.map((row) => (
-                            <div key={row.rowKey} className="pt-3 first:pt-0">
-                                <div className="flex items-start justify-between gap-2 mb-2">
-                                    <div>
-                                        <div className="font-bold text-slate-800 text-xs leading-snug">
-                                            {row.headTitle}
-                                        </div>
-                                        <div className="text-[10px] text-slate-400 mt-0.5">
-                                            {row.yearSemLabel}
-                                        </div>
+                        return (
+                            <div key={yr} className="overflow-hidden">
+                                {/* Accordion Header */}
+                                <div 
+                                    onClick={() => toggleExpandYear(yr)}
+                                    className="p-3.5 sm:p-4 bg-slate-50/80 hover:bg-slate-100 cursor-pointer flex items-center justify-between transition-colors select-none"
+                                >
+                                    <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+                                        <span className="font-bold text-[11px] sm:text-xs text-slate-800 shrink-0">Y{yr}</span>
+                                        {isPaid ? (
+                                            <span className="px-1.5 py-0.5 rounded text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">
+                                                PAID
+                                            </span>
+                                        ) : (
+                                            <span className="px-1.5 py-0.5 rounded text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 shrink-0">
+                                                BAL: {formatNumber(yrStats.balance)}
+                                            </span>
+                                        )}
+                                        <span className="text-[8.5px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">
+                                            Total: {formatNumber(yrStats.total)} • Paid: {formatNumber(yrStats.paid)}
+                                        </span>
                                     </div>
-                                    <div className="shrink-0">
-                                        {row.status === 'Paid' && (
-                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                                Paid
-                                            </span>
-                                        )}
-                                        {row.status === 'Unpaid' && (
-                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200">
-                                                Unpaid
-                                            </span>
-                                        )}
-                                        {row.status === 'Partial' && (
-                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200">
-                                                Partial
-                                            </span>
-                                        )}
+                                    <div className="flex items-center gap-1.5 text-slate-500">
+                                        <span className="text-[11px] font-semibold hidden sm:inline">
+                                            {isExpanded ? 'Collapse' : 'Expand'}
+                                        </span>
+                                        {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 text-[11px]">
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">Total Fee</div>
-                                        <div className="font-bold text-slate-800">{formatNumber(row.totalFee)}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">T1 Due</div>
-                                        <div className={`font-semibold ${row.t1Due !== '—' && row.t1Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {row.t1Due}
+                                {/* Accordion Body */}
+                                {isExpanded && (
+                                    <div className="border-t border-slate-200">
+                                        {/* Desktop Table View */}
+                                        <div className="hidden md:block overflow-x-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                                    <tr>
+                                                        <th className="py-3 px-4 min-w-[240px]">FEE HEAD / YEAR</th>
+                                                        <th className="py-3 px-4 text-right">TOTAL FEE</th>
+                                                        <th className="py-3 px-4 text-center">T1 DUE</th>
+                                                        <th className="py-3 px-4 text-center">T2 DUE</th>
+                                                        <th className="py-3 px-4 text-right">PAID</th>
+                                                        <th className="py-3 px-4 text-right text-purple-600">CONCESSION</th>
+                                                        <th className="py-3 px-4 text-right">BALANCE</th>
+                                                        <th className="py-3 px-4 text-center">STATUS</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {yrInvoices.length > 0 ? (
+                                                        yrInvoices.map((row) => (
+                                                            <tr key={row.rowKey} className="hover:bg-slate-50/60 transition-colors group">
+                                                                <td className="py-3.5 px-4">
+                                                                    <div className="flex items-center gap-1 font-bold text-slate-800">
+                                                                        <span>{row.headTitle}</span>
+                                                                        <ChevronRight size={13} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                                                    </div>
+                                                                    <div className="text-[11px] text-slate-400 mt-0.5">
+                                                                        {row.yearSemLabel}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-3.5 px-4 text-right font-medium text-slate-800">
+                                                                    {formatNumber(row.totalFee)}
+                                                                </td>
+                                                                <td className={`py-3.5 px-4 text-center font-semibold ${row.t1Due !== '—' && row.t1Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                                    {row.t1Due}
+                                                                </td>
+                                                                <td className={`py-3.5 px-4 text-center font-semibold ${row.t2Due !== '—' && row.t2Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                                    {row.t2Due}
+                                                                </td>
+                                                                <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
+                                                                    {formatNumber(row.paid)}
+                                                                </td>
+                                                                <td className="py-3.5 px-4 text-right font-bold text-purple-600">
+                                                                    {formatNumber(row.concession)}
+                                                                </td>
+                                                                <td className="py-3.5 px-4 text-right font-bold text-slate-800">
+                                                                    {formatNumber(row.balance)}
+                                                                </td>
+                                                                <td className="py-3.5 px-4 text-center">
+                                                                    {row.status === 'Paid' && (
+                                                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                                                            Paid
+                                                                        </span>
+                                                                    )}
+                                                                    {row.status === 'Unpaid' && (
+                                                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200">
+                                                                            Unpaid
+                                                                        </span>
+                                                                    )}
+                                                                    {row.status === 'Partial' && (
+                                                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200">
+                                                                            Partial
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    ) : (
+                                                        <tr>
+                                                            <td colSpan={8} className="py-6 text-center text-slate-400 text-xs">
+                                                                No fee records found for Year {yr}.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+
+                                                    {/* TOTAL Row */}
+                                                    {yrInvoices.length > 0 && (
+                                                        <tr className="bg-slate-50/50 font-black border-t-2 border-slate-200 text-slate-800">
+                                                            <td className="py-3.5 px-4">
+                                                                <div className="uppercase tracking-wider text-xs">TOTAL (Y{yr})</div>
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-black">
+                                                                {formatNumber(yrTotals.totalFee)}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-center font-black text-rose-600">
+                                                                {yrTotals.t1Due}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-center font-black text-rose-600">
+                                                                {yrTotals.t2Due}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-black text-emerald-600">
+                                                                {formatNumber(yrTotals.paid)}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-black text-purple-600">
+                                                                {formatNumber(yrTotals.concession)}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-black text-rose-600 text-sm">
+                                                                {formatNumber(yrTotals.balance)}
+                                                            </td>
+                                                            <td className="py-3.5 px-4"></td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Mobile Card List View for Fee Breakdown */}
+                                        <div className="md:hidden divide-y divide-slate-100 p-3 sm:p-4 space-y-3">
+                                            {yrInvoices.length > 0 ? (
+                                                yrInvoices.map((row) => (
+                                                    <div key={row.rowKey} className="pt-3 first:pt-0">
+                                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                                            <div>
+                                                                <div className="font-bold text-slate-800 text-xs leading-snug">
+                                                                    {row.headTitle}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                                                    {row.yearSemLabel}
+                                                                </div>
+                                                            </div>
+                                                            <div className="shrink-0">
+                                                                {row.status === 'Paid' && (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                                                        Paid
+                                                                    </span>
+                                                                )}
+                                                                {row.status === 'Unpaid' && (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200">
+                                                                        Unpaid
+                                                                    </span>
+                                                                )}
+                                                                {row.status === 'Partial' && (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200">
+                                                                        Partial
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-3 gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 text-[11px]">
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">Total Fee</div>
+                                                                <div className="font-bold text-slate-800">{formatNumber(row.totalFee)}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">Paid</div>
+                                                                <div className="font-bold text-emerald-600">{formatNumber(row.paid)}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">Concession</div>
+                                                                <div className="font-bold text-purple-600">{formatNumber(row.concession)}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">T1 Due</div>
+                                                                <div className={`font-semibold ${row.t1Due !== '—' && row.t1Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                                    {row.t1Due}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">T2 Due</div>
+                                                                <div className={`font-semibold ${row.t2Due !== '—' && row.t2Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                                    {row.t2Due}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[9px] font-bold uppercase text-slate-400">Balance</div>
+                                                                <div className="font-black text-rose-600">{formatNumber(row.balance)}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-center text-slate-400 text-xs py-4">
+                                                    No fee records found for Year {yr}.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">T2 Due</div>
-                                        <div className={`font-semibold ${row.t2Due !== '—' && row.t2Due !== '- - -' ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {row.t2Due}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">Paid</div>
-                                        <div className="font-bold text-emerald-600">{formatNumber(row.paid)}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">Concession</div>
-                                        <div className="font-bold text-purple-600">{formatNumber(row.concession)}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[9px] font-bold uppercase text-slate-400">Balance</div>
-                                        <div className="font-black text-rose-600">{formatNumber(row.balance)}</div>
-                                    </div>
-                                </div>
+                                )}
                             </div>
-                        ))
-                    ) : (
-                        <p className="text-center text-slate-400 text-xs py-6">
-                            No fee records found for Year {selectedYear}.
-                        </p>
-                    )}
-
-                    {/* Mobile Total Card */}
-                    {currentYearInvoices.length > 0 && (
-                        <div className="pt-4">
-                            <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xs">
-                                <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
-                                    <span className="text-xs font-black uppercase tracking-wider text-slate-300">
-                                        TOTAL (Year {selectedYear})
-                                    </span>
-                                    <span className="text-sm font-black text-rose-300">
-                                        Balance: {formatNumber(tableTotals.balance)}
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2 text-[10px]">
-                                    <div>
-                                        <span className="text-slate-400">Total:</span>{' '}
-                                        <span className="font-bold">{formatNumber(tableTotals.totalFee)}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-400">T1 Due:</span>{' '}
-                                        <span className="font-bold text-rose-400">{tableTotals.t1Due}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-400">T2 Due:</span>{' '}
-                                        <span className="font-bold text-rose-400">{tableTotals.t2Due}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-400">Paid:</span>{' '}
-                                        <span className="font-bold text-emerald-400">{formatNumber(tableTotals.paid)}</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-400">Concession:</span>{' '}
-                                        <span className="font-bold text-purple-300">{formatNumber(tableTotals.concession)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })}
                 </div>
             </div>
 
