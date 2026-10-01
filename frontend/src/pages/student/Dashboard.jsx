@@ -94,12 +94,14 @@ const Dashboard = () => {
         };
     }, [studentData, user]);
 
-    // Pre-cache avatar images in memory for zero-latency instant rendering
+    // Pre-cache avatar and banner images in memory for zero-latency instant rendering
     useEffect(() => {
         const pre1 = new Image();
         pre1.src = '/images/boy-animated-final.webp';
         const pre2 = new Image();
         pre2.src = '/images/girlanimated.webp';
+        const pre3 = new Image();
+        pre3.src = '/images/explore-learn-build.webp';
     }, []);
 
     // Check if profile is verified
@@ -1055,8 +1057,11 @@ const Dashboard = () => {
                 {/* Right-side 3D transparent image settled smoothly into dark background */}
                 <div className="absolute right-0 top-0 bottom-0 w-7/12 sm:w-1/2 h-full pointer-events-none overflow-hidden flex items-center justify-end pr-1 sm:pr-2">
                     <img
-                        src="/images/ChatGPT Image Oct 1, 2026, 02_10_10 PM.png"
+                        src="/images/explore-learn-build.webp"
                         alt="Explore Learn Build"
+                        loading="eager"
+                        fetchpriority="high"
+                        decoding="sync"
                         className="h-full w-auto object-contain object-right opacity-95 group-hover:scale-105 transition-transform duration-500"
                     />
                 </div>
