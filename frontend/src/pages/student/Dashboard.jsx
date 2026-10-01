@@ -1016,8 +1016,14 @@ const Dashboard = () => {
                         Join Clubs, Workshops<br />and Maker Space
                     </p>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 transition-all flex items-center justify-center text-white shrink-0 relative z-10">
-                    <ArrowRight size={18} />
+
+                {/* Right-side 3D transparent image settled smoothly into dark background */}
+                <div className="absolute right-0 top-0 bottom-0 w-7/12 sm:w-1/2 h-full pointer-events-none overflow-hidden flex items-center justify-end pr-1 sm:pr-2">
+                    <img
+                        src="/images/ChatGPT Image Oct 1, 2026, 02_10_10 PM.png"
+                        alt="Explore Learn Build"
+                        className="h-full w-auto object-contain object-right opacity-95 group-hover:scale-105 transition-transform duration-500"
+                    />
                 </div>
             </div>
 
