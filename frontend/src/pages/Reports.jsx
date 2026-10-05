@@ -1129,54 +1129,175 @@ const Reports = () => {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF('landscape', 'mm', 'a4');
 
-      // Title
-      doc.setFontSize(18);
-      doc.text('Attendance Report', 14, 15);
-      doc.setFontSize(12);
-      doc.text(`Period: ${attendanceReportData.fromDate} to ${attendanceReportData.toDate}`, 14, 22);
+      // Header Title & Period
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Attendance Report', 14, 14);
 
-      let yPos = 30;
-
-      // Statistics
-      doc.setFontSize(11);
-      doc.text(`Total Students: ${attendanceReportData.statistics.totalStudents}`, 14, yPos);
-      yPos += 6;
-      doc.text(`Working Days: ${attendanceReportData.statistics.totalWorkingDays}`, 14, yPos);
-      yPos += 6;
-      doc.text(`Total Present: ${attendanceReportData.statistics.totalPresent}`, 14, yPos);
-      yPos += 6;
-      doc.text(`Total Absent: ${attendanceReportData.statistics.totalAbsent}`, 14, yPos);
-      yPos += 6;
-      doc.text(`Overall Attendance Percentage: ${attendanceReportData.statistics.overallAttendancePercentage.toFixed(2)}%`, 14, yPos);
-      yPos += 10;
-
-      // Table headers
       doc.setFontSize(10);
-      doc.text('PIN', 14, yPos);
-      doc.text('Student Name', 30, yPos);
-      doc.text('Course', 80, yPos);
-      doc.text('Branch', 110, yPos);
-      doc.text('Working Days', 140, yPos);
-      doc.text('Present', 165, yPos);
-      doc.text('Absent', 185, yPos);
-      doc.text('Percentage', 205, yPos);
-      yPos += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Period: ${attendanceReportData.fromDate} to ${attendanceReportData.toDate}`, 14, 21);
 
-      // Table rows
-      attendanceReportData.students.forEach((student) => {
-        if (yPos > 180) {
+      // Filters summary line if any filters applied
+      const filterSummary = [
+        attendanceFilters.college ? `College: ${attendanceFilters.college}` : null,
+        attendanceFilters.level ? `Level: ${attendanceFilters.level}` : null,
+        attendanceFilters.batch ? `Batch: ${attendanceFilters.batch}` : null,
+        attendanceFilters.course ? `Course: ${attendanceFilters.course}` : null,
+        attendanceFilters.branch ? `Branch: ${attendanceFilters.branch}` : null,
+        attendanceFilters.year ? `Year: ${attendanceFilters.year}` : null,
+        attendanceFilters.semester ? `Sem: ${attendanceFilters.semester}` : null,
+      ].filter(Boolean).join(' | ');
+
+      let yPos = 26;
+      if (filterSummary) {
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Filters: ${filterSummary}`, 14, yPos);
+        yPos += 5;
+      }
+
+      // Statistics Summary Box
+      const stats = attendanceReportData.statistics || {};
+      const totalStudents = stats.totalStudents || 0;
+      const workingDays = stats.totalWorkingDays || stats.workingDays || 0;
+
+      const presentPctStr = stats.presentStudentsPercentage !== undefined
+        ? `${stats.presentStudentsPercentage.toFixed(2)}%`
+        : stats.overallAttendancePercentage !== undefined
+          ? `${stats.overallAttendancePercentage.toFixed(2)}%`
+          : '0.00%';
+
+      const absentPctStr = stats.absentStudentsPercentage !== undefined
+        ? `${stats.absentStudentsPercentage.toFixed(2)}%`
+        : '0.00%';
+
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(14, yPos, 269, 11, 1.5, 1.5, 'F');
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+
+      doc.text(`TOTAL STUDENTS: ${totalStudents}`, 20, yPos + 7);
+      doc.text(`WORKING DAYS: ${workingDays}`, 85, yPos + 7);
+      doc.text(`PRESENT STUDENTS %: ${presentPctStr}`, 150, yPos + 7);
+      doc.text(`ABSENT STUDENTS %: ${absentPctStr}`, 218, yPos + 7);
+
+      yPos += 16;
+
+      // Table Header Definitions (Total width: 269 mm)
+      const columns = [
+        { header: 'PIN NO', x: 14, w: 28, align: 'left' },
+        { header: 'STUDENT NAME', x: 42, w: 46, align: 'left' },
+        { header: 'ADM NO', x: 88, w: 22, align: 'left' },
+        { header: 'BATCH', x: 110, w: 16, align: 'center' },
+        { header: 'COURSE', x: 126, w: 20, align: 'left' },
+        { header: 'BRANCH', x: 146, w: 24, align: 'left' },
+        { header: 'YR/SEM', x: 170, w: 16, align: 'center' },
+        { header: 'WORKING', x: 186, w: 20, align: 'center' },
+        { header: 'PRESENT %', x: 206, w: 23, align: 'right' },
+        { header: 'ABSENT %', x: 229, w: 23, align: 'right' },
+        { header: 'ATTENDANCE %', x: 252, w: 31, align: 'right' },
+      ];
+
+      const drawTableHeader = (currentY) => {
+        doc.setFillColor(226, 232, 240);
+        doc.rect(14, currentY, 269, 7.5, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+
+        columns.forEach(col => {
+          let textX = col.x;
+          if (col.align === 'center') textX = col.x + col.w / 2;
+          else if (col.align === 'right') textX = col.x + col.w - 1;
+          doc.text(col.header, textX, currentY + 5, { align: col.align });
+        });
+
+        doc.setDrawColor(203, 213, 225);
+        doc.line(14, currentY + 7.5, 283, currentY + 7.5);
+      };
+
+      drawTableHeader(yPos);
+      yPos += 7.5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+
+      const filteredStudents = (attendanceReportData.students || []).filter(student => {
+        if (!studentSearchQuery) return true;
+        const query = studentSearchQuery.toLowerCase();
+        return (
+          (student.studentName || '').toLowerCase().includes(query) ||
+          (student.pinNumber || '').toLowerCase().includes(query) ||
+          (student.admissionNumber || '').toLowerCase().includes(query)
+        );
+      });
+
+      filteredStudents.forEach((student, index) => {
+        if (yPos > 185) {
           doc.addPage();
-          yPos = 20;
+          yPos = 14;
+          drawTableHeader(yPos);
+          yPos += 7.5;
         }
-        doc.text(student.pinNumber || '-', 14, yPos);
-        doc.text(student.studentName || '-', 30, yPos);
-        doc.text(student.course || '-', 80, yPos);
-        doc.text(student.branch || '-', 110, yPos);
-        doc.text(student.statistics.workingDays.toString(), 140, yPos);
-        doc.text(student.statistics.presentDays.toString(), 165, yPos);
-        doc.text(student.statistics.absentDays.toString(), 185, yPos);
-        doc.text(`${student.statistics.attendancePercentage.toFixed(2)}%`, 205, yPos);
-        yPos += 6;
+
+        // Alternating row background
+        if (index % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(14, yPos, 269, 6.5, 'F');
+        }
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(14, yPos + 6.5, 283, yPos + 6.5);
+
+        doc.setTextColor(15, 23, 42);
+
+        // Truncate student name cleanly if too long
+        let nameStr = student.studentName || '-';
+        if (nameStr.length > 25) {
+          nameStr = nameStr.substring(0, 23) + '..';
+        }
+
+        const studentStats = student.statistics || {};
+        const studentWorkingDays = studentStats.workingDays !== undefined ? studentStats.workingDays : (workingDays || 0);
+        const presentDays = studentStats.presentDays || 0;
+        const absentDays = studentStats.absentDays || 0;
+        const markedDays = presentDays + absentDays;
+
+        const studPresentPct = markedDays > 0 ? `${((presentDays / markedDays) * 100).toFixed(2)}%` : '0.00%';
+        const studAbsentPct = markedDays > 0 ? `${((absentDays / markedDays) * 100).toFixed(2)}%` : '0.00%';
+        const studAttendancePct = studentStats.attendancePercentage !== undefined
+          ? `${studentStats.attendancePercentage.toFixed(2)}%`
+          : '0.00%';
+
+        const yrSem = `${student.year || '-'}/${student.semester || '-'}`;
+
+        const rowValues = [
+          { val: student.pinNumber || '-', col: columns[0] },
+          { val: nameStr, col: columns[1] },
+          { val: student.admissionNumber || '-', col: columns[2] },
+          { val: String(student.batch || '-'), col: columns[3] },
+          { val: String(student.course || '-'), col: columns[4] },
+          { val: String(student.branch || '-'), col: columns[5] },
+          { val: yrSem, col: columns[6] },
+          { val: String(studentWorkingDays), col: columns[7] },
+          { val: studPresentPct, col: columns[8] },
+          { val: studAbsentPct, col: columns[9] },
+          { val: studAttendancePct, col: columns[10] },
+        ];
+
+        rowValues.forEach(({ val, col }) => {
+          let textX = col.x;
+          if (col.align === 'center') textX = col.x + col.w / 2;
+          else if (col.align === 'right') textX = col.x + col.w - 1;
+          doc.text(val, textX, yPos + 4.5, { align: col.align });
+        });
+
+        yPos += 6.5;
       });
 
       doc.save(`attendance_report_${attendanceReportData.fromDate}_to_${attendanceReportData.toDate}.pdf`);

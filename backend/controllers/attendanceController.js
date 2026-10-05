@@ -4482,6 +4482,11 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
         { studentCount: 0, present: 0, absent: 0, unmarked: 0 }
       );
 
+      const totalMarkedRecords = totals.present + totals.absent;
+      const overallPresentPct = totalMarkedRecords > 0 ? ((totals.present / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+      const overallAbsentPct = totalMarkedRecords > 0 ? ((totals.absent / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+      const overallAttendancePct = totalMarkedRecords > 0 ? ((totals.present / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+
       // Single sheet with all data
       const allRows = [];
 
@@ -4499,6 +4504,9 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
       allRows.push(['Total Present Records', totals.present]);
       allRows.push(['Total Absent Records', totals.absent]);
       allRows.push(['Total Unmarked Records', totals.unmarked]);
+      allRows.push(['Overall Present Percentage', overallPresentPct]);
+      allRows.push(['Overall Absent Percentage', overallAbsentPct]);
+      allRows.push(['Overall Attendance Percentage', overallAttendancePct]);
       allRows.push(['']);
       allRows.push(['']);
 
@@ -4510,13 +4518,22 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
         'Year',
         'Semester',
         'Student Count',
+        'Working Days',
         'Total Present',
         'Total Absent',
-        'Total Unmarked'
+        'Total Unmarked',
+        'Present %',
+        'Absent %',
+        'Attendance %'
       ];
       allRows.push(summaryHeader);
 
       aggregatedData.forEach((row) => {
+        const marked = row.present + row.absent;
+        const presentPct = marked > 0 ? ((row.present / marked) * 100).toFixed(2) + '%' : '0.00%';
+        const absentPct = marked > 0 ? ((row.absent / marked) * 100).toFixed(2) + '%' : '0.00%';
+        const attendancePct = marked > 0 ? ((row.present / marked) * 100).toFixed(2) + '%' : '0.00%';
+
         allRows.push([
           row.batch,
           row.course,
@@ -4524,9 +4541,13 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
           row.year,
           row.semester,
           row.studentCount,
+          totalWorkingDays,
           row.present,
           row.absent,
-          row.unmarked
+          row.unmarked,
+          presentPct,
+          absentPct,
+          attendancePct
         ]);
       });
 
@@ -4538,9 +4559,13 @@ const generateAggregatedReport = async (req, res, from, to, format, holidayInfo,
         '',
         '',
         totals.studentCount,
+        totalWorkingDays,
         totals.present,
         totals.absent,
-        totals.unmarked
+        totals.unmarked,
+        overallPresentPct,
+        overallAbsentPct,
+        overallAttendancePct
       ]);
 
       allRows.push(['']);
@@ -4976,6 +5001,12 @@ exports.downloadAttendanceReport = async (req, res) => {
       // Create workbook
       const workbook = xlsx.utils.book_new();
 
+      // Calculate totals & percentages
+      const totalMarkedRecords = totalPresent + totalAbsent;
+      const overallPresentPct = totalMarkedRecords > 0 ? ((totalPresent / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+      const overallAbsentPct = totalMarkedRecords > 0 ? ((totalAbsent / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+      const overallAttendancePct = totalMarkedRecords > 0 ? ((totalPresent / totalMarkedRecords) * 100).toFixed(2) + '%' : '0.00%';
+
       // Summary sheet
       const summaryData = [
         ['Attendance Report Summary'],
@@ -4983,11 +5014,14 @@ exports.downloadAttendanceReport = async (req, res) => {
         ['Report Period', `${from} to ${to}`],
         [''],
         ['Total Students', reportData.statistics.totalStudents],
-        ['Total Present', reportData.statistics.totalPresent],
-        ['Total Absent', reportData.statistics.totalAbsent],
+        ['Total Working Days', reportData.statistics.workingDays],
+        ['Total Present Records', reportData.statistics.totalPresent],
+        ['Total Absent Records', reportData.statistics.totalAbsent],
+        ['Present Percentage', overallPresentPct],
+        ['Absent Percentage', overallAbsentPct],
+        ['Overall Attendance Percentage', overallAttendancePct],
         ['Total No Class Work Days', reportData.statistics.totalHolidays],
-        ['Total Unmarked', reportData.statistics.totalUnmarked],
-        ['Working Days', reportData.statistics.workingDays],
+        ['Total Unmarked Records', reportData.statistics.totalUnmarked],
         [''],
         ['Filters Applied'],
         ['Batch', reportData.filters.batch || 'All'],
@@ -5010,12 +5044,29 @@ exports.downloadAttendanceReport = async (req, res) => {
         'Branch',
         'Year',
         'Semester',
+        'Working Days',
+        'Present Days',
+        'Absent Days',
+        'Present %',
+        'Absent %',
+        'Attendance %',
         ...reportData.dates
       ];
 
       const attendanceRows = [headerRow];
 
       students.forEach((student) => {
+        const stats = calculateStudentAttendanceStats(
+          student.attendance,
+          dateSet,
+          holidayInfo.dates,
+          student.attendanceStartDate
+        );
+        const markedDays = stats.presentDays + stats.absentDays;
+        const presentPct = markedDays > 0 ? ((stats.presentDays / markedDays) * 100).toFixed(2) + '%' : '0.00%';
+        const absentPct = markedDays > 0 ? ((stats.absentDays / markedDays) * 100).toFixed(2) + '%' : '0.00%';
+        const attendancePct = (stats.attendancePercentage || 0).toFixed(2) + '%';
+
         const row = [
           student.admissionNumber || '',
           student.pinNumber || '',
@@ -5025,6 +5076,12 @@ exports.downloadAttendanceReport = async (req, res) => {
           student.branch || '',
           student.year || '',
           student.semester || '',
+          stats.workingDays,
+          stats.presentDays,
+          stats.absentDays,
+          presentPct,
+          absentPct,
+          attendancePct,
           ...reportData.dates.map((date) => {
             const isHoliday = holidayInfo.dates.has(date);
             if (isHoliday) {
