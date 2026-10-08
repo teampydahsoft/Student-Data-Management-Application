@@ -1,14 +1,69 @@
-/**
- * Timetable Controller (Pydah v2.0)
- * CRUD for timetable entries.
- */
-
-const { masterPool } = require('../config/database');
+const { masterPool, academicPool } = require('../config/database');
 
 exports.list = async (req, res) => {
     try {
         const { branch_id, year, semester, faculty_id } = req.query;
 
+        // 1. Try querying Academic Portal DB (ap_timetable_plans & ap_timetable_entries)
+        if (year && semester) {
+            try {
+                let plans = [];
+                if (branch_id) {
+                    [plans] = await academicPool.query(
+                        `SELECT id, timing_template_id, batch, year_of_study, semester_number
+                         FROM ap_timetable_plans
+                         WHERE branch_id = ? AND year_of_study = ? AND semester_number = ?
+                         ORDER BY (status = 'published') DESC, version_no DESC, id DESC
+                         LIMIT 1`,
+                        [branch_id, year, semester]
+                    );
+                }
+
+                if (!plans || plans.length === 0) {
+                    [plans] = await academicPool.query(
+                        `SELECT id, timing_template_id, batch, year_of_study, semester_number
+                         FROM ap_timetable_plans
+                         WHERE year_of_study = ? AND semester_number = ?
+                         ORDER BY (status = 'published') DESC, version_no DESC, id DESC
+                         LIMIT 1`,
+                        [year, semester]
+                    );
+                }
+
+                if (plans && plans.length > 0) {
+                    const planId = plans[0].id;
+                    const [apRows] = await academicPool.query(
+                        `SELECT 
+                            e.*,
+                            sl.display_name as faculty_name,
+                            sl.display_name as teacher_name,
+                            sl.display_name as faculty,
+                            sl.display_name as staff_name,
+                            ts.slot_order,
+                            COALESCE(ts.slot_order, e.period_slot_id, e.timing_slot_id) as slot_order_id,
+                            ts.label as slot_label,
+                            ts.start_time,
+                            ts.end_time,
+                            COALESCE(e.entry_type, 'subject') as type,
+                            COALESCE(e.span, 1) as span
+                         FROM ap_timetable_entries e
+                         LEFT JOIN ap_timing_template_slots ts ON (ts.id = e.period_slot_id OR ts.id = e.timing_slot_id)
+                         LEFT JOIN ap_staff_link sl ON sl.id = e.faculty_staff_link_id
+                         WHERE e.plan_id = ?
+                         ORDER BY e.day_of_week, ts.slot_order`,
+                        [planId]
+                    );
+
+                    if (apRows.length > 0) {
+                        return res.json({ success: true, data: apRows, source: 'academic_portal' });
+                    }
+                }
+            } catch (apErr) {
+                console.warn('Academic Portal DB timetable fetch notice:', apErr.message);
+            }
+        }
+
+        // 2. Fallback to SDMS Master DB (student_database)
         let query = `SELECT te.*, s.name as subject_name, s.code as subject_code, b.name as branch_name
                      FROM timetable_entries te
                      LEFT JOIN subjects s ON s.id = te.subject_id
@@ -29,7 +84,7 @@ exports.list = async (req, res) => {
         query += ` WHERE ` + conditions.join(' AND ') + ` ORDER BY te.day_of_week, te.period_slot_id`;
         const [rows] = await masterPool.query(query, params);
 
-        res.json({ success: true, data: rows });
+        res.json({ success: true, data: rows, source: 'master' });
     } catch (error) {
         console.error('timetable list error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch timetable' });

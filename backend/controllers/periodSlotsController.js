@@ -3,7 +3,7 @@
  * CRUD for college-wise period slots (e.g. P1 09:00-10:00).
  */
 
-const { masterPool } = require('../config/database');
+const { masterPool, academicPool } = require('../config/database');
 
 function buildScopeCondition(scope) {
   if (!scope || scope.unrestricted) return { condition: '1=1', params: [] };
@@ -18,10 +18,27 @@ function buildScopeCondition(scope) {
 exports.list = async (req, res) => {
   try {
     const { college_id } = req.query;
+
+    // 1. Try querying Academic Portal DB (ap_timing_template_slots & ap_timing_templates)
+    try {
+      let apSql = `SELECT DISTINCT slot_order as id, label as slot_name, label as name, MIN(start_time) as start_time, MAX(end_time) as end_time, slot_order as sort_order
+                   FROM ap_timing_template_slots
+                   WHERE is_active = 1
+                   GROUP BY slot_order, label
+                   ORDER BY slot_order ASC`;
+      const [apRows] = await academicPool.query(apSql);
+      if (apRows.length > 0) {
+        return res.json({ success: true, data: apRows, source: 'academic_portal' });
+      }
+    } catch (apErr) {
+      console.warn('Academic Portal DB period slots fetch notice:', apErr.message);
+    }
+
+    // 2. Fallback to SDMS Master DB (student_database)
     const scope = req.userScope || {};
     const { condition, params } = buildScopeCondition(scope);
 
-    let sql = `SELECT id, college_id, name, start_time, end_time, sort_order, is_active, created_at
+    let sql = `SELECT id, college_id, name, name as slot_name, start_time, end_time, sort_order, is_active, created_at
                FROM period_slots WHERE ${condition}`;
     const queryParams = [...params.flat()];
 
@@ -32,7 +49,7 @@ exports.list = async (req, res) => {
     sql += ' ORDER BY sort_order ASC, start_time ASC';
 
     const [rows] = await masterPool.query(sql, queryParams);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: rows, source: 'master' });
   } catch (error) {
     console.error('periodSlots list error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch period slots' });
