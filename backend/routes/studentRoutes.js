@@ -91,6 +91,13 @@ router.get(
   studentController.getDistinctCastes
 );
 
+router.post(
+  '/sync-admissions',
+  authMiddleware,
+  verifyPermission(MODULES.STUDENT_MANAGEMENT, 'edit'),
+  studentController.syncAdmissionsData
+);
+
 router.get(
   '/batch-status',
   authMiddleware,

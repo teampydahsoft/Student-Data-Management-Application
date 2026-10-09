@@ -1,4 +1,5 @@
 const { masterPool } = require('../config/database');
+const { triggerAdmissionsSyncAsync } = require('../services/admissionsSyncService');
 const { buildScopeConditions } = require('../utils/scoping');
 
 /** Admission number from student JWT only — never from request body (prevents IDOR). */
@@ -380,6 +381,9 @@ exports.updateRequestStatus = async (req, res) => {
         );
 
         await connection.commit();
+        if (status === 'approved' && request.admission_number) {
+            triggerAdmissionsSyncAsync(request.admission_number);
+        }
         res.json({ success: true, message: `Request ${status} successfully` });
     } catch (error) {
         await connection.rollback();
