@@ -83,6 +83,10 @@ const EventCalendar = lazy(() => import('./pages/admin/EventCalendar'));
 const StudentCalendar = lazy(() => import('./pages/student/StudentCalendar'));
 const StudentTimetable = lazy(() => import('./pages/student/StudentTimetable'));
 
+// AI Assistant Page & CDN Widget Component
+const AiAssistant = lazy(() => import('./pages/AiAssistant'));
+import PydahAiChat from './components/PydahAiChat';
+
 // Layout (Lazy Loaded)
 const AdminLayout = lazy(() => import('./components/Layout/AdminLayout'));
 const StudentLayout = lazy(() => import('./components/Layout/StudentLayout'));
@@ -264,6 +268,7 @@ function App() {
             <Route path="attendance-monitoring" element={<AttendanceMonitoring />} />
             <Route path="internship-management" element={<InternshipAdmin />} />
             <Route path="services/borrow-management" element={<CertificateBorrowManagement />} />
+            <Route path="ai-assistant" element={<AiAssistant />} />
           </Route>
 
 
@@ -297,6 +302,7 @@ function App() {
             <Route path="feedback" element={<StudentFeedback />} />
             <Route path="profile-requests" element={<MyProfileRequests />} />
             <Route path="my-documents" element={<MyDocuments />} />
+            <Route path="ai-assistant" element={<AiAssistant />} />
           </Route>
 
           {/* Protected Parent Routes */}
@@ -313,6 +319,7 @@ function App() {
             <Route path="profile" element={<ParentProfile />} />
             <Route path="attendance" element={<ParentAttendance />} />
             <Route path="id-card" element={<ParentIdCard />} />
+            <Route path="ai-assistant" element={<AiAssistant />} />
           </Route>
 
           {/* Protected Faculty Routes (v2.0) */}
@@ -332,12 +339,22 @@ function App() {
             <Route path="announcements" element={<FacultyAnnouncements />} />
             <Route path="students" element={<FacultyStudents />} />
             <Route path="chats" element={<FacultyChats />} />
+            <Route path="ai-assistant" element={<AiAssistant />} />
           </Route>
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Suspense>
+
+      {/* Floating Bottom-Right Chat Widget Active Across All Pages */}
+      <PydahAiChat
+        mode="widget"
+        title="Pydah Student Assistant"
+        welcomeMessage="How can I help you today?"
+        position="bottom-right"
+        apiBaseUrl="https://pydah-ai-api.onrender.com"
+      />
     </Router>
   );
 }

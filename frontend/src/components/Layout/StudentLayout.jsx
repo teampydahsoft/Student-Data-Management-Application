@@ -42,7 +42,9 @@ import {
     RiBookOpenLine,
     RiBookOpenFill,
     RiAwardLine,
-    RiAwardFill
+    RiAwardFill,
+    RiSparklingLine,
+    RiSparklingFill
 } from 'react-icons/ri';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
@@ -357,6 +359,7 @@ const StudentLayout = ({ children }) => {
 
     const navItems = [
         { icon: RiHome4Line, activeIcon: RiHome4Fill, label: 'Dashboard', path: '/student/dashboard' },
+        { icon: RiSparklingLine, activeIcon: RiSparklingFill, label: 'AI Assistant', path: '/student/ai-assistant' },
         { icon: RiMegaphoneLine, activeIcon: RiMegaphoneFill, label: 'Announcements', path: '/student/announcements' },
         { icon: RiGroupLine, activeIcon: RiGroupFill, label: 'Clubs', path: '/student/clubs' },
         { icon: RiCalendarEventLine, activeIcon: RiCalendarEventFill, label: 'Event Calendar', path: '/student/events' },
