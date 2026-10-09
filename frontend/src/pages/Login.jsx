@@ -187,13 +187,13 @@ const Login = () => {
     if (isAuthenticated && !isVerifying) {
       if (userType === 'parent') {
         navigate('/parent/dashboard');
-      } else if (userType === 'student' || isStudentLogin) {
+      } else if (userType === 'student') {
         navigate('/student/dashboard');
       } else {
         navigate('/');
       }
     }
-  }, [isAuthenticated, navigate, userType, isStudentLogin, isVerifying]);
+  }, [isAuthenticated, navigate, userType, isVerifying]);
 
   const handleParentSendOtp = async (e) => {
     e.preventDefault();
@@ -277,7 +277,8 @@ const Login = () => {
       return;
     }
     setLoading(true);
-    const result = await login(formData.username, formData.password);
+    const expectedRole = isStudentLogin ? 'student' : (isParentLogin ? 'parent' : 'staff');
+    const result = await login(formData.username, formData.password, expectedRole);
     setLoading(false);
     if (result.success) {
       toast.success('Login successful!');

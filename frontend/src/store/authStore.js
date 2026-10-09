@@ -81,9 +81,9 @@ const useAuthStore = create((set) => {
     isAuthenticated: !!storedToken,
     userType: storedUserType || null, // 'admin' or 'student'
 
-    login: async (username, password) => {
+    login: async (username, password, expectedRole) => {
       try {
-        const response = await api.post('/auth/unified-login', { username, password });
+        const response = await api.post('/auth/unified-login', { username, password, expectedRole });
 
         // Check if response has success flag
         if (!response.data.success) {
@@ -104,6 +104,23 @@ const useAuthStore = create((set) => {
 
         const userType = user.role === 'parent' ? 'parent' : (user.role === 'student' ? 'student' : 'admin');
 
+        // Client-side role enforcement check
+        if (expectedRole) {
+          const normExpected = String(expectedRole).toLowerCase().trim();
+          if ((normExpected === 'staff' || normExpected === 'employee' || normExpected === 'admin') && userType === 'student') {
+            return {
+              success: false,
+              message: 'Student credentials cannot be used for Employee login. Please use the Student Login page.'
+            };
+          }
+          if (normExpected === 'student' && userType !== 'student') {
+            return {
+              success: false,
+              message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+            };
+          }
+        }
+
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
         localStorage.setItem('userType', userType);
@@ -123,8 +140,8 @@ const useAuthStore = create((set) => {
 
     // Kept for backward compatibility but routes to unified login logic internally or just fails gracefully if used directly
     loginAsStudent: async (username, password) => {
-      // Use the unified login instead
-      return useAuthStore.getState().login(username, password);
+      // Use the unified login instead with 'student' role restriction
+      return useAuthStore.getState().login(username, password, 'student');
     },
 
     setAuth: (user, token, userType = 'student') => {

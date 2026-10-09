@@ -13,6 +13,7 @@ import {
     Filter,
     UserCheck,
     ChevronRight,
+    ChevronLeft,
     Layers,
     ShieldCheck
 } from 'lucide-react';
@@ -36,6 +37,13 @@ const StudentTimetable = () => {
     const [selectedSem, setSelectedSem] = useState(Number(user?.current_semester) || 1);
     const [activeTab, setActiveTab] = useState('grid'); // 'grid' | 'periodwise' | 'academic'
     const [selectedPeriodModal, setSelectedPeriodModal] = useState(null);
+    const [isCalendarView, setIsCalendarView] = useState(false);
+    const [calendarMonthDate, setCalendarMonthDate] = useState(new Date());
+
+    const openPeriodModal = (entry, slot, day) => {
+        setSelectedPeriodModal({ entry, slot, day });
+        setIsCalendarView(false);
+    };
 
     const days = ['MON', 'TUE', 'WED', 'THUR', 'FRI', 'SAT'];
 
@@ -49,6 +57,32 @@ const StudentTimetable = () => {
         if (user?.current_year) setSelectedYear(Number(user.current_year) || 1);
         if (user?.current_semester) setSelectedSem(Number(user.current_semester) || 1);
     }, [user]);
+
+    const normalizeSlotTimings = (rawSlots) => {
+        if (!Array.isArray(rawSlots)) return [];
+        return rawSlots.map(slot => {
+            const sName = String(slot.slot_name || slot.name || slot.label || '').trim().toUpperCase();
+            const sOrder = Number(slot.sort_order ?? slot.id ?? 0);
+
+            let updatedSlot = { ...slot };
+
+            if (sName === 'P3' || sName.includes('P3') || sOrder === 3) {
+                updatedSlot.start_time = '10:55:00';
+                updatedSlot.end_time = '11:05:00';
+            } else if (sName === 'P4' || sName.includes('P4') || sOrder === 4) {
+                updatedSlot.start_time = '11:05:00';
+                updatedSlot.end_time = '12:45:00';
+            } else if (sName === 'P6' || sName.includes('P6') || sOrder === 6) {
+                updatedSlot.start_time = '12:45:00';
+                updatedSlot.end_time = '13:45:00';
+            } else if (sName === 'P7' || sName.includes('P7') || sOrder === 7) {
+                updatedSlot.start_time = '13:45:00';
+                updatedSlot.end_time = '14:35:00';
+            }
+
+            return updatedSlot;
+        });
+    };
 
     // Fetch Timetable & Period Slots
     const fetchTimetableAndSlots = async (isManualRefresh = false) => {
@@ -64,7 +98,7 @@ const StudentTimetable = () => {
                 params: collegeId ? { college_id: collegeId } : {}
             });
             if (slotsRes.data?.success) {
-                setPeriodSlots(slotsRes.data.data || []);
+                setPeriodSlots(normalizeSlotTimings(slotsRes.data.data || []));
             }
 
             // 2. Fetch Timetable for Selected Year & Semester
@@ -311,7 +345,7 @@ const StudentTimetable = () => {
         );
     }
 
-    const TimetableCard = ({ entry, slot, day, isMobile = false, postedSlotLog = null, onClick }) => {
+    const TimetableCard = ({ entry, slot, day, isMobile = false, postedSlotLog = null, isToday = false, onClick }) => {
         const sName = String(slot?.slot_name || slot?.name || slot?.label || '').trim().toUpperCase();
         const sOrder = Number(slot?.sort_order ?? slot?.id ?? 0);
         const startTime = String(slot?.start_time || '');
@@ -377,7 +411,7 @@ const StudentTimetable = () => {
 
         const titleText = entry
             ? (entry.subject_name || entry.custom_label || entry.title || entry.name || (entry.type ? `${entry.type}` : 'Subject Class'))
-            : (isBreakSlot ? (sName.includes('P3') || sOrder === 3 ? 'Morning Break' : 'Lunch Break') : 'Free Period Slot');
+            : (isBreakSlot ? (sName.includes('P3') || sOrder === 3 ? 'Break' : 'Lunch Break') : 'Free Period Slot');
 
         const codeOrLabel = entry?.subject_code || (entry?.subject_name ? entry?.custom_label : null) || slot?.slot_name || 'Class';
         const facultyName = postedSlotLog?.faculty_name || entry?.faculty_name || entry?.teacher_name || entry?.faculty || entry?.staff_name;
@@ -437,12 +471,15 @@ const StudentTimetable = () => {
         // Desktop Grid Cell View
         if (!entry) {
             return (
-                <div className={`h-full w-full rounded-xl border flex items-center justify-between min-h-[110px] ${isBreakSlot ? 'bg-amber-50/60 border-amber-200/90' : 'bg-slate-50/40 border-slate-200/80 border-dashed'} p-3`}>
-                    <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-md border ${isBreakSlot ? 'bg-amber-100 text-amber-900 border-amber-300' : 'text-slate-400 border-transparent'}`}>
-                            {isBreakSlot ? 'BREAK' : 'FREE SLOT'}
+                <div className={`h-full w-full rounded-xl border flex flex-col items-center justify-center min-h-[105px] ${isBreakSlot ? 'bg-amber-50/60 border-amber-200/80' : 'bg-slate-50/30 border-slate-200/70 border-dashed'} p-1.5 text-center`}>
+                    <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border ${isBreakSlot ? 'bg-amber-100 text-amber-900 border-amber-300' : 'text-slate-400 border-slate-200 bg-white'}`}>
+                        {isBreakSlot ? 'BREAK' : 'FREE SLOT'}
+                    </span>
+                    {isBreakSlot && (
+                        <span className="text-[8px] sm:text-[9px] font-bold text-amber-700/80 mt-0.5 leading-none">
+                            {sName.includes('P3') || sOrder === 3 ? 'Break' : 'Lunch Break'}
                         </span>
-                    </div>
+                    )}
                 </div>
             );
         }
@@ -450,34 +487,35 @@ const StudentTimetable = () => {
         return (
             <div
                 onClick={() => onClick && entry && onClick(entry, slot, day)}
-                className="h-full w-full rounded-xl flex flex-col justify-between border border-slate-200/90 bg-white hover:border-blue-500 hover:shadow-md transition-all duration-200 group relative overflow-hidden cursor-pointer p-3 min-h-[110px]"
-                title="Click to view teacher & subject attendance details"
+                className={`h-full w-full rounded-xl flex flex-col justify-between border bg-white border-slate-200/90 hover:border-blue-500 hover:shadow-md transition-all duration-200 group relative overflow-hidden cursor-pointer p-1.5 sm:p-2 min-h-[105px] ${isToday ? 'ring-1 ring-blue-400/40 shadow-2xs' : ''}`}
+                title={`${titleText} | Faculty: ${facultyName || 'Department Faculty'} (${codeOrLabel}) - Click for details`}
             >
-                <div className={`absolute top-0 left-0 w-1.5 h-full ${barColor}`} />
+                <div className={`absolute top-0 left-0 w-1 sm:w-1.5 h-full ${barColor}`} />
 
-                <div className="flex-1 pl-1.5">
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border ${badgeStyle}`}>
+                <div className="pl-1 sm:pl-1.5 space-y-0.5">
+                    {/* Top Row: Type Badge + Subject Code Badge */}
+                    <div className="flex items-center justify-between gap-0.5">
+                        <span className={`text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1 py-0.5 rounded border leading-none ${badgeStyle}`}>
                             {badgeText}
                         </span>
+                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200/60 px-1 py-0.5 rounded truncate max-w-[60px] sm:max-w-[75px] leading-none" title={codeOrLabel}>
+                            {codeOrLabel}
+                        </span>
                     </div>
-                    <h4 className="font-extrabold text-blue-950 text-xs leading-snug line-clamp-2 tracking-tight group-hover:text-blue-700 transition-colors">
+
+                    {/* Subject Title */}
+                    <h4 className="font-extrabold text-blue-950 text-[10px] sm:text-xs leading-tight line-clamp-2 tracking-tight group-hover:text-blue-700 transition-colors" title={titleText}>
                         {titleText}
                     </h4>
                 </div>
 
-                <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between pl-1.5 gap-1.5 min-w-0">
-                    <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider shrink-0 max-w-[80px]">
-                        <Info className="w-3 h-3 opacity-60 text-blue-600 shrink-0" />
-                        <span className="truncate">{codeOrLabel}</span>
+                {/* Bottom Row: Faculty Name spanning full width */}
+                {facultyName && (
+                    <div className="mt-1 pt-0.5 border-t border-slate-100 flex items-center gap-0.5 text-[9px] sm:text-[10px] font-extrabold text-blue-900 pl-1 sm:pl-1.5 min-w-0" title={facultyName}>
+                        <UserCheck className="w-3 h-3 text-blue-600 shrink-0" />
+                        <span className="truncate">{facultyName}</span>
                     </div>
-                    {facultyName && (
-                        <div className="flex items-center gap-1 text-[9px] font-extrabold text-blue-900 min-w-0 flex-1 justify-end" title={facultyName}>
-                            <UserCheck className="w-3 h-3 text-blue-600 shrink-0" />
-                            <span className="truncate">{facultyName}</span>
-                        </div>
-                    )}
-                </div>
+                )}
             </div>
         );
     };
@@ -580,12 +618,17 @@ const StudentTimetable = () => {
                                     <button
                                         key={day}
                                         onClick={() => setActiveDay(day)}
-                                        className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${activeDay === day
+                                        className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${activeDay === day
                                             ? 'bg-blue-600 text-white shadow-sm'
-                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                            }`}
+                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                            } ${day === currentDayName ? 'ring-2 ring-blue-500 font-extrabold' : ''}`}
                                     >
-                                        {day}
+                                        <span>{day}</span>
+                                        {day === currentDayName && (
+                                            <span className={`text-[8px] font-black px-1 py-0.2 rounded uppercase ${activeDay === day ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'}`}>
+                                                TODAY
+                                            </span>
+                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -601,7 +644,7 @@ const StudentTimetable = () => {
                                         slot={slot}
                                         day={activeDay}
                                         isMobile
-                                        onClick={(entry, slot, day) => setSelectedPeriodModal({ entry, slot, day })}
+                                        onClick={(entry, slot, day) => openPeriodModal(entry, slot, day)}
                                     />
                                 );
                             })}
@@ -619,20 +662,23 @@ const StudentTimetable = () => {
                                 </p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto no-scrollbar">
-                                <div className="min-w-[1200px]">
+                            <div className="w-full overflow-hidden">
+                                <div className="w-full">
                                     {/* Table Header Row */}
-                                    <div className="flex border-b border-slate-200 bg-slate-50/80">
-                                        <div className="w-24 flex-shrink-0 p-4 flex items-center justify-center border-r border-slate-200">
-                                            <span className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider">SLOTS</span>
+                                    <div className="flex border-b border-slate-200 bg-slate-50/80 w-full">
+                                        <div className="w-16 sm:w-20 flex-shrink-0 p-2 sm:p-3 flex items-center justify-center border-r border-slate-200 bg-slate-100/60">
+                                            <span className="text-[9px] sm:text-[10px] font-black text-blue-900 uppercase tracking-wider">SLOTS</span>
                                         </div>
-                                        <div className="flex-1 flex">
+                                        <div
+                                            className="flex-1 grid min-w-0"
+                                            style={{ gridTemplateColumns: `repeat(${periodSlots.length}, minmax(0, 1fr))` }}
+                                        >
                                             {periodSlots.map((slot) => (
-                                                <div key={slot.id} className="flex-1 min-w-[120px] py-4 px-3 text-center border-r border-slate-200 last:border-r-0 flex flex-col justify-center">
-                                                    <p className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider mb-1">{slot.slot_name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-600 flex items-center justify-center gap-1">
-                                                        <Clock size={12} className="text-blue-600" />
-                                                        {formatTimeTo12h(slot.start_time).replace(' AM', '').replace(' PM', '')} - {formatTimeTo12h(slot.end_time)}
+                                                <div key={slot.id} className="py-2 sm:py-2.5 px-1 text-center border-r border-slate-200 last:border-r-0 flex flex-col justify-center bg-slate-50/50 min-w-0">
+                                                    <p className="text-[9px] sm:text-[10px] font-extrabold text-blue-900 uppercase tracking-wider mb-0.5 truncate">{slot.slot_name}</p>
+                                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-600 flex items-center justify-center gap-0.5 whitespace-nowrap truncate">
+                                                        <Clock size={10} className="text-blue-600 shrink-0 hidden sm:inline" />
+                                                        <span className="truncate">{formatTimeTo12h(slot.start_time).replace(' AM', '').replace(' PM', '')} - {formatTimeTo12h(slot.end_time)}</span>
                                                     </p>
                                                 </div>
                                             ))}
@@ -640,27 +686,39 @@ const StudentTimetable = () => {
                                     </div>
 
                                     {/* Table Body Rows */}
-                                    <div className="divide-y divide-slate-200">
+                                    <div className="divide-y divide-slate-200 w-full">
                                         {days.map((day) => (
-                                            <div key={day} className={`flex transition-colors ${day === currentDayName ? 'bg-blue-50/20' : 'hover:bg-slate-50/40'}`}>
-                                                <div className={`w-24 flex-shrink-0 flex flex-col items-center justify-center border-r border-slate-200 font-extrabold text-xs tracking-wider ${day === currentDayName ? 'text-blue-700 bg-blue-50/50' : 'text-slate-600 bg-slate-50/50'}`}>
-                                                    {day}
-                                                    {day === currentDayName && <div className="h-1.5 w-1.5 bg-blue-600 rounded-full mt-1.5 animate-pulse" />}
+                                            <div key={day} className={`flex transition-colors w-full ${day === currentDayName ? 'bg-blue-50/30' : 'hover:bg-slate-50/40'}`}>
+                                                <div className={`w-16 sm:w-20 flex-shrink-0 flex flex-col items-center justify-center border-r font-extrabold text-xs tracking-wider transition-all relative ${
+                                                    day === currentDayName 
+                                                        ? 'bg-blue-600 text-white border-r-blue-700 shadow-sm' 
+                                                        : 'text-slate-700 bg-slate-50/50 border-slate-200'
+                                                }`}>
+                                                    <span>{day}</span>
+                                                    {day === currentDayName && (
+                                                        <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded-md bg-white text-blue-700 mt-1 shadow-2xs leading-none">
+                                                            TODAY
+                                                        </span>
+                                                    )}
                                                 </div>
 
-                                                <div className="flex-1 flex">
+                                                <div
+                                                    className="flex-1 grid min-w-0"
+                                                    style={{ gridTemplateColumns: `repeat(${periodSlots.length}, minmax(0, 1fr))` }}
+                                                >
                                                     {periodSlots.map((slot) => {
                                                         const entry = getEntryForSlot(day, slot);
                                                         return (
                                                             <div
                                                                 key={slot.id}
-                                                                className="flex-1 min-w-[120px] p-1.5 min-h-[110px] flex border-r border-slate-200 last:border-r-0"
+                                                                className="p-1 min-h-[105px] flex border-r border-slate-200 last:border-r-0 min-w-0"
                                                             >
                                                                 <TimetableCard
                                                                     entry={entry}
                                                                     slot={slot}
                                                                     day={day}
-                                                                    onClick={(entry, slot, day) => setSelectedPeriodModal({ entry, slot, day })}
+                                                                    isToday={day === currentDayName}
+                                                                    onClick={(entry, slot, day) => openPeriodModal(entry, slot, day)}
                                                                 />
                                                             </div>
                                                         );
@@ -693,12 +751,17 @@ const StudentTimetable = () => {
                                 <button
                                     key={day}
                                     onClick={() => setActiveDay(day)}
-                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${activeDay === day
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${activeDay === day
                                         ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        } ${day === currentDayName ? 'ring-2 ring-blue-500 font-extrabold' : ''}`}
                                 >
-                                    {day}
+                                    <span>{day}</span>
+                                    {day === currentDayName && (
+                                        <span className={`text-[8px] font-black px-1 py-0.2 rounded uppercase ${activeDay === day ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'}`}>
+                                            TODAY
+                                        </span>
+                                    )}
                                 </button>
                             ))}
                         </div>
@@ -725,7 +788,7 @@ const StudentTimetable = () => {
                                     day={activeDay}
                                     isMobile
                                     postedSlotLog={postedSlotLog}
-                                    onClick={(entry, slot, day) => entry && setSelectedPeriodModal({ entry, slot, day })}
+                                    onClick={(entry, slot, day) => entry && openPeriodModal(entry, slot, day)}
                                 />
                             );
                         })}
@@ -833,14 +896,14 @@ const StudentTimetable = () => {
                 </div>
             )}
 
-            {/* ── PERIOD DETAILS POPUP MODAL ── */}
+            {/* ── PERIOD DETAILS & ATTENDANCE CALENDAR POPUP MODAL ── */}
             {selectedPeriodModal && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in"
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-fade-in"
                     onClick={() => setSelectedPeriodModal(null)}
                 >
                     <div
-                        className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5 transform transition-all scale-100 max-h-[80vh] sm:max-h-[90vh] overflow-y-auto no-scrollbar mb-16 sm:mb-0"
+                        className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5 transform transition-all scale-100 max-h-[85vh] sm:max-h-[90vh] overflow-y-auto no-scrollbar mb-16 sm:mb-0"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Modal Header */}
@@ -857,7 +920,7 @@ const StudentTimetable = () => {
                                         </span>
                                     )}
                                 </div>
-                                <h3 className="text-lg font-extrabold text-blue-950 leading-snug">
+                                <h3 className="text-base sm:text-lg font-extrabold text-blue-950 leading-snug">
                                     {selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label || selectedPeriodModal.entry?.title || 'Scheduled Period'}
                                 </h3>
                             </div>
@@ -869,121 +932,254 @@ const StudentTimetable = () => {
                             </button>
                         </div>
 
-                        {/* Content Details */}
-                        <div className="space-y-4">
-                            {(() => {
-                                const subjKey = (selectedPeriodModal.entry?.subject_code || selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label || '').trim().toUpperCase();
-                                const stats = subjectAttendanceStatsMap.get(subjKey) || {
-                                    faculty: selectedPeriodModal.entry?.faculty_name || selectedPeriodModal.entry?.teacher_name || selectedPeriodModal.entry?.faculty || selectedPeriodModal.entry?.staff_name || 'Department Faculty',
-                                    percentage: '0.0',
-                                    status: 'Shortage Alert',
-                                    present: 0,
-                                    total: 0
-                                };
+                        {/* Modal Body: Switch between Details Mode and Calendar Mode */}
+                        {isCalendarView ? (
+                            <div className="space-y-4 animate-fade-in">
+                                {/* Subject & Month Header */}
+                                <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-100 flex items-center justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider truncate">
+                                            {selectedPeriodModal.entry?.subject_code || 'Subject Attendance Log'}
+                                        </p>
+                                        <h4 className="text-xs sm:text-sm font-extrabold text-blue-950 truncate">
+                                            Daily Attendance Calendar
+                                        </h4>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-blue-200/80 shadow-2xs shrink-0">
+                                        <button
+                                            onClick={() => setCalendarMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                                            className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Previous Month"
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <span className="text-xs font-extrabold text-blue-900 px-1 whitespace-nowrap">
+                                            {calendarMonthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                                        </span>
+                                        <button
+                                            onClick={() => setCalendarMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                                            className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Next Month"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
 
-                                return (
-                                    <>
-                                        {/* Faculty / Teacher Card */}
-                                        <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100/80 flex items-center gap-3.5">
-                                            <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
-                                                <UserCheck size={22} />
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider">Assigned Faculty / Teacher</p>
-                                                <h4 className="text-sm font-extrabold text-blue-950 mt-0.5">
-                                                    {stats.faculty}
-                                                </h4>
-                                            </div>
-                                        </div>
+                                {/* Attendance Status Legend */}
+                                <div className="flex items-center justify-around bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[10px] sm:text-[11px] font-bold">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center font-black text-[10px]">P</span>
+                                        <span className="text-slate-700">Present</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-rose-100 text-rose-800 border border-rose-300 flex items-center justify-center font-black text-[10px]">A</span>
+                                        <span className="text-slate-700">Absent</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center font-black text-[10px]">N</span>
+                                        <span className="text-slate-500">Null (No Record)</span>
+                                    </div>
+                                </div>
 
-                                        {/* Subject Attendance Info */}
-                                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                                                    <Award size={15} className="text-blue-600" />
-                                                    Subject Attendance Status
-                                                </span>
-                                                <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${stats.status === 'Compliant' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                                    {stats.status}
-                                                </span>
-                                            </div>
+                                {/* Calendar Grid */}
+                                <div className="border border-slate-200 rounded-2xl p-3 bg-white space-y-2">
+                                    {/* Days of Week Header */}
+                                    <div className="grid grid-cols-7 gap-1 text-center border-b border-slate-100 pb-2">
+                                        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(d => (
+                                            <span key={d} className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{d}</span>
+                                        ))}
+                                    </div>
 
-                                            <div className="flex items-baseline justify-between pt-1">
-                                                <div>
-                                                    <span className="text-2xl font-extrabold text-blue-950">{stats.percentage}%</span>
-                                                    <span className="text-xs text-slate-500 font-medium ml-2">
-                                                        {stats.total > 0 ? `${stats.present} / ${stats.total} Classes Attended` : 'Semester Performance'}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-1">
-                                                <div
-                                                    className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                                                    style={{ width: `${Math.min(100, Math.max(0, Number(stats.percentage)))}%` }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Period-wise Posted Attendance Log from ap_attendance_post_students */}
+                                    {/* Calendar Date Cells */}
+                                    <div className="grid grid-cols-7 gap-1 text-center">
                                         {(() => {
-                                            const postedLog = periodWiseLogs.find(log => {
-                                                const logDay = normalizeDay(log.day_of_week);
-                                                const dayMatch = !logDay || logDay === normalizeDay(selectedPeriodModal.day);
-                                                const slotMatch = Number(log.period_slot_id) === Number(selectedPeriodModal.slot?.id) || Number(log.timing_slot_id) === Number(selectedPeriodModal.slot?.id);
-                                                const codeMatch = selectedPeriodModal.entry?.subject_code && log.subject_code && log.subject_code.trim().toUpperCase() === selectedPeriodModal.entry.subject_code.trim().toUpperCase();
-                                                return dayMatch && (slotMatch || codeMatch);
-                                            });
+                                            const cYear = calendarMonthDate.getFullYear();
+                                            const cMonth = calendarMonthDate.getMonth();
+                                            const totalDays = new Date(cYear, cMonth + 1, 0).getDate();
+                                            const startDayOfWeek = new Date(cYear, cMonth, 1).getDay();
 
-                                            if (!postedLog) return null;
+                                            const cells = [];
+                                            // Padding before 1st of month
+                                            for (let p = 0; p < startDayOfWeek; p++) {
+                                                cells.push(<div key={`pad-${p}`} className="h-9 sm:h-10 opacity-0" />);
+                                            }
 
-                                            return (
-                                                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-1.5">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1">
-                                                            <UserCheck size={12} className="text-amber-700" />
-                                                            Teacher Posted Period Record
-                                                        </span>
-                                                        <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${postedLog.status === 'present' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                                            {postedLog.status.toUpperCase()}
+                                            // Month Days
+                                            for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+                                                const dateStr = `${cYear}-${String(cMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                                                
+                                                // Check periodWiseLogs for attendance status
+                                                const subjCode = selectedPeriodModal.entry?.subject_code;
+                                                const subjName = selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label;
+
+                                                const matchedLog = periodWiseLogs.find(log => {
+                                                    const lDate = log.attendance_date || log.date;
+                                                    const dateMatches = lDate && String(lDate).startsWith(dateStr);
+                                                    const codeMatches = subjCode && log.subject_code && log.subject_code.trim().toUpperCase() === subjCode.trim().toUpperCase();
+                                                    const nameMatches = subjName && log.subject_name && log.subject_name.trim().toUpperCase() === String(subjName).trim().toUpperCase();
+                                                    return dateMatches && (codeMatches || nameMatches);
+                                                });
+
+                                                let statusBadge = { code: 'N', bg: 'bg-slate-100 text-slate-500 border-slate-200' };
+                                                if (matchedLog) {
+                                                    if (matchedLog.status === 'present') {
+                                                        statusBadge = { code: 'P', bg: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-black' };
+                                                    } else if (matchedLog.status === 'absent') {
+                                                        statusBadge = { code: 'A', bg: 'bg-rose-100 text-rose-800 border-rose-300 font-black' };
+                                                    }
+                                                }
+
+                                                cells.push(
+                                                    <div
+                                                        key={`day-${dayNum}`}
+                                                        className="h-9 sm:h-10 rounded-xl border border-slate-100 flex flex-col items-center justify-center p-0.5 relative group hover:border-blue-300 transition-all bg-slate-50/40"
+                                                    >
+                                                        <span className="text-[10px] font-bold text-slate-700 leading-none">{dayNum}</span>
+                                                        <span className={`text-[8px] px-1 py-0.2 rounded mt-0.5 border leading-none ${statusBadge.bg}`}>
+                                                            {statusBadge.code}
                                                         </span>
                                                     </div>
-                                                    <p className="text-xs font-extrabold text-blue-950">
-                                                        Faculty: {postedLog.faculty_name || stats.faculty}
-                                                    </p>
-                                                    <p className="text-[11px] font-semibold text-slate-600">
-                                                        Date: {postedLog.attendance_date} ({postedLog.start_time || ''} - {postedLog.end_time || ''})
-                                                    </p>
-                                                    {postedLog.remarks && (
-                                                        <p className="text-[11px] italic text-slate-500">Remarks: {postedLog.remarks}</p>
-                                                    )}
-                                                </div>
-                                            );
+                                                );
+                                            }
+                                            return cells;
                                         })()}
-                                    </>
-                                );
-                            })()}
-
-                            {/* Additional Period Details */}
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                    <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Subject Code</p>
-                                    <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.subject_code || 'N/A'}</p>
+                                    </div>
                                 </div>
-                                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                    <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Classroom / Venue</p>
-                                    <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.room_no || selectedPeriodModal.entry?.location || 'Dept Classroom'}</p>
+
+                                {/* Back Button */}
+                                <button
+                                    onClick={() => setIsCalendarView(false)}
+                                    className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors shadow-xs text-xs"
+                                >
+                                    ← Back to Period Details
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {(() => {
+                                    const subjKey = (selectedPeriodModal.entry?.subject_code || selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label || '').trim().toUpperCase();
+                                    const stats = subjectAttendanceStatsMap.get(subjKey) || {
+                                        faculty: selectedPeriodModal.entry?.faculty_name || selectedPeriodModal.entry?.teacher_name || selectedPeriodModal.entry?.faculty || selectedPeriodModal.entry?.staff_name || 'Department Faculty',
+                                        percentage: '0.0',
+                                        status: 'Shortage Alert',
+                                        present: 0,
+                                        total: 0
+                                    };
+
+                                    return (
+                                        <>
+                                            {/* Faculty / Teacher Card */}
+                                            <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100/80 flex items-center gap-3.5">
+                                                <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+                                                    <UserCheck size={22} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider">Assigned Faculty / Teacher</p>
+                                                    <h4 className="text-sm font-extrabold text-blue-950 mt-0.5">
+                                                        {stats.faculty}
+                                                    </h4>
+                                                </div>
+                                            </div>
+
+                                            {/* Subject Attendance Info */}
+                                            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <Award size={15} className="text-blue-600" />
+                                                        Subject Attendance Status
+                                                    </span>
+                                                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${stats.status === 'Compliant' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                        {stats.status}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-baseline justify-between pt-1">
+                                                    <div>
+                                                        <span className="text-2xl font-extrabold text-blue-950">{stats.percentage}%</span>
+                                                        <span className="text-xs text-slate-500 font-medium ml-2">
+                                                            {stats.total > 0 ? `${stats.present} / ${stats.total} Classes Attended` : 'Semester Performance'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-1">
+                                                    <div
+                                                        className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                                                        style={{ width: `${Math.min(100, Math.max(0, Number(stats.percentage)))}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Period-wise Posted Attendance Log from ap_attendance_post_students */}
+                                            {(() => {
+                                                const postedLog = periodWiseLogs.find(log => {
+                                                    const logDay = normalizeDay(log.day_of_week);
+                                                    const dayMatch = !logDay || logDay === normalizeDay(selectedPeriodModal.day);
+                                                    const slotMatch = Number(log.period_slot_id) === Number(selectedPeriodModal.slot?.id) || Number(log.timing_slot_id) === Number(selectedPeriodModal.slot?.id);
+                                                    const codeMatch = selectedPeriodModal.entry?.subject_code && log.subject_code && log.subject_code.trim().toUpperCase() === selectedPeriodModal.entry.subject_code.trim().toUpperCase();
+                                                    return dayMatch && (slotMatch || codeMatch);
+                                                });
+
+                                                if (!postedLog) return null;
+
+                                                return (
+                                                    <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1">
+                                                                <UserCheck size={12} className="text-amber-700" />
+                                                                Teacher Posted Period Record
+                                                            </span>
+                                                            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${postedLog.status === 'present' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {postedLog.status.toUpperCase()}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs font-extrabold text-blue-950">
+                                                            Faculty: {postedLog.faculty_name || stats.faculty}
+                                                        </p>
+                                                        <p className="text-[11px] font-semibold text-slate-600">
+                                                            Date: {postedLog.attendance_date} ({postedLog.start_time || ''} - {postedLog.end_time || ''})
+                                                        </p>
+                                                        {postedLog.remarks && (
+                                                            <p className="text-[11px] italic text-slate-500">Remarks: {postedLog.remarks}</p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </>
+                                    );
+                                })()}
+
+                                {/* Additional Period Details */}
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                        <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Subject Code</p>
+                                        <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.subject_code || 'N/A'}</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                        <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Classroom / Venue</p>
+                                        <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.room_no || selectedPeriodModal.entry?.location || 'Dept Classroom'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Footer Action Buttons */}
+                                <div className="flex gap-2.5 pt-1">
+                                    <button
+                                        onClick={() => setIsCalendarView(true)}
+                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-xs flex items-center justify-center gap-2 text-xs"
+                                    >
+                                        <Calendar size={15} />
+                                        View Details
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedPeriodModal(null)}
+                                        className="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors text-xs"
+                                    >
+                                        Close
+                                    </button>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Footer */}
-                        <button
-                            onClick={() => setSelectedPeriodModal(null)}
-                            className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-xs"
-                        >
-                            Close Details
-                        </button>
+                        )}
                     </div>
                 </div>
             )}

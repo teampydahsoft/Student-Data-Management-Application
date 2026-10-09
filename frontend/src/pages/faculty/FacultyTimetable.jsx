@@ -12,6 +12,32 @@ const FacultyTimetable = () => {
 
     const days = ['MON', 'TUE', 'WED', 'THUR', 'FRI', 'SAT'];
 
+    const normalizeSlotTimings = (rawSlots) => {
+        if (!Array.isArray(rawSlots)) return [];
+        return rawSlots.map(slot => {
+            const sName = String(slot.slot_name || slot.name || slot.label || '').trim().toUpperCase();
+            const sOrder = Number(slot.sort_order ?? slot.id ?? 0);
+
+            let updatedSlot = { ...slot };
+
+            if (sName === 'P3' || sName.includes('P3') || sOrder === 3) {
+                updatedSlot.start_time = '10:55:00';
+                updatedSlot.end_time = '11:05:00';
+            } else if (sName === 'P4' || sName.includes('P4') || sOrder === 4) {
+                updatedSlot.start_time = '11:05:00';
+                updatedSlot.end_time = '12:45:00';
+            } else if (sName === 'P6' || sName.includes('P6') || sOrder === 6) {
+                updatedSlot.start_time = '12:45:00';
+                updatedSlot.end_time = '13:45:00';
+            } else if (sName === 'P7' || sName.includes('P7') || sOrder === 7) {
+                updatedSlot.start_time = '13:45:00';
+                updatedSlot.end_time = '14:35:00';
+            }
+
+            return updatedSlot;
+        });
+    };
+
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -19,7 +45,7 @@ const FacultyTimetable = () => {
                 // Step 1: Get period slots for the faculty's college
                 const slotsRes = await api.get('/period-slots', { params: { college_id: user.college_id } });
                 if (slotsRes.data.success) {
-                    setPeriodSlots(slotsRes.data.data);
+                    setPeriodSlots(normalizeSlotTimings(slotsRes.data.data));
                 }
 
                 // Step 2: Get timetable data for this specific faculty
@@ -122,14 +148,14 @@ const FacultyTimetable = () => {
                                     </div>
 
                                     {/* Slots */}
-                                    <div className="flex-1 flex">
+                                    <div className="flex-1 flex min-w-0">
                                         {periodSlots.map((slot) => {
                                             const entries = getEntriesForSlot(day, slot.id);
 
                                             return (
                                                 <div
                                                     key={slot.id}
-                                                    className="flex-1 min-w-[120px] p-2 border-r border-slate-100 last:border-r-0 min-h-[100px]"
+                                                    className="flex-1 min-w-[140px] p-2 border-r border-slate-100 last:border-r-0 min-h-[110px]"
                                                 >
                                                     {entries.length > 0 ? (
                                                         <div className="flex flex-col gap-2">
