@@ -1409,8 +1409,9 @@ const UserManagement = () => {
         allBranches: form.role === 'branch_hod' ? false : form.allBranches,
         hodYears: form.role === 'branch_hod' ? form.hodYears : [],
         allHodYears: form.role === 'branch_hod' ? !!form.allHodYears : false,
-        permissions: initializePermissions(),
+        permissions: (form.permissions && Object.keys(form.permissions).length > 0) ? form.permissions : initializePermissions(),
         hrms_id: form.hrms_id || null, // Include hrms_id
+        use_hrms_credentials: !!form.hrms_id,
         sendCredentials: !form.hrms_id // Only send credentials for local accounts
       };
 
@@ -1965,7 +1966,7 @@ const UserManagement = () => {
                     className="flex items-center gap-1.5 px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs transition-colors border border-white/20"
                   >
                     <Search size={12} />
-                    Import form HRMS
+                    Import from HRMS
                   </button>
                 </div>
                 <div className="p-3 space-y-2.5 flex-1 overflow-y-auto max-h-[500px]">
@@ -2035,12 +2036,15 @@ const UserManagement = () => {
                               key={emp._id}
                               className="p-2 bg-white hover:bg-blue-50 cursor-pointer flex justify-between items-center group"
                               onClick={() => {
+                                const fallbackEmail = (emp.email && !emp.email.includes('@hrms'))
+                                  ? emp.email
+                                  : (emp.emp_no ? `${emp.emp_no.toLowerCase()}@pydah.edu.in` : '');
                                 setForm(prev => ({
                                   ...prev,
                                   name: emp.name,
-                                  email: emp.email,
-                                  phone: emp.phone,
-                                  username: emp.emp_no || emp.email.split('@')[0],
+                                  email: fallbackEmail,
+                                  phone: emp.phone || prev.phone || '',
+                                  username: emp.emp_no || (emp.email ? emp.email.split('@')[0] : `user_${emp._id}`),
                                   hrms_id: emp._id,
                                   password: '' // Password not required
                                 }));
@@ -2057,7 +2061,7 @@ const UserManagement = () => {
                                     {emp.type}
                                   </span>
                                 </div>
-                                <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email}</div>
+                                <div className="text-[10px] text-slate-500">{emp.emp_no} • {emp.email || 'No email in HRMS'}</div>
                               </div>
                               <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Check size={12} />
@@ -2074,7 +2078,7 @@ const UserManagement = () => {
                       <ShieldCheck size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-xs font-bold text-emerald-800">Linked to HRMS</p>
-                        <p className="text-[10px] text-emerald-600 leading-tight">This mapped user will use their HRMS password to login.</p>
+                        <p className="text-[10px] text-emerald-600 leading-tight">This mapped user will use their HRMS credentials to login.</p>
                       </div>
                       <button
                         type="button"
@@ -2103,16 +2107,22 @@ const UserManagement = () => {
                     />
                   </div>
                   <div>
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 mb-1">
-                      <Mail size={12} className="text-blue-500" />
-                      Email Address <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                        <Mail size={12} className="text-blue-500" />
+                        Email Address <span className="text-red-500">*</span>
+                      </label>
+                      {form.hrms_id && (
+                        <span className="text-[9px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium">
+                          Editable
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="email"
                       value={form.email}
-                      readOnly={!!form.hrms_id}
                       onChange={(e) => handleFormChange('email', e.target.value)}
-                      className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
                       placeholder="email@example.com"
                       required
                     />
@@ -2141,9 +2151,8 @@ const UserManagement = () => {
                       <input
                         type="tel"
                         value={form.phone}
-                        readOnly={!!form.hrms_id}
                         onChange={(e) => handleFormChange('phone', e.target.value)}
-                        className={`w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px] ${form.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+                        className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[36px]"
                         placeholder="+91..."
                       />
                     </div>
@@ -2404,40 +2413,87 @@ const UserManagement = () => {
                       <p className="text-[10px] text-slate-400">Select a college to configure access</p>
                     </div>
                   )}
+
+                  {/* Module Access / Permissions Shortcut */}
+                  <div className="pt-2.5 border-t border-slate-100 bg-slate-50/50 p-2.5 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                        <ShieldCheck size={13} className="text-violet-600" />
+                        Role Module Permissions
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('roles')}
+                        className="text-[10px] text-violet-600 hover:text-violet-700 font-semibold hover:underline flex items-center gap-1"
+                      >
+                        <Settings size={10} />
+                        Configure in Roles
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      This user automatically inherits permissions configured for{' '}
+                      <span className="font-semibold text-slate-700">
+                        {ROLE_LABELS[form.role] || form.role || 'selected role'}
+                      </span>
+                      . You can fine-tune individual permissions in the All Users tab after creation.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 mt-3 sm:mt-4 flex-shrink-0">
-              <button
-                type="button"
-                onClick={resetForm}
-                className="w-full sm:w-auto px-4 sm:px-5 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition-all touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
-              >
-                <RefreshCw size={16} />
-                Reset
-              </button>
-                <button
-                type="submit"
-                disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)}
-                className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)
-                  ? 'bg-slate-300 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
-                  }`}
-              >
-                {creatingUser ? (
-                  <>
-                    <RefreshCw size={16} className="animate-spin" />
-                    Creating...
-                  </>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 mt-3 sm:mt-4 flex-shrink-0">
+              <div className="text-xs">
+                {!form.name ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Full name required</span>
+                ) : !form.email ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Email address required</span>
+                ) : !form.username ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Username required</span>
+                ) : !form.role ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Select a role</span>
+                ) : (!form.password && !form.hrms_id) ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Enter password (min 6 chars) or link HRMS</span>
+                ) : (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0) ? (
+                  <span className="text-amber-600 font-medium text-[11px]">⚠️ Select at least one college</span>
                 ) : (
-                  <>
-                    <UserPlus size={16} />
-                    Create User
-                  </>
+                  <span className="text-emerald-600 font-medium text-[11px] flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Ready to create user
+                  </span>
                 )}
-              </button>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-4 sm:px-5 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition-all touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+                >
+                  <RefreshCw size={16} />
+                  Reset
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)}
+                  className={`px-4 sm:px-6 py-2.5 rounded-lg sm:rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all touch-manipulation min-h-[44px] ${creatingUser || !form.name || !form.email || !form.username || !form.role || (!form.password && !form.hrms_id) || (form.role !== 'super_admin' && !['course_principal', 'course_hod', 'branch_clerk', 'branch_counselor', 'branch_faculty', 'support_staff', 'faculty'].includes(form.role) && form.collegeIds.length === 0)
+                    ? 'bg-slate-300 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/25 active:from-blue-700 active:to-indigo-700'
+                    }`}
+                >
+                  {creatingUser ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={16} />
+                      Create User
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         )}
@@ -4351,11 +4407,14 @@ const UserManagement = () => {
                                 key={emp._id}
                                 className="p-2 bg-white hover:bg-blue-50 cursor-pointer flex justify-between items-center group"
                                 onClick={() => {
+                                  const fallbackEmail = (emp.email && !emp.email.includes('@hrms'))
+                                    ? emp.email
+                                    : (emp.emp_no ? `${emp.emp_no.toLowerCase()}@pydah.edu.in` : '');
                                   setEditForm(prev => ({
                                     ...prev,
                                     name: emp.name,
-                                    email: emp.email,
-                                    username: emp.emp_no || emp.email.split('@')[0],
+                                    email: fallbackEmail || prev.email,
+                                    username: emp.emp_no || (emp.email ? emp.email.split('@')[0] : prev.username),
                                     phone: emp.phone || prev.phone,
                                     hrms_id: emp._id
                                   }));
@@ -4424,13 +4483,17 @@ const UserManagement = () => {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Email</label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">Email</label>
+                        {editForm.hrms_id && (
+                          <span className="text-[10px] text-blue-600 font-medium">Editable</span>
+                        )}
+                      </div>
                       <input
                         type="email"
                         value={editForm.email}
-                        readOnly={!!editForm.hrms_id}
                         onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                        className={`w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all ${editForm.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
                         required
                       />
                     </div>
@@ -4439,9 +4502,8 @@ const UserManagement = () => {
                       <input
                         type="tel"
                         value={editForm.phone}
-                        readOnly={!!editForm.hrms_id}
                         onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                        className={`w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all ${editForm.hrms_id ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
                       />
                     </div>
                     <div>
