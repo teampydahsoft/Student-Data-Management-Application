@@ -3884,9 +3884,11 @@ const Students = () => {
                           )}
                           {canViewField('pin_no') && student.pin_no && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium mt-1">
-                              PIN: {student.pin_no}
+                              PIN Number: {student.pin_no}
                             </span>
                           )}
+
+
                         </div>
                       </div>
 
@@ -4474,21 +4476,33 @@ const Students = () => {
                         <div className="space-y-2 text-[11px]">
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Admission No</span>
-                            <span className="font-extrabold text-gray-900 font-mono">{selectedStudent?.admission_number || '-'}</span>
+                            <span className="font-extrabold text-gray-900 font-mono" title="Admission Number - Cannot be edited">
+                              {selectedStudent?.admission_number || '-'}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">Roll Number</span>
+                            <span className="text-gray-500 font-semibold">Temporary Roll No</span>
+                            <span className="font-extrabold text-gray-800 font-mono bg-gray-100 px-2 py-0.5 rounded text-[11px]" title="Temporary Roll Number - Cannot be edited">
+                              {selectedStudent?.admission_no || selectedStudent?.student_data?.['Temporary Roll Number'] || selectedStudent?.admission_number || '-'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">PIN Number</span>
                             {editMode ? (
                               <input
                                 type="text"
-                                value={editData.pin_no || ''}
+                                value={editData.pin_no !== undefined ? editData.pin_no : (selectedStudent?.pin_no || '')}
                                 onChange={(e) => updateEditField('pin_no', e.target.value)}
-                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                                placeholder="e.g. 236T1A0521"
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             ) : (
                               <span className="font-extrabold text-gray-900 font-mono">{editData.pin_no || selectedStudent?.pin_no || '-'}</span>
                             )}
                           </div>
+
+
+
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Date of Birth</span>
                             {editMode ? (
@@ -4871,16 +4885,44 @@ const Students = () => {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">City / Village</span>
-                            <span className="font-bold text-gray-900">{editData.city_village || selectedStudent?.city_village || '-'}</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.city_village || ''}
+                                onChange={(e) => updateEditField('city_village', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900">{editData.city_village || selectedStudent?.city_village || '-'}</span>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-semibold">Mandal</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.mandal_name || ''}
+                                onChange={(e) => updateEditField('mandal_name', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900">{editData.mandal_name || selectedStudent?.mandal_name || '-'}</span>
+                            )}
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">District</span>
-                            <span className="font-bold text-gray-900">{editData.district || selectedStudent?.district || '-'}</span>
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={editData.district || ''}
+                                onChange={(e) => updateEditField('district', e.target.value)}
+                                className="px-1.5 py-0.5 border border-gray-300 rounded text-[11px] font-bold text-right w-28"
+                              />
+                            ) : (
+                              <span className="font-bold text-gray-900">{editData.district || selectedStudent?.district || '-'}</span>
+                            )}
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-500 font-semibold">State</span>
-                            <span className="font-bold text-gray-900">{editData.mandal_name || selectedStudent?.mandal_name || '-'}</span>
-                          </div>
+
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Category / Caste</span>
                             <span className="font-bold text-gray-900">

@@ -1,4 +1,4 @@
-const { masterPool } = require('../config/database');
+const { masterPool, academicPool } = require('../config/database');
 const { sendAbsenceNotification } = require('../services/smsService');
 const { createNotification } = require('../services/notificationService');
 const { getNotificationSetting } = require('./settingsController');
@@ -4103,7 +4103,7 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       queryStartDate.setHours(0, 0, 0, 0);
     }
 
-    const [historyRows] = await masterPool.query(
+    let [historyRows] = await masterPool.query(
       `
         SELECT attendance_date, status
         FROM attendance_records
@@ -4113,6 +4113,46 @@ exports.getStudentAttendanceHistory = async (req, res) => {
       `,
       [studentId, formatDateKey(queryStartDate), todayKey]
     );
+
+    // Also fetch attendance records directly from Academic Portal DB (ap_attendance_post_students)
+    try {
+      const [apAttRows] = await academicPool.query(
+        `
+          SELECT 
+            DATE_FORMAT(cs.session_date, '%Y-%m-%d') as attendance_date,
+            LOWER(aps.status) as status,
+            cs.subject_code,
+            cs.subject_name
+          FROM ap_attendance_post_students aps
+          JOIN ap_attendance_posts ap ON aps.attendance_post_id = ap.id
+          JOIN ap_class_sessions cs ON ap.class_session_id = cs.id
+          WHERE (aps.student_db_id = ? OR (aps.admission_number IS NOT NULL AND aps.admission_number != '' AND (aps.admission_number = ? OR aps.admission_number = ?)))
+          ORDER BY cs.session_date ASC
+        `,
+        [studentId, student.admission_number || '', student.pin_no || '']
+      );
+
+      if (apAttRows && apAttRows.length > 0) {
+        const existingKeys = new Set(historyRows.map(r => `${formatDateKey(new Date(r.attendance_date))}_${r.status}`));
+        apAttRows.forEach(apRow => {
+          if (apRow.attendance_date) {
+            const normalizedStatus = apRow.status === 'present' ? 'present' : (apRow.status === 'absent' ? 'absent' : apRow.status);
+            const key = `${apRow.attendance_date}_${normalizedStatus}`;
+            if (!existingKeys.has(key)) {
+              existingKeys.add(key);
+              historyRows.push({
+                attendance_date: apRow.attendance_date,
+                status: normalizedStatus,
+                subject_code: apRow.subject_code,
+                subject_name: apRow.subject_name
+              });
+            }
+          }
+        });
+      }
+    } catch (apErr) {
+      console.warn('Academic Portal DB student attendance fetch notice:', apErr.message);
+    }
 
     const weeklyRows = historyRows.filter((row) => {
       const rowDate = new Date(row.attendance_date);

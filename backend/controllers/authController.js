@@ -112,7 +112,7 @@ const addClubRolesToUserResponse = async (rbacUser, userResponse) => {
 // Unified Login (Admin/Staff/Student/HRMS)
 exports.unifiedLogin = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, expectedRole } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -122,6 +122,24 @@ exports.unifiedLogin = async (req, res) => {
     }
 
     const cleanUsername = String(username).trim();
+
+    // Helper to validate whether matchedRole is permitted for expectedRole
+    const isRoleAllowed = (matchedRole) => {
+      if (!expectedRole) return true;
+      const normExpected = String(expectedRole).toLowerCase().trim();
+      const normMatched = String(matchedRole).toLowerCase().trim();
+
+      if (normExpected === 'staff' || normExpected === 'employee' || normExpected === 'admin') {
+        return normMatched !== 'student' && normMatched !== 'parent';
+      }
+      if (normExpected === 'student') {
+        return normMatched === 'student';
+      }
+      if (normExpected === 'parent') {
+        return normMatched === 'parent' || normMatched === 'student';
+      }
+      return true;
+    };
 
     // -------------------------------------------------------------
     // FAST PATH 1: Check Admins (Fastest, Smallest Table, ~1ms)
@@ -140,6 +158,12 @@ exports.unifiedLogin = async (req, res) => {
         if (rbacAdmin && rbacAdmin.length > 0) {
           const rbacUser = rbacAdmin[0];
           if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
+          if (!isRoleAllowed(rbacUser.role)) {
+            return res.status(403).json({
+              success: false,
+              message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+            });
+          }
           const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
           const token = jwt.sign({
             id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,
@@ -148,6 +172,13 @@ exports.unifiedLogin = async (req, res) => {
             permissions: rbacUser.permissions
           }, process.env.JWT_SECRET, { expiresIn: '24h' });
           return res.json({ success: true, message: 'Login successful', token, user: rbacResponse });
+        }
+
+        if (!isRoleAllowed('admin')) {
+          return res.status(403).json({
+            success: false,
+            message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+          });
         }
 
         const token = jwt.sign({
@@ -171,6 +202,12 @@ exports.unifiedLogin = async (req, res) => {
       const rbacUser = rbacRows[0];
       if (rbacUser.password && await bcrypt.compare(password, rbacUser.password)) {
         if (!rbacUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
+        if (!isRoleAllowed(rbacUser.role)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+          });
+        }
 
         const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
         const token = jwt.sign({
@@ -191,6 +228,13 @@ exports.unifiedLogin = async (req, res) => {
     const studentCred = await authenticateStudentCredential(cleanUsername, password);
 
     if (studentCred) {
+      if (!isRoleAllowed('student')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Student credentials cannot be used for Employee login. Please use the Student Login page.'
+        });
+      }
+
       const [studentDetails] = await masterPool.query(
         `SELECT s.student_name, s.student_mobile, s.pin_no, s.batch, s.current_year, s.current_semester, s.student_photo, 
           s.course, s.branch, s.college,
@@ -271,6 +315,12 @@ exports.unifiedLogin = async (req, res) => {
       const staffUser = staffRows[0];
       if (await bcrypt.compare(password, staffUser.password_hash)) {
         if (!staffUser.is_active) return res.status(403).json({ success: false, message: 'Account deactivated' });
+        if (!isRoleAllowed('staff')) {
+          return res.status(403).json({
+            success: false,
+            message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+          });
+        }
 
         const staffResponse = buildStaffResponse(staffUser);
         const token = jwt.sign({
@@ -424,6 +474,12 @@ exports.unifiedLogin = async (req, res) => {
           );
 
           const rbacUser = syncedUsers[0];
+          if (!isRoleAllowed(rbacUser.role)) {
+            return res.status(403).json({
+              success: false,
+              message: 'Employee credentials cannot be used for Student login. Please use the Staff/Employee Login page.'
+            });
+          }
           const rbacResponse = await addClubRolesToUserResponse(rbacUser, buildRBACUserResponse(rbacUser));
           const token = jwt.sign({
             id: rbacUser.id, username: rbacUser.username, role: rbacUser.role,

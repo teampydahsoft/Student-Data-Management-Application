@@ -1,5 +1,22 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Clock, Calendar, ChevronLeft, ChevronRight, BookOpen, MapPin, AlertCircle, Info } from 'lucide-react';
+import {
+    Clock,
+    Calendar,
+    BookOpen,
+    AlertCircle,
+    Info,
+    Award,
+    CheckCircle,
+    XCircle,
+    TrendingUp,
+    RefreshCw,
+    Filter,
+    UserCheck,
+    ChevronRight,
+    ChevronLeft,
+    Layers,
+    ShieldCheck
+} from 'lucide-react';
 import { SkeletonBox } from '../../components/SkeletonLoader';
 import useAuthStore from '../../store/authStore';
 import api from '../../config/api';
@@ -7,52 +24,122 @@ import { toast } from 'react-hot-toast';
 
 const StudentTimetable = () => {
     const { user } = useAuthStore();
+
+    // Data States
     const [timetableData, setTimetableData] = useState([]);
     const [periodSlots, setPeriodSlots] = useState([]);
+    const [attendanceData, setAttendanceData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Filters, Tabs & Modal
+    const [selectedYear, setSelectedYear] = useState(Number(user?.current_year) || 1);
+    const [selectedSem, setSelectedSem] = useState(Number(user?.current_semester) || 1);
+    const [activeTab, setActiveTab] = useState('grid'); // 'grid' | 'periodwise' | 'academic'
+    const [selectedPeriodModal, setSelectedPeriodModal] = useState(null);
+    const [isCalendarView, setIsCalendarView] = useState(false);
+    const [calendarMonthDate, setCalendarMonthDate] = useState(new Date());
+
+    const openPeriodModal = (entry, slot, day) => {
+        setSelectedPeriodModal({ entry, slot, day });
+        setIsCalendarView(false);
+    };
 
     const days = ['MON', 'TUE', 'WED', 'THUR', 'FRI', 'SAT'];
 
-    // Get current day index for default active tab (0 = Sun, 1 = Mon...)
+    // Default active day for mobile/periodwise
     const today = new Date().getDay();
     const defaultDay = today >= 1 && today <= 6 ? days[today - 1] : 'MON';
     const [activeDay, setActiveDay] = useState(defaultDay);
 
+    // Sync user default year/sem on load
     useEffect(() => {
-        const fetchData = async () => {
-            if (!user?.college_id || !user?.branch_id) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                setLoading(true);
-                const slotsRes = await api.get('/period-slots', { params: { college_id: user.college_id } });
-                if (slotsRes.data.success) {
-                    setPeriodSlots(slotsRes.data.data);
-                }
-
-                const timetableRes = await api.get('/timetable', {
-                    params: {
-                        branch_id: user.branch_id,
-                        year: user.current_year,
-                        semester: user.current_semester || 1
-                    }
-                });
-                if (timetableRes.data.success) {
-                    setTimetableData(timetableRes.data.data);
-                }
-            } catch (error) {
-                console.error('Failed to fetch timetable:', error);
-                toast.error('Failed to load timetable');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
+        if (user?.current_year) setSelectedYear(Number(user.current_year) || 1);
+        if (user?.current_semester) setSelectedSem(Number(user.current_semester) || 1);
     }, [user]);
 
+    const normalizeSlotTimings = (rawSlots) => {
+        if (!Array.isArray(rawSlots)) return [];
+        return rawSlots.map(slot => {
+            const sName = String(slot.slot_name || slot.name || slot.label || '').trim().toUpperCase();
+            const sOrder = Number(slot.sort_order ?? slot.id ?? 0);
+
+            let updatedSlot = { ...slot };
+
+            if (sName === 'P3' || sName.includes('P3') || sOrder === 3) {
+                updatedSlot.start_time = '10:55:00';
+                updatedSlot.end_time = '11:05:00';
+            } else if (sName === 'P4' || sName.includes('P4') || sOrder === 4) {
+                updatedSlot.start_time = '11:05:00';
+                updatedSlot.end_time = '12:45:00';
+            } else if (sName === 'P6' || sName.includes('P6') || sOrder === 6) {
+                updatedSlot.start_time = '12:45:00';
+                updatedSlot.end_time = '13:45:00';
+            } else if (sName === 'P7' || sName.includes('P7') || sOrder === 7) {
+                updatedSlot.start_time = '13:45:00';
+                updatedSlot.end_time = '14:35:00';
+            }
+
+            return updatedSlot;
+        });
+    };
+
+    // Fetch Timetable & Period Slots
+    const fetchTimetableAndSlots = async (isManualRefresh = false) => {
+        const branchId = user?.branch_id || user?.course_branch_id || user?.branchId;
+        const collegeId = user?.college_id || user?.collegeId;
+
+        try {
+            if (isManualRefresh) setRefreshing(true);
+            else setLoading(true);
+
+            // 1. Fetch Period Slots
+            const slotsRes = await api.get('/period-slots', {
+                params: collegeId ? { college_id: collegeId } : {}
+            });
+            if (slotsRes.data?.success) {
+                setPeriodSlots(normalizeSlotTimings(slotsRes.data.data || []));
+            }
+
+            // 2. Fetch Timetable for Selected Year & Semester
+            if (branchId) {
+                const timetableRes = await api.get('/timetable', {
+                    params: {
+                        branch_id: branchId,
+                        year: selectedYear,
+                        semester: selectedSem
+                    }
+                });
+                if (timetableRes.data?.success) {
+                    setTimetableData(timetableRes.data.data || []);
+                }
+            }
+
+            // 3. Fetch Academic Attendance Summary
+            try {
+                const attRes = await api.get('/attendance/student');
+                if (attRes.data?.success) {
+                    setAttendanceData(attRes.data.data || null);
+                }
+            } catch (attErr) {
+                console.warn('Notice: Attendance summary endpoint unavailable:', attErr?.message);
+            }
+
+            if (isManualRefresh) toast.success('Timetable & Attendance refreshed!');
+        } catch (error) {
+            console.error('Failed to fetch timetable data:', error);
+            toast.error('Failed to load timetable details');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTimetableAndSlots();
+    }, [user, selectedYear, selectedSem]);
+
+    // Time Format Helper
     const formatTimeTo12h = (timeStr) => {
         if (!timeStr) return '';
         const [hours, minutes] = timeStr.split(':');
@@ -60,23 +147,51 @@ const StudentTimetable = () => {
         const m = minutes;
         const ampm = h >= 12 ? 'PM' : 'AM';
         h = h % 12;
-        h = h ? h : 12; // the hour '0' should be '12'
+        h = h ? h : 12;
         return `${h}:${m} ${ampm}`;
     };
 
-    const getEntryForSlot = (day, slotId) => {
-        return timetableData.find(item => item.day_of_week === day && item.period_slot_id === slotId);
+    const normalizeDay = (d) => {
+        if (!d) return '';
+        const str = String(d).trim().toUpperCase();
+        if (str.startsWith('MON')) return 'MON';
+        if (str.startsWith('TUE')) return 'TUE';
+        if (str.startsWith('WED')) return 'WED';
+        if (str.startsWith('THU')) return 'THUR';
+        if (str.startsWith('FRI')) return 'FRI';
+        if (str.startsWith('SAT')) return 'SAT';
+        if (str.startsWith('SUN')) return 'SUN';
+        return str;
     };
 
-    /**
-     * For mobile: determine if a slot is "covered" by a merged entry starting earlier
-     */
+    const getEntryForSlot = (day, slotObj) => {
+        if (!slotObj) return undefined;
+        const targetId = Number(typeof slotObj === 'object' ? (slotObj.id ?? slotObj.sort_order) : slotObj);
+        const targetSortOrder = Number(typeof slotObj === 'object' ? (slotObj.sort_order ?? slotObj.id) : slotObj);
+        const targetLabel = String(typeof slotObj === 'object' ? (slotObj.slot_name || slotObj.name || '') : '').trim().toUpperCase();
+
+        return timetableData.find(item => {
+            const itemDay = normalizeDay(item.day_of_week || item.day);
+            const targetDay = normalizeDay(day);
+            if (itemDay !== targetDay) return false;
+
+            const itemSlotId = Number(item.period_slot_id || item.timing_slot_id || item.slot_id);
+            const itemSlotOrder = Number(item.slot_order || item.slot_order_id || item.period_slot_id);
+            const itemLabel = String(item.slot_label || item.label || '').trim().toUpperCase();
+
+            return (
+                itemSlotId === targetId ||
+                itemSlotOrder === targetSortOrder ||
+                itemSlotOrder === targetId ||
+                (targetLabel && itemLabel && targetLabel === itemLabel)
+            );
+        });
+    };
+
     const getMobileEntryForSlot = (day, slotIndex) => {
-        // First check if an entry starts at this exact slot
         const exactEntry = getEntryForSlot(day, periodSlots[slotIndex]?.id);
         if (exactEntry) return { ...exactEntry, isStart: true };
 
-        // Check if any previous entry on this day covers this slot
         for (let i = 0; i < slotIndex; i++) {
             const prevEntry = getEntryForSlot(day, periodSlots[i]?.id);
             if (prevEntry && prevEntry.span > (slotIndex - i)) {
@@ -92,325 +207,984 @@ const StudentTimetable = () => {
         return dayMap[d];
     }, []);
 
+    // Direct Academic Portal Attendance Summary (strictly as provided by Academic Portal)
+    const academicAttendanceSummary = useMemo(() => {
+        const semesterData = attendanceData?.semester;
+        const totals = semesterData?.totals || attendanceData?.totals || attendanceData;
+
+        const rawPct = totals?.percentage ?? totals?.overallPercentage ?? totals?.attendance_percentage;
+        const present = totals?.present ?? totals?.presentDays ?? totals?.present_count ?? 0;
+        const absent = totals?.absent ?? totals?.absentDays ?? totals?.absent_count ?? 0;
+        const holidays = totals?.holidays ?? totals?.holidayDays ?? 0;
+        const workingDays = totals?.workingDays ?? totals?.totalWorkingDays ?? (present + absent);
+
+        let numericPct = 0;
+        if (rawPct !== undefined && rawPct !== null && Number(rawPct) > 0) {
+            numericPct = Number(rawPct);
+        } else if ((present + absent) > 0) {
+            numericPct = (present / (present + absent)) * 100;
+        } else {
+            numericPct = 0.0;
+        }
+
+        return {
+            percentage: numericPct.toFixed(1),
+            present,
+            absent,
+            holidays,
+            workingDays,
+            status: numericPct >= 75 ? 'Compliant' : 'Shortage Alert',
+            color: numericPct >= 75 ? 'text-blue-900' : 'text-rose-600',
+            badgeBg: numericPct >= 75 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+        };
+    }, [attendanceData]);
+
+    // Period-wise posted attendance logs from Academic Portal DB (ap_attendance_post_students)
+    const periodWiseLogs = useMemo(() => {
+        return attendanceData?.periodWiseLogs || attendanceData?.semester?.periodWiseLogs || [];
+    }, [attendanceData]);
+
+    // Compute Subject-Wise Attendance from Academic Portal Series & Timetable Schedule
+    const subjectAttendanceStatsMap = useMemo(() => {
+        const statsMap = new Map();
+        const series = attendanceData?.semester?.series || attendanceData?.series || [];
+
+        // 1. Group timetable entries by subject code/title to find scheduled days & slot times
+        const subjectDaysMap = new Map();
+        timetableData.forEach(item => {
+            const title = item.subject_name || item.custom_label || item.title || item.name;
+            if (title) {
+                const key = (item.subject_code || title).trim().toUpperCase();
+                const day = normalizeDay(item.day_of_week || item.day);
+                const slotLabel = item.slot_label || (item.start_time ? `${formatTimeTo12h(item.start_time)}` : null);
+                if (!subjectDaysMap.has(key)) {
+                    subjectDaysMap.set(key, {
+                        name: title,
+                        code: item.subject_code || 'SUB-101',
+                        days: new Set(),
+                        slotLabels: new Set(),
+                        faculty: item.faculty_name || item.teacher_name || item.faculty || item.staff_name || item.instructor_name || null,
+                        slotsCount: 0
+                    });
+                }
+                const existing = subjectDaysMap.get(key);
+                if (day) existing.days.add(day);
+                if (slotLabel) existing.slotLabels.add(slotLabel);
+                existing.slotsCount += item.span || 1;
+                if (!existing.faculty && (item.faculty_name || item.teacher_name || item.faculty || item.staff_name)) {
+                    existing.faculty = item.faculty_name || item.teacher_name || item.faculty || item.staff_name;
+                }
+            }
+        });
+
+        // 2. Compute attendance for each subject strictly from slot-based periodWiseLogs (Academic Portal DB)
+        subjectDaysMap.forEach((info, key) => {
+            let total = 0;
+            let present = 0;
+            let absent = 0;
+
+            // Direct match from ap_attendance_post_students period-wise logs
+            const directLogs = periodWiseLogs.filter(log => {
+                const codeMatch = log.subject_code && log.subject_code.trim().toUpperCase() === info.code.trim().toUpperCase();
+                const nameMatch = log.subject_name && log.subject_name.trim().toUpperCase() === info.name.trim().toUpperCase();
+                return codeMatch || nameMatch;
+            });
+
+            if (directLogs.length > 0) {
+                directLogs.forEach(log => {
+                    if (log.status === 'present') present++;
+                    else if (log.status === 'absent') absent++;
+                    if (log.faculty_name && !info.faculty) {
+                        info.faculty = log.faculty_name;
+                    }
+                });
+                total = present + absent;
+            }
+
+            // Strictly slot-based: If no slot-based attendance posted, percentage is 0.0
+            const pct = total > 0 ? (present / total) * 100 : 0.0;
+            const scheduledDaysStr = Array.from(info.days).join(', ');
+            const slotLabelsStr = Array.from(info.slotLabels).join(', ');
+
+            statsMap.set(key, {
+                name: info.name,
+                code: info.code,
+                slotsCount: info.slotsCount,
+                daysStr: scheduledDaysStr,
+                slotLabelsStr: slotLabelsStr,
+                faculty: info.faculty || 'Department Faculty',
+                present,
+                absent,
+                total,
+                percentage: Number(pct).toFixed(1),
+                status: pct >= 75 ? 'Compliant' : 'Shortage Alert'
+            });
+        });
+
+        return statsMap;
+    }, [timetableData, attendanceData, academicAttendanceSummary, periodWiseLogs]);
+
+    const timetableSubjects = useMemo(() => {
+        return Array.from(subjectAttendanceStatsMap.values());
+    }, [subjectAttendanceStatsMap]);
+
     if (loading) {
         return (
-            <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto animate-pulse">
-                <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                        <SkeletonBox height="h-8" width="w-48" />
-                        <SkeletonBox height="h-4" width="w-64" />
-                    </div>
+            <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 pb-8 animate-pulse">
+                <div className="bg-white rounded-2xl sm:rounded-[2.5rem] p-6 border border-slate-200 space-y-3">
+                    <SkeletonBox height="h-8" width="w-64" className="rounded-xl" />
+                    <SkeletonBox height="h-4" width="w-48" />
                 </div>
-                <div className="flex gap-2 overflow-x-auto py-2">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <SkeletonBox key={i} height="h-9" width="w-20" className="rounded-xl shrink-0" />
-                    ))}
+                <div className="flex gap-2">
+                    <SkeletonBox height="h-10" width="w-32" className="rounded-xl" />
+                    <SkeletonBox height="h-10" width="w-32" className="rounded-xl" />
+                    <SkeletonBox height="h-10" width="w-32" className="rounded-xl" />
                 </div>
-                <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                        <SkeletonBox key={i} height="h-20" className="w-full rounded-2xl" />
-                    ))}
-                </div>
+                <SkeletonBox height="h-96" className="w-full rounded-2xl" />
             </div>
         );
     }
 
-    const TimetableCard = ({ entry, span, isMobile = false }) => {
+    const TimetableCard = ({ entry, slot, day, isMobile = false, postedSlotLog = null, isToday = false, onClick }) => {
+        const sName = String(slot?.slot_name || slot?.name || slot?.label || '').trim().toUpperCase();
+        const sOrder = Number(slot?.sort_order ?? slot?.id ?? 0);
+        const startTime = String(slot?.start_time || '');
+        const isBreakSlot = 
+            !entry && (
+                sName === 'P3' || 
+                sName === 'P6' || 
+                sName.includes('P3') || 
+                sName.includes('P6') || 
+                sName.includes('BREAK') ||
+                sOrder === 3 || 
+                sOrder === 6 ||
+                startTime.startsWith('10:50') ||
+                startTime.startsWith('12:45')
+            );
+
+        const entryType = String(entry?.type || '').toLowerCase();
+        const isLab = entryType === 'lab';
+        const isBreak = entryType === 'break' || entryType === 'lunch' || isBreakSlot;
+        const isOther = entryType === 'other';
+
+        let badgeText = String(entry?.type || '').toUpperCase();
+        if (!entry) {
+            badgeText = isBreakSlot ? 'BREAK' : 'FREE SLOT';
+        } else if (!badgeText || badgeText === 'SUBJECT' || badgeText === 'THEORY') {
+            badgeText = 'THEORY';
+        }
+
+        let badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200/80';
+        let barColor = 'bg-blue-600';
+        let periodBadgeStyle = 'bg-blue-100 text-blue-900 border-blue-300';
+        let timeColor = 'text-blue-700';
+
+        if (postedSlotLog) {
+            if (postedSlotLog.status === 'present') {
+                badgeText = `${badgeText} • PRESENT`;
+                badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+            } else if (postedSlotLog.status === 'absent') {
+                badgeText = `${badgeText} • ABSENT`;
+                badgeStyle = 'bg-rose-100 text-rose-800 border-rose-300';
+            }
+        } else if (isLab) {
+            badgeStyle = 'bg-purple-50 text-purple-800 border-purple-200/80';
+            barColor = 'bg-purple-600';
+            periodBadgeStyle = 'bg-purple-100 text-purple-900 border-purple-300';
+            timeColor = 'text-purple-700';
+        } else if (isBreak) {
+            badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200/80';
+            barColor = 'bg-amber-500';
+            periodBadgeStyle = 'bg-amber-100 text-amber-900 border-amber-300';
+            timeColor = 'text-amber-800';
+        } else if (isOther) {
+            badgeStyle = 'bg-teal-50 text-teal-800 border-teal-200/80';
+            barColor = 'bg-teal-600';
+            periodBadgeStyle = 'bg-teal-100 text-teal-900 border-teal-300';
+            timeColor = 'text-teal-700';
+        } else if (!entry) {
+            badgeStyle = 'bg-slate-100 text-slate-500 border-slate-200';
+            barColor = 'bg-slate-300';
+            periodBadgeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
+            timeColor = 'text-slate-500';
+        }
+
+        const titleText = entry
+            ? (entry.subject_name || entry.custom_label || entry.title || entry.name || (entry.type ? `${entry.type}` : 'Subject Class'))
+            : (isBreakSlot ? (sName.includes('P3') || sOrder === 3 ? 'Break' : 'Lunch Break') : 'Free Period Slot');
+
+        const codeOrLabel = entry?.subject_code || (entry?.subject_name ? entry?.custom_label : null) || slot?.slot_name || 'Class';
+        const facultyName = postedSlotLog?.faculty_name || entry?.faculty_name || entry?.teacher_name || entry?.faculty || entry?.staff_name;
+
+        // Mobile View Layout
+        if (isMobile) {
+            return (
+                <div
+                    onClick={() => onClick && entry && onClick(entry, slot, day)}
+                    className={`w-full rounded-2xl border bg-white shadow-xs transition-all duration-200 group relative overflow-hidden p-3.5 space-y-2.5 ${entry ? 'hover:border-blue-500 hover:shadow-md cursor-pointer' : 'border-slate-200/90'} ${isBreakSlot ? 'bg-amber-50/30 border-amber-200/80' : ''}`}
+                    title={entry ? 'Click to view teacher & subject attendance details' : undefined}
+                >
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${barColor}`} />
+
+                    {/* 1. Top Row: P1 badge on left, THEORY/LAB badge on right */}
+                    <div className="flex items-center justify-between pl-1">
+                        <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded-lg border shadow-2xs ${periodBadgeStyle}`}>
+                            {slot?.slot_name || 'P1'}
+                        </span>
+                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${badgeStyle}`}>
+                            {badgeText}
+                        </span>
+                    </div>
+
+                    {/* 2. Timing line below P1 */}
+                    <div className="flex items-center gap-1.5 text-xs font-bold pl-1">
+                        <Clock size={13} className={`${timeColor} shrink-0`} />
+                        <span className="text-slate-600">
+                            {formatTimeTo12h(slot?.start_time)} {slot?.end_time ? `- ${formatTimeTo12h(slot?.end_time)}` : ''}
+                        </span>
+                    </div>
+
+                    {/* 3. Subject Name */}
+                    <div className="pl-1">
+                        <h4 className="font-extrabold text-blue-950 text-sm sm:text-base leading-snug tracking-tight group-hover:text-blue-700 transition-colors">
+                            {titleText}
+                        </h4>
+                    </div>
+
+                    {/* 4. Footer: Subject Faculty Name & Subject Code */}
+                    {entry && (
+                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between pl-1 gap-2 text-xs min-w-0">
+                            <div className="flex items-center gap-1.5 text-blue-950 font-extrabold min-w-0 flex-1" title={facultyName || 'Faculty'}>
+                                <UserCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                <span className="truncate">{facultyName || 'Department Faculty'}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-slate-500 font-bold text-xs bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200/80 shrink-0">
+                                <Info className="w-3 h-3 text-blue-600 shrink-0" />
+                                <span>{codeOrLabel}</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Desktop Grid Cell View
         if (!entry) {
             return (
-                <div className={`h-full w-full rounded-2xl border border-dashed border-slate-100 flex items-center justify-center transition-colors group-hover:border-slate-200 ${isMobile ? 'py-6 px-4' : ''}`}>
-                    <span className="text-[10px] font-bold text-slate-200 uppercase tracking-widest">Free Slot</span>
+                <div className={`h-full w-full rounded-xl border flex flex-col items-center justify-center min-h-[105px] ${isBreakSlot ? 'bg-amber-50/60 border-amber-200/80' : 'bg-slate-50/30 border-slate-200/70 border-dashed'} p-1.5 text-center`}>
+                    <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border ${isBreakSlot ? 'bg-amber-100 text-amber-900 border-amber-300' : 'text-slate-400 border-slate-200 bg-white'}`}>
+                        {isBreakSlot ? 'BREAK' : 'FREE SLOT'}
+                    </span>
+                    {isBreakSlot && (
+                        <span className="text-[8px] sm:text-[9px] font-bold text-amber-700/80 mt-0.5 leading-none">
+                            {sName.includes('P3') || sOrder === 3 ? 'Break' : 'Lunch Break'}
+                        </span>
+                    )}
                 </div>
             );
-        }
-
-        // Special state for mobile "covered" slots
-        if (isMobile && entry.isCovered) {
-            return (
-                <div className="h-full w-full rounded-2xl border border-dashed bg-slate-50/50 border-slate-200 p-3 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-1 opacity-40">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Continuing</span>
-                        <p className="text-[9px] font-bold text-slate-500 text-center line-clamp-1 italic">{entry.type === 'subject' ? entry.subject_name : entry.custom_label}</p>
-                    </div>
-                </div>
-            );
-        }
-
-        const isLab = entry.type === 'lab';
-        const isBreak = entry.type === 'break' || entry.type === 'Lunch';
-
-        let accentColor = 'bg-indigo-600';
-        let lightBg = 'bg-indigo-50/30';
-        let textColor = 'text-indigo-600';
-        let tagColor = 'bg-indigo-100 text-indigo-700';
-
-        if (isLab) {
-            accentColor = 'bg-purple-600';
-            lightBg = 'bg-purple-50/30';
-            textColor = 'text-purple-600';
-            tagColor = 'bg-purple-100 text-purple-700';
-        } else if (isBreak) {
-            accentColor = 'bg-amber-500';
-            lightBg = 'bg-amber-50/30';
-            textColor = 'text-amber-600';
-            tagColor = 'bg-amber-100 text-amber-700';
-        } else if (entry.type === 'Other' || entry.type === 'other') {
-            accentColor = 'bg-cyan-500';
-            lightBg = 'bg-cyan-50/30';
-            textColor = 'text-cyan-600';
-            tagColor = 'bg-cyan-100 text-cyan-700';
         }
 
         return (
-            <div className={`h-full w-full rounded-[1.8rem] p-4 flex flex-col border border-slate-100 shadow-xl shadow-slate-200/40 hover:shadow-2xl hover:-translate-y-1.5 hover:scale-[1.01] cursor-pointer transition-all duration-500 group relative overflow-hidden bg-white`}>
-                <div className={`absolute top-0 left-0 w-1.5 h-full ${accentColor}`} />
-                <div className={`absolute top-0 right-0 w-20 h-20 ${lightBg} rounded-full -mr-10 -mt-10 blur-2xl group-hover:scale-150 transition-transform duration-700`}></div>
+            <div
+                onClick={() => onClick && entry && onClick(entry, slot, day)}
+                className={`h-full w-full rounded-xl flex flex-col justify-between border bg-white border-slate-200/90 hover:border-blue-500 hover:shadow-md transition-all duration-200 group relative overflow-hidden cursor-pointer p-1.5 sm:p-2 min-h-[105px] ${isToday ? 'ring-1 ring-blue-400/40 shadow-2xs' : ''}`}
+                title={`${titleText} | Faculty: ${facultyName || 'Department Faculty'} (${codeOrLabel}) - Click for details`}
+            >
+                <div className={`absolute top-0 left-0 w-1 sm:w-1.5 h-full ${barColor}`} />
 
-                <div className="flex-1 relative z-10">
-                    <div className="flex items-start justify-between mb-3">
-                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-lg ${tagColor} shadow-sm backdrop-blur-md border border-white/50`}>
-                            {entry.type}
+                <div className="pl-1 sm:pl-1.5 space-y-0.5">
+                    {/* Top Row: Type Badge + Subject Code Badge */}
+                    <div className="flex items-center justify-between gap-0.5">
+                        <span className={`text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1 py-0.5 rounded border leading-none ${badgeStyle}`}>
+                            {badgeText}
                         </span>
-                        {span > 1 && !isMobile && (
-                            <span className="text-[8px] font-black text-slate-400 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg shadow-sm uppercase tracking-widest">
-                                {span} Periods
-                            </span>
-                        )}
+                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200/60 px-1 py-0.5 rounded truncate max-w-[60px] sm:max-w-[75px] leading-none" title={codeOrLabel}>
+                            {codeOrLabel}
+                        </span>
                     </div>
-                    <h4 className={`font-black ${textColor} text-[13px] leading-tight line-clamp-2 group-hover:text-slate-900 transition-colors tracking-tight`}>
-                        {entry.type === 'subject' ? entry.subject_name : entry.custom_label}
+
+                    {/* Subject Title */}
+                    <h4 className="font-extrabold text-blue-950 text-[10px] sm:text-xs leading-tight line-clamp-2 tracking-tight group-hover:text-blue-700 transition-colors" title={titleText}>
+                        {titleText}
                     </h4>
                 </div>
-                {(entry.subject_code || (isMobile && span > 1)) && (
-                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between relative z-10">
-                        {entry.subject_code && (
-                            <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                <Info className="w-3 h-3 opacity-40" />
-                                {entry.subject_code}
-                            </div>
-                        )}
-                        {isMobile && span > 1 && entry.isStart && (
-                            <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest italic">
-                                Extended
-                            </span>
-                        )}
+
+                {/* Bottom Row: Faculty Name spanning full width */}
+                {facultyName && (
+                    <div className="mt-1 pt-0.5 border-t border-slate-100 flex items-center gap-0.5 text-[9px] sm:text-[10px] font-extrabold text-blue-900 pl-1 sm:pl-1.5 min-w-0" title={facultyName}>
+                        <UserCheck className="w-3 h-3 text-blue-600 shrink-0" />
+                        <span className="truncate">{facultyName}</span>
                     </div>
                 )}
             </div>
         );
     };
 
-    if (loading) {
-        return (
-            <div className="space-y-6 animate-pulse p-3 sm:p-6">
-                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-6 md:p-8 space-y-3">
-                    <SkeletonBox height="h-8" width="w-48" className="rounded-xl" />
-                    <SkeletonBox height="h-4" width="w-32" />
-                </div>
-                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-4 sm:p-6 space-y-4">
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <SkeletonBox key={i} height="h-10" width="w-20" className="rounded-xl shrink-0" />
-                        ))}
-                    </div>
-                    <div className="space-y-3">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                            <SkeletonBox key={i} height="h-20" className="w-full rounded-2xl" />
-                        ))}
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
-            {/* Header Section */}
-            <div className="bg-white rounded-[2.5rem] border border-slate-200 p-6 md:p-8 mb-6 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07)] overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-50/40 rounded-full -mr-40 -mt-40 blur-3xl pointer-events-none" />
-                <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="w-10 h-1 bg-indigo-600 rounded-full" />
-                            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em]">Weekly Schedule</span>
-                        </div>
-                        <h1 className="text-2xl md:text-3xl font-black text-slate-900 mb-1 tracking-tight">Academic Timetable</h1>
-                        <p className="text-slate-500 text-sm md:text-base flex items-center gap-2 font-semibold">
-                            <BookOpen className="w-4 h-4 text-slate-400" />
-                            {user.branch} <span className="text-slate-300 mx-1">/</span> Year {user.current_year} Sem {user.current_semester || 1}
-                        </p>
-                    </div>
+        <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 pb-40 sm:pb-16 overflow-x-hidden">
 
-                    <div className="flex items-center gap-4 bg-slate-50/60 backdrop-blur-md px-5 py-3.5 rounded-3xl border border-slate-100 shadow-sm">
-                        <div className="w-11 h-11 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-indigo-600 shadow-sm">
-                            <Calendar className="w-5 h-5" />
+            {/* ── Top Portal Header ── */}
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shrink-0">
+                <div>
+                    <h1 className="text-lg sm:text-xl md:text-2xl font-extrabold !text-blue-900 heading-font">
+                        Academic Timetable & Schedule
+                    </h1>
+                    <p className="text-[11px] sm:text-xs md:text-sm text-gray-500 font-semibold mt-0.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <BookOpen size={14} className="text-blue-600 shrink-0" />
+                        <span>{user?.branch || 'Engineering'}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>Year {selectedYear}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>Semester {selectedSem}</span>
+                    </p>
+                </div>
+
+                <div className="flex items-center justify-end sm:justify-start gap-2.5 sm:gap-3">
+                    {/* Attendance Pill (Hidden on Mobile View as requested) */}
+                    <div className="hidden sm:flex bg-white border border-slate-200 px-3.5 sm:px-4 py-2 rounded-xl shadow-xs items-center gap-2.5 sm:gap-3 shrink-0">
+                        <div className="p-1.5 sm:p-2 bg-blue-50 text-blue-600 rounded-lg shrink-0">
+                            <Award size={18} />
                         </div>
                         <div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Date</p>
-                            <p className="text-sm font-bold text-slate-900 leading-none">
-                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider leading-none mb-1">Academic Attendance</p>
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                <span className="text-sm sm:text-base font-extrabold text-blue-900 leading-none">{academicAttendanceSummary.percentage}%</span>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${academicAttendanceSummary.badgeBg}`}>
+                                    {academicAttendanceSummary.status}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Refresh Button (Hidden on Mobile View) */}
+                    <button
+                        onClick={() => fetchTimetableAndSlots(true)}
+                        disabled={refreshing}
+                        className="hidden sm:flex p-2.5 sm:p-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-xs items-center justify-center shrink-0"
+                        title="Refresh"
+                    >
+                        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                    </button>
+                </div>
+            </header>
+
+            {/* ── View Navigation Tabs (Optimized for Mobile) ── */}
+            <div className="bg-gray-100/90 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl w-full sm:w-fit shrink-0 shadow-xs">
+                <div className="grid grid-cols-3 sm:flex items-center gap-1 sm:gap-1.5">
+                    <button
+                        onClick={() => setActiveTab('grid')}
+                        className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-bold transition-all duration-200 text-center ${activeTab === 'grid'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                    >
+                        <Calendar size={14} className="shrink-0 hidden sm:inline-block" />
+                        <span className="sm:hidden">Timetable</span>
+                        <span className="hidden sm:inline">Semester Timetable (Grid)</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('periodwise')}
+                        className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-bold transition-all duration-200 text-center ${activeTab === 'periodwise'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                    >
+                        <Clock size={14} className="shrink-0 hidden sm:inline-block" />
+                        <span className="sm:hidden">Period-wise</span>
+                        <span className="hidden sm:inline">Period-wise Breakdown</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('academic')}
+                        className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-sm font-bold transition-all duration-200 text-center ${activeTab === 'academic'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                    >
+                        <TrendingUp size={14} className="shrink-0 hidden sm:inline-block" />
+                        <span className="sm:hidden">Summary</span>
+                        <span className="hidden sm:inline">Academic Summary</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* ── TAB 1: SEMESTER TIMETABLE (GRID VIEW) ── */}
+            {activeTab === 'grid' && (
+                <div>
+                    {/* Mobile View */}
+                    <div className="md:hidden space-y-4 w-full overflow-x-hidden">
+                        <div className="bg-white/95 backdrop-blur-md px-2 py-2 border border-slate-200 rounded-xl shadow-xs">
+                            <div className="flex overflow-x-auto no-scrollbar gap-1.5 py-0.5">
+                                {days.map((day) => (
+                                    <button
+                                        key={day}
+                                        onClick={() => setActiveDay(day)}
+                                        className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${activeDay === day
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                            } ${day === currentDayName ? 'ring-2 ring-blue-500 font-extrabold' : ''}`}
+                                    >
+                                        <span>{day}</span>
+                                        {day === currentDayName && (
+                                            <span className={`text-[8px] font-black px-1 py-0.2 rounded uppercase ${activeDay === day ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'}`}>
+                                                TODAY
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-1 w-full min-w-0">
+                            {periodSlots.map((slot, index) => {
+                                const entry = getMobileEntryForSlot(activeDay, index);
+                                return (
+                                    <TimetableCard
+                                        key={slot.id}
+                                        entry={entry}
+                                        slot={slot}
+                                        day={activeDay}
+                                        isMobile
+                                        onClick={(entry, slot, day) => openPeriodModal(entry, slot, day)}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Desktop View (Tabular Grid) */}
+                    <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        {periodSlots.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center p-20 text-center">
+                                <Calendar className="w-12 h-12 text-slate-300 mb-3" />
+                                <h3 className="text-lg font-bold text-blue-900 mb-1">No Timetable Configured</h3>
+                                <p className="text-slate-500 max-w-xs text-xs">
+                                    Please contact your department HOD for the weekly schedule.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="w-full overflow-hidden">
+                                <div className="w-full">
+                                    {/* Table Header Row */}
+                                    <div className="flex border-b border-slate-200 bg-slate-50/80 w-full">
+                                        <div className="w-16 sm:w-20 flex-shrink-0 p-2 sm:p-3 flex items-center justify-center border-r border-slate-200 bg-slate-100/60">
+                                            <span className="text-[9px] sm:text-[10px] font-black text-blue-900 uppercase tracking-wider">SLOTS</span>
+                                        </div>
+                                        <div
+                                            className="flex-1 grid min-w-0"
+                                            style={{ gridTemplateColumns: `repeat(${periodSlots.length}, minmax(0, 1fr))` }}
+                                        >
+                                            {periodSlots.map((slot) => (
+                                                <div key={slot.id} className="py-2 sm:py-2.5 px-1 text-center border-r border-slate-200 last:border-r-0 flex flex-col justify-center bg-slate-50/50 min-w-0">
+                                                    <p className="text-[9px] sm:text-[10px] font-extrabold text-blue-900 uppercase tracking-wider mb-0.5 truncate">{slot.slot_name}</p>
+                                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-600 flex items-center justify-center gap-0.5 whitespace-nowrap truncate">
+                                                        <Clock size={10} className="text-blue-600 shrink-0 hidden sm:inline" />
+                                                        <span className="truncate">{formatTimeTo12h(slot.start_time).replace(' AM', '').replace(' PM', '')} - {formatTimeTo12h(slot.end_time)}</span>
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Table Body Rows */}
+                                    <div className="divide-y divide-slate-200 w-full">
+                                        {days.map((day) => (
+                                            <div key={day} className={`flex transition-colors w-full ${day === currentDayName ? 'bg-blue-50/30' : 'hover:bg-slate-50/40'}`}>
+                                                <div className={`w-16 sm:w-20 flex-shrink-0 flex flex-col items-center justify-center border-r font-extrabold text-xs tracking-wider transition-all relative ${
+                                                    day === currentDayName 
+                                                        ? 'bg-blue-600 text-white border-r-blue-700 shadow-sm' 
+                                                        : 'text-slate-700 bg-slate-50/50 border-slate-200'
+                                                }`}>
+                                                    <span>{day}</span>
+                                                    {day === currentDayName && (
+                                                        <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded-md bg-white text-blue-700 mt-1 shadow-2xs leading-none">
+                                                            TODAY
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div
+                                                    className="flex-1 grid min-w-0"
+                                                    style={{ gridTemplateColumns: `repeat(${periodSlots.length}, minmax(0, 1fr))` }}
+                                                >
+                                                    {periodSlots.map((slot) => {
+                                                        const entry = getEntryForSlot(day, slot);
+                                                        return (
+                                                            <div
+                                                                key={slot.id}
+                                                                className="p-1 min-h-[105px] flex border-r border-slate-200 last:border-r-0 min-w-0"
+                                                            >
+                                                                <TimetableCard
+                                                                    entry={entry}
+                                                                    slot={slot}
+                                                                    day={day}
+                                                                    isToday={day === currentDayName}
+                                                                    onClick={(entry, slot, day) => openPeriodModal(entry, slot, day)}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── TAB 2: PERIOD-WISE BREAKDOWN ── */}
+            {activeTab === 'periodwise' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+                        <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-blue-900 tracking-tight leading-snug">
+                                Period-wise Timetable Breakdown
+                            </h3>
+                            <p className="hidden sm:block text-xs text-slate-500 font-medium mt-0.5">
+                                Select a day to view period schedule and posted teacher attendance details.
                             </p>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Mobile View */}
-            <div className="md:hidden space-y-4">
-                <div className="sticky top-0 z-20 bg-[#f8fafc]/80 backdrop-blur-xl -mx-4 px-4 py-3 border-b border-slate-100/50">
-                    <div className="flex overflow-x-auto no-scrollbar gap-2">
-                        {days.map((day) => (
-                            <button
-                                key={day}
-                                onClick={() => setActiveDay(day)}
-                                className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-[10px] font-black tracking-widest transition-all duration-300 ${activeDay === day
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-[1.02]'
-                                    : 'bg-white text-slate-400 border border-slate-200/50'
-                                    }`}
-                            >
-                                {day}
-                                {day === currentDayName && <div className="h-1 w-3 bg-current mx-auto mt-0.5 rounded-full opacity-50" />}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                    {periodSlots.map((slot, index) => {
-                        const entry = getMobileEntryForSlot(activeDay, index);
-                        return (
-                            <div key={slot.id} className="flex gap-4 group">
-                                <div className="w-20 pt-2 flex-shrink-0 text-right">
-                                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">{slot.slot_name}</p>
-                                    <p className="text-[10px] font-black text-slate-600 bg-slate-100/50 py-1 px-2 rounded-lg inline-block whitespace-nowrap">
-                                        {formatTimeTo12h(slot.start_time)}
-                                    </p>
-                                </div>
-                                <div className="flex-1 min-h-[90px]">
-                                    <TimetableCard entry={entry} isMobile />
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Desktop View (Tabular Grid) */}
-            <div className="hidden md:block bg-white rounded-[3rem] border border-slate-200 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.06)] overflow-hidden">
-                {periodSlots.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center p-32 text-center">
-                        <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                            <Calendar className="w-12 h-12 text-slate-200" />
+                        <div className="flex overflow-x-auto no-scrollbar gap-1.5 py-0.5 w-full sm:w-auto">
+                            {days.map((day) => (
+                                <button
+                                    key={day}
+                                    onClick={() => setActiveDay(day)}
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${activeDay === day
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        } ${day === currentDayName ? 'ring-2 ring-blue-500 font-extrabold' : ''}`}
+                                >
+                                    <span>{day}</span>
+                                    {day === currentDayName && (
+                                        <span className={`text-[8px] font-black px-1 py-0.2 rounded uppercase ${activeDay === day ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'}`}>
+                                            TODAY
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
                         </div>
-                        <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">No Timetable Configured</h3>
-                        <p className="text-slate-400 max-w-xs mx-auto text-sm font-semibold">
-                            Please contact your department for the weekly schedule.
-                        </p>
                     </div>
-                ) : (
-                    <div className="overflow-x-auto no-scrollbar">
-                        <div className="min-w-[1250px]">
-                            {/* Header row */}
-                            <div className="flex border-b border-slate-100 bg-slate-50/40">
-                                <div className="w-24 flex-shrink-0 p-6 flex items-center justify-center border-r border-slate-100 bg-slate-50/20">
-                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">SLOTS</span>
-                                </div>
-                                <div className="flex-1 flex">
-                                    {periodSlots.map((slot) => (
-                                        <div key={slot.id} className="flex-1 min-w-[130px] h-[85px] py-5 px-4 text-center border-r border-slate-100 last:border-r-0 flex flex-col justify-center">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">{slot.slot_name}</p>
-                                            <p className="text-[10px] font-black text-slate-900 flex items-center justify-center gap-1.5 opacity-80">
-                                                <Clock className="w-3 h-3 text-indigo-500 opacity-60" />
-                                                {formatTimeTo12h(slot.start_time).replace(' AM', '').replace(' PM', '')} - {formatTimeTo12h(slot.end_time)}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
+
+                    <div className="space-y-3">
+                        {periodSlots.map((slot, index) => {
+                            const entry = getEntryForSlot(activeDay, slot);
+
+                            // Find posted attendance log for this period from ap_attendance_post_students
+                            const postedSlotLog = periodWiseLogs.find(log => {
+                                const logDay = normalizeDay(log.day_of_week);
+                                const dayMatch = !logDay || logDay === normalizeDay(activeDay);
+                                const slotMatch = Number(log.period_slot_id) === Number(slot.id) || Number(log.timing_slot_id) === Number(slot.id);
+                                const codeMatch = entry?.subject_code && log.subject_code && log.subject_code.trim().toUpperCase() === entry.subject_code.trim().toUpperCase();
+                                return dayMatch && (slotMatch || codeMatch);
+                            });
+
+                            return (
+                                <TimetableCard
+                                    key={slot.id}
+                                    entry={entry}
+                                    slot={slot}
+                                    day={activeDay}
+                                    isMobile
+                                    postedSlotLog={postedSlotLog}
+                                    onClick={(entry, slot, day) => entry && openPeriodModal(entry, slot, day)}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ── TAB 3: ACADEMIC SUMMARY ── */}
+            {activeTab === 'academic' && (
+                <div className="space-y-5">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                        <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[9px] sm:text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5 sm:mb-1 truncate">Total Attendance %</p>
+                                <h3 className="text-base sm:text-xl font-extrabold text-blue-900">{academicAttendanceSummary.percentage}%</h3>
+                                <p className="text-[10px] sm:text-xs font-semibold text-emerald-700 mt-0.5 truncate">Target: 75%</p>
                             </div>
+                            <div className="p-2 sm:p-3 bg-blue-50 text-blue-600 rounded-lg sm:rounded-xl shrink-0">
+                                <Award className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </div>
+                        </div>
 
-                            {/* Body Rows */}
-                            <div className="divide-y divide-slate-100">
-                                {days.map((day) => (
-                                    <div key={day} className={`flex transition-all duration-300 ${day === currentDayName ? 'bg-indigo-50/10' : 'hover:bg-slate-50/20'}`}>
-                                        <div className={`w-24 flex-shrink-0 flex flex-col items-center justify-center border-r border-slate-100 font-black text-[13px] tracking-tight ${day === currentDayName ? 'text-indigo-600 bg-indigo-50/20' : 'text-slate-400'}`}>
-                                            {day}
-                                            {day === currentDayName && <div className="h-1.5 w-1.5 bg-indigo-600 rounded-full mt-2 ring-4 ring-indigo-50 animate-pulse" />}
+                        <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[9px] sm:text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5 sm:mb-1 truncate">Present Days</p>
+                                <h3 className="text-base sm:text-xl font-extrabold text-emerald-700">{academicAttendanceSummary.present} Days</h3>
+                                <p className="text-[10px] sm:text-xs font-semibold text-slate-500 mt-0.5 truncate">Attended</p>
+                            </div>
+                            <div className="p-2 sm:p-3 bg-emerald-50 text-emerald-600 rounded-lg sm:rounded-xl shrink-0">
+                                <UserCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[9px] sm:text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5 sm:mb-1 truncate">Absent Days</p>
+                                <h3 className="text-base sm:text-xl font-extrabold text-rose-600">{academicAttendanceSummary.absent} Days</h3>
+                                <p className="text-[10px] sm:text-xs font-semibold text-slate-500 mt-0.5 truncate">Missed</p>
+                            </div>
+                            <div className="p-2 sm:p-3 bg-rose-50 text-rose-600 rounded-lg sm:rounded-xl shrink-0">
+                                <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[9px] sm:text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mb-0.5 sm:mb-1 truncate">Academic Status</p>
+                                <h3 className="text-xs sm:text-base font-extrabold text-blue-900 truncate">{academicAttendanceSummary.status}</h3>
+                                <p className="text-[10px] sm:text-xs font-semibold text-blue-600 mt-0.5 truncate">Exam Eligible</p>
+                            </div>
+                            <div className="p-2 sm:p-3 bg-purple-50 text-purple-600 rounded-lg sm:rounded-xl shrink-0">
+                                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-base font-extrabold text-blue-900 tracking-tight">Semester Subjects & Load</h3>
+                                <p className="hidden sm:block text-xs text-slate-500 font-medium">Weekly subject schedule in Year {selectedYear} Sem {selectedSem} timetable.</p>
+                            </div>
+                            <span className="text-xs font-extrabold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 whitespace-nowrap shrink-0">
+                                {timetableSubjects.length} Courses
+                            </span>
+                        </div>
+
+                        {timetableSubjects.length === 0 ? (
+                            <p className="text-slate-400 text-xs font-medium text-center py-6">No subjects listed in current timetable configuration.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {timetableSubjects.map((sub) => (
+                                    <div key={sub.code} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-blue-300 transition-all space-y-2.5">
+                                        <div className="flex items-start justify-between">
+                                            <span className="text-[9px] font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                                {sub.code}
+                                            </span>
+                                            <span className="text-xs font-bold text-slate-500">
+                                                {sub.slotsCount} Weekly Hours
+                                            </span>
                                         </div>
+                                        <h4 className="font-extrabold text-blue-900 text-xs sm:text-sm">{sub.name}</h4>
 
-                                        <div className="flex-1 flex">
-                                            {(() => {
-                                                let skipCount = 0;
-                                                return periodSlots.map((slot) => {
-                                                    if (skipCount > 0) {
-                                                        skipCount--;
-                                                        return null;
-                                                    }
+                                        {sub.daysStr && (
+                                            <p className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                                                <Clock size={11} className="text-blue-600 shrink-0" />
+                                                <span>Slots: {sub.daysStr} {sub.slotLabelsStr ? `(${sub.slotLabelsStr})` : ''}</span>
+                                            </p>
+                                        )}
 
-                                                    const entry = getEntryForSlot(day, slot.id);
-                                                    const span = entry?.span || 1;
-                                                    if (span > 1) skipCount = span - 1;
-
-                                                    return (
-                                                        <div
-                                                            key={slot.id}
-                                                            className={`p-2 min-h-[110px] flex border-r border-slate-100 last:border-r-0`}
-                                                            style={{ flex: span }}
-                                                        >
-                                                            <TimetableCard entry={entry} span={span} />
-                                                        </div>
-                                                    );
-                                                });
-                                            })()}
+                                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] gap-2">
+                                            <span className="text-slate-600 font-bold flex items-center gap-1 min-w-0 flex-1 truncate" title={sub.faculty}>
+                                                <UserCheck size={13} className="text-blue-600 shrink-0" />
+                                                <span className="truncate">{sub.faculty}</span>
+                                            </span>
+                                            <span className="font-extrabold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 shrink-0">
+                                                {sub.percentage}% Attd
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
                             </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── PERIOD DETAILS & ATTENDANCE CALENDAR POPUP MODAL ── */}
+            {selectedPeriodModal && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-fade-in"
+                    onClick={() => setSelectedPeriodModal(null)}
+                >
+                    <div
+                        className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 sm:space-y-5 transform transition-all scale-100 max-h-[85vh] sm:max-h-[90vh] overflow-y-auto no-scrollbar mb-16 sm:mb-0"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-blue-50 text-blue-800 border border-blue-200">
+                                        {selectedPeriodModal.day} • {selectedPeriodModal.slot?.slot_name || 'Period'}
+                                    </span>
+                                    {selectedPeriodModal.slot?.start_time && (
+                                        <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                                            <Clock size={12} className="text-blue-600" />
+                                            {formatTimeTo12h(selectedPeriodModal.slot.start_time)} - {formatTimeTo12h(selectedPeriodModal.slot.end_time)}
+                                        </span>
+                                    )}
+                                </div>
+                                <h3 className="text-base sm:text-lg font-extrabold text-blue-950 leading-snug">
+                                    {selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label || selectedPeriodModal.entry?.title || 'Scheduled Period'}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setSelectedPeriodModal(null)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                            >
+                                <XCircle size={20} />
+                            </button>
                         </div>
-                    </div>
-                )}
-            </div>
 
-            {/* Information Cards */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white border border-slate-200 p-5 rounded-[2rem] flex gap-4 transition-all hover:border-indigo-200 group shadow-sm">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500 shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors duration-300">
-                        <Info className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Merged Time Slots</h5>
-                        <p className="text-xs text-slate-600 leading-relaxed font-semibold">
-                            Extended cards indicate sessions like Labs that cover multiple periods. Timing is reflected in the top bar.
-                        </p>
+                        {/* Modal Body: Switch between Details Mode and Calendar Mode */}
+                        {isCalendarView ? (
+                            <div className="space-y-4 animate-fade-in">
+                                {/* Subject & Month Header */}
+                                <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-100 flex items-center justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider truncate">
+                                            {selectedPeriodModal.entry?.subject_code || 'Subject Attendance Log'}
+                                        </p>
+                                        <h4 className="text-xs sm:text-sm font-extrabold text-blue-950 truncate">
+                                            Daily Attendance Calendar
+                                        </h4>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-blue-200/80 shadow-2xs shrink-0">
+                                        <button
+                                            onClick={() => setCalendarMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                                            className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Previous Month"
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <span className="text-xs font-extrabold text-blue-900 px-1 whitespace-nowrap">
+                                            {calendarMonthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                                        </span>
+                                        <button
+                                            onClick={() => setCalendarMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                                            className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Next Month"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Attendance Status Legend */}
+                                <div className="flex items-center justify-around bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[10px] sm:text-[11px] font-bold">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center font-black text-[10px]">P</span>
+                                        <span className="text-slate-700">Present</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-rose-100 text-rose-800 border border-rose-300 flex items-center justify-center font-black text-[10px]">A</span>
+                                        <span className="text-slate-700">Absent</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center font-black text-[10px]">N</span>
+                                        <span className="text-slate-500">Null (No Record)</span>
+                                    </div>
+                                </div>
+
+                                {/* Calendar Grid */}
+                                <div className="border border-slate-200 rounded-2xl p-3 bg-white space-y-2">
+                                    {/* Days of Week Header */}
+                                    <div className="grid grid-cols-7 gap-1 text-center border-b border-slate-100 pb-2">
+                                        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(d => (
+                                            <span key={d} className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{d}</span>
+                                        ))}
+                                    </div>
+
+                                    {/* Calendar Date Cells */}
+                                    <div className="grid grid-cols-7 gap-1 text-center">
+                                        {(() => {
+                                            const cYear = calendarMonthDate.getFullYear();
+                                            const cMonth = calendarMonthDate.getMonth();
+                                            const totalDays = new Date(cYear, cMonth + 1, 0).getDate();
+                                            const startDayOfWeek = new Date(cYear, cMonth, 1).getDay();
+
+                                            const cells = [];
+                                            // Padding before 1st of month
+                                            for (let p = 0; p < startDayOfWeek; p++) {
+                                                cells.push(<div key={`pad-${p}`} className="h-9 sm:h-10 opacity-0" />);
+                                            }
+
+                                            // Month Days
+                                            for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+                                                const dateStr = `${cYear}-${String(cMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                                                
+                                                // Check periodWiseLogs for attendance status
+                                                const subjCode = selectedPeriodModal.entry?.subject_code;
+                                                const subjName = selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label;
+
+                                                const matchedLog = periodWiseLogs.find(log => {
+                                                    const lDate = log.attendance_date || log.date;
+                                                    const dateMatches = lDate && String(lDate).startsWith(dateStr);
+                                                    const codeMatches = subjCode && log.subject_code && log.subject_code.trim().toUpperCase() === subjCode.trim().toUpperCase();
+                                                    const nameMatches = subjName && log.subject_name && log.subject_name.trim().toUpperCase() === String(subjName).trim().toUpperCase();
+                                                    return dateMatches && (codeMatches || nameMatches);
+                                                });
+
+                                                let statusBadge = { code: 'N', bg: 'bg-slate-100 text-slate-500 border-slate-200' };
+                                                if (matchedLog) {
+                                                    if (matchedLog.status === 'present') {
+                                                        statusBadge = { code: 'P', bg: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-black' };
+                                                    } else if (matchedLog.status === 'absent') {
+                                                        statusBadge = { code: 'A', bg: 'bg-rose-100 text-rose-800 border-rose-300 font-black' };
+                                                    }
+                                                }
+
+                                                cells.push(
+                                                    <div
+                                                        key={`day-${dayNum}`}
+                                                        className="h-9 sm:h-10 rounded-xl border border-slate-100 flex flex-col items-center justify-center p-0.5 relative group hover:border-blue-300 transition-all bg-slate-50/40"
+                                                    >
+                                                        <span className="text-[10px] font-bold text-slate-700 leading-none">{dayNum}</span>
+                                                        <span className={`text-[8px] px-1 py-0.2 rounded mt-0.5 border leading-none ${statusBadge.bg}`}>
+                                                            {statusBadge.code}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }
+                                            return cells;
+                                        })()}
+                                    </div>
+                                </div>
+
+                                {/* Back Button */}
+                                <button
+                                    onClick={() => setIsCalendarView(false)}
+                                    className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors shadow-xs text-xs"
+                                >
+                                    ← Back to Period Details
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {(() => {
+                                    const subjKey = (selectedPeriodModal.entry?.subject_code || selectedPeriodModal.entry?.subject_name || selectedPeriodModal.entry?.custom_label || '').trim().toUpperCase();
+                                    const stats = subjectAttendanceStatsMap.get(subjKey) || {
+                                        faculty: selectedPeriodModal.entry?.faculty_name || selectedPeriodModal.entry?.teacher_name || selectedPeriodModal.entry?.faculty || selectedPeriodModal.entry?.staff_name || 'Department Faculty',
+                                        percentage: '0.0',
+                                        status: 'Shortage Alert',
+                                        present: 0,
+                                        total: 0
+                                    };
+
+                                    return (
+                                        <>
+                                            {/* Faculty / Teacher Card */}
+                                            <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100/80 flex items-center gap-3.5">
+                                                <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+                                                    <UserCheck size={22} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider">Assigned Faculty / Teacher</p>
+                                                    <h4 className="text-sm font-extrabold text-blue-950 mt-0.5">
+                                                        {stats.faculty}
+                                                    </h4>
+                                                </div>
+                                            </div>
+
+                                            {/* Subject Attendance Info */}
+                                            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                                                        <Award size={15} className="text-blue-600" />
+                                                        Subject Attendance Status
+                                                    </span>
+                                                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${stats.status === 'Compliant' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                        {stats.status}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-baseline justify-between pt-1">
+                                                    <div>
+                                                        <span className="text-2xl font-extrabold text-blue-950">{stats.percentage}%</span>
+                                                        <span className="text-xs text-slate-500 font-medium ml-2">
+                                                            {stats.total > 0 ? `${stats.present} / ${stats.total} Classes Attended` : 'Semester Performance'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-1">
+                                                    <div
+                                                        className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                                                        style={{ width: `${Math.min(100, Math.max(0, Number(stats.percentage)))}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Period-wise Posted Attendance Log from ap_attendance_post_students */}
+                                            {(() => {
+                                                const postedLog = periodWiseLogs.find(log => {
+                                                    const logDay = normalizeDay(log.day_of_week);
+                                                    const dayMatch = !logDay || logDay === normalizeDay(selectedPeriodModal.day);
+                                                    const slotMatch = Number(log.period_slot_id) === Number(selectedPeriodModal.slot?.id) || Number(log.timing_slot_id) === Number(selectedPeriodModal.slot?.id);
+                                                    const codeMatch = selectedPeriodModal.entry?.subject_code && log.subject_code && log.subject_code.trim().toUpperCase() === selectedPeriodModal.entry.subject_code.trim().toUpperCase();
+                                                    return dayMatch && (slotMatch || codeMatch);
+                                                });
+
+                                                if (!postedLog) return null;
+
+                                                return (
+                                                    <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1">
+                                                                <UserCheck size={12} className="text-amber-700" />
+                                                                Teacher Posted Period Record
+                                                            </span>
+                                                            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${postedLog.status === 'present' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {postedLog.status.toUpperCase()}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs font-extrabold text-blue-950">
+                                                            Faculty: {postedLog.faculty_name || stats.faculty}
+                                                        </p>
+                                                        <p className="text-[11px] font-semibold text-slate-600">
+                                                            Date: {postedLog.attendance_date} ({postedLog.start_time || ''} - {postedLog.end_time || ''})
+                                                        </p>
+                                                        {postedLog.remarks && (
+                                                            <p className="text-[11px] italic text-slate-500">Remarks: {postedLog.remarks}</p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </>
+                                    );
+                                })()}
+
+                                {/* Additional Period Details */}
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                        <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Subject Code</p>
+                                        <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.subject_code || 'N/A'}</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                        <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Classroom / Venue</p>
+                                        <p className="font-extrabold text-blue-950 mt-0.5">{selectedPeriodModal.entry?.room_no || selectedPeriodModal.entry?.location || 'Dept Classroom'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Footer Action Buttons */}
+                                <div className="flex gap-2.5 pt-1">
+                                    <button
+                                        onClick={() => setIsCalendarView(true)}
+                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-xs flex items-center justify-center gap-2 text-xs"
+                                    >
+                                        <Calendar size={15} />
+                                        View Details
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedPeriodModal(null)}
+                                        className="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors text-xs"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
-
-                <div className="bg-white border border-slate-200 p-5 rounded-[2rem] flex gap-4 transition-all hover:border-amber-200 group shadow-sm">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 shrink-0 group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300">
-                        <AlertCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Schedule Queries</h5>
-                        <p className="text-xs text-slate-600 leading-relaxed font-semibold">
-                            For any discrepancies or missed classes, please consult your department's HOD or academic coordinator.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="hidden lg:flex bg-indigo-600 p-5 rounded-[2.2rem] text-white flex gap-4 shadow-md transition-all hover:shadow-lg hover:-translate-y-1 duration-300">
-                    <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-white shrink-0">
-                        <Calendar className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h5 className="text-[11px] font-black text-white/60 uppercase tracking-widest mb-1.5">Academic Compliance</h5>
-                        <p className="text-xs text-white/90 leading-relaxed font-semibold">
-                            Maintain 100% attendance by strictly following the weekly timetable for all sessions.
-                        </p>
-                    </div>
-                </div>
-            </div>
+            )}
         </div>
     );
 };
-
 
 export default StudentTimetable;

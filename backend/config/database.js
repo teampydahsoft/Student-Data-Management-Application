@@ -84,9 +84,47 @@ stagingPoolRaw.on('connection', (connection) => {
   connection.query('SET time_zone = "+05:30"');
 });
 
+// Academic Portal DB connection pool (read-only queries for academic timetables & slots)
+const academicPoolRaw = mysql.createPool({
+  host: process.env.ACADEMIC_DB_HOST || process.env.DB_HOST || 'localhost',
+  user: process.env.ACADEMIC_DB_USER || process.env.DB_USER || 'root',
+  password: process.env.ACADEMIC_DB_PASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.ACADEMIC_DB_NAME || 'academic_portal',
+  port: process.env.ACADEMIC_DB_PORT || 3306,
+  connectionLimit: 15,
+  ...sharedPoolOptions,
+  ssl: process.env.ACADEMIC_DB_SSL === 'true' ? {
+    rejectUnauthorized: false,
+  } : false,
+});
+
+academicPoolRaw.on('connection', (connection) => {
+  connection.query('SET time_zone = "+05:30"');
+});
+
+// Admissions DB connection pool (sync SDMS changes to Admissions database)
+const admissionsPoolRaw = mysql.createPool({
+  host: process.env.ADMISSIONS_DB_HOST || process.env.DB_HOST || 'localhost',
+  user: process.env.ADMISSIONS_DB_USER || process.env.DB_USER || 'root',
+  password: process.env.ADMISSIONS_DB_PASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.ADMISSIONS_DB_NAME || 'admissions_db',
+  port: process.env.ADMISSIONS_DB_PORT || process.env.DB_PORT || 3306,
+  connectionLimit: 15,
+  ...sharedPoolOptions,
+  ssl: (process.env.ADMISSIONS_DB_SSL === 'true' || process.env.DB_SSL === 'true') ? {
+    rejectUnauthorized: false,
+  } : false,
+});
+
+admissionsPoolRaw.on('connection', (connection) => {
+  connection.query('SET time_zone = "+05:30"');
+});
+
 // Promise-based pools with connection-lost retry
 const masterPool = wrapPoolWithRetry(masterPoolRaw.promise());
 const stagingPool = wrapPoolWithRetry(stagingPoolRaw.promise());
+const academicPool = wrapPoolWithRetry(academicPoolRaw.promise());
+const admissionsPool = wrapPoolWithRetry(admissionsPoolRaw.promise());
 
 // Test connections with retry logic
 const testConnection = async (retries = 3) => {
@@ -111,6 +149,8 @@ const testConnection = async (retries = 3) => {
 module.exports = {
   masterPool,
   stagingPool,
+  academicPool,
+  admissionsPool,
   // Backward compat: default pool points to master
   pool: masterPool,
   testConnection

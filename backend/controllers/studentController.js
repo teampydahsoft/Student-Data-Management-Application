@@ -1,4 +1,5 @@
 const { masterPool, stagingPool } = require('../config/database');
+const { triggerAdmissionsSyncAsync, syncStudentToAdmissions, bulkSyncAllStudentsToAdmissions } = require('../services/admissionsSyncService');
 const { fetchActiveQuotaCodes } = require('./quotaController');
 const { resolveCasteIdByName, resolveCategoryIdByName } = require('./casteCategoryController');
 const bcrypt = require('bcryptjs');
@@ -4032,7 +4033,7 @@ exports.updateStudent = async (req, res) => {
 
       const protectedSet = new Set(PROTECTED_COLUMNS);
       Object.keys(studentData).forEach((key) => {
-        const mappedColumn = FIELD_MAPPING[key];
+        const mappedColumn = FIELD_MAPPING[key] || FIELD_LOOKUP[normalizeHeaderKeyForLookup(key)];
         if (protectedSet.has(mappedColumn) || protectedSet.has(key)) {
           delete studentData[key];
         }
@@ -4078,6 +4079,16 @@ exports.updateStudent = async (req, res) => {
       // Set the new value
       mutableStudentData[incomingKey] = incomingStudentData[incomingKey];
     });
+
+    if (newPinNo && newPinNo !== existingStudent.pin_no) {
+      mutableStudentData.pin_no = newPinNo;
+      mutableStudentData['PIN Number'] = newPinNo;
+      mutableStudentData['Pin Number'] = newPinNo;
+      mutableStudentData['Roll Number'] = newPinNo;
+    } else if (existingStudent.pin_no && !mutableStudentData.pin_no) {
+      mutableStudentData.pin_no = existingStudent.pin_no;
+    }
+
 
     // Check if mobile numbers have changed and reset verification status if needed
     const oldStudentMobile = existingStudent.student_mobile || existingStudentData.student_mobile || existingStudentData['Student Mobile number'] || existingStudentData['Student Mobile Number'] || '';
@@ -4467,6 +4478,7 @@ exports.updateStudent = async (req, res) => {
     });
 
     clearStudentsCache();
+    triggerAdmissionsSyncAsync(admissionNumber);
 
     const finalCourse = auditChanges.course?.to ?? existingStudent.course;
     const finalBranch = auditChanges.branch?.to ?? existingStudent.branch;
@@ -10229,5 +10241,33 @@ exports.getDistinctCastes = async (req, res) => {
   } catch (error) {
     console.error('Get distinct castes error:', error);
     res.status(500).json({ success: false, data: [] });
+  }
+};
+
+exports.syncAdmissionsData = async (req, res) => {
+  try {
+    const { admissionNumber } = req.body || {};
+    if (admissionNumber) {
+      const result = await syncStudentToAdmissions(admissionNumber);
+      return res.json({
+        success: result.success,
+        message: result.success ? `Successfully synced student ${admissionNumber} to Admissions DB` : result.error,
+        details: result
+      });
+    }
+
+    const stats = await bulkSyncAllStudentsToAdmissions({ batchSize: 50 });
+    return res.json({
+      success: true,
+      message: `Bulk sync completed. Processed: ${stats.totalProcessed}, Updated: ${stats.totalUpdated}, Errors: ${stats.totalErrors}`,
+      stats
+    });
+  } catch (error) {
+    console.error('Error in syncAdmissionsData endpoint:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync with Admissions DB',
+      error: error.message
+    });
   }
 };
