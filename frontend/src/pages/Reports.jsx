@@ -166,6 +166,7 @@ const Reports = () => {
   });
   const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState('abstract');
+  const [drilldownReturn, setDrilldownReturn] = useState(null);
 
   const [filters, setFilters] = useState({
     college: '',
@@ -437,12 +438,21 @@ const Reports = () => {
         if (activeFilters.scholarshipStatus) params.append('filter_scholarship_status', activeFilters.scholarshipStatus);
         if (activeFilters.stagePending) params.append('filter_stage_pending', activeFilters.stagePending);
         if (activeFilters.search) params.append('search', activeFilters.search);
+
+        const statsQuery = params.toString();
         if (activeFilters.page) params.append('page', activeFilters.page);
         if (activeFilters.limit) params.append('limit', activeFilters.limit);
 
-        const query = params.toString();
+        const [reportResult, statsResult] = await Promise.allSettled([
+          api.get(`/students/reports/registration?${params.toString()}`),
+          api.get(`/students/reports/registration/stats${statsQuery ? `?${statsQuery}` : ''}`)
+        ]);
 
-        const response = await api.get(`/students/reports/registration${query ? `?${query}` : ''}`);
+        if (reportResult.status === 'rejected') {
+          throw reportResult.reason;
+        }
+
+        const response = reportResult.value;
         if (response.data?.success) {
           setReportData(response.data.data || []);
           if (response.data.pagination) {
@@ -454,11 +464,21 @@ const Reports = () => {
               limit: parseInt(response.data.pagination.limit)
             }));
           }
-          if (response.data.statistics) {
-            setStats(response.data.statistics);
-          }
         } else {
           throw new Error(response.data?.message || 'Unable to load reports');
+        }
+
+        if (statsResult.status === 'fulfilled' && statsResult.value.data?.success) {
+          setStats(statsResult.value.data.statistics || null);
+        } else {
+          const statsError = statsResult.status === 'rejected'
+            ? statsResult.reason
+            : new Error(statsResult.value.data?.message || 'Unable to load registration statistics');
+          setStats(null);
+          console.error('Failed to load full registration statistics:', statsError);
+          toast.error(
+            statsError.response?.data?.message || statsError.message || 'Unable to load registration statistics'
+          );
         }
 
       } catch (error) {
@@ -1594,7 +1614,9 @@ const Reports = () => {
     setFilters((prev) => {
       const newFilters = {
         ...prev,
-        [field]: value || '' // Clear filter if empty value
+        [field]: Array.isArray(value)
+          ? (value.length > 0 ? value : '')
+          : (value || '') // Clear filter if empty value
       };
 
       // Remove empty filters
@@ -1651,8 +1673,8 @@ const Reports = () => {
   };
 
   const clearFilters = () => {
-    setFilters(prev => ({
-      college: prev.college || '',
+    setFilters({
+      college: '',
       batch: '',
       course: '',
       level: '',
@@ -1663,8 +1685,11 @@ const Reports = () => {
       scholarshipStatus: '',
       stagePending: '',
       search: ''
-    }));
+    });
     setSearchTerm('');
+    setCollegeSearchQuery('');
+    setCollegeDropdownOpen(false);
+    setDrilldownReturn(null);
   };
 
   const STAGE_PENDING_LABELS = {
@@ -1676,19 +1701,21 @@ const Reports = () => {
   };
 
   const viewStagePendingStudents = (stage) => {
-    const nextFilters = {
-      ...filters,
-      scholarshipStatus: '',
-      stagePending: stage,
-      page: 1
-    };
+    setDrilldownReturn(prev => prev || { filters, activeTab });
     setFilters(prev => ({
       ...prev,
       scholarshipStatus: '',
       stagePending: stage
     }));
     setActiveTab('sheet');
-    setTimeout(() => loadReport(nextFilters), 0);
+  };
+
+  const returnFromDrilldown = () => {
+    if (!drilldownReturn) return;
+    setFilters(drilldownReturn.filters);
+    setSearchTerm(drilldownReturn.filters.search || '');
+    setActiveTab(drilldownReturn.activeTab);
+    setDrilldownReturn(null);
   };
 
   const activeFilterEntries = useMemo(() => {
@@ -1870,12 +1897,9 @@ const Reports = () => {
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 flex-shrink-0">
       <div className="bg-blue-50 p-2 md:p-3 rounded-lg border border-blue-100">
-        <div className="text-[10px] md:text-xs text-blue-600 uppercase font-semibold">Total (Display)</div>
+        <div className="text-[10px] md:text-xs text-blue-600 uppercase font-semibold">Total Students</div>
         <div className="text-lg md:text-xl font-bold text-blue-900">
           {stats?.total || 0}
-          {pagination.totalRecords > 0 && (
-            <span className="text-xs font-normal text-blue-600 ml-1">/ {pagination.totalRecords}</span>
-          )}
         </div>
       </div>
       <div className="bg-gray-50 p-2 md:p-3 rounded-lg border border-gray-100">
@@ -1966,9 +1990,9 @@ const Reports = () => {
             <button
               type="button"
               onClick={() => {
+                setDrilldownReturn(prev => prev || { filters, activeTab });
                 setFilters(prev => ({ ...prev, scholarshipStatus: 'pending', stagePending: '' }));
                 setActiveTab('sheet');
-                setTimeout(() => loadReport({ ...filters, scholarshipStatus: 'pending', stagePending: '', page: 1 }), 0);
               }}
               className="text-sm font-bold text-red-500 hover:text-red-700 hover:underline focus:outline-none focus:underline"
               title="Show only students with scholarship pending (empty)"
@@ -2677,6 +2701,24 @@ const Reports = () => {
       {/* Sheets View */}
       {reportType === 'registration' && activeTab === 'sheet' && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-300 gap-4">
+          {drilldownReturn && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={returnFromDrilldown}
+                className="inline-flex items-center gap-2 self-start px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                <ArrowLeft size={16} />
+                Back to Previous View
+              </button>
+              <h2 className="text-base font-semibold text-gray-800">
+                Showing students with{' '}
+                {filters.stagePending
+                  ? STAGE_PENDING_LABELS[filters.stagePending] || `${filters.stagePending} pending`
+                  : 'Scholarship pending (not assigned)'}
+              </h2>
+            </div>
+          )}
 
           {/* Stats Grid - Fixed at top of Sheets view */}
           {reportType === 'registration' && (

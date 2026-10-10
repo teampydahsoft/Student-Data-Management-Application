@@ -1098,7 +1098,6 @@ const Students = () => {
       // Identity Fields
       { key: 'student_name', label: 'Student Name', altKeys: ['Student Name', 'studentname'] },
       { key: 'pin_no', label: 'PIN Number', altKeys: ['Pin Number', 'PIN Number', 'pin_no'] },
-      { key: 'temporary_roll_number', label: 'Temporary Roll Number', altKeys: ['Temporary Roll Number', 'Temp Roll No', 'temp_roll_no', 'Roll Number', 'Roll No'] },
       { key: 'dob', label: 'Date of Birth', altKeys: ['DOB (Date of Birth - DD-MM-YYYY)', 'DOB (Date-Month-Year) Ex: 09-Sep-2003)', 'date_of_birth'] },
       { key: 'adhar_no', label: 'Aadhaar Number', altKeys: ['ADHAR No', 'aadhar_no', 'aadhaar_no'] },
       { key: 'apaar_id', label: 'APAAR ID', altKeys: ['APAAR ID', 'apaar id'] },
@@ -1132,7 +1131,6 @@ const Students = () => {
       { key: 'scholar_status', label: 'Scholar Status', altKeys: ['Scholar Status', 'scholarstatus'] },
       { key: 'certificates_status', label: 'Certificate Status', altKeys: ['Certificates Status', 'Certificate Status', 'certificatesstatus'] },
       { key: 'previous_college', label: 'Previous College', altKeys: ['Previous College Name', 'Previous College', 'previouscollege'] },
-      { key: 'remarks', label: 'Remarks', altKeys: ['Remarks', 'remark'] },
 
       // Photo
       { key: 'student_photo', label: 'Student Photo', altKeys: ['Student Photo', 'photo', 'studentphoto'] }

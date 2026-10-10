@@ -3495,7 +3495,7 @@ const UserManagement = () => {
                     const moduleLabel = getUserManagementModuleLabel(moduleKey);
                     if (!modulePerms) return null;
                     const permsForRole = roleConfigModalPermissions[moduleKey] || {};
-                    const enabledCount = Object.values(permsForRole).filter(v => v === true).length;
+                    const enabledCount = modulePerms.permissions.filter(permission => permsForRole[permission] === true).length;
                     const totalCount = modulePerms.permissions.length;
                     const isActive = roleConfigSelectedModule === moduleKey;
                     return (
@@ -3610,7 +3610,7 @@ const UserManagement = () => {
                           })()
                         ) : (
                         modulePerms.permissions
-                          .filter((permKey) => !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
+                          .filter((permKey) => effectiveModuleKey !== BACKEND_MODULES.STUDENT_MANAGEMENT || !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
                           .map((permKey) => {
                           const enabled = permsForRole[permKey] === true;
                           const label = modulePerms.labels?.[permKey] || permKey;
@@ -4111,7 +4111,7 @@ const UserManagement = () => {
                               })()
                             ) : (
                             modulePerms.permissions
-                              .filter((permKey) => !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
+                              .filter((permKey) => effectiveModuleKey !== BACKEND_MODULES.STUDENT_MANAGEMENT || !STUDENT_MANAGEMENT_VIEW_DIALOG_SUBPAGE_KEYS.includes(permKey))
                               .map((permKey) => {
                               const enabled = permsForUser[permKey] === true;
                               const label = modulePerms.labels[permKey] || permKey;

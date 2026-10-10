@@ -193,7 +193,7 @@ const NAV_ITEMS = [
         label: "Certificate Reports",
         icon: FileCheck,
         permission: FRONTEND_MODULES.REPORTS,
-        action: 'view_registration'
+        action: 'view_certificates'
       },
       {
         path: "/reports/sms",
@@ -201,6 +201,13 @@ const NAV_ITEMS = [
         icon: MessageSquare,
         permission: FRONTEND_MODULES.REPORTS,
         action: 'view_sms_reports'
+      },
+      {
+        path: "/reports/profile-requests",
+        label: "Profile Reports",
+        icon: ClipboardList,
+        permission: FRONTEND_MODULES.REPORTS,
+        action: 'view_profile_reports'
       },
     ],
   },

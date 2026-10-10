@@ -207,7 +207,7 @@ const MODULE_PERMISSIONS = {
     }
   },
   [MODULES.REPORTS]: {
-    permissions: ['view', 'download', 'view_registration', 'view_attendance', 'view_day_end', 'view_category', 'view_sms_reports', 'view_scholarship'],
+    permissions: ['view', 'download', 'view_registration', 'view_attendance', 'view_day_end', 'view_category', 'view_certificates', 'view_sms_reports', 'view_scholarship', 'view_profile_reports'],
     labels: {
       view: 'View Reports',
       download: 'Download Reports',
@@ -215,8 +215,10 @@ const MODULE_PERMISSIONS = {
       view_attendance: 'View Attendance Reports',
       view_day_end: 'View Day End Reports',
       view_category: 'View Category Reports',
+      view_certificates: 'View Certificate Reports',
       view_sms_reports: 'View SMS Reports',
-      view_scholarship: 'View Scholarship Reports'
+      view_scholarship: 'View Scholarship Reports',
+      view_profile_reports: 'View Profile Reports'
     }
   },
   [MODULES.TICKET_MANAGEMENT]: {

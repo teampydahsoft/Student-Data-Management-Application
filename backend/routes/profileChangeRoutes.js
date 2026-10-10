@@ -22,6 +22,14 @@ router.post('/mark-verified', authMiddleware, requireStudent, profileChangeContr
 
 // Admin Routes — view_profile_requests/edit_profile_requests + college/course/branch scope
 router.get(
+    '/report',
+    authMiddleware,
+    verifyPermission(MODULES.REPORTS, 'view_profile_reports'),
+    attachUserScope,
+    profileChangeController.getProfileCompletionReport
+);
+
+router.get(
     '/all',
     authMiddleware,
     verifyPermission(MODULES.STUDENT_MANAGEMENT, 'view_profile_requests'),

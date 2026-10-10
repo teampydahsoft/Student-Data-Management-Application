@@ -170,9 +170,7 @@ const CertificatesReport = () => {
   const hasAccess = useMemo(() => {
     if (!user) return false;
     if (isFullAccessRole(user.role)) return true;
-    return hasPermission(user.permissions, BACKEND_MODULES.REPORTS, 'view_registration') ||
-           hasPermission(user.permissions, BACKEND_MODULES.REPORTS, 'view_scholarship') ||
-           hasPermission(user.permissions, BACKEND_MODULES.REPORTS, 'view');
+    return hasPermission(user.permissions, BACKEND_MODULES.REPORTS, 'view_certificates');
   }, [user]);
 
   // Filters State
