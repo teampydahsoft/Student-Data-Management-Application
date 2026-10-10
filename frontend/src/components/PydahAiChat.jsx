@@ -1,91 +1,127 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useLocation } from 'react-router-dom';
+import useAuthStore from '../store/authStore';
+import { getAiApiBaseUrl } from '../config/aiConfig';
 
 /**
  * PydahAiChat Component
- * Wraps the CDN-loaded PydahAIChatUI library (https://pydah-ai.netlify.app/index.umd.js)
- * 
- * Props:
- * - mode: 'widget' | 'embedded' (default: 'widget')
- * - title: string (default: "Pydah Student Assistant")
- * - welcomeMessage: string (default: "How can I help you today?")
- * - position: 'bottom-right' | 'bottom-left' (default: 'bottom-right')
- * - apiBaseUrl: string (default: "https://pydah-ai-api.onrender.com")
+ * Dynamic UMD CDN script loader for Pydah AI Chat UI.
+ * Follows README Integration Method 2 (Section 3B):
+ * - Sets window.PYDAH_AI_DISABLE_AUTO_MOUNT = true to prevent duplicate widget injection.
+ * - Configures window.React, window.ReactDOM, and window.PYDAH_AI_API_URL globally.
+ * - Injects layout guard CSS to prevent style.css resets from hiding host application sidebars.
  */
 export default function PydahAiChat({
   mode = 'widget',
+  assistantId: propsAssistantId,
+  authToken: propsAuthToken,
   title = 'Pydah Student Assistant',
   welcomeMessage = 'How can I help you today?',
   position = 'bottom-right',
-  apiBaseUrl = 'https://pydah-ai-api.onrender.com',
+  apiBaseUrl: propsApiBaseUrl,
   ...restProps
 }) {
-  const [isLoaded, setIsLoaded] = useState(
-    typeof window !== 'undefined' && !!window.PydahAIChatUI
-  );
   const location = useLocation();
+  const { token: storeToken, userType } = useAuthStore();
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const isAiAssistantPage = location?.pathname?.endsWith('/ai-assistant');
 
+  // Resolve active bearer token, assistant persona, and AI engine URL
+  const activeToken = propsAuthToken || storeToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null);
+  const activeAssistantId = propsAssistantId || 'student-assistant';
+  const activeApiBaseUrl = propsApiBaseUrl || getAiApiBaseUrl();
+
   useEffect(() => {
-    if (typeof window !== 'undefined' && !window.React) {
+    if (typeof window !== 'undefined') {
+      // Expose React & ReactDOM globally BEFORE UMD bundle executes to prevent React hook errors
       window.React = React;
-    }
+      window.ReactDOM = ReactDOM;
 
-    if (typeof window !== 'undefined' && window.PydahAIChatUI) {
-      setIsLoaded(true);
-      return;
-    }
+      // Disable auto-mounting to prevent duplicate floating widgets on document.body
+      window.PYDAH_AI_DISABLE_AUTO_MOUNT = true;
 
-    const interval = setInterval(() => {
-      if (typeof window !== 'undefined' && window.PydahAIChatUI) {
-        setIsLoaded(true);
-        clearInterval(interval);
+      window.PYDAH_AI_API_URL = activeApiBaseUrl;
+      window.PYDAH_AI_ASSISTANT_ID = activeAssistantId;
+      window.PYDAH_AI_TITLE = title;
+      window.PYDAH_AI_WELCOME_MESSAGE = welcomeMessage;
+
+      if (activeToken) {
+        window.PYDAH_AI_AUTH_TOKEN = activeToken;
       }
-    }, 100);
 
-    return () => clearInterval(interval);
-  }, []);
+      console.log(`🤖 [Pydah AI Chat UI] Connected AI Central Engine Base URL: ${activeApiBaseUrl}`);
+      console.log(`🤖 [Pydah AI Chat UI] Persona: ${activeAssistantId} | Auth Token Present: ${!!activeToken}`);
 
-  // Hide the floating widget button on dedicated AI Assistant pages
+      // Inject Stylesheet
+      if (!document.getElementById('pydah-ai-style')) {
+        const link = document.createElement('link');
+        link.id = 'pydah-ai-style';
+        link.rel = 'stylesheet';
+        link.href = 'https://pydah-ai-chat-ui.vercel.app/style.css';
+        document.head.appendChild(link);
+      }
+
+      // Inject Layout Guard Stylesheet to protect host layout sidebars from style.css resets
+      if (!document.getElementById('pydah-ai-layout-guard')) {
+        const guardStyle = document.createElement('style');
+        guardStyle.id = 'pydah-ai-layout-guard';
+        guardStyle.innerHTML = `
+          @media (min-width: 1024px) {
+            aside, aside.hidden.lg\\:flex, .lg\\:flex { display: flex !important; }
+          }
+          @media (min-width: 768px) {
+            aside.md\\:flex, .md\\:flex { display: flex !important; }
+          }
+        `;
+        document.head.appendChild(guardStyle);
+      }
+
+      // Inject Script
+      if (!document.getElementById('pydah-ai-script')) {
+        const script = document.createElement('script');
+        script.id = 'pydah-ai-script';
+        script.src = 'https://pydah-ai-chat-ui.vercel.app/index.umd.js';
+        script.async = true;
+        script.onload = () => setIsLoaded(true);
+        document.body.appendChild(script);
+      } else if (window.PydahAIChatUI) {
+        setIsLoaded(true);
+      }
+    }
+  }, [activeApiBaseUrl, activeAssistantId, activeToken, title, welcomeMessage]);
+
+  // Hide floating widget button on dedicated AI Assistant page
   if (mode === 'widget' && isAiAssistantPage) {
     return null;
   }
 
   if (!isLoaded || typeof window === 'undefined' || !window.PydahAIChatUI) {
-    if (mode === 'embedded') {
-      return (
-        <div className="flex flex-col items-center justify-center h-full w-full bg-slate-50 p-6 text-slate-500 min-h-[400px]">
-          <div className="w-10 h-10 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-3"></div>
-          <p className="text-sm font-medium">Connecting to Pydah AI Assistant...</p>
-        </div>
-      );
-    }
     return null;
   }
 
+  const UIModule = window.PydahAIChatUI;
   const Component = mode === 'embedded'
-    ? (window.PydahAIChatUI.PydahAIChatPage || window.PydahAIChatUI.PydahAIChatUI || window.PydahAIChatUI.default)
-    : (window.PydahAIChatUI.PydahAIChatWidget || window.PydahAIChatUI.PydahAIChatUI || window.PydahAIChatUI.default);
+    ? (UIModule.PydahAIChatPage || UIModule.default || UIModule)
+    : (UIModule.PydahAIChatWidget || UIModule.default || UIModule);
 
-  if (!Component) return null;
-
-  const renderedElement = React.createElement(Component, {
-    mode,
-    title,
-    welcomeMessage,
-    position,
-    apiBaseUrl,
-    ...restProps
-  });
-
-  if (mode === 'embedded') {
-    return (
-      <div className="w-full h-full flex-1 relative overflow-hidden [&>div]:!h-full [&>div]:!w-full [&>div]:!max-h-full">
-        {renderedElement}
-      </div>
-    );
+  if (!Component) {
+    return null;
   }
 
-  return renderedElement;
+  return (
+    <Component
+      mode={mode}
+      assistantId={activeAssistantId}
+      authToken={activeToken}
+      apiBaseUrl={activeApiBaseUrl}
+      title={title}
+      welcomeMessage={welcomeMessage}
+      position={position}
+      {...restProps}
+    />
+  );
 }
+
+

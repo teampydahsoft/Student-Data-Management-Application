@@ -64,18 +64,12 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === "development") {
-        callback(null, true);
-      } else {
-        console.log("CORS blocked for origin:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
+      // Always allow requests from any origin or server-to-server calls
+      return callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-access-token", "x-user-token", "X-Access-Token", "X-User-Token"],
   }),
 );
 app.use(bodyParser.json({ limit: "10mb" }));
@@ -222,6 +216,17 @@ app.use("/api/internship", require("./internship/internshipRoutes"));
 app.use("/api/profile-changes", require("./routes/profileChangeRoutes"));
 app.use("/api/certificate-borrow", require("./routes/certificateBorrowRoutes"));
 app.use("/api/qr", require("./routes/qrRoutes")); // Public QR verify endpoint
+
+// AI Integration Routes for Central pydah-ai Engine
+const aiIntegrationRoutes = require("./ai_integration/routes");
+app.use("/execute-tool", aiIntegrationRoutes);
+app.use("/execute_tool", aiIntegrationRoutes);
+app.use("/api/execute-tool", aiIntegrationRoutes);
+app.use("/api/execute_tool", aiIntegrationRoutes);
+app.use("/api/v1/execute-tool", aiIntegrationRoutes);
+app.use("/ai-integration", aiIntegrationRoutes);
+app.use("/ai_integration", aiIntegrationRoutes);
+app.use("/api/ai", aiIntegrationRoutes);
 
 // Legacy route support for direct API access (without /api prefix)
 app.use("/auth", authRoutes);

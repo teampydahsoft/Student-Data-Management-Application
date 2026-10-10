@@ -353,7 +353,6 @@ function App() {
         title="Pydah Student Assistant"
         welcomeMessage="How can I help you today?"
         position="bottom-right"
-        apiBaseUrl="https://pydah-ai-api.onrender.com"
       />
     </Router>
   );
