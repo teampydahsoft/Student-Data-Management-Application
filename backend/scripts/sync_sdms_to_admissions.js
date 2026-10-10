@@ -1,8 +1,16 @@
+/**
+ * NOTE: Real-time student creations, edits, profile change approvals, and submission approvals
+ * now directly edit both SDMS database (masterPool) and Admissions database (admissionsPool)
+ * simultaneously in real time.
+ *
+ * Running a background sync service script continuously is no longer required.
+ * This script is retained solely for optional manual bulk maintenance or verification.
+ */
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { bulkSyncAllStudentsToAdmissions } = require('../services/admissionsSyncService');
 
 async function runBulkSync() {
-  console.log('=== SDMS to Admissions DB Sync Task Started ===');
+  console.log('=== SDMS to Admissions DB Direct Sync Check Started ===');
   const startTime = Date.now();
 
   try {

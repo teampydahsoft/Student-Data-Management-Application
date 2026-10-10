@@ -1097,7 +1097,8 @@ const Students = () => {
     const profileFields = [
       // Identity Fields
       { key: 'student_name', label: 'Student Name', altKeys: ['Student Name', 'studentname'] },
-      { key: 'pin_no', label: 'Roll Number', altKeys: ['Pin Number', 'PIN Number', 'roll_no', 'roll_number'] },
+      { key: 'pin_no', label: 'PIN Number', altKeys: ['Pin Number', 'PIN Number', 'pin_no'] },
+      { key: 'temporary_roll_number', label: 'Temporary Roll Number', altKeys: ['Temporary Roll Number', 'Temp Roll No', 'temp_roll_no', 'Roll Number', 'Roll No'] },
       { key: 'dob', label: 'Date of Birth', altKeys: ['DOB (Date of Birth - DD-MM-YYYY)', 'DOB (Date-Month-Year) Ex: 09-Sep-2003)', 'date_of_birth'] },
       { key: 'adhar_no', label: 'Aadhaar Number', altKeys: ['ADHAR No', 'aadhar_no', 'aadhaar_no'] },
       { key: 'apaar_id', label: 'APAAR ID', altKeys: ['APAAR ID', 'apaar id'] },
@@ -1283,6 +1284,34 @@ const Students = () => {
       setActiveQrToken(null);
     }
   }, [selectedStudent]);
+
+  // Fetch attendance summary for Quick Status card of selected student
+  const [quickStatusAttendance, setQuickStatusAttendance] = useState(null);
+  const [quickStatusAttendanceLoading, setQuickStatusAttendanceLoading] = useState(false);
+
+  useEffect(() => {
+    if (showModal && selectedStudent && selectedStudent.id) {
+      setQuickStatusAttendanceLoading(true);
+      api.get(`/attendance/student/${selectedStudent.id}/history`)
+        .then(res => {
+          if (res.data?.success && res.data?.data) {
+            setQuickStatusAttendance(res.data.data);
+          } else {
+            setQuickStatusAttendance(null);
+          }
+        })
+        .catch(err => {
+          console.error('Failed to fetch attendance summary for quick status:', err);
+          setQuickStatusAttendance(null);
+        })
+        .finally(() => {
+          setQuickStatusAttendanceLoading(false);
+        });
+    } else {
+      setQuickStatusAttendance(null);
+      setQuickStatusAttendanceLoading(false);
+    }
+  }, [showModal, selectedStudent?.id]);
 
   // Check expired permits on component mount and when students data changes
   useEffect(() => {
@@ -4269,7 +4298,7 @@ const Students = () => {
                     </h2>
 
                     <p className="text-xs sm:text-sm font-bold text-gray-600 flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono bg-gray-100 text-gray-800 px-2 py-0.5 rounded-md text-xs font-black">{editData.pin_no || selectedStudent?.pin_no || selectedStudent?.roll_number || selectedStudent?.admission_number}</span>
+                      <span className="font-mono bg-gray-100 text-gray-800 px-2 py-0.5 rounded-md text-xs font-black">{editData.pin_no || selectedStudent?.pin_no || selectedStudent?.admission_number}</span>
                       <span className="text-gray-300 font-bold">|</span>
                       <span>{editData.course || selectedStudent?.course || 'Program'} - {editData.branch || selectedStudent?.branch || 'Branch'}</span>
                       <span className="text-gray-300 font-bold">|</span>
@@ -4483,7 +4512,7 @@ const Students = () => {
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Temporary Roll No</span>
                             <span className="font-extrabold text-gray-800 font-mono bg-gray-100 px-2 py-0.5 rounded text-[11px]" title="Temporary Roll Number - Cannot be edited">
-                              {selectedStudent?.admission_no || selectedStudent?.student_data?.['Temporary Roll Number'] || selectedStudent?.admission_number || '-'}
+                              {selectedStudent?.roll_number || selectedStudent?.student_data?.['Temporary Roll Number'] || selectedStudent?.student_data?.['temporary_roll_number'] || selectedStudent?.student_data?.['Temp Roll No'] || selectedStudent?.student_data?.['temp_roll_no'] || selectedStudent?.student_data?.['Roll Number'] || '-'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
@@ -4675,15 +4704,65 @@ const Students = () => {
                         </div>
 
                         <div className="space-y-2.5 text-[11px]">
-                          <div>
-                            <div className="flex justify-between items-center mb-0.5">
-                              <span className="text-gray-500 font-semibold">Attendance</span>
-                              <span className="font-bold text-emerald-600">87%</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                              <div className="bg-emerald-500 h-full rounded-full" style={{ width: '87%' }}></div>
-                            </div>
-                          </div>
+                          {(() => {
+                            if (quickStatusAttendanceLoading) {
+                              return (
+                                <div>
+                                  <div className="flex justify-between items-center mb-0.5">
+                                    <span className="text-gray-500 font-semibold">Attendance</span>
+                                    <span className="text-gray-400 text-[10px] animate-pulse">Loading...</span>
+                                  </div>
+                                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className="bg-gray-300 h-full rounded-full w-0 animate-pulse"></div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            const totals = quickStatusAttendance?.semester?.totals || quickStatusAttendance?.monthly?.totals || quickStatusAttendance?.weekly?.totals;
+                            const present = totals?.present || 0;
+                            const absent = totals?.absent || 0;
+                            const markedDays = present + absent;
+
+                            if (!totals || markedDays === 0) {
+                              return (
+                                <div>
+                                  <div className="flex justify-between items-center mb-0.5">
+                                    <span className="text-gray-500 font-semibold">Attendance</span>
+                                    <span className="font-bold text-gray-400">N/A</span>
+                                  </div>
+                                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className="bg-gray-200 h-full rounded-full" style={{ width: '0%' }}></div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            const pct = Math.round((present / markedDays) * 100);
+                            const formattedPct = `${pct}%`;
+
+                            let textColor = 'text-emerald-600';
+                            let barColor = 'bg-emerald-500';
+                            if (pct < 75 && pct >= 65) {
+                              textColor = 'text-amber-600';
+                              barColor = 'bg-amber-500';
+                            } else if (pct < 65) {
+                              textColor = 'text-red-600';
+                              barColor = 'bg-red-500';
+                            }
+
+                            return (
+                              <div>
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <span className="text-gray-500 font-semibold">Attendance</span>
+                                  <span className={`font-bold ${textColor}`}>{formattedPct}</span>
+                                </div>
+                                <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className={`${barColor} h-full rounded-full transition-all duration-300`} style={{ width: `${pct}%` }}></div>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500 font-semibold">Fee Status</span>

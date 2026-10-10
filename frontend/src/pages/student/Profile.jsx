@@ -181,8 +181,13 @@ const Profile = () => {
                                         Adm: {displayData.admission_number || user?.admission_number || '20230353'}
                                     </span>
                                     <span className="bg-indigo-50 text-indigo-700 px-2.5 sm:px-3 py-1 rounded-xl border border-indigo-100 shadow-xs shrink-0">
-                                        Pin: {displayData.pin_no || displayData.pin_number || displayData.pin || displayData.roll_number || displayData.registration_number || getStudentData('PIN') || getStudentData('Pin Number') || getStudentData('Pin No') || getStudentData('Roll No') || getStudentData('Registration Number') || displayData.admission_number || user?.admission_number || '20230353'}
+                                        Pin: {displayData.pin_no || displayData.pin_number || displayData.pin || getStudentData('PIN') || getStudentData('Pin Number') || getStudentData('Pin No') || 'Not Assigned'}
                                     </span>
+                                    {(displayData.roll_number || getStudentData('Temporary Roll Number') || getStudentData('Temp Roll No') || getStudentData('temporary_roll_number') || getStudentData('Roll Number')) && (
+                                        <span className="bg-purple-50 text-purple-700 px-2.5 sm:px-3 py-1 rounded-xl border border-purple-100 shadow-xs shrink-0">
+                                            Temp Roll: {displayData.roll_number || getStudentData('Temporary Roll Number') || getStudentData('Temp Roll No') || getStudentData('temporary_roll_number') || getStudentData('Roll Number')}
+                                        </span>
+                                    )}
                                 </div>
 
                                 {/* College, Branch & Year side-by-side with Lucide Icons */}

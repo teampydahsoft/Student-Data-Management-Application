@@ -1,5 +1,5 @@
 const { masterPool } = require('../config/database');
-const { triggerAdmissionsSyncAsync } = require('../services/admissionsSyncService');
+const { syncStudentToAdmissions, triggerAdmissionsSyncAsync } = require('../services/admissionsSyncService');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const csv = require('csv-parser');
@@ -1781,7 +1781,11 @@ exports.approveSubmission = async (req, res) => {
 
     await masterConn.commit();
     if (finalAdmissionNumber) {
-      triggerAdmissionsSyncAsync(finalAdmissionNumber);
+      try {
+        await syncStudentToAdmissions(finalAdmissionNumber);
+      } catch (syncErr) {
+        console.error(`Direct admissions DB update error for ${finalAdmissionNumber}:`, syncErr.message);
+      }
     }
 
     res.json({

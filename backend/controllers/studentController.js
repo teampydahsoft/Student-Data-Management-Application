@@ -879,7 +879,7 @@ const createComprehensiveFieldMapping = () => {
 
   // Define all possible field name variations for each database field
   const fieldVariations = {
-    pin_no: ['pinnumber', 'pin_no', 'pin', 'pinnumber', 'pin_number', 'rollno', 'rollnumber', 'roll_no', 'pinno', 'pin_no', 'pin', 'pinnumber', 'pin_number', 'rollno', 'rollnumber', 'roll_no', 'rollnumber', 'roll_number', 'rollno', 'roll_no'],
+    pin_no: ['pinnumber', 'pin_no', 'pin', 'pin_number', 'pinno'],
     batch: ['batch', 'batchyear', 'batch_year', 'year', 'academicyear', 'academic_year', 'batch', 'batchyear', 'batch_year', 'year', 'academicyear', 'academic_year', 'batchyear', 'batch_year', 'academicyear', 'academic_year'],
     college: ['college', 'collegename', 'college_name', 'institution', 'institutionname', 'institution_name', 'campus', 'campusname', 'campus_name', 'college', 'collegename', 'college_name', 'institution', 'institutionname', 'institution_name', 'campus', 'campusname', 'campus_name'],
     college_id: ['college_id', 'collegeid'],
@@ -2997,6 +2997,12 @@ exports.commitBulkUploadStudents = async (req, res) => {
       if (normalizedAdmission) {
         existingAdmissions.add(normalizedAdmission);
       }
+
+      try {
+        await syncStudentToAdmissions(sanitized.admission_number);
+      } catch (syncErr) {
+        console.error(`Direct admissions DB update error for ${sanitized.admission_number}:`, syncErr.message);
+      }
     }
 
     res.json({
@@ -3987,12 +3993,13 @@ exports.updateStudent = async (req, res) => {
     }
 
 
-    // Extract new PIN if provided to check for uniqueness
+    // Extract new PIN if explicitly provided to check for uniqueness
     let newPinNo = null;
     if (studentData && typeof studentData === 'object') {
+      const explicitPinKeys = new Set(['pin_no', 'pin', 'pin_number', 'pinnumber']);
       for (const [key, value] of Object.entries(studentData)) {
         const normalizedKey = normalizeHeaderKeyForLookup(key);
-        if (FIELD_LOOKUP[normalizedKey] === 'pin_no' && value) {
+        if (explicitPinKeys.has(normalizedKey) && value && String(value).trim() !== '') {
           newPinNo = String(value).trim();
           break;
         }
@@ -4226,6 +4233,11 @@ exports.updateStudent = async (req, res) => {
           continue;
         }
 
+        // Prevent legacy/JSON keys (e.g. 'Roll Number' in student_data) from overwriting an existing pin_no
+        if (columnName === 'pin_no' && existingStudent.pin_no && !newPinNo) {
+          continue;
+        }
+
         // Convert values for specific column types
         let convertedValue = value;
         if (shouldAllowEmptyUpdate) {
@@ -4404,8 +4416,18 @@ exports.updateStudent = async (req, res) => {
     ];
     const auditChanges = {};
     for (const col of TRACKED_COLUMNS) {
+      let isExplicitlySubmitted = Object.prototype.hasOwnProperty.call(incomingStudentData, col);
+      if (!isExplicitlySubmitted) {
+        for (const [k] of Object.entries(incomingStudentData)) {
+          if (FIELD_LOOKUP[normalizeHeaderKeyForLookup(k)] === col) {
+            isExplicitlySubmitted = true;
+            break;
+          }
+        }
+      }
+      if (!isExplicitlySubmitted) continue;
+
       const oldVal = existingStudent[col] ?? null;
-      // Map the DB column back to what mutableStudentData might contain using robust FIELD_LOOKUP
       let newVal = mutableStudentData[col] ?? null;
       if (newVal === null) {
         for (const [k, v] of Object.entries(mutableStudentData)) {
@@ -4478,32 +4500,50 @@ exports.updateStudent = async (req, res) => {
     });
 
     clearStudentsCache();
-    triggerAdmissionsSyncAsync(admissionNumber);
 
+    // Prepare updated student object for instant admissions DB sync
+    const updatedStudentObj = {
+      ...existingStudent,
+      ...mutableStudentData,
+      admission_number: admissionNumber,
+      student_data: serializedStudentData
+    };
+
+    // Trigger dual database update and post-update tasks concurrently without delaying HTTP response
     const finalCourse = auditChanges.course?.to ?? existingStudent.course;
     const finalBranch = auditChanges.branch?.to ?? existingStudent.branch;
     const finalBatch = auditChanges.batch?.to ?? existingStudent.batch;
-    await maybeSyncManualStudentSection({
-      studentId: existingStudent.id,
-      course: finalCourse,
-      branch: finalBranch,
-      batch: finalBatch,
-      incomingStudentData,
-      mutableStudentData
-    });
 
-    try {
-      const { syncIneligibleQuotaScholarshipForStudent } = require('../services/studentScholarshipSync');
-      await syncIneligibleQuotaScholarshipForStudent(masterPool, {
-        id: existingStudent.id,
-        stud_type: auditChanges.stud_type?.to ?? existingStudent.stud_type,
+    Promise.allSettled([
+      syncStudentToAdmissions(admissionNumber, updatedStudentObj),
+      maybeSyncManualStudentSection({
+        studentId: existingStudent.id,
         course: finalCourse,
         branch: finalBranch,
-        current_year: auditChanges.current_year?.to ?? existingStudent.current_year
-      });
-    } catch (syncErr) {
-      console.error('Failed to sync ineligible-quota scholarship:', syncErr.message);
-    }
+        batch: finalBatch,
+        incomingStudentData,
+        mutableStudentData
+      }),
+      (async () => {
+        try {
+          const { syncIneligibleQuotaScholarshipForStudent } = require('../services/studentScholarshipSync');
+          await syncIneligibleQuotaScholarshipForStudent(masterPool, {
+            id: existingStudent.id,
+            stud_type: auditChanges.stud_type?.to ?? existingStudent.stud_type,
+            course: finalCourse,
+            branch: finalBranch,
+            current_year: auditChanges.current_year?.to ?? existingStudent.current_year
+          });
+        } catch (sErr) {
+          console.error('Failed to sync ineligible-quota scholarship:', sErr.message);
+        }
+      })()
+    ]).then((results) => {
+      const admSyncResult = results[0];
+      if (admSyncResult.status === 'rejected') {
+        console.error(`Direct admissions DB update error for ${admissionNumber}:`, admSyncResult.reason?.message || admSyncResult.reason);
+      }
+    });
 
     res.json({
       success: true,
@@ -5739,6 +5779,11 @@ exports.createStudent = async (req, res) => {
     });
 
     clearStudentsCache();
+    try {
+      await syncStudentToAdmissions(admissionNumber);
+    } catch (syncErr) {
+      console.error(`Direct admissions DB update error for ${admissionNumber}:`, syncErr.message);
+    }
 
     res.status(201).json({
       success: true,

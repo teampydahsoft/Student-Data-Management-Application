@@ -108,7 +108,7 @@ async function syncStudentToAdmissions(admissionNumber, studentRecord = null) {
     let student = studentRecord;
     if (!student) {
       const [rows] = await masterPool.query(
-        `SELECT * FROM students WHERE LOWER(TRIM(admission_number)) = LOWER(?) OR LOWER(TRIM(admission_no)) = LOWER(?) LIMIT 1`,
+        `SELECT * FROM students WHERE admission_number = ? OR admission_no = ? LIMIT 1`,
         [normAdmissionNumber, normAdmissionNumber]
       );
       if (!rows || rows.length === 0) {
@@ -169,7 +169,7 @@ async function syncStudentToAdmissions(admissionNumber, studentRecord = null) {
 
     // 1. Sync to admissions_db.admissions table
     const [admRows] = await admissionsPool.query(
-      `SELECT id, lead_id, joining_id, lead_data FROM admissions WHERE LOWER(TRIM(admission_number)) = LOWER(?)`,
+      `SELECT id, lead_id, joining_id, lead_data FROM admissions WHERE admission_number = ?`,
       [normAdmissionNumber]
     );
 
@@ -247,7 +247,7 @@ async function syncStudentToAdmissions(admissionNumber, studentRecord = null) {
         admUpdateFields.push('updated_at = CURRENT_TIMESTAMP');
         admParams.push(normAdmissionNumber);
         await admissionsPool.query(
-          `UPDATE admissions SET ${admUpdateFields.join(', ')} WHERE LOWER(TRIM(admission_number)) = LOWER(?)`,
+          `UPDATE admissions SET ${admUpdateFields.join(', ')} WHERE admission_number = ?`,
           admParams
         );
         updatedTables.push('admissions');
@@ -256,7 +256,7 @@ async function syncStudentToAdmissions(admissionNumber, studentRecord = null) {
 
     // 2. Sync to admissions_db.leads table
     const [leadSearchRows] = await admissionsPool.query(
-      `SELECT id FROM leads WHERE LOWER(TRIM(admission_number)) = LOWER(?) ${leadId ? 'OR id = ?' : ''}`,
+      `SELECT id FROM leads WHERE admission_number = ? ${leadId ? 'OR id = ?' : ''}`,
       leadId ? [normAdmissionNumber, leadId] : [normAdmissionNumber]
     );
 
@@ -463,20 +463,10 @@ async function bulkSyncAllStudentsToAdmissions(options = {}) {
 }
 
 /**
- * Non-blocking trigger wrapper for background update hooks in controllers
+ * Direct update helper for dual-database edits (synchronous execution)
  */
-function triggerAdmissionsSyncAsync(admissionNumber, studentData = null) {
-  setImmediate(() => {
-    syncStudentToAdmissions(admissionNumber, studentData)
-      .then(res => {
-        if (res.matched) {
-          console.log(`[AdmissionsSync] Real-time sync updated tables [${res.updatedTables.join(', ')}] for admission ${admissionNumber}`);
-        }
-      })
-      .catch(err => {
-        console.error(`[AdmissionsSync] Real-time sync failed for admission ${admissionNumber}:`, err.message);
-      });
-  });
+async function triggerAdmissionsSyncAsync(admissionNumber, studentData = null) {
+  return await syncStudentToAdmissions(admissionNumber, studentData);
 }
 
 module.exports = {
@@ -484,3 +474,4 @@ module.exports = {
   bulkSyncAllStudentsToAdmissions,
   triggerAdmissionsSyncAsync
 };
+

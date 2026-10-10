@@ -347,19 +347,36 @@ const LogDetails = ({ log }) => {
     return (
         <div className="mt-3 space-y-2">
             {photoUpdatedLegacy && (
-                <div className="flex items-center gap-2 text-sm text-teal-700 bg-teal-50 border border-teal-100 px-3 py-1.5 rounded-lg w-fit">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Photo updated
+                <div className="flex items-center gap-2 text-xs text-teal-700 bg-teal-50 border border-teal-100 px-3 py-1.5 rounded-lg w-fit font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> Photo updated
                 </div>
             )}
             {legacyFields.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                    {legacyFields.map(key => (
-                        <span key={key} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-100 text-blue-800 text-xs px-2.5 py-1.5 rounded-lg font-medium">
-                            {friendlyField(key)}
-                        </span>
-                    ))}
+                <div className="rounded-2xl border border-gray-200 overflow-hidden text-xs shadow-sm bg-white">
+                    {/* Header */}
+                    <div className="flex items-center bg-gray-50/80 border-b border-gray-200 px-4 py-2.5 gap-2 font-bold uppercase tracking-widest text-[10px] text-gray-400">
+                        <span className="w-[100px] flex-shrink-0">Field Name</span>
+                        <span className="flex-1 text-indigo-600/80">Updated Value</span>
+                    </div>
+                    {/* Rows */}
+                    <div className="divide-y divide-gray-100">
+                        {legacyFields.map(key => {
+                            const val = typeof d[key] === 'object' && d[key] !== null ? JSON.stringify(d[key]) : String(d[key] ?? '—');
+                            return (
+                                <div key={key} className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50/50 transition-colors">
+                                    <span className="w-[100px] flex-shrink-0 font-bold text-gray-700 truncate" title={friendlyField(key)}>
+                                        {friendlyField(key)}
+                                    </span>
+                                    <span className="flex-1 min-w-0 text-indigo-900 bg-indigo-50/60 border border-indigo-100/60 px-2.5 py-1.5 rounded-xl font-semibold truncate" title={val}>
+                                        {val || '—'}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
+            {d.message && <p className="mt-2 text-xs text-gray-500 italic">{d.message}</p>}
         </div>
     );
 };
